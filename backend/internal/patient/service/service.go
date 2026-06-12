@@ -1,0 +1,461 @@
+// Package service implements the patient module use-cases. All access is
+// tenant-scoped via kernel/db.WithTx (RLS enforced); registration allocates a
+// per-tenant MRN, runs duplicate detection (FR-PAT-03), and emits a
+// PatientRegistered event for audit/indexing.
+package service
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/reicb/clinicsaas/internal/kernel/apperr"
+	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
+	"github.com/reicb/clinicsaas/internal/kernel/events"
+	"github.com/reicb/clinicsaas/internal/kernel/storage"
+	"github.com/reicb/clinicsaas/internal/kernel/tenancy"
+	"github.com/reicb/clinicsaas/internal/patient"
+	patientdb "github.com/reicb/clinicsaas/internal/patient/repo/gen"
+)
+
+const dateLayout = "2006-01-02"
+
+// Service implements patient.Service.
+type Service struct {
+	db        *kerneldb.DB
+	store     storage.Provider
+	publisher events.Publisher
+}
+
+var _ patient.Service = (*Service)(nil)
+
+// NewService constructs a patient Service.
+func NewService(db *kerneldb.DB, store storage.Provider, publisher events.Publisher) *Service {
+	return &Service{db: db, store: store, publisher: publisher}
+}
+
+// Create registers a patient, detecting likely duplicates first (FR-PAT-03).
+// When duplicates are found and Force is false, it returns them with a nil
+// patient and nil error so the caller can prompt for confirmation.
+func (s *Service) Create(ctx context.Context, in patient.PatientInput) (*patient.Patient, []patient.Duplicate, error) {
+	tenantID, actor := actor(ctx)
+	dob, err := parseDOB(in.DOB)
+	if err != nil {
+		return nil, nil, apperr.Validation("dob must be YYYY-MM-DD").WithField("dob", "invalid date")
+	}
+	if strings.TrimSpace(in.FirstName) == "" || strings.TrimSpace(in.LastName) == "" {
+		return nil, nil, apperr.Validation("first and last name are required")
+	}
+
+	if !in.Force {
+		var dups []patient.Duplicate
+		if err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+			rows, e := patientdb.New(tx).FindDuplicateCandidates(ctx, patientdb.FindDuplicateCandidatesParams{
+				TenantID:   tenantID,
+				FirstName:  in.FirstName,
+				LastName:   in.LastName,
+				Dob:        dob,
+				Phone:      in.Phone,
+				NationalID: in.NationalID,
+			})
+			if e != nil {
+				return e
+			}
+			for _, r := range rows {
+				dups = append(dups, patient.Duplicate{
+					ID:         r.ID,
+					MRN:        r.Mrn,
+					FullName:   r.FirstName + " " + r.LastName,
+					DOB:        r.Dob.Format(dateLayout),
+					Phone:      deref(r.Phone),
+					NationalID: deref(r.NationalID),
+				})
+			}
+			return nil
+		}); err != nil {
+			return nil, nil, apperr.Internal(err)
+		}
+		if len(dups) > 0 {
+			return nil, dups, nil
+		}
+	}
+
+	var created patientdb.CreatePatientRow
+	if err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := patientdb.New(tx)
+		seq, e := q.NextMRNValue(ctx, tenantID)
+		if e != nil {
+			return e
+		}
+		mrn := fmt.Sprintf("P%06d", seq)
+		created, e = q.CreatePatient(ctx, patientdb.CreatePatientParams{
+			TenantID:         tenantID,
+			Mrn:              mrn,
+			FirstName:        strings.TrimSpace(in.FirstName),
+			MiddleName:       strPtr(in.MiddleName),
+			LastName:         strings.TrimSpace(in.LastName),
+			Gender:           defaultStr(in.Gender, "unknown"),
+			Dob:              dob,
+			NationalID:       strPtr(in.NationalID),
+			PassportNo:       strPtr(in.PassportNo),
+			Phone:            strPtr(in.Phone),
+			Email:            strPtr(in.Email),
+			Address:          jsonOrEmpty(in.Address),
+			EmergencyContact: jsonOrEmpty(in.EmergencyContact),
+			BloodGroup:       strPtr(in.BloodGroup),
+			CreatedBy:        actor,
+		})
+		if e != nil {
+			return e
+		}
+		return s.publisher.Publish(ctx, tx, &tenantID, "patient", created.ID, "patient.patient.registered",
+			map[string]any{"patient_id": created.ID, "mrn": created.Mrn})
+	}); err != nil {
+		return nil, nil, mapWriteErr(err)
+	}
+
+	p, err := s.Get(ctx, created.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &p.Patient, nil, nil
+}
+
+// Update edits a patient's demographics.
+func (s *Service) Update(ctx context.Context, id uuid.UUID, in patient.PatientInput) (*patient.Patient, error) {
+	tenantID, _ := actor(ctx)
+	dob, err := parseDOB(in.DOB)
+	if err != nil {
+		return nil, apperr.Validation("dob must be YYYY-MM-DD").WithField("dob", "invalid date")
+	}
+	if err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		return patientdb.New(tx).UpdatePatient(ctx, patientdb.UpdatePatientParams{
+			TenantID:         tenantID,
+			ID:               id,
+			FirstName:        strings.TrimSpace(in.FirstName),
+			MiddleName:       strPtr(in.MiddleName),
+			LastName:         strings.TrimSpace(in.LastName),
+			Gender:           defaultStr(in.Gender, "unknown"),
+			Dob:              dob,
+			NationalID:       strPtr(in.NationalID),
+			PassportNo:       strPtr(in.PassportNo),
+			Phone:            strPtr(in.Phone),
+			Email:            strPtr(in.Email),
+			Address:          jsonOrEmpty(in.Address),
+			EmergencyContact: jsonOrEmpty(in.EmergencyContact),
+			BloodGroup:       strPtr(in.BloodGroup),
+		})
+	}); err != nil {
+		return nil, mapWriteErr(err)
+	}
+	prof, err := s.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &prof.Patient, nil
+}
+
+// Get returns a patient's full profile.
+func (s *Service) Get(ctx context.Context, id uuid.UUID) (*patient.Profile, error) {
+	tenantID, _ := actor(ctx)
+	var prof patient.Profile
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := patientdb.New(tx)
+		row, e := q.GetPatientByID(ctx, patientdb.GetPatientByIDParams{TenantID: tenantID, ID: id})
+		if e != nil {
+			return e
+		}
+		prof.Patient = patient.Patient{
+			ID: row.ID, MRN: row.Mrn, FirstName: row.FirstName, MiddleName: deref(row.MiddleName),
+			LastName: row.LastName, Gender: row.Gender, DOB: row.Dob.Format(dateLayout),
+			NationalID: deref(row.NationalID), PassportNo: deref(row.PassportNo),
+			Phone: deref(row.Phone), Email: deref(row.Email), BloodGroup: deref(row.BloodGroup),
+			Address: rawOrNil(row.Address), EmergencyContact: rawOrNil(row.EmergencyContact),
+			CreatedAt: row.CreatedAt,
+		}
+		al, e := q.ListAllergies(ctx, patientdb.ListAllergiesParams{TenantID: tenantID, PatientID: id})
+		if e != nil {
+			return e
+		}
+		for _, a := range al {
+			prof.Allergies = append(prof.Allergies, patient.Allergy{ID: a.ID, Substance: a.Substance, Reaction: deref(a.Reaction), Severity: a.Severity, CreatedAt: a.CreatedAt})
+		}
+		cs, e := q.ListConditions(ctx, patientdb.ListConditionsParams{TenantID: tenantID, PatientID: id})
+		if e != nil {
+			return e
+		}
+		for _, c := range cs {
+			prof.Conditions = append(prof.Conditions, patient.Condition{ID: c.ID, ICDCode: deref(c.IcdCode), Description: c.Description, Status: c.Status, OnsetDate: dateOrEmpty(c.OnsetDate), CreatedAt: c.CreatedAt})
+		}
+		at, e := q.ListAttachments(ctx, patientdb.ListAttachmentsParams{TenantID: tenantID, PatientID: id})
+		if e != nil {
+			return e
+		}
+		for _, a := range at {
+			prof.Attachments = append(prof.Attachments, patient.Attachment{ID: a.ID, Type: a.Type, StorageKey: a.StorageKey, URL: s.store.URL(a.StorageKey), Filename: a.Filename, MimeType: a.MimeType, SizeBytes: a.SizeBytes, CreatedAt: a.CreatedAt})
+		}
+		gs, e := q.ListGuardians(ctx, patientdb.ListGuardiansParams{TenantID: tenantID, PatientID: id})
+		if e != nil {
+			return e
+		}
+		for _, g := range gs {
+			prof.Guardians = append(prof.Guardians, patient.Guardian{ID: g.ID, GuardianPatientID: g.GuardianPatientID, Relationship: g.Relationship, CreatedAt: g.CreatedAt})
+		}
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, apperr.NotFound("PATIENT_NOT_FOUND", "patient not found")
+		}
+		return nil, apperr.Internal(err)
+	}
+	return &prof, nil
+}
+
+// Search returns a paginated patient list (FR-PAT-04, FTS + trigram).
+func (s *Service) Search(ctx context.Context, q string, page, pageSize int) (*patient.SearchResult, error) {
+	tenantID, _ := actor(ctx)
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	q = strings.TrimSpace(q)
+	res := &patient.SearchResult{Page: page, PageSize: pageSize}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		qd := patientdb.New(tx)
+		total, e := qd.CountPatients(ctx, patientdb.CountPatientsParams{TenantID: tenantID, Q: q})
+		if e != nil {
+			return e
+		}
+		res.Total = int(total)
+		rows, e := qd.SearchPatients(ctx, patientdb.SearchPatientsParams{
+			TenantID: tenantID, Q: q, Lim: int32(pageSize), Off: int32((page - 1) * pageSize),
+		})
+		if e != nil {
+			return e
+		}
+		for _, r := range rows {
+			res.Items = append(res.Items, patient.Summary{
+				ID: r.ID, MRN: r.Mrn, FirstName: r.FirstName, MiddleName: deref(r.MiddleName),
+				LastName: r.LastName, Gender: r.Gender, DOB: r.Dob.Format(dateLayout),
+				Phone: deref(r.Phone), Email: deref(r.Email),
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return res, nil
+}
+
+// Delete soft-deletes a patient.
+func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
+	tenantID, _ := actor(ctx)
+	return s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		return patientdb.New(tx).SoftDeletePatient(ctx, patientdb.SoftDeletePatientParams{TenantID: tenantID, ID: id})
+	})
+}
+
+func (s *Service) AddAllergy(ctx context.Context, patientID uuid.UUID, in patient.AllergyInput) (uuid.UUID, error) {
+	tenantID, actor := actor(ctx)
+	var id uuid.UUID
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		var e error
+		id, e = patientdb.New(tx).AddAllergy(ctx, patientdb.AddAllergyParams{
+			TenantID: tenantID, PatientID: patientID, Substance: in.Substance,
+			Reaction: strPtr(in.Reaction), Severity: defaultStr(in.Severity, "mild"), CreatedBy: actor,
+		})
+		return e
+	})
+	if err != nil {
+		return uuid.Nil, mapWriteErr(err)
+	}
+	return id, nil
+}
+
+func (s *Service) RemoveAllergy(ctx context.Context, patientID, id uuid.UUID) error {
+	tenantID, _ := actor(ctx)
+	return s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		return patientdb.New(tx).RemoveAllergy(ctx, patientdb.RemoveAllergyParams{TenantID: tenantID, PatientID: patientID, ID: id})
+	})
+}
+
+func (s *Service) AddCondition(ctx context.Context, patientID uuid.UUID, in patient.ConditionInput) (uuid.UUID, error) {
+	tenantID, actor := actor(ctx)
+	var onset *time.Time
+	if in.OnsetDate != "" {
+		t, err := parseDOB(in.OnsetDate)
+		if err != nil {
+			return uuid.Nil, apperr.Validation("onset_date must be YYYY-MM-DD")
+		}
+		onset = &t
+	}
+	var id uuid.UUID
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		var e error
+		id, e = patientdb.New(tx).AddCondition(ctx, patientdb.AddConditionParams{
+			TenantID: tenantID, PatientID: patientID, IcdCode: strPtr(in.ICDCode),
+			Description: in.Description, Status: defaultStr(in.Status, "active"), OnsetDate: onset, CreatedBy: actor,
+		})
+		return e
+	})
+	if err != nil {
+		return uuid.Nil, mapWriteErr(err)
+	}
+	return id, nil
+}
+
+func (s *Service) RemoveCondition(ctx context.Context, patientID, id uuid.UUID) error {
+	tenantID, _ := actor(ctx)
+	return s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		return patientdb.New(tx).RemoveCondition(ctx, patientdb.RemoveConditionParams{TenantID: tenantID, PatientID: patientID, ID: id})
+	})
+}
+
+func (s *Service) AddGuardian(ctx context.Context, patientID uuid.UUID, in patient.GuardianInput) (uuid.UUID, error) {
+	tenantID, actor := actor(ctx)
+	var id uuid.UUID
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		var e error
+		id, e = patientdb.New(tx).AddGuardian(ctx, patientdb.AddGuardianParams{
+			TenantID: tenantID, PatientID: patientID, GuardianPatientID: in.GuardianPatientID,
+			GuardianUserID: nil, Relationship: in.Relationship, CreatedBy: actor,
+		})
+		return e
+	})
+	if err != nil {
+		return uuid.Nil, mapWriteErr(err)
+	}
+	return id, nil
+}
+
+// SignAttachmentUpload returns a signed direct-upload target for a patient file.
+func (s *Service) SignAttachmentUpload(ctx context.Context, patientID uuid.UUID, in patient.AttachmentSignInput) (storage.UploadTarget, error) {
+	tenantID, _ := actor(ctx)
+	resourceType := "raw"
+	if in.Type == "image" {
+		resourceType = "image"
+	}
+	folder := fmt.Sprintf("%s/patients/%s", tenantID, patientID)
+	return s.store.SignUpload(ctx, storage.UploadOptions{Folder: folder, ResourceType: resourceType, Tags: []string{"patient"}})
+}
+
+// RecordAttachment persists attachment metadata after a direct upload.
+func (s *Service) RecordAttachment(ctx context.Context, patientID uuid.UUID, in patient.AttachmentInput) (*patient.Attachment, error) {
+	tenantID, actor := actor(ctx)
+	var row patientdb.CreateAttachmentRow
+	if err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		var e error
+		row, e = patientdb.New(tx).CreateAttachment(ctx, patientdb.CreateAttachmentParams{
+			TenantID: tenantID, PatientID: patientID, Type: in.Type, StorageKey: in.StorageKey,
+			Filename: in.Filename, MimeType: in.MimeType, SizeBytes: in.SizeBytes, CreatedBy: actor,
+		})
+		return e
+	}); err != nil {
+		return nil, mapWriteErr(err)
+	}
+	return &patient.Attachment{
+		ID: row.ID, Type: in.Type, StorageKey: in.StorageKey, URL: s.store.URL(in.StorageKey),
+		Filename: in.Filename, MimeType: in.MimeType, SizeBytes: in.SizeBytes, CreatedAt: row.CreatedAt,
+	}, nil
+}
+
+// RemoveAttachment soft-deletes the record and best-effort deletes the object.
+func (s *Service) RemoveAttachment(ctx context.Context, patientID, id uuid.UUID) error {
+	tenantID, _ := actor(ctx)
+	var key string
+	if err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := patientdb.New(tx)
+		row, e := q.GetAttachment(ctx, patientdb.GetAttachmentParams{TenantID: tenantID, PatientID: patientID, ID: id})
+		if e != nil {
+			return e
+		}
+		key = row.StorageKey
+		return q.RemoveAttachment(ctx, patientdb.RemoveAttachmentParams{TenantID: tenantID, PatientID: patientID, ID: id})
+	}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apperr.NotFound("ATTACHMENT_NOT_FOUND", "attachment not found")
+		}
+		return apperr.Internal(err)
+	}
+	_ = s.store.Delete(ctx, key) // best effort
+	return nil
+}
+
+// --- helpers ---
+
+func actor(ctx context.Context) (uuid.UUID, *uuid.UUID) {
+	if p, ok := tenancy.PrincipalFromContext(ctx); ok {
+		uid := p.UserID
+		return p.TenantID, &uid
+	}
+	tid, _ := tenancy.TenantIDFromContext(ctx)
+	return tid, nil
+}
+
+func parseDOB(s string) (time.Time, error) { return time.Parse(dateLayout, strings.TrimSpace(s)) }
+
+func deref(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+func strPtr(s string) *string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	return &s
+}
+
+func defaultStr(s, def string) string {
+	if strings.TrimSpace(s) == "" {
+		return def
+	}
+	return s
+}
+
+func jsonOrEmpty(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return "{}"
+	}
+	return string(raw)
+}
+
+func rawOrNil(p *string) json.RawMessage {
+	if p == nil || *p == "" {
+		return nil
+	}
+	return json.RawMessage(*p)
+}
+
+func dateOrEmpty(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.Format(dateLayout)
+}
+
+func mapWriteErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	if ae, ok := apperr.As(err); ok {
+		return ae
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "duplicate key") || strings.Contains(msg, "unique constraint") {
+		return apperr.Conflict("PATIENT_CONFLICT", "a record with these details already exists")
+	}
+	return apperr.Internal(err)
+}

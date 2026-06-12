@@ -1,0 +1,82 @@
+-- ---- Clinic --------------------------------------------------------------
+
+-- name: GetClinic :one
+SELECT id, name, timezone, locale, logo_storage_key
+FROM clinics
+WHERE tenant_id = @tenant_id AND deleted_at IS NULL
+ORDER BY created_at
+LIMIT 1;
+
+-- name: CreateClinic :one
+INSERT INTO clinics (tenant_id, name, timezone, locale, created_by)
+VALUES (@tenant_id, @name, @timezone, @locale, @created_by)
+RETURNING id;
+
+-- name: UpdateClinic :exec
+UPDATE clinics SET name = @name, timezone = @timezone, locale = @locale, updated_at = now()
+WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
+
+-- ---- Branches ------------------------------------------------------------
+
+-- name: ListBranches :many
+SELECT id, clinic_id, name, code, address, phone, is_active, created_at
+FROM branches
+WHERE tenant_id = @tenant_id AND deleted_at IS NULL
+ORDER BY name;
+
+-- name: GetBranch :one
+SELECT id, clinic_id, name, code, address, phone, opening_hours, is_active
+FROM branches
+WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
+
+-- name: CreateBranch :one
+INSERT INTO branches (tenant_id, clinic_id, name, code, address, phone, opening_hours, created_by)
+VALUES (@tenant_id, @clinic_id, @name, @code, @address, @phone, @opening_hours::jsonb, @created_by)
+RETURNING id;
+
+-- name: UpdateBranch :exec
+UPDATE branches SET name = @name, code = @code, address = @address, phone = @phone,
+  opening_hours = @opening_hours::jsonb, is_active = @is_active, updated_at = now()
+WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
+
+-- name: SoftDeleteBranch :exec
+UPDATE branches SET deleted_at = now(), updated_at = now()
+WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
+
+-- ---- Departments ---------------------------------------------------------
+
+-- name: ListDepartments :many
+SELECT id, branch_id, name, specialty, created_at
+FROM departments
+WHERE tenant_id = @tenant_id AND deleted_at IS NULL
+ORDER BY name;
+
+-- name: CreateDepartment :one
+INSERT INTO departments (tenant_id, branch_id, name, specialty, created_by)
+VALUES (@tenant_id, @branch_id, @name, @specialty, @created_by)
+RETURNING id;
+
+-- name: UpdateDepartment :exec
+UPDATE departments SET name = @name, specialty = @specialty, updated_at = now()
+WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
+
+-- name: SoftDeleteDepartment :exec
+UPDATE departments SET deleted_at = now(), updated_at = now()
+WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
+
+-- ---- Resources -----------------------------------------------------------
+
+-- name: ListResources :many
+SELECT id, branch_id, department_id, name, type, created_at
+FROM resources
+WHERE tenant_id = @tenant_id AND deleted_at IS NULL
+ORDER BY name;
+
+-- name: CreateResource :one
+INSERT INTO resources (tenant_id, branch_id, department_id, name, type, created_by)
+VALUES (@tenant_id, @branch_id, @department_id, @name, @type, @created_by)
+RETURNING id;
+
+-- name: SoftDeleteResource :exec
+UPDATE resources SET deleted_at = now(), updated_at = now()
+WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
