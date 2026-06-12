@@ -1,0 +1,30 @@
+# Secrets / env
+.env
+.env.*
+!.env.example
+
+# Go
+backend/bin/
+*.test
+*.out
+coverage.txt
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.local
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# Docker / data
+infra/data/
+pgdata/
+
+# Logs
+*.log
