@@ -1,0 +1,92 @@
+# Base service graph for the modular monolith. Compose with an environment
+# overlay, e.g.:
+#   docker compose -f compose.yml -f compose.dev.yml up --build
+# Required .env vars: JWT_SECRET, MFA_ENC_KEY (see .env.example).
+
+x-backend-env: &backend-env
+  APP_ENV: ${APP_ENV:-dev}
+  # api/worker connect as the least-privilege clinic_app role so RLS is enforced
+  # (the superuser would bypass it). Migrations run as the superuser (see migrate).
+  DATABASE_URL: postgres://clinic_app:${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-clinic}?sslmode=disable
+  JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+  JWT_ISSUER: ${JWT_ISSUER:-clinicsaas}
+  ACCESS_TOKEN_TTL: ${ACCESS_TOKEN_TTL:-15m}
+  REFRESH_TOKEN_TTL: ${REFRESH_TOKEN_TTL:-720h}
+  MAX_FAILED_LOGINS: ${MAX_FAILED_LOGINS:-5}
+  LOCKOUT_DURATION: ${LOCKOUT_DURATION:-15m}
+  MFA_ENC_KEY: ${MFA_ENC_KEY:?set MFA_ENC_KEY in .env}
+  CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+  CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+  CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+  CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+  CLOUDINARY_UPLOAD_FOLDER: ${CLOUDINARY_UPLOAD_FOLDER:-clinic}
+  RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-20}
+  RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-40}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-clinic}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clinic}
+      POSTGRES_DB: ${POSTGRES_DB:-clinic}
+      # Used by the init script to create the least-privilege app login role.
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-clinic} -d ${POSTGRES_DB:-clinic}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  migrate:
+    build:
+      context: ./backend
+    command: ["/app/migrate", "up"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-clinic}:${POSTGRES_PASSWORD:-clinic}@postgres:5432/${POSTGRES_DB:-clinic}?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: ./backend
+    command: ["/app/api"]
+    environment:
+      <<: *backend-env
+      API_HTTP_ADDR: ":8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    expose:
+      - "8080"
+
+  worker:
+    build:
+      context: ./backend
+    command: ["/app/worker"]
+    environment:
+      <<: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/web.Dockerfile
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    depends_on:
+      - api
+
+volumes:
+  pgdata:

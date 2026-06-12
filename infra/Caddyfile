@@ -1,0 +1,19 @@
+# SITE_ADDRESS controls TLS: ":80" (dev/staging) serves plain HTTP; a hostname
+# like "clinic.example.com" makes Caddy provision a Let's Encrypt cert
+# automatically. Override via the SITE_ADDRESS env var.
+{$SITE_ADDRESS::80} {
+	encode gzip zstd
+
+	# API + operational endpoints → Go API service.
+	@api path /api/* /healthz /readyz /metrics
+	handle @api {
+		reverse_proxy api:8080
+	}
+
+	# Everything else → SPA static files with client-side routing fallback.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

@@ -1,0 +1,23 @@
+# Staging overlay: restart policies, no host DB exposure, web on host 80.
+#   docker compose -f compose.yml -f compose.staging.yml up -d --build
+services:
+  postgres:
+    restart: unless-stopped
+
+  api:
+    environment:
+      APP_ENV: staging
+    restart: unless-stopped
+
+  worker:
+    environment:
+      APP_ENV: staging
+    restart: unless-stopped
+
+  web:
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
