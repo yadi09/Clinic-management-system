@@ -11,6 +11,8 @@ import { PatientsListPage } from "@/features/patients/pages/PatientsListPage";
 import { PatientRegisterPage } from "@/features/patients/pages/PatientRegisterPage";
 import { PatientProfilePage } from "@/features/patients/pages/PatientProfilePage";
 import { SettingsPage } from "@/features/admin/pages/SettingsPage";
+import { AppointmentsPage } from "@/features/scheduling/pages/AppointmentsPage";
+import { QueuePage } from "@/features/scheduling/pages/QueuePage";
 import { NotFoundPage } from "@/features/misc/NotFoundPage";
 
 export function AppRoutes() {
@@ -28,6 +30,8 @@ export function AppRoutes() {
           <Route path="/patients" element={<PatientsListPage />} />
           <Route path="/patients/new" element={<PatientRegisterPage />} />
           <Route path="/patients/:id" element={<PatientProfilePage />} />
+          <Route path="/appointments" element={<AppointmentsPage />} />
+          <Route path="/queue" element={<QueuePage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
