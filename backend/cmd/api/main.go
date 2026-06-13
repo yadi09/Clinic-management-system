@@ -30,6 +30,8 @@ import (
 	orgservice "github.com/reicb/clinicsaas/internal/org/service"
 	patienthttp "github.com/reicb/clinicsaas/internal/patient/http"
 	patientservice "github.com/reicb/clinicsaas/internal/patient/service"
+	schedulinghttp "github.com/reicb/clinicsaas/internal/scheduling/http"
+	schedulingservice "github.com/reicb/clinicsaas/internal/scheduling/service"
 )
 
 func main() {
@@ -75,12 +77,13 @@ func main() {
 		CookiePath:    "/api/v1/auth",
 	})
 
-	// Org + Patient modules.
+	// Org + Patient + Scheduling modules.
 	orgHandlers := orghttp.NewHandlers(orgservice.NewService(db))
 	patientSvc := patientservice.NewService(db, store, publisher)
 	patientHandlers := patienthttp.NewHandlers(patientSvc)
+	schedulingHandlers := schedulinghttp.NewHandlers(schedulingservice.NewService(db, publisher), db)
 
-	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers)
+	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -114,6 +117,7 @@ func newRouter(
 	identityHandlers *identityhttp.Handlers,
 	orgHandlers *orghttp.Handlers,
 	patientHandlers *patienthttp.Handlers,
+	schedulingHandlers *schedulinghttp.Handlers,
 ) *gin.Engine {
 	if cfg.IsProd() {
 		gin.SetMode(gin.ReleaseMode)
@@ -148,6 +152,10 @@ func newRouter(
 	identityHandlers.RegisterProtected(protected)        // /auth/me
 	orgHandlers.RegisterProtected(protected)             // /org/...
 	patientHandlers.RegisterProtected(protected)         // /patients/...
+	schedulingHandlers.RegisterProtected(protected)      // /appointments/..., /queue/...
+
+	// SSE queue stream authenticates via ?token= (EventSource can't set headers).
+	v1.GET("/queue/stream", httpx.RequireAuthQuery(tokens), schedulingHandlers.QueueStream)
 
 	return r
 }

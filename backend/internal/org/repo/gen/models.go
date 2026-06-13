@@ -24,6 +24,26 @@ type Allergy struct {
 	DeletedAt *time.Time `json:"deleted_at"`
 }
 
+type Appointment struct {
+	ID           uuid.UUID  `json:"id"`
+	TenantID     uuid.UUID  `json:"tenant_id"`
+	BranchID     uuid.UUID  `json:"branch_id"`
+	DepartmentID *uuid.UUID `json:"department_id"`
+	PatientID    uuid.UUID  `json:"patient_id"`
+	ProviderID   uuid.UUID  `json:"provider_id"`
+	ResourceID   *uuid.UUID `json:"resource_id"`
+	StartsAt     time.Time  `json:"starts_at"`
+	EndsAt       time.Time  `json:"ends_at"`
+	Status       string     `json:"status"`
+	Reason       *string    `json:"reason"`
+	CancelReason *string    `json:"cancel_reason"`
+	Source       string     `json:"source"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	CreatedBy    *uuid.UUID `json:"created_by"`
+	DeletedAt    *time.Time `json:"deleted_at"`
+}
+
 type Attachment struct {
 	ID          uuid.UUID  `json:"id"`
 	TenantID    uuid.UUID  `json:"tenant_id"`
@@ -203,6 +223,25 @@ type Plan struct {
 	PriceMonthly       pgtype.Numeric `json:"price_monthly"`
 	CreatedAt          time.Time      `json:"created_at"`
 	UpdatedAt          time.Time      `json:"updated_at"`
+}
+
+type QueueEntry struct {
+	ID            uuid.UUID  `json:"id"`
+	TenantID      uuid.UUID  `json:"tenant_id"`
+	BranchID      uuid.UUID  `json:"branch_id"`
+	DepartmentID  uuid.UUID  `json:"department_id"`
+	PatientID     uuid.UUID  `json:"patient_id"`
+	AppointmentID *uuid.UUID `json:"appointment_id"`
+	State         string     `json:"state"`
+	Priority      int32      `json:"priority"`
+	EnqueuedAt    time.Time  `json:"enqueued_at"`
+	CalledAt      *time.Time `json:"called_at"`
+	StartedAt     *time.Time `json:"started_at"`
+	EndedAt       *time.Time `json:"ended_at"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	CreatedBy     *uuid.UUID `json:"created_by"`
+	DeletedAt     *time.Time `json:"deleted_at"`
 }
 
 type Resource struct {

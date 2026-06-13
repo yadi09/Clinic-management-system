@@ -110,34 +110,46 @@ func RateLimit(limiter ratelimit.Limiter) gin.HandlerFunc {
 // injects it into the request context so the data layer resolves the tenant.
 func RequireAuth(ts *auth.TokenService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		raw := bearerToken(c)
-		if raw == "" {
-			Fail(c, apperr.Unauthenticated("missing bearer token"))
-			return
-		}
-		claims, err := ts.ParseAccess(raw)
-		if err != nil {
-			Fail(c, apperr.Unauthenticated("invalid or expired token"))
-			return
-		}
-		userID, err1 := uuid.Parse(claims.Subject)
-		tenantID, err2 := uuid.Parse(claims.TenantID)
-		if err1 != nil || err2 != nil {
-			Fail(c, apperr.Unauthenticated("malformed token claims"))
-			return
-		}
-		p := &tenancy.Principal{
-			UserID:      userID,
-			TenantID:    tenantID,
-			Email:       claims.Email,
-			Roles:       claims.Roles,
-			Permissions: claims.Permissions,
-			Flags:       claims.Flags,
-		}
-		c.Set(principalCtxKey, p)
-		c.Request = c.Request.WithContext(tenancy.WithPrincipal(c.Request.Context(), p))
-		c.Next()
+		authenticate(c, ts, bearerToken(c))
 	}
+}
+
+// RequireAuthQuery authenticates from a `token` query parameter instead of the
+// Authorization header — for EventSource/SSE, which cannot set headers. Use
+// only over TLS; access tokens are short-lived.
+func RequireAuthQuery(ts *auth.TokenService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authenticate(c, ts, c.Query("token"))
+	}
+}
+
+func authenticate(c *gin.Context, ts *auth.TokenService, raw string) {
+	if raw == "" {
+		Fail(c, apperr.Unauthenticated("missing access token"))
+		return
+	}
+	claims, err := ts.ParseAccess(raw)
+	if err != nil {
+		Fail(c, apperr.Unauthenticated("invalid or expired token"))
+		return
+	}
+	userID, err1 := uuid.Parse(claims.Subject)
+	tenantID, err2 := uuid.Parse(claims.TenantID)
+	if err1 != nil || err2 != nil {
+		Fail(c, apperr.Unauthenticated("malformed token claims"))
+		return
+	}
+	p := &tenancy.Principal{
+		UserID:      userID,
+		TenantID:    tenantID,
+		Email:       claims.Email,
+		Roles:       claims.Roles,
+		Permissions: claims.Permissions,
+		Flags:       claims.Flags,
+	}
+	c.Set(principalCtxKey, p)
+	c.Request = c.Request.WithContext(tenancy.WithPrincipal(c.Request.Context(), p))
+	c.Next()
 }
 
 // RequireRole authorizes the request if the principal holds any of the roles.

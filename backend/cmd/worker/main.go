@@ -14,6 +14,7 @@ import (
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
 	"github.com/reicb/clinicsaas/internal/kernel/events"
 	"github.com/reicb/clinicsaas/internal/kernel/logging"
+	"github.com/reicb/clinicsaas/internal/kernel/notify"
 )
 
 func main() {
@@ -37,6 +38,13 @@ func main() {
 	// Event handlers. The audit consumer records every event (FR-AUD-01).
 	reg := events.NewRegistry()
 	reg.OnAny(audit.NewWriter(db).EventHandler())
+
+	// Appointment reminders (dev: logged via the notification provider until a
+	// real email/SMS provider is configured — open question Q3).
+	notifier := notify.NewLogProvider(log)
+	reg.On("scheduling.appointment.booked", func(ctx context.Context, e events.Event) error {
+		return notifier.Send(ctx, notify.Message{Channel: notify.ChannelEmail, Template: "appointment.reminder", To: "patient"})
+	})
 
 	relay := events.NewRelay(db, reg, log)
 	log.Info("worker started: outbox relay polling")

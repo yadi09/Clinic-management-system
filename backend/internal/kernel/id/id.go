@@ -29,8 +29,10 @@ const (
 	PrefixPatient    = "pat"
 	PrefixAllergy    = "alg"
 	PrefixCondition  = "cnd"
-	PrefixAttachment = "att"
-	PrefixGuardian   = "grd"
+	PrefixAttachment  = "att"
+	PrefixGuardian    = "grd"
+	PrefixAppointment = "apt"
+	PrefixQueueEntry  = "que"
 )
 
 // base32 lower-case, no padding. Decoding is case-insensitive.
