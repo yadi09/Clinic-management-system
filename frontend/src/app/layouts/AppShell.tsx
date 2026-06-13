@@ -1,66 +1,126 @@
-import { NavLink, Outlet } from "react-router-dom";
-import { LayoutDashboard, Users, UserCog, Settings } from "lucide-react";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Activity, Bell, Search, LogOut, ChevronsUpDown } from "lucide-react";
+
 import { useAuth } from "@/app/auth-context";
-import { Button } from "@/components/ui/button";
+import { navSections } from "@/app/nav";
+import { CommandPalette } from "@/app/command-palette";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
-interface NavItem {
-  to: string;
-  label: string;
-  icon: typeof Users;
-  show: boolean;
+function initials(name?: string) {
+  if (!name) return "?";
+  return name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
 }
 
 export function AppShell() {
   const { user, signOut, can } = useAuth();
+  const navigate = useNavigate();
+  const primaryRole = user?.roles?.[0]?.replace(/_/g, " ") ?? "staff";
 
-  const nav: NavItem[] = [
-    { to: "/", label: "Dashboard", icon: LayoutDashboard, show: true },
-    { to: "/patients", label: "Patients", icon: Users, show: can("patient.read") || can("patient.search") },
-    { to: "/users", label: "Staff", icon: UserCog, show: can("user.read") },
-    { to: "/settings", label: "Settings", icon: Settings, show: can("clinic.manage") },
-  ];
+  const sections = navSections
+    .map((s) => ({ ...s, items: s.items.filter((i) => !i.perm || i.perm.some((p) => can(p))) }))
+    .filter((s) => s.items.length > 0);
 
   return (
-    <div className="flex min-h-screen">
-      <aside className="hidden w-60 shrink-0 border-r bg-muted/20 p-4 md:block">
-        <div className="mb-6 px-2 text-lg font-semibold">Clinic SaaS</div>
-        <nav className="space-y-1">
-          {nav
-            .filter((n) => n.show)
-            .map((n) => (
-              <NavLink
-                key={n.to}
-                to={n.to}
-                end={n.to === "/"}
-                className={({ isActive }) =>
-                  cn(
-                    "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium",
-                    isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                  )
-                }
-              >
-                <n.icon className="h-4 w-4" />
-                {n.label}
-              </NavLink>
-            ))}
-        </nav>
-      </aside>
+    <div className="min-h-screen bg-background">
+      {/* Top bar (brand-blue, full width) */}
+      <header className="sticky top-0 z-40 flex h-16 items-stretch bg-brand text-brand-foreground">
+        <div className="flex w-60 items-center gap-2 px-5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15">
+            <Activity className="h-5 w-5" />
+          </span>
+          <span className="text-lg font-bold tracking-tight">ClinicOS</span>
+        </div>
+        <div className="flex flex-1 items-center gap-3 px-5">
+          <span className="hidden rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium capitalize md:inline">
+            Main Branch · {primaryRole}
+          </span>
+          <div className="flex-1" />
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent("open-command"))}
+            className="hidden h-9 w-72 items-center gap-2 rounded-md bg-white/10 px-3 text-sm text-brand-foreground/70 transition-colors hover:bg-white/15 sm:flex"
+          >
+            <Search className="h-4 w-4" />
+            <span>Search…</span>
+            <kbd className="ml-auto rounded bg-white/15 px-1.5 py-0.5 text-[10px] font-semibold">⌘K</kbd>
+          </button>
+          <button className="relative rounded-md p-2 hover:bg-white/10" aria-label="Notifications">
+            <Bell className="h-5 w-5" />
+          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger className="flex items-center gap-2 rounded-md p-1 hover:bg-white/10 focus:outline-none">
+              <Avatar className="h-8 w-8">
+                <AvatarFallback>{initials(user?.full_name)}</AvatarFallback>
+              </Avatar>
+              <ChevronsUpDown className="hidden h-4 w-4 opacity-70 md:block" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>
+                <div className="flex flex-col">
+                  <span className="truncate font-semibold">{user?.full_name}</span>
+                  <span className="truncate text-xs font-normal text-muted-foreground">{user?.email}</span>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => navigate("/settings")}>Settings</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => void signOut()}>
+                <LogOut className="h-4 w-4" /> Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </header>
 
-      <div className="flex min-h-screen flex-1 flex-col">
-        <header className="flex h-14 items-center justify-between border-b px-6">
-          <span className="text-sm text-muted-foreground md:hidden">Clinic SaaS</span>
-          <div className="ml-auto flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">{user?.email}</span>
-            <Button variant="outline" size="sm" onClick={() => void signOut()}>
-              Sign out
-            </Button>
-          </div>
-        </header>
-        <main className="flex-1 p-6">
+      <div className="flex">
+        {/* Left nav rail (brand-blue) */}
+        <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-60 shrink-0 flex-col bg-brand px-3 py-4 text-brand-foreground md:flex">
+          <nav className="flex-1 space-y-6">
+            {sections.map((section, i) => (
+              <div key={i}>
+                {section.heading && (
+                  <p className="px-3 pb-2 text-label uppercase text-brand-foreground/50">{section.heading}</p>
+                )}
+                <div className="space-y-1">
+                  {section.items.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      end={item.to === "/"}
+                      className={({ isActive }) =>
+                        cn(
+                          "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                          isActive
+                            ? "bg-primary text-primary-foreground"
+                            : "text-brand-foreground/75 hover:bg-white/10 hover:text-brand-foreground",
+                        )
+                      }
+                    >
+                      <item.icon className="h-4 w-4" />
+                      {item.label}
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </nav>
+          <p className="px-3 text-xs text-brand-foreground/40">v3 · Tenant</p>
+        </aside>
+
+        <main className="min-w-0 flex-1 p-6 lg:p-8">
           <Outlet />
         </main>
       </div>
+
+      <CommandPalette />
     </div>
   );
 }

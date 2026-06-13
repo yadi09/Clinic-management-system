@@ -1,22 +1,27 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Copy, UserPlus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Modal } from "@/components/ui/modal";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/app/auth-context";
 import { AppError } from "@/lib/api-client";
-import {
-  inviteUser,
-  listRoles,
-  listUsers,
-  updateUserStatus,
-  type InviteResult,
-} from "@/features/admin/api";
+import { inviteUser, listRoles, listUsers, updateUserStatus, type InviteResult } from "@/features/admin/api";
+
+function statusVariant(s: string): "success" | "warning" | "destructive" | "default" {
+  if (s === "active") return "success";
+  if (s === "invited") return "warning";
+  if (s === "suspended" || s === "deactivated") return "destructive";
+  return "default";
+}
 
 export function UsersPage() {
   const { can } = useAuth();
@@ -25,50 +30,55 @@ export function UsersPage() {
   const canUpdate = can("user.update");
 
   const users = useQuery({ queryKey: ["users"], queryFn: listUsers });
-  const roles = useQuery({ queryKey: ["roles"], queryFn: listRoles });
-  const [inviteOpen, setInviteOpen] = useState(false);
-
   const invalidate = () => qc.invalidateQueries({ queryKey: ["users"] });
 
   const statusMut = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) => updateUserStatus(id, status),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      toast.success("Staff updated");
+      invalidate();
+    },
   });
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Staff</h1>
-        {canInvite && <Button onClick={() => setInviteOpen(true)}>Invite user</Button>}
+        <div>
+          <h1>Staff</h1>
+          <p className="text-sm text-muted-foreground">{users.data?.length ?? 0} members</p>
+        </div>
+        {canInvite && <InviteDialog onInvited={invalidate} />}
       </div>
 
-      <Card>
+      <Card className="overflow-hidden">
         {users.isLoading ? (
-          <p className="p-6 text-muted-foreground">Loading…</p>
+          <div className="space-y-3 p-6">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-10 w-full" />
+            ))}
+          </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="border-b text-left text-muted-foreground">
-              <tr>
-                <th className="p-3 font-medium">Name</th>
-                <th className="p-3 font-medium">Email</th>
-                <th className="p-3 font-medium">Roles</th>
-                <th className="p-3 font-medium">Status</th>
-                {canUpdate && <th className="p-3 font-medium">Actions</th>}
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Roles</TableHead>
+                <TableHead>Status</TableHead>
+                {canUpdate && <TableHead>Actions</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {(users.data ?? []).map((u) => (
-                <tr key={u.id} className="border-b last:border-0">
-                  <td className="p-3 font-medium">{u.full_name}</td>
-                  <td className="p-3 text-muted-foreground">{u.email}</td>
-                  <td className="p-3">{u.roles.join(", ") || "—"}</td>
-                  <td className="p-3">
-                    <Badge variant={u.status === "active" ? "default" : u.status === "invited" ? "secondary" : "destructive"}>
-                      {u.status}
-                    </Badge>
-                  </td>
+                <TableRow key={u.id}>
+                  <TableCell className="font-medium text-brand">{u.full_name}</TableCell>
+                  <TableCell className="text-muted-foreground">{u.email}</TableCell>
+                  <TableCell className="capitalize">{u.roles.map((r) => r.replace(/_/g, " ")).join(", ") || "—"}</TableCell>
+                  <TableCell>
+                    <Badge variant={statusVariant(u.status)}>{u.status}</Badge>
+                  </TableCell>
                   {canUpdate && (
-                    <td className="p-3">
+                    <TableCell>
                       {u.status === "active" ? (
                         <button className="text-xs text-destructive hover:underline" onClick={() => statusMut.mutate({ id: u.id, status: "suspended" })}>
                           Suspend
@@ -80,42 +90,26 @@ export function UsersPage() {
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>
                       )}
-                    </td>
+                    </TableCell>
                   )}
-                </tr>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
       </Card>
-
-      <InviteModal
-        open={inviteOpen}
-        onClose={() => setInviteOpen(false)}
-        roles={(roles.data ?? []).map((r) => ({ code: r.code, name: r.name }))}
-        onInvited={invalidate}
-      />
     </div>
   );
 }
 
-function InviteModal({
-  open,
-  onClose,
-  roles,
-  onInvited,
-}: {
-  open: boolean;
-  onClose: () => void;
-  roles: { code: string; name: string }[];
-  onInvited: () => void;
-}) {
-  const qc = useQueryClient();
+function InviteDialog({ onInvited }: { onInvited: () => void }) {
+  const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [result, setResult] = useState<InviteResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const roles = useQuery({ queryKey: ["roles"], queryFn: listRoles, enabled: open });
 
   const mut = useMutation({
     mutationFn: () => inviteUser({ email, full_name: fullName, roles: selected }),
@@ -125,77 +119,96 @@ function InviteModal({
       setFullName("");
       setSelected([]);
       onInvited();
-      void qc.invalidateQueries({ queryKey: ["users"] });
     },
     onError: (e) => setError(e instanceof AppError ? e.message : "Could not invite user."),
   });
 
-  const toggle = (code: string) =>
-    setSelected((s) => (s.includes(code) ? s.filter((c) => c !== code) : [...s, code]));
-
+  const toggle = (code: string) => setSelected((s) => (s.includes(code) ? s.filter((c) => c !== code) : [...s, code]));
   const close = () => {
     setResult(null);
     setError(null);
-    onClose();
+    setOpen(false);
   };
 
   return (
-    <Modal open={open} onClose={close} title="Invite staff">
-      {result ? (
-        <div className="space-y-3">
-          <Alert>
-            <AlertDescription>
-              Invitation created for <strong>{result.email}</strong>. Share this link (email delivery is configured later):
-            </AlertDescription>
-          </Alert>
-          <Input readOnly value={result.invite_link} onFocus={(e) => e.currentTarget.select()} />
-          <div className="flex justify-end">
-            <Button onClick={close}>Done</Button>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
+    <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : close())}>
+      <DialogTrigger asChild>
+        <Button>
+          <UserPlus /> Invite user
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Invite staff</DialogTitle>
+        </DialogHeader>
+        {result ? (
+          <div className="space-y-3">
+            <Alert>
+              <AlertDescription>
+                Invitation created for <strong>{result.email}</strong>. Share this link (email delivery is configured in a later phase):
+              </AlertDescription>
             </Alert>
-          )}
-          <div className="space-y-2">
-            <Label>Email</Label>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label>Full name</Label>
-            <Input value={fullName} onChange={(e) => setFullName(e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label>Roles</Label>
-            <div className="flex flex-wrap gap-2">
-              {roles.map((r) => (
-                <button
-                  key={r.code}
-                  type="button"
-                  onClick={() => toggle(r.code)}
-                  className={
-                    "rounded-full border px-3 py-1 text-xs " +
-                    (selected.includes(r.code) ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground")
-                  }
-                >
-                  {r.name}
-                </button>
-              ))}
+            <div className="flex gap-2">
+              <Input readOnly value={result.invite_link} onFocus={(e) => e.currentTarget.select()} />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(result.invite_link);
+                  toast.success("Link copied");
+                }}
+              >
+                <Copy />
+              </Button>
             </div>
+            <DialogFooter>
+              <Button onClick={close}>Done</Button>
+            </DialogFooter>
           </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={close}>
-              Cancel
-            </Button>
-            <Button disabled={!email || !fullName || mut.isPending} onClick={() => mut.mutate()}>
-              Send invite
-            </Button>
+        ) : (
+          <div className="space-y-3">
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+            <div className="space-y-1.5">
+              <Label>Email</Label>
+              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Full name</Label>
+              <Input value={fullName} onChange={(e) => setFullName(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Roles</Label>
+              <div className="flex flex-wrap gap-2">
+                {(roles.data ?? []).map((r) => (
+                  <button
+                    key={r.code}
+                    type="button"
+                    onClick={() => toggle(r.code)}
+                    className={
+                      "rounded-full border px-3 py-1 text-xs capitalize transition-colors " +
+                      (selected.includes(r.code) ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent")
+                    }
+                  >
+                    {r.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={close}>
+                Cancel
+              </Button>
+              <Button disabled={!email || !fullName} loading={mut.isPending} onClick={() => mut.mutate()}>
+                Send invite
+              </Button>
+            </DialogFooter>
           </div>
-        </div>
-      )}
-    </Modal>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
