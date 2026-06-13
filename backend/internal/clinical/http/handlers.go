@@ -194,12 +194,27 @@ type workspaceDTO struct {
 	EncounterID  string             `json:"encounter_id"`
 	Status       string             `json:"status"`
 	StartedAt    time.Time          `json:"started_at"`
+	BranchID     string             `json:"branch_id"`
+	DepartmentID *string            `json:"department_id"`
+	ProviderID   *string            `json:"provider_id"`
 	Patient      bannerDTO          `json:"patient"`
 	Allergies    []clinical.Allergy `json:"allergies"`
 	Vitals       []clinical.Vitals  `json:"vitals"`
 	Note         clinical.Note      `json:"note"`
 	Diagnoses    []diagnosisDTO     `json:"diagnoses"`
 	Prescription []medicationDTO    `json:"prescription"`
+}
+type historyDTO struct {
+	ID string `json:"id"`
+	clinical.HistoryItem
+}
+
+func encodePtr(prefix string, u *uuid.UUID) *string {
+	if u == nil {
+		return nil
+	}
+	s := id.Encode(prefix, *u)
+	return &s
 }
 type categoryDTO struct {
 	ID string `json:"id"`
@@ -229,6 +244,9 @@ func workspaceOut(ws *clinical.Workspace) workspaceDTO {
 		EncounterID: id.Encode(id.PrefixEncounter, ws.EncounterID),
 		Status:      ws.Status,
 		StartedAt:   ws.StartedAt,
+		BranchID:    id.Encode(id.PrefixBranch, ws.BranchID),
+		DepartmentID: encodePtr(id.PrefixDepartment, ws.DepartmentID),
+		ProviderID:  encodePtr(id.PrefixUser, ws.ProviderID),
 		Patient:     bannerDTO{PatientID: id.Encode(id.PrefixPatient, ws.Patient.PatientID), PatientBanner: ws.Patient},
 		Allergies:   ws.Allergies,
 		Vitals:      ws.Vitals,
@@ -265,6 +283,25 @@ func (h *Handlers) OpenEncounter(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, workspaceOut(ws))
+}
+
+// History handles GET /encounters?patient= — the patient's past encounters.
+func (h *Handlers) History(c *gin.Context) {
+	patientID, err := id.Decode(id.PrefixPatient, c.Query("patient"))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("patient is required"))
+		return
+	}
+	items, err := h.svc.History(c.Request.Context(), patientID)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out := make([]historyDTO, 0, len(items))
+	for _, it := range items {
+		out = append(out, historyDTO{ID: id.Encode(id.PrefixEncounter, it.ID), HistoryItem: it})
+	}
+	httpx.OK(c, out)
 }
 
 // GetWorkspace handles GET /encounters/:id.

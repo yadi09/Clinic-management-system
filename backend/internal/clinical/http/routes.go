@@ -16,7 +16,8 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 
 	// Encounter workspace (3b) — doctors.
 	enc := rg.Group("/encounters", httpx.RequirePermission("encounter.manage"))
-	enc.POST("", h.OpenEncounter) // open-or-get the encounter for a queue entry
+	enc.POST("", h.OpenEncounter)   // open-or-get the encounter for a queue entry
+	enc.GET("", h.History)          // ?patient= → patient history timeline
 	enc.GET("/:id", h.GetWorkspace)
 	enc.PUT("/:id/note", h.SaveNote)
 	enc.POST("/:id/diagnoses", h.AddDiagnosis)

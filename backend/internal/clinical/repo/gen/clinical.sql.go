@@ -12,6 +12,21 @@ import (
 	"github.com/google/uuid"
 )
 
+const clearPrimaryDiagnoses = `-- name: ClearPrimaryDiagnoses :exec
+UPDATE diagnoses SET is_primary = false
+WHERE tenant_id = $1 AND encounter_id = $2 AND is_primary AND deleted_at IS NULL
+`
+
+type ClearPrimaryDiagnosesParams struct {
+	TenantID    uuid.UUID `json:"tenant_id"`
+	EncounterID uuid.UUID `json:"encounter_id"`
+}
+
+func (q *Queries) ClearPrimaryDiagnoses(ctx context.Context, arg ClearPrimaryDiagnosesParams) error {
+	_, err := q.db.Exec(ctx, clearPrimaryDiagnoses, arg.TenantID, arg.EncounterID)
+	return err
+}
+
 const closeEncounter = `-- name: CloseEncounter :one
 UPDATE encounters SET status = 'closed', closed_at = now(), updated_at = now()
 WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
@@ -390,16 +405,17 @@ func (q *Queries) CreateVitals(ctx context.Context, arg CreateVitalsParams) (Cre
 
 const deleteDiagnosis = `-- name: DeleteDiagnosis :exec
 UPDATE diagnoses SET deleted_at = now()
-WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+WHERE tenant_id = $1 AND id = $2 AND encounter_id = $3 AND deleted_at IS NULL
 `
 
 type DeleteDiagnosisParams struct {
-	TenantID uuid.UUID `json:"tenant_id"`
-	ID       uuid.UUID `json:"id"`
+	TenantID    uuid.UUID `json:"tenant_id"`
+	ID          uuid.UUID `json:"id"`
+	EncounterID uuid.UUID `json:"encounter_id"`
 }
 
 func (q *Queries) DeleteDiagnosis(ctx context.Context, arg DeleteDiagnosisParams) error {
-	_, err := q.db.Exec(ctx, deleteDiagnosis, arg.TenantID, arg.ID)
+	_, err := q.db.Exec(ctx, deleteDiagnosis, arg.TenantID, arg.ID, arg.EncounterID)
 	return err
 }
 
@@ -434,17 +450,23 @@ func (q *Queries) DeleteDiagnosisCategory(ctx context.Context, arg DeleteDiagnos
 }
 
 const deletePrescriptionItem = `-- name: DeletePrescriptionItem :exec
-DELETE FROM prescription_items
-WHERE tenant_id = $1 AND id = $2
+DELETE FROM prescription_items pi
+USING prescriptions p
+WHERE pi.prescription_id = p.id
+  AND pi.tenant_id = $1 AND pi.id = $2
+  AND p.encounter_id = $3 AND p.deleted_at IS NULL
 `
 
 type DeletePrescriptionItemParams struct {
-	TenantID uuid.UUID `json:"tenant_id"`
-	ID       uuid.UUID `json:"id"`
+	TenantID    uuid.UUID `json:"tenant_id"`
+	ID          uuid.UUID `json:"id"`
+	EncounterID uuid.UUID `json:"encounter_id"`
 }
 
+// Encounter-scoped via the parent prescription so a path's encounter id actually
+// constrains which item can be removed (prevents cross-encounter deletes).
 func (q *Queries) DeletePrescriptionItem(ctx context.Context, arg DeletePrescriptionItemParams) error {
-	_, err := q.db.Exec(ctx, deletePrescriptionItem, arg.TenantID, arg.ID)
+	_, err := q.db.Exec(ctx, deletePrescriptionItem, arg.TenantID, arg.ID, arg.EncounterID)
 	return err
 }
 
@@ -870,6 +892,59 @@ func (q *Queries) ListPatientAllergies(ctx context.Context, arg ListPatientAller
 	for rows.Next() {
 		var i ListPatientAllergiesRow
 		if err := rows.Scan(&i.Substance, &i.Severity, &i.Reaction); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPatientEncounters = `-- name: ListPatientEncounters :many
+SELECT e.id, e.started_at, e.status,
+       u.full_name AS provider_name,
+       COALESCE((SELECT d.description FROM diagnoses d
+        WHERE d.encounter_id = e.id AND d.deleted_at IS NULL
+        ORDER BY d.is_primary DESC, d.created_at LIMIT 1), '')::text AS primary_dx
+FROM encounters e
+LEFT JOIN users u ON u.id = e.provider_id AND u.tenant_id = e.tenant_id
+WHERE e.tenant_id = $1 AND e.patient_id = $2 AND e.deleted_at IS NULL
+ORDER BY e.started_at DESC
+LIMIT 20
+`
+
+type ListPatientEncountersParams struct {
+	TenantID  uuid.UUID `json:"tenant_id"`
+	PatientID uuid.UUID `json:"patient_id"`
+}
+
+type ListPatientEncountersRow struct {
+	ID           uuid.UUID `json:"id"`
+	StartedAt    time.Time `json:"started_at"`
+	Status       string    `json:"status"`
+	ProviderName *string   `json:"provider_name"`
+	PrimaryDx    string    `json:"primary_dx"`
+}
+
+// Patient history timeline (Phase 3b-2): past encounters with their primary diagnosis.
+func (q *Queries) ListPatientEncounters(ctx context.Context, arg ListPatientEncountersParams) ([]ListPatientEncountersRow, error) {
+	rows, err := q.db.Query(ctx, listPatientEncounters, arg.TenantID, arg.PatientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPatientEncountersRow{}
+	for rows.Next() {
+		var i ListPatientEncountersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.StartedAt,
+			&i.Status,
+			&i.ProviderName,
+			&i.PrimaryDx,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

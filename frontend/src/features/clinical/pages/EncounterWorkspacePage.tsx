@@ -1,7 +1,7 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, Plus, X } from "lucide-react";
+import { AlertTriangle, CalendarPlus, Check, Plus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -11,10 +11,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
-import { transitionQueue } from "@/features/scheduling/api";
+import { useAuth } from "@/app/auth-context";
+import { getSettings } from "@/features/admin/api";
+import { bookAppointment, markFollowup, transitionQueue } from "@/features/scheduling/api";
 import {
   addDiagnosis,
   addMedication,
+  listHistory,
   openEncounter,
   removeDiagnosis,
   removeMedication,
@@ -68,6 +71,8 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
   const [soap, setSoap] = useState({ subjective: ws.note.subjective, objective: ws.note.objective, assessment: ws.note.assessment, plan: ws.note.plan });
   const [savedAt, setSavedAt] = useState<string | null>(ws.note.status === "signed" ? ws.note.signed_at ?? null : null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Cancel any pending auto-save on unmount (e.g. after sign navigates away).
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
   const setField = (k: keyof typeof soap, v: string) => {
     if (locked) return;
@@ -86,6 +91,7 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
 
   const sign = useMutation({
     mutationFn: async () => {
+      if (timer.current) clearTimeout(timer.current); // don't let a pending autosave hit the now-signed note
       await signEncounter(ws.encounter_id);
       // Close the loop: move the queue entry to done (consistent with reception orchestration).
       try {
@@ -186,6 +192,8 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
             <PrescriptionPanel ws={ws} locked={locked} onChanged={onChanged} />
           </section>
 
+          {!locked && <FollowUp ws={ws} />}
+
           {!locked && (
             <div className="flex justify-end">
               <Button className="bg-primary" loading={sign.isPending} onClick={() => setConfirmSign(true)}>
@@ -195,11 +203,8 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
           )}
         </div>
 
-        {/* Right rail — patient history (full timeline arrives in 3b-2) */}
-        <Card className="hidden h-fit p-4 lg:block">
-          <h3 className="mb-2 text-h3">History</h3>
-          <p className="text-xs text-muted-foreground">The patient history timeline lands in 3b-2.</p>
-        </Card>
+        {/* Right rail — patient history timeline */}
+        <HistoryPanel patientId={ws.patient.patient_id} />
       </div>
 
       <Dialog open={confirmSign} onOpenChange={setConfirmSign}>
@@ -215,6 +220,85 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function FollowUp({ ws }: { ws: Workspace }) {
+  const { user } = useAuth();
+  const settings = useQuery({ queryKey: ["settings"], queryFn: getSettings, retry: false });
+  const [date, setDate] = useState("");
+
+  const book = useMutation({
+    mutationFn: async () => {
+      const provider = ws.provider_id || user?.id;
+      if (!provider) throw new Error("no provider on this encounter");
+      const startsAt = new Date(`${date}T09:00:00`).toISOString();
+      const appt = await bookAppointment({
+        branch_id: ws.branch_id,
+        patient_id: ws.patient.patient_id,
+        provider_id: provider,
+        department_id: ws.department_id || undefined,
+        starts_at: startsAt,
+        duration_min: 30,
+        reason: "Follow-up",
+      });
+      const days = settings.data?.free_window_days ?? 30;
+      // Anchor the free window to the follow-up date (not booking time) so a
+      // visit scheduled beyond the window is still free when attended on time.
+      const base = Math.max(Date.now(), new Date(startsAt).getTime());
+      const freeUntil = new Date(base + days * 86_400_000).toISOString();
+      await markFollowup(appt.id, freeUntil);
+    },
+    onSuccess: () => {
+      toast.success("Follow-up booked — free of the card fee within the window");
+      setDate("");
+    },
+    onError: () => toast.error("Could not book the follow-up"),
+  });
+
+  return (
+    <Card className="p-4">
+      <h2 className="mb-2 text-h3">Follow-up</h2>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-1.5">
+          <Label>Date</Label>
+          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </div>
+        <Button variant="outline" disabled={!date} loading={book.isPending} onClick={() => book.mutate()}>
+          <CalendarPlus className="h-4 w-4" /> Book follow-up
+        </Button>
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        A doctor-booked follow-up is free of the card fee when the patient attends within the clinic's window.
+      </p>
+    </Card>
+  );
+}
+
+function HistoryPanel({ patientId }: { patientId: string }) {
+  const history = useQuery({ queryKey: ["history", patientId], queryFn: () => listHistory(patientId) });
+  return (
+    <Card className="hidden h-fit p-4 lg:block">
+      <h3 className="mb-3 text-h3">History</h3>
+      {(history.data?.length ?? 0) === 0 ? (
+        <p className="text-xs text-muted-foreground">No past visits.</p>
+      ) : (
+        <ol className="space-y-3">
+          {(history.data ?? []).map((h) => (
+            <li key={h.id} className="border-l-2 border-primary/30 pl-3">
+              <p className="text-xs font-semibold text-brand">
+                {new Date(h.started_at).toLocaleDateString(undefined, { day: "2-digit", month: "short" })}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {h.type}
+                {h.provider_name ? ` · ${h.provider_name}` : ""}
+              </p>
+              {h.primary_dx ? <p className="text-xs">{h.primary_dx}</p> : null}
+            </li>
+          ))}
+        </ol>
+      )}
+    </Card>
   );
 }
 

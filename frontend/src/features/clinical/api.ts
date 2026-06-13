@@ -76,12 +76,28 @@ export interface Workspace {
   encounter_id: string;
   status: string; // open | closed
   started_at: string;
+  branch_id: string;
+  department_id?: string | null;
+  provider_id?: string | null;
   patient: { patient_id: string; name: string; mrn: string; age: number; gender: string; blood_group?: string };
   allergies: Allergy[];
   vitals: Vitals[];
   note: Note;
   diagnoses: Diagnosis[];
   prescription: Medication[];
+}
+
+export interface HistoryItem {
+  id: string;
+  started_at: string;
+  status: string;
+  type: string;
+  provider_name?: string;
+  primary_dx?: string;
+}
+/** Past encounters for the patient (timeline). */
+export function listHistory(patientId: string) {
+  return apiFetch<HistoryItem[]>(`/encounters?patient=${patientId}`);
 }
 
 export interface CatalogEntry {

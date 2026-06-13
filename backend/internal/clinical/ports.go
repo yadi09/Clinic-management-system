@@ -111,12 +111,25 @@ type Workspace struct {
 	EncounterID  uuid.UUID     `json:"-"`
 	Status       string        `json:"status"`
 	StartedAt    time.Time     `json:"started_at"`
+	BranchID     uuid.UUID     `json:"-"` // for booking a follow-up
+	DepartmentID *uuid.UUID    `json:"-"`
+	ProviderID   *uuid.UUID    `json:"-"`
 	Patient      PatientBanner `json:"patient"`
 	Allergies    []Allergy     `json:"allergies"`
 	Vitals       []Vitals      `json:"vitals"`
 	Note         Note          `json:"note"`
 	Diagnoses    []Diagnosis   `json:"diagnoses"`
 	Prescription []Medication  `json:"prescription"`
+}
+
+// HistoryItem is one past encounter on the patient timeline.
+type HistoryItem struct {
+	ID           uuid.UUID `json:"-"`
+	StartedAt    time.Time `json:"started_at"`
+	Status       string    `json:"status"`
+	Type         string    `json:"type"`
+	ProviderName string    `json:"provider_name,omitempty"`
+	PrimaryDx    string    `json:"primary_dx,omitempty"`
 }
 
 // NoteInput saves SOAP fields.
@@ -182,6 +195,7 @@ type Service interface {
 	AddMedication(ctx context.Context, encounterID uuid.UUID, in MedicationInput) (*Medication, error)
 	RemoveMedication(ctx context.Context, encounterID, itemID uuid.UUID) error
 	SignAndClose(ctx context.Context, encounterID uuid.UUID) error
+	History(ctx context.Context, patientID uuid.UUID) ([]HistoryItem, error)
 
 	// Diagnosis catalog (admin config + doctor search).
 	ListCategories(ctx context.Context) ([]DiagnosisCategory, error)

@@ -95,7 +95,11 @@ ORDER BY d.is_primary DESC, d.created_at;
 
 -- name: DeleteDiagnosis :exec
 UPDATE diagnoses SET deleted_at = now()
-WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
+WHERE tenant_id = @tenant_id AND id = @id AND encounter_id = @encounter_id AND deleted_at IS NULL;
+
+-- name: ClearPrimaryDiagnoses :exec
+UPDATE diagnoses SET is_primary = false
+WHERE tenant_id = @tenant_id AND encounter_id = @encounter_id AND is_primary AND deleted_at IS NULL;
 
 -- ---- Prescriptions ---------------------------------------------------------
 
@@ -122,8 +126,13 @@ WHERE p.tenant_id = @tenant_id AND p.encounter_id = @encounter_id AND p.deleted_
 ORDER BY pi.created_at, pi.id;
 
 -- name: DeletePrescriptionItem :exec
-DELETE FROM prescription_items
-WHERE tenant_id = @tenant_id AND id = @id;
+-- Encounter-scoped via the parent prescription so a path's encounter id actually
+-- constrains which item can be removed (prevents cross-encounter deletes).
+DELETE FROM prescription_items pi
+USING prescriptions p
+WHERE pi.prescription_id = p.id
+  AND pi.tenant_id = @tenant_id AND pi.id = @id
+  AND p.encounter_id = @encounter_id AND p.deleted_at IS NULL;
 
 -- ---- Diagnosis catalog (admin) + search (doctor) ---------------------------
 
@@ -174,3 +183,16 @@ WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
 -- name: DeleteDiagnosisCatalogEntry :exec
 UPDATE diagnosis_catalog SET deleted_at = now(), updated_at = now()
 WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
+
+-- name: ListPatientEncounters :many
+-- Patient history timeline (Phase 3b-2): past encounters with their primary diagnosis.
+SELECT e.id, e.started_at, e.status,
+       u.full_name AS provider_name,
+       COALESCE((SELECT d.description FROM diagnoses d
+        WHERE d.encounter_id = e.id AND d.deleted_at IS NULL
+        ORDER BY d.is_primary DESC, d.created_at LIMIT 1), '')::text AS primary_dx
+FROM encounters e
+LEFT JOIN users u ON u.id = e.provider_id AND u.tenant_id = e.tenant_id
+WHERE e.tenant_id = @tenant_id AND e.patient_id = @patient_id AND e.deleted_at IS NULL
+ORDER BY e.started_at DESC
+LIMIT 20;

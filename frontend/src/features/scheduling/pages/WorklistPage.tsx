@@ -100,7 +100,14 @@ export function WorklistPage() {
                   </Button>
                 )}
                 {canConsult && viewingSelf && (
-                  <Button size="sm" onClick={() => navigate(`/encounter/${e.id}`)}>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      // Reflect "in consultation" on the live queue board, then open the room.
+                      if (e.state !== "in_consult") transitionQueue(e.id, "in_consult").catch(() => {});
+                      navigate(`/encounter/${e.id}`);
+                    }}
+                  >
                     <Stethoscope className="h-3.5 w-3.5" /> Open consult
                   </Button>
                 )}

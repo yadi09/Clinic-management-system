@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -254,6 +255,12 @@ func (s *Service) AddDiagnosis(ctx context.Context, encounterID uuid.UUID, in cl
 		if strings.TrimSpace(desc) == "" {
 			return apperr.Validation("a diagnosis is required")
 		}
+		// At most one primary per encounter: demote any existing primary first.
+		if in.IsPrimary {
+			if e := q.ClearPrimaryDiagnoses(ctx, clinicaldb.ClearPrimaryDiagnosesParams{TenantID: tenantID, EncounterID: encounterID}); e != nil {
+				return e
+			}
+		}
 		row, e := q.CreateDiagnosis(ctx, clinicaldb.CreateDiagnosisParams{
 			TenantID: tenantID, EncounterID: encounterID, PatientID: enc.PatientID,
 			CatalogID: catalogID, CategoryID: catID, Code: strPtr(code), Description: desc, IsPrimary: in.IsPrimary, CreatedBy: actor,
@@ -278,7 +285,7 @@ func (s *Service) RemoveDiagnosis(ctx context.Context, encounterID, diagnosisID 
 		if e := ensureOpen(ctx, q, tenantID, encounterID); e != nil {
 			return e
 		}
-		return q.DeleteDiagnosis(ctx, clinicaldb.DeleteDiagnosisParams{TenantID: tenantID, ID: diagnosisID})
+		return q.DeleteDiagnosis(ctx, clinicaldb.DeleteDiagnosisParams{TenantID: tenantID, ID: diagnosisID, EncounterID: encounterID})
 	}))
 }
 
@@ -304,10 +311,8 @@ func (s *Service) AddMedication(ctx context.Context, encounterID uuid.UUID, in c
 		if e != nil {
 			return e
 		}
-		dl := strings.ToLower(strings.TrimSpace(in.DrugName))
 		for _, a := range allergies {
-			sub := strings.ToLower(strings.TrimSpace(a.Substance))
-			if sub != "" && (strings.Contains(dl, sub) || strings.Contains(sub, dl)) {
+			if allergyMatches(in.DrugName, a.Substance) {
 				return apperr.Conflict("ALLERGY_CONFLICT", "blocked: patient is allergic to "+a.Substance)
 			}
 		}
@@ -346,7 +351,7 @@ func (s *Service) RemoveMedication(ctx context.Context, encounterID, itemID uuid
 		if e := ensureOpen(ctx, q, tenantID, encounterID); e != nil {
 			return e
 		}
-		return q.DeletePrescriptionItem(ctx, clinicaldb.DeletePrescriptionItemParams{TenantID: tenantID, ID: itemID})
+		return q.DeletePrescriptionItem(ctx, clinicaldb.DeletePrescriptionItemParams{TenantID: tenantID, ID: itemID, EncounterID: encounterID})
 	}))
 }
 
@@ -384,6 +389,29 @@ func (s *Service) SignAndClose(ctx context.Context, encounterID uuid.UUID) error
 		return s.publisher.Publish(ctx, tx, &tenantID, "encounter", encounterID, "clinical.encounter.closed", payload)
 	})
 	return mapErr(err)
+}
+
+// History returns a patient's past encounters (newest first) for the timeline.
+func (s *Service) History(ctx context.Context, patientID uuid.UUID) ([]clinical.HistoryItem, error) {
+	tenantID, _ := actorOf(ctx)
+	var out []clinical.HistoryItem
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		rows, e := clinicaldb.New(tx).ListPatientEncounters(ctx, clinicaldb.ListPatientEncountersParams{TenantID: tenantID, PatientID: patientID})
+		if e != nil {
+			return e
+		}
+		for _, r := range rows {
+			out = append(out, clinical.HistoryItem{
+				ID: r.ID, StartedAt: r.StartedAt, Status: r.Status, Type: "Consultation",
+				ProviderName: deref(r.ProviderName), PrimaryDx: r.PrimaryDx,
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
 }
 
 // --- diagnosis catalog ---
@@ -437,7 +465,7 @@ func (s *Service) UpdateCategory(ctx context.Context, id uuid.UUID, in clinical.
 		})
 	})
 	if err != nil {
-		return apperr.Internal(err)
+		return mapWriteErr(err, "CATEGORY_EXISTS", "a category with this name already exists")
 	}
 	return nil
 }
@@ -523,7 +551,10 @@ func loadWorkspace(ctx context.Context, q *clinicaldb.Queries, tenantID, encID u
 	if e != nil {
 		return nil, e
 	}
-	ws := &clinical.Workspace{EncounterID: enc.ID, Status: enc.Status, StartedAt: enc.StartedAt}
+	ws := &clinical.Workspace{
+		EncounterID: enc.ID, Status: enc.Status, StartedAt: enc.StartedAt,
+		BranchID: enc.BranchID, DepartmentID: enc.DepartmentID, ProviderID: enc.ProviderID,
+	}
 
 	b, e := q.GetPatientBanner(ctx, clinicaldb.GetPatientBannerParams{TenantID: tenantID, ID: enc.PatientID})
 	if e != nil {
@@ -593,6 +624,25 @@ func ensureOpen(ctx context.Context, q *clinicaldb.Queries, tenantID, encID uuid
 		return errLocked
 	}
 	return nil
+}
+
+// allergyMatches reports whether a prescribed drug name matches a recorded
+// allergy substance. It compares on whole tokens (>=4 chars) of the substance,
+// so "Amoxicillin" blocks "Amoxicillin 500mg" but a short/garbage substring like
+// "pen" or a phrase like "no penicillin" won't wrongly block unrelated drugs.
+// Name-based only — drug-class intelligence (penicillin→amoxicillin) needs a
+// drug database (a later phase).
+func allergyMatches(drug, substance string) bool {
+	d := strings.ToLower(drug)
+	tokens := strings.FieldsFunc(strings.ToLower(substance), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+	for _, tok := range tokens {
+		if len([]rune(tok)) >= 4 && strings.Contains(d, tok) {
+			return true
+		}
+	}
+	return false
 }
 
 func ageOf(dob time.Time) int {

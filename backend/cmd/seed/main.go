@@ -204,6 +204,7 @@ func main() {
 			}
 		}
 		// Roles.
+		roleIDs := map[string]uuid.UUID{}
 		for _, r := range tenantRoles {
 			var rid uuid.UUID
 			if err := tx.QueryRow(ctx,
@@ -212,16 +213,44 @@ func main() {
 				 RETURNING id`, tenantID, r.Code, r.Name).Scan(&rid); err != nil {
 				return fmt.Errorf("role %s: %w", r.Code, err)
 			}
+			roleIDs[r.Code] = rid
 			if r.Code == "tenant_owner" {
 				ownerRoleID = rid
 			}
 		}
-		// Grant the owner role every permission.
-		if _, err := tx.Exec(ctx,
-			`INSERT INTO role_permissions (tenant_id, role_id, permission_id)
-			 SELECT $1, $2, p.id FROM permissions p
-			 ON CONFLICT (role_id, permission_id) DO NOTHING`, tenantID, ownerRoleID); err != nil {
-			return fmt.Errorf("grant owner permissions: %w", err)
+		// tenant_owner and clinic_admin get every permission.
+		for _, code := range []string{"tenant_owner", "clinic_admin"} {
+			rid, ok := roleIDs[code]
+			if !ok {
+				continue
+			}
+			if _, err := tx.Exec(ctx,
+				`INSERT INTO role_permissions (tenant_id, role_id, permission_id)
+				 SELECT $1, $2, p.id FROM permissions p
+				 ON CONFLICT (role_id, permission_id) DO NOTHING`, tenantID, rid); err != nil {
+				return fmt.Errorf("grant %s permissions: %w", code, err)
+			}
+		}
+		// Default permission sets for the operational roles (Phase 3b-2), so each
+		// role can be invited and tested with a realistic scoped view.
+		roleGrants := map[string][]string{
+			"branch_manager": {"patient.create", "patient.read", "patient.update", "patient.search", "appointment.manage", "queue.manage", "triage.manage", "payment.collect", "user.read"},
+			"receptionist":   {"patient.create", "patient.read", "patient.update", "patient.search", "appointment.manage", "queue.manage", "payment.collect"},
+			"doctor":         {"patient.read", "patient.search", "encounter.manage", "prescription.create", "queue.manage", "appointment.manage"},
+			"nurse":          {"patient.read", "patient.search", "triage.manage", "queue.manage"},
+			"cashier":        {"payment.collect", "patient.read", "patient.search"},
+		}
+		for code, perms := range roleGrants {
+			rid, ok := roleIDs[code]
+			if !ok {
+				continue
+			}
+			if _, err := tx.Exec(ctx,
+				`INSERT INTO role_permissions (tenant_id, role_id, permission_id)
+				 SELECT $1, $2, p.id FROM permissions p WHERE p.code = ANY($3::text[])
+				 ON CONFLICT (role_id, permission_id) DO NOTHING`, tenantID, rid, perms); err != nil {
+				return fmt.Errorf("grant %s permissions: %w", code, err)
+			}
 		}
 		// Owner user (re-seed resets the password).
 		if err := tx.QueryRow(ctx,
