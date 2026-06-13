@@ -18,6 +18,7 @@ FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/ /app/
 USER nonroot:nonroot
 EXPOSE 8080
-# Default command runs the API; worker/migrate/seed are selected via `command:`
-# in compose (e.g. ["/app/worker"], ["/app/migrate","up"]).
-ENTRYPOINT ["/app/api"]
+# Use CMD (not ENTRYPOINT) so the binary can be swapped per service: compose
+# `command:` (e.g. ["/app/worker"], ["/app/migrate","up"]) and `docker compose
+# run api /app/seed` REPLACE this default rather than being appended as args.
+CMD ["/app/api"]
