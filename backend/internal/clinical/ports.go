@@ -58,6 +58,112 @@ type Vitals struct {
 	RecordedAt time.Time `json:"recorded_at"`
 }
 
+// --- Phase 3b: consultation / EMR ---
+
+// PatientBanner is the header strip of the encounter workspace.
+type PatientBanner struct {
+	PatientID  uuid.UUID `json:"-"`
+	Name       string    `json:"name"`
+	MRN        string    `json:"mrn"`
+	Age        int       `json:"age"`
+	Gender     string    `json:"gender"`
+	BloodGroup string    `json:"blood_group,omitempty"`
+}
+
+// Allergy is a patient allergy shown as a clinical-safety alert.
+type Allergy struct {
+	Substance string `json:"substance"`
+	Severity  string `json:"severity"`
+	Reaction  string `json:"reaction,omitempty"`
+}
+
+// Note is the SOAP note.
+type Note struct {
+	Subjective string     `json:"subjective"`
+	Objective  string     `json:"objective"`
+	Assessment string     `json:"assessment"`
+	Plan       string     `json:"plan"`
+	Status     string     `json:"status"` // draft | signed
+	SignedAt   *time.Time `json:"signed_at,omitempty"`
+}
+
+// Diagnosis is an encounter diagnosis (a snapshot of a catalog entry).
+type Diagnosis struct {
+	ID           uuid.UUID `json:"-"`
+	Code         string    `json:"code,omitempty"`
+	Description  string    `json:"description"`
+	IsPrimary    bool      `json:"is_primary"`
+	CategoryName string    `json:"category_name,omitempty"`
+}
+
+// Medication is a prescription line.
+type Medication struct {
+	ID           uuid.UUID `json:"-"`
+	DrugName     string    `json:"drug_name"`
+	Dose         string    `json:"dose,omitempty"`
+	Frequency    string    `json:"frequency,omitempty"`
+	Duration     string    `json:"duration,omitempty"`
+	Instructions string    `json:"instructions,omitempty"`
+}
+
+// Workspace is the full encounter view the doctor opens from the worklist.
+type Workspace struct {
+	EncounterID  uuid.UUID     `json:"-"`
+	Status       string        `json:"status"`
+	StartedAt    time.Time     `json:"started_at"`
+	Patient      PatientBanner `json:"patient"`
+	Allergies    []Allergy     `json:"allergies"`
+	Vitals       []Vitals      `json:"vitals"`
+	Note         Note          `json:"note"`
+	Diagnoses    []Diagnosis   `json:"diagnoses"`
+	Prescription []Medication  `json:"prescription"`
+}
+
+// NoteInput saves SOAP fields.
+type NoteInput struct{ Subjective, Objective, Assessment, Plan string }
+
+// DiagnosisInput adds a diagnosis — from the catalog (CatalogID set) or free entry.
+type DiagnosisInput struct {
+	CatalogID   *uuid.UUID
+	Code        string
+	Description string
+	IsPrimary   bool
+}
+
+// MedicationInput adds a prescription line (allergy-guarded).
+type MedicationInput struct{ DrugName, Dose, Frequency, Duration, Instructions string }
+
+// DiagnosisCategory is an admin-managed disease category.
+type DiagnosisCategory struct {
+	ID        uuid.UUID `json:"-"`
+	Name      string    `json:"name"`
+	SortOrder int       `json:"sort_order"`
+	IsActive  bool      `json:"is_active"`
+}
+
+// CatalogEntry is an admin-managed diagnosis the doctor picks from.
+type CatalogEntry struct {
+	ID           uuid.UUID `json:"-"`
+	CategoryID   uuid.UUID `json:"-"`
+	CategoryName string    `json:"category_name"`
+	Code         string    `json:"code,omitempty"`
+	Name         string    `json:"name"`
+	IsActive     bool      `json:"is_active"`
+}
+
+// CategoryInput / CatalogEntryInput are admin write payloads.
+type CategoryInput struct {
+	Name      string
+	SortOrder int
+	IsActive  bool
+}
+type CatalogEntryInput struct {
+	CategoryID uuid.UUID
+	Code       string
+	Name       string
+	IsActive   bool
+}
+
 // Service is the clinical module API.
 type Service interface {
 	// RecordVitals opens (or reuses) the encounter for a queue entry and appends
@@ -66,4 +172,24 @@ type Service interface {
 	// GetVisit returns the encounter for a queue entry (nil if not opened yet)
 	// and its recorded vitals, newest first.
 	GetVisit(ctx context.Context, queueEntryID uuid.UUID) (*Encounter, []Vitals, error)
+
+	// Encounter workspace (Phase 3b).
+	OpenEncounter(ctx context.Context, queueEntryID uuid.UUID) (*Workspace, error)
+	GetWorkspace(ctx context.Context, encounterID uuid.UUID) (*Workspace, error)
+	SaveNote(ctx context.Context, encounterID uuid.UUID, in NoteInput) error
+	AddDiagnosis(ctx context.Context, encounterID uuid.UUID, in DiagnosisInput) (*Diagnosis, error)
+	RemoveDiagnosis(ctx context.Context, encounterID, diagnosisID uuid.UUID) error
+	AddMedication(ctx context.Context, encounterID uuid.UUID, in MedicationInput) (*Medication, error)
+	RemoveMedication(ctx context.Context, encounterID, itemID uuid.UUID) error
+	SignAndClose(ctx context.Context, encounterID uuid.UUID) error
+
+	// Diagnosis catalog (admin config + doctor search).
+	ListCategories(ctx context.Context) ([]DiagnosisCategory, error)
+	CreateCategory(ctx context.Context, in CategoryInput) (*DiagnosisCategory, error)
+	UpdateCategory(ctx context.Context, id uuid.UUID, in CategoryInput) error
+	DeleteCategory(ctx context.Context, id uuid.UUID) error
+	SearchCatalog(ctx context.Context, search string, categoryID *uuid.UUID, includeInactive bool) ([]CatalogEntry, error)
+	CreateCatalogEntry(ctx context.Context, in CatalogEntryInput) (*CatalogEntry, error)
+	UpdateCatalogEntry(ctx context.Context, id uuid.UUID, in CatalogEntryInput) error
+	DeleteCatalogEntry(ctx context.Context, id uuid.UUID) error
 }

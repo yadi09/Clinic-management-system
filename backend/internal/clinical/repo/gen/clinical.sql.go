@@ -12,6 +12,158 @@ import (
 	"github.com/google/uuid"
 )
 
+const closeEncounter = `-- name: CloseEncounter :one
+UPDATE encounters SET status = 'closed', closed_at = now(), updated_at = now()
+WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+RETURNING id, queue_entry_id
+`
+
+type CloseEncounterParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+type CloseEncounterRow struct {
+	ID           uuid.UUID  `json:"id"`
+	QueueEntryID *uuid.UUID `json:"queue_entry_id"`
+}
+
+func (q *Queries) CloseEncounter(ctx context.Context, arg CloseEncounterParams) (CloseEncounterRow, error) {
+	row := q.db.QueryRow(ctx, closeEncounter, arg.TenantID, arg.ID)
+	var i CloseEncounterRow
+	err := row.Scan(&i.ID, &i.QueueEntryID)
+	return i, err
+}
+
+const createDiagnosis = `-- name: CreateDiagnosis :one
+
+INSERT INTO diagnoses (tenant_id, encounter_id, patient_id, catalog_id, category_id, code, description, is_primary, created_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, code, description, is_primary, category_id
+`
+
+type CreateDiagnosisParams struct {
+	TenantID    uuid.UUID  `json:"tenant_id"`
+	EncounterID uuid.UUID  `json:"encounter_id"`
+	PatientID   uuid.UUID  `json:"patient_id"`
+	CatalogID   *uuid.UUID `json:"catalog_id"`
+	CategoryID  *uuid.UUID `json:"category_id"`
+	Code        *string    `json:"code"`
+	Description string     `json:"description"`
+	IsPrimary   bool       `json:"is_primary"`
+	CreatedBy   *uuid.UUID `json:"created_by"`
+}
+
+type CreateDiagnosisRow struct {
+	ID          uuid.UUID  `json:"id"`
+	Code        *string    `json:"code"`
+	Description string     `json:"description"`
+	IsPrimary   bool       `json:"is_primary"`
+	CategoryID  *uuid.UUID `json:"category_id"`
+}
+
+// ---- Encounter diagnoses ---------------------------------------------------
+func (q *Queries) CreateDiagnosis(ctx context.Context, arg CreateDiagnosisParams) (CreateDiagnosisRow, error) {
+	row := q.db.QueryRow(ctx, createDiagnosis,
+		arg.TenantID,
+		arg.EncounterID,
+		arg.PatientID,
+		arg.CatalogID,
+		arg.CategoryID,
+		arg.Code,
+		arg.Description,
+		arg.IsPrimary,
+		arg.CreatedBy,
+	)
+	var i CreateDiagnosisRow
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Description,
+		&i.IsPrimary,
+		&i.CategoryID,
+	)
+	return i, err
+}
+
+const createDiagnosisCatalogEntry = `-- name: CreateDiagnosisCatalogEntry :one
+INSERT INTO diagnosis_catalog (tenant_id, category_id, code, name, created_by)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, category_id, code, name, is_active
+`
+
+type CreateDiagnosisCatalogEntryParams struct {
+	TenantID   uuid.UUID  `json:"tenant_id"`
+	CategoryID uuid.UUID  `json:"category_id"`
+	Code       *string    `json:"code"`
+	Name       string     `json:"name"`
+	CreatedBy  *uuid.UUID `json:"created_by"`
+}
+
+type CreateDiagnosisCatalogEntryRow struct {
+	ID         uuid.UUID `json:"id"`
+	CategoryID uuid.UUID `json:"category_id"`
+	Code       *string   `json:"code"`
+	Name       string    `json:"name"`
+	IsActive   bool      `json:"is_active"`
+}
+
+func (q *Queries) CreateDiagnosisCatalogEntry(ctx context.Context, arg CreateDiagnosisCatalogEntryParams) (CreateDiagnosisCatalogEntryRow, error) {
+	row := q.db.QueryRow(ctx, createDiagnosisCatalogEntry,
+		arg.TenantID,
+		arg.CategoryID,
+		arg.Code,
+		arg.Name,
+		arg.CreatedBy,
+	)
+	var i CreateDiagnosisCatalogEntryRow
+	err := row.Scan(
+		&i.ID,
+		&i.CategoryID,
+		&i.Code,
+		&i.Name,
+		&i.IsActive,
+	)
+	return i, err
+}
+
+const createDiagnosisCategory = `-- name: CreateDiagnosisCategory :one
+INSERT INTO diagnosis_categories (tenant_id, name, sort_order, created_by)
+VALUES ($1, $2, $3, $4)
+RETURNING id, name, sort_order, is_active
+`
+
+type CreateDiagnosisCategoryParams struct {
+	TenantID  uuid.UUID  `json:"tenant_id"`
+	Name      string     `json:"name"`
+	SortOrder int32      `json:"sort_order"`
+	CreatedBy *uuid.UUID `json:"created_by"`
+}
+
+type CreateDiagnosisCategoryRow struct {
+	ID        uuid.UUID `json:"id"`
+	Name      string    `json:"name"`
+	SortOrder int32     `json:"sort_order"`
+	IsActive  bool      `json:"is_active"`
+}
+
+func (q *Queries) CreateDiagnosisCategory(ctx context.Context, arg CreateDiagnosisCategoryParams) (CreateDiagnosisCategoryRow, error) {
+	row := q.db.QueryRow(ctx, createDiagnosisCategory,
+		arg.TenantID,
+		arg.Name,
+		arg.SortOrder,
+		arg.CreatedBy,
+	)
+	var i CreateDiagnosisCategoryRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.SortOrder,
+		&i.IsActive,
+	)
+	return i, err
+}
+
 const createEncounter = `-- name: CreateEncounter :one
 INSERT INTO encounters (tenant_id, branch_id, department_id, patient_id, queue_entry_id, provider_id, created_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -65,6 +217,129 @@ func (q *Queries) CreateEncounter(ctx context.Context, arg CreateEncounterParams
 	return i, err
 }
 
+const createNote = `-- name: CreateNote :one
+INSERT INTO clinical_notes (tenant_id, encounter_id, subjective, objective, assessment, plan, created_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, subjective, objective, assessment, plan, status, signed_by, signed_at
+`
+
+type CreateNoteParams struct {
+	TenantID    uuid.UUID  `json:"tenant_id"`
+	EncounterID uuid.UUID  `json:"encounter_id"`
+	Subjective  *string    `json:"subjective"`
+	Objective   *string    `json:"objective"`
+	Assessment  *string    `json:"assessment"`
+	Plan        *string    `json:"plan"`
+	CreatedBy   *uuid.UUID `json:"created_by"`
+}
+
+type CreateNoteRow struct {
+	ID         uuid.UUID  `json:"id"`
+	Subjective *string    `json:"subjective"`
+	Objective  *string    `json:"objective"`
+	Assessment *string    `json:"assessment"`
+	Plan       *string    `json:"plan"`
+	Status     string     `json:"status"`
+	SignedBy   *uuid.UUID `json:"signed_by"`
+	SignedAt   *time.Time `json:"signed_at"`
+}
+
+func (q *Queries) CreateNote(ctx context.Context, arg CreateNoteParams) (CreateNoteRow, error) {
+	row := q.db.QueryRow(ctx, createNote,
+		arg.TenantID,
+		arg.EncounterID,
+		arg.Subjective,
+		arg.Objective,
+		arg.Assessment,
+		arg.Plan,
+		arg.CreatedBy,
+	)
+	var i CreateNoteRow
+	err := row.Scan(
+		&i.ID,
+		&i.Subjective,
+		&i.Objective,
+		&i.Assessment,
+		&i.Plan,
+		&i.Status,
+		&i.SignedBy,
+		&i.SignedAt,
+	)
+	return i, err
+}
+
+const createPrescription = `-- name: CreatePrescription :one
+INSERT INTO prescriptions (tenant_id, encounter_id, patient_id, created_by)
+VALUES ($1, $2, $3, $4)
+RETURNING id
+`
+
+type CreatePrescriptionParams struct {
+	TenantID    uuid.UUID  `json:"tenant_id"`
+	EncounterID uuid.UUID  `json:"encounter_id"`
+	PatientID   uuid.UUID  `json:"patient_id"`
+	CreatedBy   *uuid.UUID `json:"created_by"`
+}
+
+func (q *Queries) CreatePrescription(ctx context.Context, arg CreatePrescriptionParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, createPrescription,
+		arg.TenantID,
+		arg.EncounterID,
+		arg.PatientID,
+		arg.CreatedBy,
+	)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const createPrescriptionItem = `-- name: CreatePrescriptionItem :one
+INSERT INTO prescription_items (tenant_id, prescription_id, drug_name, dose, frequency, duration, instructions)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, drug_name, dose, frequency, duration, instructions
+`
+
+type CreatePrescriptionItemParams struct {
+	TenantID       uuid.UUID `json:"tenant_id"`
+	PrescriptionID uuid.UUID `json:"prescription_id"`
+	DrugName       string    `json:"drug_name"`
+	Dose           *string   `json:"dose"`
+	Frequency      *string   `json:"frequency"`
+	Duration       *string   `json:"duration"`
+	Instructions   *string   `json:"instructions"`
+}
+
+type CreatePrescriptionItemRow struct {
+	ID           uuid.UUID `json:"id"`
+	DrugName     string    `json:"drug_name"`
+	Dose         *string   `json:"dose"`
+	Frequency    *string   `json:"frequency"`
+	Duration     *string   `json:"duration"`
+	Instructions *string   `json:"instructions"`
+}
+
+func (q *Queries) CreatePrescriptionItem(ctx context.Context, arg CreatePrescriptionItemParams) (CreatePrescriptionItemRow, error) {
+	row := q.db.QueryRow(ctx, createPrescriptionItem,
+		arg.TenantID,
+		arg.PrescriptionID,
+		arg.DrugName,
+		arg.Dose,
+		arg.Frequency,
+		arg.Duration,
+		arg.Instructions,
+	)
+	var i CreatePrescriptionItemRow
+	err := row.Scan(
+		&i.ID,
+		&i.DrugName,
+		&i.Dose,
+		&i.Frequency,
+		&i.Duration,
+		&i.Instructions,
+	)
+	return i, err
+}
+
 const createVitals = `-- name: CreateVitals :one
 INSERT INTO vitals (tenant_id, encounter_id, patient_id, systolic, diastolic, pulse, temp_c, resp_rate, spo2, weight_kg, height_cm, notes, recorded_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
@@ -110,6 +385,96 @@ func (q *Queries) CreateVitals(ctx context.Context, arg CreateVitalsParams) (Cre
 	)
 	var i CreateVitalsRow
 	err := row.Scan(&i.ID, &i.RecordedAt)
+	return i, err
+}
+
+const deleteDiagnosis = `-- name: DeleteDiagnosis :exec
+UPDATE diagnoses SET deleted_at = now()
+WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+`
+
+type DeleteDiagnosisParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+func (q *Queries) DeleteDiagnosis(ctx context.Context, arg DeleteDiagnosisParams) error {
+	_, err := q.db.Exec(ctx, deleteDiagnosis, arg.TenantID, arg.ID)
+	return err
+}
+
+const deleteDiagnosisCatalogEntry = `-- name: DeleteDiagnosisCatalogEntry :exec
+UPDATE diagnosis_catalog SET deleted_at = now(), updated_at = now()
+WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+`
+
+type DeleteDiagnosisCatalogEntryParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+func (q *Queries) DeleteDiagnosisCatalogEntry(ctx context.Context, arg DeleteDiagnosisCatalogEntryParams) error {
+	_, err := q.db.Exec(ctx, deleteDiagnosisCatalogEntry, arg.TenantID, arg.ID)
+	return err
+}
+
+const deleteDiagnosisCategory = `-- name: DeleteDiagnosisCategory :exec
+UPDATE diagnosis_categories SET deleted_at = now(), updated_at = now()
+WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+`
+
+type DeleteDiagnosisCategoryParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+func (q *Queries) DeleteDiagnosisCategory(ctx context.Context, arg DeleteDiagnosisCategoryParams) error {
+	_, err := q.db.Exec(ctx, deleteDiagnosisCategory, arg.TenantID, arg.ID)
+	return err
+}
+
+const deletePrescriptionItem = `-- name: DeletePrescriptionItem :exec
+DELETE FROM prescription_items
+WHERE tenant_id = $1 AND id = $2
+`
+
+type DeletePrescriptionItemParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+func (q *Queries) DeletePrescriptionItem(ctx context.Context, arg DeletePrescriptionItemParams) error {
+	_, err := q.db.Exec(ctx, deletePrescriptionItem, arg.TenantID, arg.ID)
+	return err
+}
+
+const getCatalogEntry = `-- name: GetCatalogEntry :one
+SELECT id, category_id, code, name
+FROM diagnosis_catalog
+WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+`
+
+type GetCatalogEntryParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+type GetCatalogEntryRow struct {
+	ID         uuid.UUID `json:"id"`
+	CategoryID uuid.UUID `json:"category_id"`
+	Code       *string   `json:"code"`
+	Name       string    `json:"name"`
+}
+
+func (q *Queries) GetCatalogEntry(ctx context.Context, arg GetCatalogEntryParams) (GetCatalogEntryRow, error) {
+	row := q.db.QueryRow(ctx, getCatalogEntry, arg.TenantID, arg.ID)
+	var i GetCatalogEntryRow
+	err := row.Scan(
+		&i.ID,
+		&i.CategoryID,
+		&i.Code,
+		&i.Name,
+	)
 	return i, err
 }
 
@@ -197,6 +562,373 @@ func (q *Queries) GetEncounterByQueueEntry(ctx context.Context, arg GetEncounter
 	return i, err
 }
 
+const getNoteByEncounter = `-- name: GetNoteByEncounter :one
+
+SELECT id, subjective, objective, assessment, plan, status, signed_by, signed_at
+FROM clinical_notes
+WHERE tenant_id = $1 AND encounter_id = $2 AND deleted_at IS NULL
+LIMIT 1
+`
+
+type GetNoteByEncounterParams struct {
+	TenantID    uuid.UUID `json:"tenant_id"`
+	EncounterID uuid.UUID `json:"encounter_id"`
+}
+
+type GetNoteByEncounterRow struct {
+	ID         uuid.UUID  `json:"id"`
+	Subjective *string    `json:"subjective"`
+	Objective  *string    `json:"objective"`
+	Assessment *string    `json:"assessment"`
+	Plan       *string    `json:"plan"`
+	Status     string     `json:"status"`
+	SignedBy   *uuid.UUID `json:"signed_by"`
+	SignedAt   *time.Time `json:"signed_at"`
+}
+
+// ---- SOAP note -------------------------------------------------------------
+func (q *Queries) GetNoteByEncounter(ctx context.Context, arg GetNoteByEncounterParams) (GetNoteByEncounterRow, error) {
+	row := q.db.QueryRow(ctx, getNoteByEncounter, arg.TenantID, arg.EncounterID)
+	var i GetNoteByEncounterRow
+	err := row.Scan(
+		&i.ID,
+		&i.Subjective,
+		&i.Objective,
+		&i.Assessment,
+		&i.Plan,
+		&i.Status,
+		&i.SignedBy,
+		&i.SignedAt,
+	)
+	return i, err
+}
+
+const getPatientBanner = `-- name: GetPatientBanner :one
+SELECT first_name, last_name, mrn, dob, gender, blood_group
+FROM patients
+WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+`
+
+type GetPatientBannerParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+type GetPatientBannerRow struct {
+	FirstName  string    `json:"first_name"`
+	LastName   string    `json:"last_name"`
+	Mrn        string    `json:"mrn"`
+	Dob        time.Time `json:"dob"`
+	Gender     string    `json:"gender"`
+	BloodGroup *string   `json:"blood_group"`
+}
+
+func (q *Queries) GetPatientBanner(ctx context.Context, arg GetPatientBannerParams) (GetPatientBannerRow, error) {
+	row := q.db.QueryRow(ctx, getPatientBanner, arg.TenantID, arg.ID)
+	var i GetPatientBannerRow
+	err := row.Scan(
+		&i.FirstName,
+		&i.LastName,
+		&i.Mrn,
+		&i.Dob,
+		&i.Gender,
+		&i.BloodGroup,
+	)
+	return i, err
+}
+
+const getPrescriptionByEncounter = `-- name: GetPrescriptionByEncounter :one
+
+SELECT id FROM prescriptions
+WHERE tenant_id = $1 AND encounter_id = $2 AND deleted_at IS NULL
+LIMIT 1
+`
+
+type GetPrescriptionByEncounterParams struct {
+	TenantID    uuid.UUID `json:"tenant_id"`
+	EncounterID uuid.UUID `json:"encounter_id"`
+}
+
+// ---- Prescriptions ---------------------------------------------------------
+func (q *Queries) GetPrescriptionByEncounter(ctx context.Context, arg GetPrescriptionByEncounterParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getPrescriptionByEncounter, arg.TenantID, arg.EncounterID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const getQueueEntryForEncounter = `-- name: GetQueueEntryForEncounter :one
+
+SELECT branch_id, department_id, patient_id, assigned_provider_id
+FROM queue_entries
+WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+`
+
+type GetQueueEntryForEncounterParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+type GetQueueEntryForEncounterRow struct {
+	BranchID           uuid.UUID  `json:"branch_id"`
+	DepartmentID       uuid.UUID  `json:"department_id"`
+	PatientID          uuid.UUID  `json:"patient_id"`
+	AssignedProviderID *uuid.UUID `json:"assigned_provider_id"`
+}
+
+// ============================================================================
+// Phase 3b: Consultation / EMR
+// ============================================================================
+// Bootstrap data to open/create an encounter from a worklist (queue) entry.
+func (q *Queries) GetQueueEntryForEncounter(ctx context.Context, arg GetQueueEntryForEncounterParams) (GetQueueEntryForEncounterRow, error) {
+	row := q.db.QueryRow(ctx, getQueueEntryForEncounter, arg.TenantID, arg.ID)
+	var i GetQueueEntryForEncounterRow
+	err := row.Scan(
+		&i.BranchID,
+		&i.DepartmentID,
+		&i.PatientID,
+		&i.AssignedProviderID,
+	)
+	return i, err
+}
+
+const listDiagnosesByEncounter = `-- name: ListDiagnosesByEncounter :many
+SELECT d.id, d.code, d.description, d.is_primary, d.category_id, c.name AS category_name
+FROM diagnoses d
+LEFT JOIN diagnosis_categories c ON c.id = d.category_id AND c.tenant_id = d.tenant_id
+WHERE d.tenant_id = $1 AND d.encounter_id = $2 AND d.deleted_at IS NULL
+ORDER BY d.is_primary DESC, d.created_at
+`
+
+type ListDiagnosesByEncounterParams struct {
+	TenantID    uuid.UUID `json:"tenant_id"`
+	EncounterID uuid.UUID `json:"encounter_id"`
+}
+
+type ListDiagnosesByEncounterRow struct {
+	ID           uuid.UUID  `json:"id"`
+	Code         *string    `json:"code"`
+	Description  string     `json:"description"`
+	IsPrimary    bool       `json:"is_primary"`
+	CategoryID   *uuid.UUID `json:"category_id"`
+	CategoryName *string    `json:"category_name"`
+}
+
+func (q *Queries) ListDiagnosesByEncounter(ctx context.Context, arg ListDiagnosesByEncounterParams) ([]ListDiagnosesByEncounterRow, error) {
+	rows, err := q.db.Query(ctx, listDiagnosesByEncounter, arg.TenantID, arg.EncounterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListDiagnosesByEncounterRow{}
+	for rows.Next() {
+		var i ListDiagnosesByEncounterRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Description,
+			&i.IsPrimary,
+			&i.CategoryID,
+			&i.CategoryName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDiagnosisCatalog = `-- name: ListDiagnosisCatalog :many
+SELECT dc.id, dc.category_id, dc.code, dc.name, dc.is_active, cat.name AS category_name
+FROM diagnosis_catalog dc
+JOIN diagnosis_categories cat ON cat.id = dc.category_id AND cat.tenant_id = dc.tenant_id
+WHERE dc.tenant_id = $1 AND dc.deleted_at IS NULL
+  AND ($2::text IS NULL OR dc.name ILIKE '%' || $2 || '%' OR dc.code ILIKE '%' || $2 || '%')
+  AND ($3::uuid IS NULL OR dc.category_id = $3)
+  AND ($4::bool IS TRUE OR dc.is_active = true)
+ORDER BY cat.sort_order, cat.name, dc.name
+LIMIT 200
+`
+
+type ListDiagnosisCatalogParams struct {
+	TenantID        uuid.UUID  `json:"tenant_id"`
+	Search          *string    `json:"search"`
+	CategoryID      *uuid.UUID `json:"category_id"`
+	IncludeInactive *bool      `json:"include_inactive"`
+}
+
+type ListDiagnosisCatalogRow struct {
+	ID           uuid.UUID `json:"id"`
+	CategoryID   uuid.UUID `json:"category_id"`
+	Code         *string   `json:"code"`
+	Name         string    `json:"name"`
+	IsActive     bool      `json:"is_active"`
+	CategoryName string    `json:"category_name"`
+}
+
+func (q *Queries) ListDiagnosisCatalog(ctx context.Context, arg ListDiagnosisCatalogParams) ([]ListDiagnosisCatalogRow, error) {
+	rows, err := q.db.Query(ctx, listDiagnosisCatalog,
+		arg.TenantID,
+		arg.Search,
+		arg.CategoryID,
+		arg.IncludeInactive,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListDiagnosisCatalogRow{}
+	for rows.Next() {
+		var i ListDiagnosisCatalogRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CategoryID,
+			&i.Code,
+			&i.Name,
+			&i.IsActive,
+			&i.CategoryName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDiagnosisCategories = `-- name: ListDiagnosisCategories :many
+
+SELECT id, name, sort_order, is_active
+FROM diagnosis_categories
+WHERE tenant_id = $1 AND deleted_at IS NULL
+ORDER BY sort_order, name
+`
+
+type ListDiagnosisCategoriesRow struct {
+	ID        uuid.UUID `json:"id"`
+	Name      string    `json:"name"`
+	SortOrder int32     `json:"sort_order"`
+	IsActive  bool      `json:"is_active"`
+}
+
+// ---- Diagnosis catalog (admin) + search (doctor) ---------------------------
+func (q *Queries) ListDiagnosisCategories(ctx context.Context, tenantID uuid.UUID) ([]ListDiagnosisCategoriesRow, error) {
+	rows, err := q.db.Query(ctx, listDiagnosisCategories, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListDiagnosisCategoriesRow{}
+	for rows.Next() {
+		var i ListDiagnosisCategoriesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.SortOrder,
+			&i.IsActive,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPatientAllergies = `-- name: ListPatientAllergies :many
+SELECT substance, severity, reaction
+FROM allergies
+WHERE tenant_id = $1 AND patient_id = $2 AND deleted_at IS NULL
+ORDER BY substance
+`
+
+type ListPatientAllergiesParams struct {
+	TenantID  uuid.UUID `json:"tenant_id"`
+	PatientID uuid.UUID `json:"patient_id"`
+}
+
+type ListPatientAllergiesRow struct {
+	Substance string  `json:"substance"`
+	Severity  string  `json:"severity"`
+	Reaction  *string `json:"reaction"`
+}
+
+func (q *Queries) ListPatientAllergies(ctx context.Context, arg ListPatientAllergiesParams) ([]ListPatientAllergiesRow, error) {
+	rows, err := q.db.Query(ctx, listPatientAllergies, arg.TenantID, arg.PatientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPatientAllergiesRow{}
+	for rows.Next() {
+		var i ListPatientAllergiesRow
+		if err := rows.Scan(&i.Substance, &i.Severity, &i.Reaction); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPrescriptionsByEncounter = `-- name: ListPrescriptionsByEncounter :many
+SELECT pi.id, pi.drug_name, pi.dose, pi.frequency, pi.duration, pi.instructions
+FROM prescriptions p
+JOIN prescription_items pi ON pi.prescription_id = p.id AND pi.tenant_id = p.tenant_id
+WHERE p.tenant_id = $1 AND p.encounter_id = $2 AND p.deleted_at IS NULL
+ORDER BY pi.created_at, pi.id
+`
+
+type ListPrescriptionsByEncounterParams struct {
+	TenantID    uuid.UUID `json:"tenant_id"`
+	EncounterID uuid.UUID `json:"encounter_id"`
+}
+
+type ListPrescriptionsByEncounterRow struct {
+	ID           uuid.UUID `json:"id"`
+	DrugName     string    `json:"drug_name"`
+	Dose         *string   `json:"dose"`
+	Frequency    *string   `json:"frequency"`
+	Duration     *string   `json:"duration"`
+	Instructions *string   `json:"instructions"`
+}
+
+func (q *Queries) ListPrescriptionsByEncounter(ctx context.Context, arg ListPrescriptionsByEncounterParams) ([]ListPrescriptionsByEncounterRow, error) {
+	rows, err := q.db.Query(ctx, listPrescriptionsByEncounter, arg.TenantID, arg.EncounterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPrescriptionsByEncounterRow{}
+	for rows.Next() {
+		var i ListPrescriptionsByEncounterRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DrugName,
+			&i.Dose,
+			&i.Frequency,
+			&i.Duration,
+			&i.Instructions,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listVitalsByEncounter = `-- name: ListVitalsByEncounter :many
 SELECT id, systolic, diastolic, pulse, temp_c, resp_rate, spo2, weight_kg, height_cm, notes, recorded_at, recorded_by
 FROM vitals
@@ -255,4 +987,124 @@ func (q *Queries) ListVitalsByEncounter(ctx context.Context, arg ListVitalsByEnc
 		return nil, err
 	}
 	return items, nil
+}
+
+const signNote = `-- name: SignNote :one
+UPDATE clinical_notes
+SET status = 'signed', signed_by = $1, signed_at = now(), updated_at = now()
+WHERE tenant_id = $2 AND encounter_id = $3 AND status = 'draft' AND deleted_at IS NULL
+RETURNING id
+`
+
+type SignNoteParams struct {
+	SignedBy    *uuid.UUID `json:"signed_by"`
+	TenantID    uuid.UUID  `json:"tenant_id"`
+	EncounterID uuid.UUID  `json:"encounter_id"`
+}
+
+func (q *Queries) SignNote(ctx context.Context, arg SignNoteParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, signNote, arg.SignedBy, arg.TenantID, arg.EncounterID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const updateDiagnosisCatalogEntry = `-- name: UpdateDiagnosisCatalogEntry :exec
+UPDATE diagnosis_catalog SET category_id = $1, code = $2, name = $3, is_active = $4, updated_at = now()
+WHERE tenant_id = $5 AND id = $6 AND deleted_at IS NULL
+`
+
+type UpdateDiagnosisCatalogEntryParams struct {
+	CategoryID uuid.UUID `json:"category_id"`
+	Code       *string   `json:"code"`
+	Name       string    `json:"name"`
+	IsActive   bool      `json:"is_active"`
+	TenantID   uuid.UUID `json:"tenant_id"`
+	ID         uuid.UUID `json:"id"`
+}
+
+func (q *Queries) UpdateDiagnosisCatalogEntry(ctx context.Context, arg UpdateDiagnosisCatalogEntryParams) error {
+	_, err := q.db.Exec(ctx, updateDiagnosisCatalogEntry,
+		arg.CategoryID,
+		arg.Code,
+		arg.Name,
+		arg.IsActive,
+		arg.TenantID,
+		arg.ID,
+	)
+	return err
+}
+
+const updateDiagnosisCategory = `-- name: UpdateDiagnosisCategory :exec
+UPDATE diagnosis_categories SET name = $1, sort_order = $2, is_active = $3, updated_at = now()
+WHERE tenant_id = $4 AND id = $5 AND deleted_at IS NULL
+`
+
+type UpdateDiagnosisCategoryParams struct {
+	Name      string    `json:"name"`
+	SortOrder int32     `json:"sort_order"`
+	IsActive  bool      `json:"is_active"`
+	TenantID  uuid.UUID `json:"tenant_id"`
+	ID        uuid.UUID `json:"id"`
+}
+
+func (q *Queries) UpdateDiagnosisCategory(ctx context.Context, arg UpdateDiagnosisCategoryParams) error {
+	_, err := q.db.Exec(ctx, updateDiagnosisCategory,
+		arg.Name,
+		arg.SortOrder,
+		arg.IsActive,
+		arg.TenantID,
+		arg.ID,
+	)
+	return err
+}
+
+const updateNote = `-- name: UpdateNote :one
+UPDATE clinical_notes
+SET subjective = $1, objective = $2, assessment = $3, plan = $4, updated_at = now()
+WHERE tenant_id = $5 AND encounter_id = $6 AND status = 'draft' AND deleted_at IS NULL
+RETURNING id, subjective, objective, assessment, plan, status, signed_by, signed_at
+`
+
+type UpdateNoteParams struct {
+	Subjective  *string   `json:"subjective"`
+	Objective   *string   `json:"objective"`
+	Assessment  *string   `json:"assessment"`
+	Plan        *string   `json:"plan"`
+	TenantID    uuid.UUID `json:"tenant_id"`
+	EncounterID uuid.UUID `json:"encounter_id"`
+}
+
+type UpdateNoteRow struct {
+	ID         uuid.UUID  `json:"id"`
+	Subjective *string    `json:"subjective"`
+	Objective  *string    `json:"objective"`
+	Assessment *string    `json:"assessment"`
+	Plan       *string    `json:"plan"`
+	Status     string     `json:"status"`
+	SignedBy   *uuid.UUID `json:"signed_by"`
+	SignedAt   *time.Time `json:"signed_at"`
+}
+
+func (q *Queries) UpdateNote(ctx context.Context, arg UpdateNoteParams) (UpdateNoteRow, error) {
+	row := q.db.QueryRow(ctx, updateNote,
+		arg.Subjective,
+		arg.Objective,
+		arg.Assessment,
+		arg.Plan,
+		arg.TenantID,
+		arg.EncounterID,
+	)
+	var i UpdateNoteRow
+	err := row.Scan(
+		&i.ID,
+		&i.Subjective,
+		&i.Objective,
+		&i.Assessment,
+		&i.Plan,
+		&i.Status,
+		&i.SignedBy,
+		&i.SignedAt,
+	)
+	return i, err
 }

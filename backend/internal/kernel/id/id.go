@@ -33,9 +33,13 @@ const (
 	PrefixGuardian    = "grd"
 	PrefixAppointment = "apt"
 	PrefixQueueEntry  = "que"
-	PrefixEncounter   = "enc"
-	PrefixVitals      = "vit"
-	PrefixCardPayment = "cpy"
+	PrefixEncounter      = "enc"
+	PrefixVitals         = "vit"
+	PrefixCardPayment    = "cpy"
+	PrefixDiagnosis      = "dxn"
+	PrefixRxItem         = "rxi"
+	PrefixDiagCategory   = "dgc"
+	PrefixDiagCatalog    = "dgx"
 )
 
 // base32 lower-case, no padding. Decoding is case-insensitive.

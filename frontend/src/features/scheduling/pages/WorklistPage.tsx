@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stethoscope } from "lucide-react";
 
@@ -23,8 +24,10 @@ const NEXT: Record<string, { state: string; label: string }> = {
 
 export function WorklistPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const { can, user } = useAuth();
   const canPickProvider = can("user.read");
+  const canConsult = can("encounter.manage");
 
   // Admins/reception can view another doctor's list; doctors see their own.
   const providers = useQuery({ queryKey: ["users"], queryFn: listUsers, enabled: canPickProvider });
@@ -86,19 +89,20 @@ export function WorklistPage() {
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant="outline">{e.state.replace("_", " ")}</Badge>
-                {next && (
+                {next && next.state !== "in_consult" && (
                   <Button
                     size="sm"
+                    variant="outline"
                     loading={transition.isPending}
                     onClick={() => transition.mutate({ id: e.id, state: next.state })}
                   >
                     {next.label}
                   </Button>
                 )}
-                {e.state === "in_consult" && (
-                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Stethoscope className="h-3.5 w-3.5" /> consultation in 3b
-                  </span>
+                {canConsult && viewingSelf && (
+                  <Button size="sm" onClick={() => navigate(`/encounter/${e.id}`)}>
+                    <Stethoscope className="h-3.5 w-3.5" /> Open consult
+                  </Button>
                 )}
               </div>
             </Card>

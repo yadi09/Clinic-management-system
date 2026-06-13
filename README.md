@@ -48,6 +48,37 @@ Open **http://localhost:8088** and sign in:
 
 The API is also exposed directly on `http://localhost:8080` in dev.
 
+### Pulling new code / switching phases
+
+The migrations and the built SPA are baked into the images, so **always rebuild** after pulling changes — otherwise you run the old frontend and miss new migrations:
+
+```bash
+# Rebuilds api/worker/migrate/web; the `migrate` service then applies any new
+# migrations to the existing volume (no data loss).
+docker compose -f compose.yml -f compose.dev.yml up --build
+
+# Idempotent re-seed: grants the owner any newly-added permissions.
+docker compose -f compose.yml -f compose.dev.yml run --rm api /app/seed
+```
+
+Re-seeding matters when a phase adds permissions (e.g. Phase 3a's `payment.collect`,
+`triage.manage`) — without it those screens return **403** even for the owner.
+
+### Troubleshooting
+
+- **`password authentication failed for user "clinic_app"` (28P01):** the `pgdata`
+  volume was created with a different `APP_DB_PASSWORD` than your current `.env`.
+  Either set `APP_DB_PASSWORD` back to the value the volume was created with, or
+  start fresh (this **wipes the database**, then re-seed):
+
+  ```bash
+  docker compose -f compose.yml -f compose.dev.yml down -v
+  docker compose -f compose.yml -f compose.dev.yml up --build
+  docker compose -f compose.yml -f compose.dev.yml run --rm api /app/seed
+  ```
+
+- **First `up --build` is slow** (Go + Vite builds). Subsequent runs are cached.
+
 ## Local dev (no Docker)
 
 ```bash

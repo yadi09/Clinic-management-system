@@ -137,6 +137,23 @@ type Clinic struct {
 	DoctorAssignment string         `json:"doctor_assignment"`
 }
 
+type ClinicalNote struct {
+	ID          uuid.UUID  `json:"id"`
+	TenantID    uuid.UUID  `json:"tenant_id"`
+	EncounterID uuid.UUID  `json:"encounter_id"`
+	Subjective  *string    `json:"subjective"`
+	Objective   *string    `json:"objective"`
+	Assessment  *string    `json:"assessment"`
+	Plan        *string    `json:"plan"`
+	Status      string     `json:"status"`
+	SignedBy    *uuid.UUID `json:"signed_by"`
+	SignedAt    *time.Time `json:"signed_at"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	CreatedBy   *uuid.UUID `json:"created_by"`
+	DeletedAt   *time.Time `json:"deleted_at"`
+}
+
 type Condition struct {
 	ID          uuid.UUID  `json:"id"`
 	TenantID    uuid.UUID  `json:"tenant_id"`
@@ -162,6 +179,46 @@ type Department struct {
 	UpdatedAt             time.Time  `json:"updated_at"`
 	CreatedBy             *uuid.UUID `json:"created_by"`
 	DeletedAt             *time.Time `json:"deleted_at"`
+}
+
+type Diagnosis struct {
+	ID          uuid.UUID  `json:"id"`
+	TenantID    uuid.UUID  `json:"tenant_id"`
+	EncounterID uuid.UUID  `json:"encounter_id"`
+	PatientID   uuid.UUID  `json:"patient_id"`
+	CatalogID   *uuid.UUID `json:"catalog_id"`
+	CategoryID  *uuid.UUID `json:"category_id"`
+	Code        *string    `json:"code"`
+	Description string     `json:"description"`
+	IsPrimary   bool       `json:"is_primary"`
+	CreatedAt   time.Time  `json:"created_at"`
+	CreatedBy   *uuid.UUID `json:"created_by"`
+	DeletedAt   *time.Time `json:"deleted_at"`
+}
+
+type DiagnosisCatalog struct {
+	ID         uuid.UUID  `json:"id"`
+	TenantID   uuid.UUID  `json:"tenant_id"`
+	CategoryID uuid.UUID  `json:"category_id"`
+	Code       *string    `json:"code"`
+	Name       string     `json:"name"`
+	IsActive   bool       `json:"is_active"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+	CreatedBy  *uuid.UUID `json:"created_by"`
+	DeletedAt  *time.Time `json:"deleted_at"`
+}
+
+type DiagnosisCategory struct {
+	ID        uuid.UUID  `json:"id"`
+	TenantID  uuid.UUID  `json:"tenant_id"`
+	Name      string     `json:"name"`
+	SortOrder int32      `json:"sort_order"`
+	IsActive  bool       `json:"is_active"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	CreatedBy *uuid.UUID `json:"created_by"`
+	DeletedAt *time.Time `json:"deleted_at"`
 }
 
 type Encounter struct {
@@ -265,6 +322,30 @@ type Plan struct {
 	PriceMonthly       pgtype.Numeric `json:"price_monthly"`
 	CreatedAt          time.Time      `json:"created_at"`
 	UpdatedAt          time.Time      `json:"updated_at"`
+}
+
+type Prescription struct {
+	ID          uuid.UUID  `json:"id"`
+	TenantID    uuid.UUID  `json:"tenant_id"`
+	EncounterID uuid.UUID  `json:"encounter_id"`
+	PatientID   uuid.UUID  `json:"patient_id"`
+	Status      string     `json:"status"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	CreatedBy   *uuid.UUID `json:"created_by"`
+	DeletedAt   *time.Time `json:"deleted_at"`
+}
+
+type PrescriptionItem struct {
+	ID             uuid.UUID `json:"id"`
+	TenantID       uuid.UUID `json:"tenant_id"`
+	PrescriptionID uuid.UUID `json:"prescription_id"`
+	DrugName       string    `json:"drug_name"`
+	Dose           *string   `json:"dose"`
+	Frequency      *string   `json:"frequency"`
+	Duration       *string   `json:"duration"`
+	Instructions   *string   `json:"instructions"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type QueueEntry struct {

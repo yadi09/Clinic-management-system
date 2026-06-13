@@ -77,6 +77,51 @@ var businessFlags = map[string]bool{
 	"hr":               false,
 }
 
+// seedDiagnosisCatalog inserts a small starter set of disease categories and
+// diagnoses (admins extend it in Settings). Idempotent.
+func seedDiagnosisCatalog(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) error {
+	categories := []string{"Respiratory", "Infectious", "Gastrointestinal", "Cardiovascular", "General"}
+	type dx struct{ Cat, Code, Name string }
+	entries := []dx{
+		{"Respiratory", "J02.9", "Acute pharyngitis"},
+		{"Respiratory", "J06.9", "Upper respiratory infection"},
+		{"Respiratory", "J45.909", "Asthma, unspecified"},
+		{"Infectious", "A09", "Infectious gastroenteritis"},
+		{"Infectious", "B34.9", "Viral infection, unspecified"},
+		{"Gastrointestinal", "K21.9", "Gastro-oesophageal reflux disease"},
+		{"Gastrointestinal", "K59.00", "Constipation, unspecified"},
+		{"Cardiovascular", "I10", "Essential hypertension"},
+		{"General", "R50.9", "Fever, unspecified"},
+		{"General", "R51", "Headache"},
+	}
+	catID := map[string]uuid.UUID{}
+	for i, name := range categories {
+		var cid uuid.UUID
+		err := tx.QueryRow(ctx,
+			`SELECT id FROM diagnosis_categories WHERE tenant_id=$1 AND lower(name)=lower($2) AND deleted_at IS NULL`,
+			tenantID, name).Scan(&cid)
+		if errors.Is(err, pgx.ErrNoRows) {
+			if err = tx.QueryRow(ctx,
+				`INSERT INTO diagnosis_categories (tenant_id, name, sort_order) VALUES ($1,$2,$3) RETURNING id`,
+				tenantID, name, i+1).Scan(&cid); err != nil {
+				return fmt.Errorf("diagnosis category %s: %w", name, err)
+			}
+		} else if err != nil {
+			return fmt.Errorf("diagnosis category %s: %w", name, err)
+		}
+		catID[name] = cid
+	}
+	for _, e := range entries {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO diagnosis_catalog (tenant_id, category_id, code, name) VALUES ($1,$2,$3,$4)
+			 ON CONFLICT DO NOTHING`,
+			tenantID, catID[e.Cat], e.Code, e.Name); err != nil {
+			return fmt.Errorf("diagnosis entry %s: %w", e.Code, err)
+		}
+	}
+	return nil
+}
+
 func env(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -209,6 +254,10 @@ func main() {
 			`INSERT INTO branches (tenant_id, clinic_id, name, code) VALUES ($1, $2, 'Main Branch', 'MAIN')
 			 ON CONFLICT (tenant_id, code) DO NOTHING`, tenantID, clinicID); e != nil {
 			return fmt.Errorf("branch: %w", e)
+		}
+		// Starter diagnosis catalog (admins extend it in Settings).
+		if e := seedDiagnosisCatalog(ctx, tx, tenantID); e != nil {
+			return e
 		}
 		return nil
 	}); err != nil {

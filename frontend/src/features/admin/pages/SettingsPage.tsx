@@ -21,6 +21,13 @@ import {
   saveSettings,
   type ClinicSettings,
 } from "@/features/admin/api";
+import {
+  createCatalogEntry,
+  createCategory,
+  deleteCatalogEntry,
+  listDiagnosisCategories,
+  searchCatalog,
+} from "@/features/clinical/api";
 
 export function SettingsPage() {
   const { can } = useAuth();
@@ -179,7 +186,122 @@ export function SettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      <DiagnosisCatalogCard manage={manage} />
     </div>
+  );
+}
+
+function DiagnosisCatalogCard({ manage }: { manage: boolean }) {
+  const qc = useQueryClient();
+  const categories = useQuery({ queryKey: ["diag-categories"], queryFn: listDiagnosisCategories });
+  const entries = useQuery({ queryKey: ["diag-catalog-all"], queryFn: () => searchCatalog({ all: true }) });
+
+  const [catName, setCatName] = useState("");
+  const addCat = useMutation({
+    mutationFn: () => createCategory({ name: catName }),
+    onSuccess: () => {
+      toast.success("Category added");
+      setCatName("");
+      qc.invalidateQueries({ queryKey: ["diag-categories"] });
+    },
+    onError: () => toast.error("Could not add category (name may exist)"),
+  });
+
+  const [entry, setEntry] = useState({ category_id: "", code: "", name: "" });
+  const addEntry = useMutation({
+    mutationFn: () => createCatalogEntry({ category_id: entry.category_id, code: entry.code || undefined, name: entry.name }),
+    onSuccess: () => {
+      toast.success("Diagnosis added");
+      setEntry({ category_id: entry.category_id, code: "", name: "" });
+      qc.invalidateQueries({ queryKey: ["diag-catalog-all"] });
+    },
+    onError: () => toast.error("Could not add diagnosis (code may exist)"),
+  });
+  const removeEntry = useMutation({
+    mutationFn: (id: string) => deleteCatalogEntry(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["diag-catalog-all"] }),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Diagnosis catalog</CardTitle>
+        <CardDescription>Disease categories and the diagnoses doctors pick from during a consultation.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {/* Categories */}
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground">Categories</Label>
+          <div className="flex flex-wrap gap-2">
+            {(categories.data ?? []).map((c) => (
+              <Badge key={c.id} variant="outline">{c.name}</Badge>
+            ))}
+            {categories.data?.length === 0 && <span className="text-sm text-muted-foreground">No categories yet.</span>}
+          </div>
+          {manage && (
+            <div className="flex items-end gap-2 pt-1">
+              <div className="space-y-1.5">
+                <Label>New category</Label>
+                <Input value={catName} onChange={(e) => setCatName(e.target.value)} placeholder="e.g. Dermatology" />
+              </div>
+              <Button onClick={() => addCat.mutate()} disabled={!catName.trim()} loading={addCat.isPending}>
+                <Plus /> Add
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {/* Entries */}
+        <div className="space-y-2 border-t pt-4">
+          <Label className="text-xs text-muted-foreground">Diagnoses</Label>
+          <ul className="max-h-72 space-y-1.5 overflow-auto">
+            {(entries.data ?? []).map((e) => (
+              <li key={e.id} className="flex items-center justify-between rounded-md border bg-background p-2 text-sm">
+                <span>
+                  {e.code ? <span className="font-mono text-xs text-muted-foreground">{e.code} </span> : null}
+                  {e.name} <span className="text-xs text-muted-foreground">· {e.category_name}</span>
+                </span>
+                {manage && (
+                  <button onClick={() => removeEntry.mutate(e.id)} className="text-xs text-muted-foreground hover:text-destructive">
+                    Remove
+                  </button>
+                )}
+              </li>
+            ))}
+            {entries.data?.length === 0 && <p className="text-sm text-muted-foreground">No diagnoses yet.</p>}
+          </ul>
+          {manage && (categories.data?.length ?? 0) > 0 && (
+            <div className="flex flex-wrap items-end gap-3 border-t pt-4">
+              <div className="w-44 space-y-1.5">
+                <Label>Category</Label>
+                <Select value={entry.category_id} onValueChange={(v) => setEntry({ ...entry, category_id: v })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(categories.data ?? []).map((c) => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-28 space-y-1.5">
+                <Label>ICD code</Label>
+                <Input value={entry.code} onChange={(e) => setEntry({ ...entry, code: e.target.value })} placeholder="J02.9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Name</Label>
+                <Input value={entry.name} onChange={(e) => setEntry({ ...entry, name: e.target.value })} placeholder="Acute pharyngitis" />
+              </div>
+              <Button onClick={() => addEntry.mutate()} disabled={!entry.category_id || !entry.name.trim()} loading={addEntry.isPending}>
+                <Plus /> Add diagnosis
+              </Button>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

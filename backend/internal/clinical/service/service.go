@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -117,6 +118,528 @@ func (s *Service) GetVisit(ctx context.Context, queueEntryID uuid.UUID) (*clinic
 		return nil, nil, apperr.Internal(err)
 	}
 	return enc, vitals, nil
+}
+
+// ============================================================================
+// Phase 3b: consultation / EMR
+// ============================================================================
+
+var errLocked = apperr.Conflict("ENCOUNTER_LOCKED", "this encounter is signed and can no longer be edited")
+
+// OpenEncounter ensures an encounter exists for a worklist (queue) entry —
+// creating it (bootstrapped from the queue entry) if triage hasn't already —
+// and returns the full workspace.
+func (s *Service) OpenEncounter(ctx context.Context, queueEntryID uuid.UUID) (*clinical.Workspace, error) {
+	tenantID, actor := actorOf(ctx)
+	var ws *clinical.Workspace
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := clinicaldb.New(tx)
+		qid := queueEntryID
+		var encID uuid.UUID
+		enc, e := q.GetEncounterByQueueEntry(ctx, clinicaldb.GetEncounterByQueueEntryParams{TenantID: tenantID, QueueEntryID: &qid})
+		switch {
+		case e == nil:
+			encID = enc.ID
+		case errors.Is(e, pgx.ErrNoRows):
+			qe, e2 := q.GetQueueEntryForEncounter(ctx, clinicaldb.GetQueueEntryForEncounterParams{TenantID: tenantID, ID: queueEntryID})
+			if errors.Is(e2, pgx.ErrNoRows) {
+				return apperr.NotFound("QUEUE_ENTRY_NOT_FOUND", "queue entry not found")
+			}
+			if e2 != nil {
+				return e2
+			}
+			dept := qe.DepartmentID
+			created, e3 := q.CreateEncounter(ctx, clinicaldb.CreateEncounterParams{
+				TenantID: tenantID, BranchID: qe.BranchID, DepartmentID: &dept, PatientID: qe.PatientID,
+				QueueEntryID: &qid, ProviderID: qe.AssignedProviderID, CreatedBy: actor,
+			})
+			if e3 != nil {
+				return e3
+			}
+			encID = created.ID
+		default:
+			return e
+		}
+		ws, e = loadWorkspace(ctx, q, tenantID, encID)
+		return e
+	})
+	if ae, ok := apperr.As(err); ok {
+		return nil, ae
+	}
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return ws, nil
+}
+
+// GetWorkspace returns the full encounter view by encounter id.
+func (s *Service) GetWorkspace(ctx context.Context, encounterID uuid.UUID) (*clinical.Workspace, error) {
+	tenantID, _ := actorOf(ctx)
+	var ws *clinical.Workspace
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		var e error
+		ws, e = loadWorkspace(ctx, clinicaldb.New(tx), tenantID, encounterID)
+		return e
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, apperr.NotFound("ENCOUNTER_NOT_FOUND", "encounter not found")
+	}
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return ws, nil
+}
+
+// SaveNote upserts the SOAP draft (rejected once signed).
+func (s *Service) SaveNote(ctx context.Context, encounterID uuid.UUID, in clinical.NoteInput) error {
+	tenantID, actor := actorOf(ctx)
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := clinicaldb.New(tx)
+		n, e := q.GetNoteByEncounter(ctx, clinicaldb.GetNoteByEncounterParams{TenantID: tenantID, EncounterID: encounterID})
+		if errors.Is(e, pgx.ErrNoRows) {
+			_, e2 := q.CreateNote(ctx, clinicaldb.CreateNoteParams{
+				TenantID: tenantID, EncounterID: encounterID,
+				Subjective: strPtr(in.Subjective), Objective: strPtr(in.Objective),
+				Assessment: strPtr(in.Assessment), Plan: strPtr(in.Plan), CreatedBy: actor,
+			})
+			return e2
+		}
+		if e != nil {
+			return e
+		}
+		if n.Status == "signed" {
+			return errLocked
+		}
+		_, e = q.UpdateNote(ctx, clinicaldb.UpdateNoteParams{
+			Subjective: strPtr(in.Subjective), Objective: strPtr(in.Objective),
+			Assessment: strPtr(in.Assessment), Plan: strPtr(in.Plan), TenantID: tenantID, EncounterID: encounterID,
+		})
+		return e
+	})
+	return mapErr(err)
+}
+
+// AddDiagnosis appends a diagnosis, snapshotting the chosen catalog entry.
+func (s *Service) AddDiagnosis(ctx context.Context, encounterID uuid.UUID, in clinical.DiagnosisInput) (*clinical.Diagnosis, error) {
+	tenantID, actor := actorOf(ctx)
+	var out clinical.Diagnosis
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := clinicaldb.New(tx)
+		enc, e := q.GetEncounter(ctx, clinicaldb.GetEncounterParams{TenantID: tenantID, ID: encounterID})
+		if e != nil {
+			return e
+		}
+		if enc.Status == "closed" {
+			return errLocked
+		}
+		desc, code := in.Description, in.Code
+		var catID, catalogID *uuid.UUID
+		if in.CatalogID != nil {
+			entry, e2 := q.GetCatalogEntry(ctx, clinicaldb.GetCatalogEntryParams{TenantID: tenantID, ID: *in.CatalogID})
+			if errors.Is(e2, pgx.ErrNoRows) {
+				return apperr.Validation("unknown diagnosis")
+			}
+			if e2 != nil {
+				return e2
+			}
+			if desc == "" {
+				desc = entry.Name
+			}
+			if code == "" {
+				code = deref(entry.Code)
+			}
+			cid := entry.CategoryID
+			catID, catalogID = &cid, in.CatalogID
+		}
+		if strings.TrimSpace(desc) == "" {
+			return apperr.Validation("a diagnosis is required")
+		}
+		row, e := q.CreateDiagnosis(ctx, clinicaldb.CreateDiagnosisParams{
+			TenantID: tenantID, EncounterID: encounterID, PatientID: enc.PatientID,
+			CatalogID: catalogID, CategoryID: catID, Code: strPtr(code), Description: desc, IsPrimary: in.IsPrimary, CreatedBy: actor,
+		})
+		if e != nil {
+			return e
+		}
+		out = clinical.Diagnosis{ID: row.ID, Code: deref(row.Code), Description: row.Description, IsPrimary: row.IsPrimary}
+		return nil
+	})
+	if e := mapErr(err); e != nil {
+		return nil, e
+	}
+	return &out, nil
+}
+
+// RemoveDiagnosis deletes a diagnosis (while the encounter is open).
+func (s *Service) RemoveDiagnosis(ctx context.Context, encounterID, diagnosisID uuid.UUID) error {
+	tenantID, _ := actorOf(ctx)
+	return mapErr(s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := clinicaldb.New(tx)
+		if e := ensureOpen(ctx, q, tenantID, encounterID); e != nil {
+			return e
+		}
+		return q.DeleteDiagnosis(ctx, clinicaldb.DeleteDiagnosisParams{TenantID: tenantID, ID: diagnosisID})
+	}))
+}
+
+// AddMedication appends a prescription line — blocked if the drug matches a
+// patient allergy (clinical-safety guard).
+func (s *Service) AddMedication(ctx context.Context, encounterID uuid.UUID, in clinical.MedicationInput) (*clinical.Medication, error) {
+	tenantID, actor := actorOf(ctx)
+	if strings.TrimSpace(in.DrugName) == "" {
+		return nil, apperr.Validation("a medication name is required")
+	}
+	var out clinical.Medication
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := clinicaldb.New(tx)
+		enc, e := q.GetEncounter(ctx, clinicaldb.GetEncounterParams{TenantID: tenantID, ID: encounterID})
+		if e != nil {
+			return e
+		}
+		if enc.Status == "closed" {
+			return errLocked
+		}
+		// Allergy guard (name-based; drug-class intelligence needs a drug DB, later).
+		allergies, e := q.ListPatientAllergies(ctx, clinicaldb.ListPatientAllergiesParams{TenantID: tenantID, PatientID: enc.PatientID})
+		if e != nil {
+			return e
+		}
+		dl := strings.ToLower(strings.TrimSpace(in.DrugName))
+		for _, a := range allergies {
+			sub := strings.ToLower(strings.TrimSpace(a.Substance))
+			if sub != "" && (strings.Contains(dl, sub) || strings.Contains(sub, dl)) {
+				return apperr.Conflict("ALLERGY_CONFLICT", "blocked: patient is allergic to "+a.Substance)
+			}
+		}
+		// One prescription per encounter; create on first item.
+		rxID, e := q.GetPrescriptionByEncounter(ctx, clinicaldb.GetPrescriptionByEncounterParams{TenantID: tenantID, EncounterID: encounterID})
+		if errors.Is(e, pgx.ErrNoRows) {
+			rxID, e = q.CreatePrescription(ctx, clinicaldb.CreatePrescriptionParams{TenantID: tenantID, EncounterID: encounterID, PatientID: enc.PatientID, CreatedBy: actor})
+		}
+		if e != nil {
+			return e
+		}
+		item, e := q.CreatePrescriptionItem(ctx, clinicaldb.CreatePrescriptionItemParams{
+			TenantID: tenantID, PrescriptionID: rxID, DrugName: in.DrugName,
+			Dose: strPtr(in.Dose), Frequency: strPtr(in.Frequency), Duration: strPtr(in.Duration), Instructions: strPtr(in.Instructions),
+		})
+		if e != nil {
+			return e
+		}
+		out = clinical.Medication{
+			ID: item.ID, DrugName: item.DrugName, Dose: deref(item.Dose), Frequency: deref(item.Frequency),
+			Duration: deref(item.Duration), Instructions: deref(item.Instructions),
+		}
+		return nil
+	})
+	if e := mapErr(err); e != nil {
+		return nil, e
+	}
+	return &out, nil
+}
+
+// RemoveMedication deletes a prescription line (while the encounter is open).
+func (s *Service) RemoveMedication(ctx context.Context, encounterID, itemID uuid.UUID) error {
+	tenantID, _ := actorOf(ctx)
+	return mapErr(s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := clinicaldb.New(tx)
+		if e := ensureOpen(ctx, q, tenantID, encounterID); e != nil {
+			return e
+		}
+		return q.DeletePrescriptionItem(ctx, clinicaldb.DeletePrescriptionItemParams{TenantID: tenantID, ID: itemID})
+	}))
+}
+
+// SignAndClose signs the note (immutable) and closes the encounter, emitting
+// clinical.encounter.closed. The caller then moves the queue entry to done.
+func (s *Service) SignAndClose(ctx context.Context, encounterID uuid.UUID) error {
+	tenantID, actor := actorOf(ctx)
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := clinicaldb.New(tx)
+		enc, e := q.GetEncounter(ctx, clinicaldb.GetEncounterParams{TenantID: tenantID, ID: encounterID})
+		if e != nil {
+			return e
+		}
+		if enc.Status == "closed" {
+			return errLocked
+		}
+		// Ensure a note row exists, then sign it.
+		if _, e := q.GetNoteByEncounter(ctx, clinicaldb.GetNoteByEncounterParams{TenantID: tenantID, EncounterID: encounterID}); errors.Is(e, pgx.ErrNoRows) {
+			if _, e2 := q.CreateNote(ctx, clinicaldb.CreateNoteParams{TenantID: tenantID, EncounterID: encounterID, CreatedBy: actor}); e2 != nil {
+				return e2
+			}
+		} else if e != nil {
+			return e
+		}
+		if _, e := q.SignNote(ctx, clinicaldb.SignNoteParams{SignedBy: actor, TenantID: tenantID, EncounterID: encounterID}); e != nil {
+			return e
+		}
+		if _, e := q.CloseEncounter(ctx, clinicaldb.CloseEncounterParams{TenantID: tenantID, ID: encounterID}); e != nil {
+			return e
+		}
+		payload := map[string]any{"encounter_id": encounterID, "patient_id": enc.PatientID}
+		if enc.QueueEntryID != nil {
+			payload["queue_entry_id"] = *enc.QueueEntryID
+		}
+		return s.publisher.Publish(ctx, tx, &tenantID, "encounter", encounterID, "clinical.encounter.closed", payload)
+	})
+	return mapErr(err)
+}
+
+// --- diagnosis catalog ---
+
+func (s *Service) ListCategories(ctx context.Context) ([]clinical.DiagnosisCategory, error) {
+	tenantID, _ := actorOf(ctx)
+	var out []clinical.DiagnosisCategory
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		rows, e := clinicaldb.New(tx).ListDiagnosisCategories(ctx, tenantID)
+		if e != nil {
+			return e
+		}
+		for _, r := range rows {
+			out = append(out, clinical.DiagnosisCategory{ID: r.ID, Name: r.Name, SortOrder: int(r.SortOrder), IsActive: r.IsActive})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+func (s *Service) CreateCategory(ctx context.Context, in clinical.CategoryInput) (*clinical.DiagnosisCategory, error) {
+	tenantID, actor := actorOf(ctx)
+	if strings.TrimSpace(in.Name) == "" {
+		return nil, apperr.Validation("category name is required")
+	}
+	var out clinical.DiagnosisCategory
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		r, e := clinicaldb.New(tx).CreateDiagnosisCategory(ctx, clinicaldb.CreateDiagnosisCategoryParams{
+			TenantID: tenantID, Name: in.Name, SortOrder: int32(in.SortOrder), CreatedBy: actor,
+		})
+		if e != nil {
+			return e
+		}
+		out = clinical.DiagnosisCategory{ID: r.ID, Name: r.Name, SortOrder: int(r.SortOrder), IsActive: r.IsActive}
+		return nil
+	})
+	if err != nil {
+		return nil, mapWriteErr(err, "CATEGORY_EXISTS", "a category with this name already exists")
+	}
+	return &out, nil
+}
+
+func (s *Service) UpdateCategory(ctx context.Context, id uuid.UUID, in clinical.CategoryInput) error {
+	tenantID, _ := actorOf(ctx)
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		return clinicaldb.New(tx).UpdateDiagnosisCategory(ctx, clinicaldb.UpdateDiagnosisCategoryParams{
+			Name: in.Name, SortOrder: int32(in.SortOrder), IsActive: in.IsActive, TenantID: tenantID, ID: id,
+		})
+	})
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}
+
+func (s *Service) DeleteCategory(ctx context.Context, id uuid.UUID) error {
+	tenantID, _ := actorOf(ctx)
+	return apperrOrNil(s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		return clinicaldb.New(tx).DeleteDiagnosisCategory(ctx, clinicaldb.DeleteDiagnosisCategoryParams{TenantID: tenantID, ID: id})
+	}))
+}
+
+func (s *Service) SearchCatalog(ctx context.Context, search string, categoryID *uuid.UUID, includeInactive bool) ([]clinical.CatalogEntry, error) {
+	tenantID, _ := actorOf(ctx)
+	var inc *bool
+	if includeInactive {
+		t := true
+		inc = &t
+	}
+	var out []clinical.CatalogEntry
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		rows, e := clinicaldb.New(tx).ListDiagnosisCatalog(ctx, clinicaldb.ListDiagnosisCatalogParams{
+			TenantID: tenantID, Search: strPtr(search), CategoryID: categoryID, IncludeInactive: inc,
+		})
+		if e != nil {
+			return e
+		}
+		for _, r := range rows {
+			out = append(out, clinical.CatalogEntry{ID: r.ID, CategoryID: r.CategoryID, CategoryName: r.CategoryName, Code: deref(r.Code), Name: r.Name, IsActive: r.IsActive})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+func (s *Service) CreateCatalogEntry(ctx context.Context, in clinical.CatalogEntryInput) (*clinical.CatalogEntry, error) {
+	tenantID, actor := actorOf(ctx)
+	if strings.TrimSpace(in.Name) == "" || in.CategoryID == uuid.Nil {
+		return nil, apperr.Validation("category and name are required")
+	}
+	var out clinical.CatalogEntry
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		r, e := clinicaldb.New(tx).CreateDiagnosisCatalogEntry(ctx, clinicaldb.CreateDiagnosisCatalogEntryParams{
+			TenantID: tenantID, CategoryID: in.CategoryID, Code: strPtr(in.Code), Name: in.Name, CreatedBy: actor,
+		})
+		if e != nil {
+			return e
+		}
+		out = clinical.CatalogEntry{ID: r.ID, CategoryID: r.CategoryID, Code: deref(r.Code), Name: r.Name, IsActive: r.IsActive}
+		return nil
+	})
+	if err != nil {
+		return nil, mapWriteErr(err, "DIAGNOSIS_CODE_EXISTS", "a diagnosis with this code already exists")
+	}
+	return &out, nil
+}
+
+func (s *Service) UpdateCatalogEntry(ctx context.Context, id uuid.UUID, in clinical.CatalogEntryInput) error {
+	tenantID, _ := actorOf(ctx)
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		return clinicaldb.New(tx).UpdateDiagnosisCatalogEntry(ctx, clinicaldb.UpdateDiagnosisCatalogEntryParams{
+			CategoryID: in.CategoryID, Code: strPtr(in.Code), Name: in.Name, IsActive: in.IsActive, TenantID: tenantID, ID: id,
+		})
+	})
+	if err != nil {
+		return mapWriteErr(err, "DIAGNOSIS_CODE_EXISTS", "a diagnosis with this code already exists")
+	}
+	return nil
+}
+
+func (s *Service) DeleteCatalogEntry(ctx context.Context, id uuid.UUID) error {
+	tenantID, _ := actorOf(ctx)
+	return apperrOrNil(s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		return clinicaldb.New(tx).DeleteDiagnosisCatalogEntry(ctx, clinicaldb.DeleteDiagnosisCatalogEntryParams{TenantID: tenantID, ID: id})
+	}))
+}
+
+// loadWorkspace assembles the full encounter view within a transaction.
+func loadWorkspace(ctx context.Context, q *clinicaldb.Queries, tenantID, encID uuid.UUID) (*clinical.Workspace, error) {
+	enc, e := q.GetEncounter(ctx, clinicaldb.GetEncounterParams{TenantID: tenantID, ID: encID})
+	if e != nil {
+		return nil, e
+	}
+	ws := &clinical.Workspace{EncounterID: enc.ID, Status: enc.Status, StartedAt: enc.StartedAt}
+
+	b, e := q.GetPatientBanner(ctx, clinicaldb.GetPatientBannerParams{TenantID: tenantID, ID: enc.PatientID})
+	if e != nil {
+		return nil, e
+	}
+	ws.Patient = clinical.PatientBanner{
+		PatientID: enc.PatientID, Name: b.FirstName + " " + b.LastName, MRN: b.Mrn,
+		Age: ageOf(b.Dob), Gender: b.Gender, BloodGroup: deref(b.BloodGroup),
+	}
+
+	al, e := q.ListPatientAllergies(ctx, clinicaldb.ListPatientAllergiesParams{TenantID: tenantID, PatientID: enc.PatientID})
+	if e != nil {
+		return nil, e
+	}
+	ws.Allergies = []clinical.Allergy{}
+	for _, a := range al {
+		ws.Allergies = append(ws.Allergies, clinical.Allergy{Substance: a.Substance, Severity: a.Severity, Reaction: deref(a.Reaction)})
+	}
+
+	vt, e := q.ListVitalsByEncounter(ctx, clinicaldb.ListVitalsByEncounterParams{TenantID: tenantID, EncounterID: encID})
+	if e != nil {
+		return nil, e
+	}
+	ws.Vitals = []clinical.Vitals{}
+	for _, r := range vt {
+		ws.Vitals = append(ws.Vitals, clinical.Vitals{
+			ID: r.ID, Systolic: ip(r.Systolic), Diastolic: ip(r.Diastolic), Pulse: ip(r.Pulse),
+			RespRate: ip(r.RespRate), Spo2: ip(r.Spo2), TempC: r.TempC, WeightKg: r.WeightKg, HeightCm: r.HeightCm,
+			Notes: deref(r.Notes), RecordedAt: r.RecordedAt,
+		})
+	}
+
+	if n, e := q.GetNoteByEncounter(ctx, clinicaldb.GetNoteByEncounterParams{TenantID: tenantID, EncounterID: encID}); e == nil {
+		ws.Note = clinical.Note{Subjective: deref(n.Subjective), Objective: deref(n.Objective), Assessment: deref(n.Assessment), Plan: deref(n.Plan), Status: n.Status, SignedAt: n.SignedAt}
+	} else if errors.Is(e, pgx.ErrNoRows) {
+		ws.Note = clinical.Note{Status: "draft"}
+	} else {
+		return nil, e
+	}
+
+	dx, e := q.ListDiagnosesByEncounter(ctx, clinicaldb.ListDiagnosesByEncounterParams{TenantID: tenantID, EncounterID: encID})
+	if e != nil {
+		return nil, e
+	}
+	ws.Diagnoses = []clinical.Diagnosis{}
+	for _, d := range dx {
+		ws.Diagnoses = append(ws.Diagnoses, clinical.Diagnosis{ID: d.ID, Code: deref(d.Code), Description: d.Description, IsPrimary: d.IsPrimary, CategoryName: deref(d.CategoryName)})
+	}
+
+	rx, e := q.ListPrescriptionsByEncounter(ctx, clinicaldb.ListPrescriptionsByEncounterParams{TenantID: tenantID, EncounterID: encID})
+	if e != nil {
+		return nil, e
+	}
+	ws.Prescription = []clinical.Medication{}
+	for _, m := range rx {
+		ws.Prescription = append(ws.Prescription, clinical.Medication{ID: m.ID, DrugName: m.DrugName, Dose: deref(m.Dose), Frequency: deref(m.Frequency), Duration: deref(m.Duration), Instructions: deref(m.Instructions)})
+	}
+	return ws, nil
+}
+
+func ensureOpen(ctx context.Context, q *clinicaldb.Queries, tenantID, encID uuid.UUID) error {
+	enc, e := q.GetEncounter(ctx, clinicaldb.GetEncounterParams{TenantID: tenantID, ID: encID})
+	if e != nil {
+		return e
+	}
+	if enc.Status == "closed" {
+		return errLocked
+	}
+	return nil
+}
+
+func ageOf(dob time.Time) int {
+	now := time.Now()
+	y := now.Year() - dob.Year()
+	if now.YearDay() < dob.YearDay() {
+		y--
+	}
+	if y < 0 {
+		return 0
+	}
+	return y
+}
+
+// mapErr maps tx errors to app errors (locked/not-found/internal).
+func mapErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	if ae, ok := apperr.As(err); ok {
+		return ae
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return apperr.NotFound("ENCOUNTER_NOT_FOUND", "encounter not found")
+	}
+	return apperr.Internal(err)
+}
+
+func apperrOrNil(err error) error {
+	if err == nil {
+		return nil
+	}
+	if ae, ok := apperr.As(err); ok {
+		return ae
+	}
+	return apperr.Internal(err)
+}
+
+func mapWriteErr(err error, code, msg string) error {
+	if err == nil {
+		return nil
+	}
+	m := err.Error()
+	if strings.Contains(m, "duplicate key") || strings.Contains(m, "unique constraint") {
+		return apperr.Conflict(code, msg)
+	}
+	return apperr.Internal(err)
 }
 
 // --- helpers ---
