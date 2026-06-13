@@ -3,6 +3,7 @@ package http
 
 import (
 	"encoding/json"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -100,6 +101,47 @@ func (h *Handlers) SaveClinic(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, cl)
+}
+
+// ---- settings (flow configuration) ----
+
+type settingsReq struct {
+	CardFeeEnabled   bool    `json:"card_fee_enabled"`
+	CardFeeAmount    float64 `json:"card_fee_amount"`
+	CardCurrency     string  `json:"card_currency"`
+	FreeWindowDays   int     `json:"free_window_days"`
+	TriageRequired   bool    `json:"triage_required"`
+	DoctorAssignment string  `json:"doctor_assignment"`
+}
+
+func (h *Handlers) GetSettings(c *gin.Context) {
+	s, err := h.svc.GetSettings(c.Request.Context())
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, s)
+}
+
+func (h *Handlers) SaveSettings(c *gin.Context) {
+	var req settingsReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("invalid settings"))
+		return
+	}
+	s, err := h.svc.SaveSettings(c.Request.Context(), org.SettingsInput{
+		CardFeeEnabled:   req.CardFeeEnabled,
+		CardFeeAmount:    strconv.FormatFloat(req.CardFeeAmount, 'f', 2, 64),
+		CardCurrency:     req.CardCurrency,
+		FreeWindowDays:   req.FreeWindowDays,
+		TriageRequired:   req.TriageRequired,
+		DoctorAssignment: req.DoctorAssignment,
+	})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, s)
 }
 
 // ---- branches ----

@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, UserCog, Settings, CalendarDays, ListChecks, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Users, UserCog, Settings, CalendarDays, ListChecks, ClipboardCheck, Activity, Stethoscope, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   to: string;
@@ -20,7 +20,10 @@ export const navSections: NavSection[] = [
     items: [
       { to: "/patients", label: "Patients", icon: Users, perm: ["patient.read", "patient.search"] },
       { to: "/appointments", label: "Appointments", icon: CalendarDays, perm: ["appointment.manage"] },
+      { to: "/reception", label: "Reception", icon: ClipboardCheck, perm: ["payment.collect", "queue.manage"] },
+      { to: "/triage", label: "Triage", icon: Activity, perm: ["triage.manage"] },
       { to: "/queue", label: "Queue", icon: ListChecks, perm: ["queue.manage"] },
+      { to: "/worklist", label: "My worklist", icon: Stethoscope, perm: ["encounter.manage"] },
     ],
   },
   {

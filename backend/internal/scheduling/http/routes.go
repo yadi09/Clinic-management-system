@@ -15,6 +15,7 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	appt.POST("", httpx.RequirePermission("appointment.manage"), h.Book)
 	appt.PUT("/:id", httpx.RequirePermission("appointment.manage"), h.Reschedule)
 	appt.POST("/:id/status", httpx.RequirePermission("appointment.manage"), h.SetStatus)
+	appt.POST("/:id/followup", httpx.RequirePermission("appointment.manage"), h.MarkFollowup)
 	appt.POST("/:id/check-in", httpx.RequirePermission("queue.manage"), h.CheckIn)
 
 	q := rg.Group("/queue")
@@ -22,4 +23,8 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	q.POST("/walk-in", httpx.RequirePermission("queue.manage"), h.WalkIn)
 	q.POST("/:id/transition", httpx.RequirePermission("queue.manage"), h.Transition)
 	q.POST("/:id/priority", httpx.RequirePermission("queue.manage"), h.SetPriority)
+	q.POST("/:id/assign", httpx.RequirePermission("queue.manage"), h.Assign)
+
+	// A doctor's personal worklist ("patients waiting for me").
+	rg.GET("/worklist", httpx.RequirePermission("encounter.manage"), h.Worklist)
 }

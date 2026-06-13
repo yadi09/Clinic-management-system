@@ -51,17 +51,36 @@ type Appointment struct {
 
 // QueueEntry is a row on the department queue board.
 type QueueEntry struct {
-	ID            uuid.UUID  `json:"-"`
-	PatientID     uuid.UUID  `json:"-"`
-	AppointmentID *uuid.UUID `json:"-"`
-	State         string     `json:"state"`
-	Priority      int        `json:"priority"`
-	EnqueuedAt    time.Time  `json:"enqueued_at"`
-	CalledAt      *time.Time `json:"called_at,omitempty"`
-	StartedAt     *time.Time `json:"started_at,omitempty"`
-	EndedAt       *time.Time `json:"ended_at,omitempty"`
-	PatientName   string     `json:"patient_name"`
-	MRN           string     `json:"mrn"`
+	ID                 uuid.UUID  `json:"-"`
+	PatientID          uuid.UUID  `json:"-"`
+	AppointmentID      *uuid.UUID `json:"-"`
+	AssignedProviderID *uuid.UUID `json:"-"`
+	State              string     `json:"state"`
+	Stage              string     `json:"stage"`
+	Priority           int        `json:"priority"`
+	EnqueuedAt         time.Time  `json:"enqueued_at"`
+	CalledAt           *time.Time `json:"called_at,omitempty"`
+	StartedAt          *time.Time `json:"started_at,omitempty"`
+	EndedAt            *time.Time `json:"ended_at,omitempty"`
+	PatientName        string     `json:"patient_name"`
+	MRN                string     `json:"mrn"`
+	ProviderName       string     `json:"provider_name,omitempty"`
+}
+
+// WorklistEntry is a patient on a doctor's personal worklist.
+type WorklistEntry struct {
+	ID             uuid.UUID  `json:"-"`
+	PatientID      uuid.UUID  `json:"-"`
+	DepartmentID   uuid.UUID  `json:"-"`
+	State          string     `json:"state"`
+	Stage          string     `json:"stage"`
+	Priority       int        `json:"priority"`
+	EnqueuedAt     time.Time  `json:"enqueued_at"`
+	CalledAt       *time.Time `json:"called_at,omitempty"`
+	StartedAt      *time.Time `json:"started_at,omitempty"`
+	PatientName    string     `json:"patient_name"`
+	MRN            string     `json:"mrn"`
+	DepartmentName string     `json:"department_name,omitempty"`
 }
 
 // WalkInInput enqueues a patient without a prior appointment.
@@ -70,6 +89,15 @@ type WalkInInput struct {
 	DepartmentID uuid.UUID
 	PatientID    uuid.UUID
 	Priority     int
+	ToTriage     bool
+	ProviderID   *uuid.UUID
+}
+
+// CheckInInput controls how an appointment patient is routed on check-in.
+type CheckInInput struct {
+	Priority   int
+	ToTriage   bool
+	ProviderID *uuid.UUID
 }
 
 // Service is the scheduling module API.
@@ -78,10 +106,13 @@ type Service interface {
 	List(ctx context.Context, branchID uuid.UUID, from, to time.Time, providerID *uuid.UUID) ([]Appointment, error)
 	Reschedule(ctx context.Context, id uuid.UUID, in RescheduleInput) (*Appointment, error)
 	SetStatus(ctx context.Context, id uuid.UUID, status, cancelReason string) error
-	CheckIn(ctx context.Context, id uuid.UUID, priority int) error
+	MarkFollowup(ctx context.Context, id uuid.UUID, freeUntil time.Time) error
+	CheckIn(ctx context.Context, id uuid.UUID, in CheckInInput) error
 	EnqueueWalkIn(ctx context.Context, in WalkInInput) error
 
-	ListQueue(ctx context.Context, departmentID uuid.UUID) ([]QueueEntry, error)
+	ListQueue(ctx context.Context, departmentID uuid.UUID, stage string) ([]QueueEntry, error)
+	ListWorklist(ctx context.Context, providerID uuid.UUID) ([]WorklistEntry, error)
+	AssignProvider(ctx context.Context, id, providerID uuid.UUID) error
 	TransitionQueue(ctx context.Context, id uuid.UUID, state string) error
 	SetQueuePriority(ctx context.Context, id uuid.UUID, priority int) error
 }

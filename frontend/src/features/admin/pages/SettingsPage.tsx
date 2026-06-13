@@ -14,9 +14,12 @@ import {
   createBranch,
   createDepartment,
   getClinic,
+  getSettings,
   listBranches,
   listDepartments,
   saveClinic,
+  saveSettings,
+  type ClinicSettings,
 } from "@/features/admin/api";
 
 export function SettingsPage() {
@@ -90,6 +93,8 @@ export function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <FlowSettingsCard manage={manage} />
 
       <Card>
         <CardHeader>
@@ -175,5 +180,130 @@ export function SettingsPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function FlowSettingsCard({ manage }: { manage: boolean }) {
+  const qc = useQueryClient();
+  const settings = useQuery({ queryKey: ["settings"], queryFn: getSettings, retry: false });
+
+  const [form, setForm] = useState<ClinicSettings | null>(null);
+  useEffect(() => {
+    if (settings.data) setForm(settings.data);
+  }, [settings.data]);
+
+  const save = useMutation({
+    mutationFn: () =>
+      saveSettings({
+        card_fee_enabled: form!.card_fee_enabled,
+        card_fee_amount: Number(form!.card_fee_amount) || 0,
+        card_currency: form!.card_currency || "ETB",
+        free_window_days: form!.free_window_days,
+        triage_required: form!.triage_required,
+        doctor_assignment: form!.doctor_assignment,
+      }),
+    onSuccess: () => {
+      toast.success("Flow settings saved");
+      qc.invalidateQueries({ queryKey: ["settings"] });
+    },
+    onError: () => toast.error("Could not save settings"),
+  });
+
+  if (!form) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Patient flow</CardTitle>
+          <CardDescription>Card fee, triage, and doctor assignment.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            {settings.isError ? "Save the clinic profile first to configure the flow." : "Loading…"}
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const set = <K extends keyof ClinicSettings>(k: K, v: ClinicSettings[K]) => setForm((f) => (f ? { ...f, [k]: v } : f));
+  const disabled = !manage;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Patient flow</CardTitle>
+        <CardDescription>How patients are charged and routed. Walk-ins always pay; a doctor-booked follow-up is free within its window.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="space-y-1.5">
+            <Label>Card / consultation fee</Label>
+            <Select value={form.card_fee_enabled ? "on" : "off"} onValueChange={(v) => set("card_fee_enabled", v === "on")}>
+              <SelectTrigger disabled={disabled}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="on">Charged</SelectItem>
+                <SelectItem value="off">Not charged</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Fee amount</Label>
+            <Input
+              type="number"
+              inputMode="decimal"
+              value={form.card_fee_amount}
+              onChange={(e) => set("card_fee_amount", e.target.value)}
+              disabled={disabled || !form.card_fee_enabled}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Currency</Label>
+            <Input value={form.card_currency} onChange={(e) => set("card_currency", e.target.value)} disabled={disabled} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Follow-up free window (days)</Label>
+            <Input
+              type="number"
+              value={form.free_window_days}
+              onChange={(e) => set("free_window_days", Number(e.target.value))}
+              disabled={disabled}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Triage step</Label>
+            <Select value={form.triage_required ? "on" : "off"} onValueChange={(v) => set("triage_required", v === "on")}>
+              <SelectTrigger disabled={disabled}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="on">Required (default)</SelectItem>
+                <SelectItem value="off">Optional</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Doctor assignment</Label>
+            <Select value={form.doctor_assignment} onValueChange={(v) => set("doctor_assignment", v)}>
+              <SelectTrigger disabled={disabled}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="manual">Manual (reception/nurse)</SelectItem>
+                <SelectItem value="auto">Auto (next available)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        {manage && (
+          <div className="border-t pt-4">
+            <Button onClick={() => save.mutate()} loading={save.isPending}>
+              Save flow settings
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

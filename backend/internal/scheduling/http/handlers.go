@@ -155,7 +155,41 @@ func (h *Handlers) CheckIn(c *gin.Context) {
 	}
 	var req checkInRequest
 	_ = c.ShouldBindJSON(&req)
-	if err := h.svc.CheckIn(c.Request.Context(), aid, req.Priority); err != nil {
+	in := scheduling.CheckInInput{Priority: req.Priority, ToTriage: req.ToTriage}
+	if req.ProviderID != "" {
+		p, ok := decodeOpt(c, id.PrefixUser, req.ProviderID)
+		if !ok {
+			return
+		}
+		in.ProviderID = p
+	}
+	if err := h.svc.CheckIn(c.Request.Context(), aid, in); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+// MarkFollowup handles POST /appointments/:id/followup — flags the appointment
+// as a covered follow-up that is free of the card fee until free_until (RFC3339;
+// defaults to 30 days from now if omitted).
+func (h *Handlers) MarkFollowup(c *gin.Context) {
+	aid, ok := decodeID(c, id.PrefixAppointment, c.Param("id"))
+	if !ok {
+		return
+	}
+	var req followupRequest
+	_ = c.ShouldBindJSON(&req)
+	freeUntil := time.Now().AddDate(0, 0, 30)
+	if req.FreeUntil != "" {
+		t, err := time.Parse(time.RFC3339, req.FreeUntil)
+		if err != nil {
+			httpx.Fail(c, apperr.Validation("free_until must be RFC3339"))
+			return
+		}
+		freeUntil = t
+	}
+	if err := h.svc.MarkFollowup(c.Request.Context(), aid, freeUntil); err != nil {
 		httpx.Fail(c, err)
 		return
 	}
@@ -169,7 +203,7 @@ func (h *Handlers) WalkIn(c *gin.Context) {
 		httpx.Fail(c, apperr.Validation("branch_id, department_id and patient_id are required"))
 		return
 	}
-	in := scheduling.WalkInInput{Priority: req.Priority}
+	in := scheduling.WalkInInput{Priority: req.Priority, ToTriage: req.ToTriage}
 	var ok bool
 	if in.BranchID, ok = decodeID(c, id.PrefixBranch, req.BranchID); !ok {
 		return
@@ -180,6 +214,11 @@ func (h *Handlers) WalkIn(c *gin.Context) {
 	if in.PatientID, ok = decodeID(c, id.PrefixPatient, req.PatientID); !ok {
 		return
 	}
+	if req.ProviderID != "" {
+		if in.ProviderID, ok = decodeOpt(c, id.PrefixUser, req.ProviderID); !ok {
+			return
+		}
+	}
 	if err := h.svc.EnqueueWalkIn(c.Request.Context(), in); err != nil {
 		httpx.Fail(c, err)
 		return
@@ -187,13 +226,13 @@ func (h *Handlers) WalkIn(c *gin.Context) {
 	httpx.Created(c, gin.H{"status": "queued"})
 }
 
-// ListQueue handles GET /queue?department=.
+// ListQueue handles GET /queue?department=&stage=.
 func (h *Handlers) ListQueue(c *gin.Context) {
 	dept, ok := decodeID(c, id.PrefixDepartment, c.Query("department"))
 	if !ok {
 		return
 	}
-	entries, err := h.svc.ListQueue(c.Request.Context(), dept)
+	entries, err := h.svc.ListQueue(c.Request.Context(), dept, c.Query("stage"))
 	if err != nil {
 		httpx.Fail(c, err)
 		return
@@ -203,6 +242,56 @@ func (h *Handlers) ListQueue(c *gin.Context) {
 		out = append(out, toQueueDTO(e))
 	}
 	httpx.OK(c, out)
+}
+
+// Worklist handles GET /worklist?provider= — a doctor's "patients waiting for
+// me". Defaults to the authenticated user when no provider is given.
+func (h *Handlers) Worklist(c *gin.Context) {
+	var provider uuid.UUID
+	if q := c.Query("provider"); q != "" {
+		p, ok := decodeID(c, id.PrefixUser, q)
+		if !ok {
+			return
+		}
+		provider = p
+	} else if p, ok := httpx.PrincipalFrom(c); ok {
+		provider = p.UserID
+	} else {
+		httpx.Fail(c, apperr.Unauthenticated("authentication required"))
+		return
+	}
+	entries, err := h.svc.ListWorklist(c.Request.Context(), provider)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out := make([]worklistDTO, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, toWorklistDTO(e))
+	}
+	httpx.OK(c, out)
+}
+
+// Assign handles POST /queue/:id/assign — route a queue entry to a doctor.
+func (h *Handlers) Assign(c *gin.Context) {
+	qid, ok := decodeID(c, id.PrefixQueueEntry, c.Param("id"))
+	if !ok {
+		return
+	}
+	var req assignRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("provider_id is required"))
+		return
+	}
+	provider, ok := decodeID(c, id.PrefixUser, req.ProviderID)
+	if !ok {
+		return
+	}
+	if err := h.svc.AssignProvider(c.Request.Context(), qid, provider); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
 }
 
 // Transition handles POST /queue/:id/transition.

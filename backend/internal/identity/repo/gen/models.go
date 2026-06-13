@@ -42,6 +42,8 @@ type Appointment struct {
 	UpdatedAt    time.Time  `json:"updated_at"`
 	CreatedBy    *uuid.UUID `json:"created_by"`
 	DeletedAt    *time.Time `json:"deleted_at"`
+	IsFollowup   bool       `json:"is_followup"`
+	FreeUntil    *time.Time `json:"free_until"`
 }
 
 type Attachment struct {
@@ -99,17 +101,40 @@ type Branch struct {
 	DeletedAt    *time.Time `json:"deleted_at"`
 }
 
+type CardPayment struct {
+	ID            uuid.UUID      `json:"id"`
+	TenantID      uuid.UUID      `json:"tenant_id"`
+	BranchID      uuid.UUID      `json:"branch_id"`
+	PatientID     uuid.UUID      `json:"patient_id"`
+	AppointmentID *uuid.UUID     `json:"appointment_id"`
+	Amount        pgtype.Numeric `json:"amount"`
+	Currency      string         `json:"currency"`
+	Waived        bool           `json:"waived"`
+	WaiveReason   *string        `json:"waive_reason"`
+	PaidAt        time.Time      `json:"paid_at"`
+	ReceivedBy    *uuid.UUID     `json:"received_by"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+	DeletedAt     *time.Time     `json:"deleted_at"`
+}
+
 type Clinic struct {
-	ID             uuid.UUID  `json:"id"`
-	TenantID       uuid.UUID  `json:"tenant_id"`
-	Name           string     `json:"name"`
-	Timezone       string     `json:"timezone"`
-	Locale         string     `json:"locale"`
-	LogoStorageKey *string    `json:"logo_storage_key"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
-	CreatedBy      *uuid.UUID `json:"created_by"`
-	DeletedAt      *time.Time `json:"deleted_at"`
+	ID               uuid.UUID      `json:"id"`
+	TenantID         uuid.UUID      `json:"tenant_id"`
+	Name             string         `json:"name"`
+	Timezone         string         `json:"timezone"`
+	Locale           string         `json:"locale"`
+	LogoStorageKey   *string        `json:"logo_storage_key"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
+	CreatedBy        *uuid.UUID     `json:"created_by"`
+	DeletedAt        *time.Time     `json:"deleted_at"`
+	CardFeeEnabled   bool           `json:"card_fee_enabled"`
+	CardFeeAmount    pgtype.Numeric `json:"card_fee_amount"`
+	CardCurrency     string         `json:"card_currency"`
+	FreeWindowDays   int32          `json:"free_window_days"`
+	TriageRequired   bool           `json:"triage_required"`
+	DoctorAssignment string         `json:"doctor_assignment"`
 }
 
 type Condition struct {
@@ -137,6 +162,23 @@ type Department struct {
 	UpdatedAt             time.Time  `json:"updated_at"`
 	CreatedBy             *uuid.UUID `json:"created_by"`
 	DeletedAt             *time.Time `json:"deleted_at"`
+}
+
+type Encounter struct {
+	ID           uuid.UUID  `json:"id"`
+	TenantID     uuid.UUID  `json:"tenant_id"`
+	BranchID     uuid.UUID  `json:"branch_id"`
+	DepartmentID *uuid.UUID `json:"department_id"`
+	PatientID    uuid.UUID  `json:"patient_id"`
+	QueueEntryID *uuid.UUID `json:"queue_entry_id"`
+	ProviderID   *uuid.UUID `json:"provider_id"`
+	Status       string     `json:"status"`
+	StartedAt    time.Time  `json:"started_at"`
+	ClosedAt     *time.Time `json:"closed_at"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	CreatedBy    *uuid.UUID `json:"created_by"`
+	DeletedAt    *time.Time `json:"deleted_at"`
 }
 
 type EventOutbox struct {
@@ -226,22 +268,24 @@ type Plan struct {
 }
 
 type QueueEntry struct {
-	ID            uuid.UUID  `json:"id"`
-	TenantID      uuid.UUID  `json:"tenant_id"`
-	BranchID      uuid.UUID  `json:"branch_id"`
-	DepartmentID  uuid.UUID  `json:"department_id"`
-	PatientID     uuid.UUID  `json:"patient_id"`
-	AppointmentID *uuid.UUID `json:"appointment_id"`
-	State         string     `json:"state"`
-	Priority      int32      `json:"priority"`
-	EnqueuedAt    time.Time  `json:"enqueued_at"`
-	CalledAt      *time.Time `json:"called_at"`
-	StartedAt     *time.Time `json:"started_at"`
-	EndedAt       *time.Time `json:"ended_at"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	CreatedBy     *uuid.UUID `json:"created_by"`
-	DeletedAt     *time.Time `json:"deleted_at"`
+	ID                 uuid.UUID  `json:"id"`
+	TenantID           uuid.UUID  `json:"tenant_id"`
+	BranchID           uuid.UUID  `json:"branch_id"`
+	DepartmentID       uuid.UUID  `json:"department_id"`
+	PatientID          uuid.UUID  `json:"patient_id"`
+	AppointmentID      *uuid.UUID `json:"appointment_id"`
+	State              string     `json:"state"`
+	Priority           int32      `json:"priority"`
+	EnqueuedAt         time.Time  `json:"enqueued_at"`
+	CalledAt           *time.Time `json:"called_at"`
+	StartedAt          *time.Time `json:"started_at"`
+	EndedAt            *time.Time `json:"ended_at"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+	CreatedBy          *uuid.UUID `json:"created_by"`
+	DeletedAt          *time.Time `json:"deleted_at"`
+	Stage              string     `json:"stage"`
+	AssignedProviderID *uuid.UUID `json:"assigned_provider_id"`
 }
 
 type Resource struct {
@@ -353,4 +397,23 @@ type UserRoleScope struct {
 	BranchID     *uuid.UUID `json:"branch_id"`
 	DepartmentID *uuid.UUID `json:"department_id"`
 	CreatedAt    time.Time  `json:"created_at"`
+}
+
+type Vital struct {
+	ID          uuid.UUID      `json:"id"`
+	TenantID    uuid.UUID      `json:"tenant_id"`
+	EncounterID uuid.UUID      `json:"encounter_id"`
+	PatientID   uuid.UUID      `json:"patient_id"`
+	Systolic    *int32         `json:"systolic"`
+	Diastolic   *int32         `json:"diastolic"`
+	Pulse       *int32         `json:"pulse"`
+	TempC       pgtype.Numeric `json:"temp_c"`
+	RespRate    *int32         `json:"resp_rate"`
+	Spo2        *int32         `json:"spo2"`
+	WeightKg    pgtype.Numeric `json:"weight_kg"`
+	HeightCm    pgtype.Numeric `json:"height_cm"`
+	Notes       *string        `json:"notes"`
+	RecordedAt  time.Time      `json:"recorded_at"`
+	RecordedBy  *uuid.UUID     `json:"recorded_by"`
+	CreatedAt   time.Time      `json:"created_at"`
 }

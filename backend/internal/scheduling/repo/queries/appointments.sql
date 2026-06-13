@@ -35,3 +35,12 @@ UPDATE appointments
 SET status = @status, cancel_reason = @cancel_reason, updated_at = now()
 WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL
 RETURNING id;
+
+-- name: SetAppointmentFollowup :one
+-- Mark an appointment as a covered (doctor-booked) follow-up that is free of the
+-- card fee when attended on or before free_until. In Phase 3b the doctor sets
+-- this when booking a follow-up; in 3a reception can mark it manually.
+UPDATE appointments
+SET is_followup = @is_followup, free_until = @free_until, updated_at = now()
+WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL
+RETURNING id, patient_id;

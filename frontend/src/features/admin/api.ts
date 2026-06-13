@@ -35,6 +35,30 @@ export function createBranch(body: { name: string; code: string; address?: strin
 export function listDepartments() {
   return apiFetch<Department[]>("/org/departments");
 }
+
+// ---- clinic flow settings (Phase 3a) ----
+
+export interface ClinicSettings {
+  card_fee_enabled: boolean;
+  card_fee_amount: string;
+  card_currency: string;
+  free_window_days: number;
+  triage_required: boolean;
+  doctor_assignment: string; // "manual" | "auto"
+}
+export function getSettings() {
+  return apiFetch<ClinicSettings>("/org/settings");
+}
+export function saveSettings(body: {
+  card_fee_enabled: boolean;
+  card_fee_amount: number;
+  card_currency: string;
+  free_window_days: number;
+  triage_required: boolean;
+  doctor_assignment: string;
+}) {
+  return apiFetch<ClinicSettings>("/org/settings", { method: "PUT", body });
+}
 export function createDepartment(body: { branch_id: string; name: string; specialty?: string }) {
   return apiFetch<Department>("/org/departments", { method: "POST", body });
 }

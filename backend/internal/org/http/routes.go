@@ -15,6 +15,9 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	g.GET("/clinic", h.GetClinic)
 	g.PUT("/clinic", manage, h.SaveClinic)
 
+	g.GET("/settings", h.GetSettings)
+	g.PUT("/settings", manage, h.SaveSettings)
+
 	g.GET("/branches", h.ListBranches)
 	g.POST("/branches", manage, h.CreateBranch)
 	g.PUT("/branches/:id", manage, h.UpdateBranch)

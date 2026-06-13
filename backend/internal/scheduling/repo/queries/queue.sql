@@ -1,17 +1,39 @@
 -- name: CreateQueueEntry :one
-INSERT INTO queue_entries (tenant_id, branch_id, department_id, patient_id, appointment_id, priority, created_by)
-VALUES (@tenant_id, @branch_id, @department_id, @patient_id, @appointment_id, @priority, @created_by)
+INSERT INTO queue_entries (tenant_id, branch_id, department_id, patient_id, appointment_id, stage, assigned_provider_id, priority, created_by)
+VALUES (@tenant_id, @branch_id, @department_id, @patient_id, @appointment_id, @stage, @assigned_provider_id, @priority, @created_by)
 RETURNING id, branch_id, department_id;
 
 -- name: ListQueue :many
-SELECT q.id, q.patient_id, q.appointment_id, q.state, q.priority,
+SELECT q.id, q.patient_id, q.appointment_id, q.state, q.priority, q.stage, q.assigned_provider_id,
        q.enqueued_at, q.called_at, q.started_at, q.ended_at,
-       p.first_name, p.last_name, p.mrn
+       p.first_name, p.last_name, p.mrn,
+       u.full_name AS provider_name
 FROM queue_entries q
 JOIN patients p ON p.id = q.patient_id AND p.tenant_id = q.tenant_id
+LEFT JOIN users u ON u.id = q.assigned_provider_id AND u.tenant_id = q.tenant_id
 WHERE q.tenant_id = @tenant_id AND q.department_id = @department_id AND q.deleted_at IS NULL
   AND q.enqueued_at >= @since
+  AND (sqlc.narg(stage)::text IS NULL OR q.stage = sqlc.narg(stage))
 ORDER BY q.priority DESC, q.enqueued_at;
+
+-- name: ListWorklist :many
+SELECT q.id, q.patient_id, q.appointment_id, q.state, q.priority, q.stage, q.assigned_provider_id,
+       q.department_id, q.enqueued_at, q.called_at, q.started_at, q.ended_at,
+       p.first_name, p.last_name, p.mrn,
+       d.name AS department_name
+FROM queue_entries q
+JOIN patients p ON p.id = q.patient_id AND p.tenant_id = q.tenant_id
+LEFT JOIN departments d ON d.id = q.department_id AND d.tenant_id = q.tenant_id
+WHERE q.tenant_id = @tenant_id AND q.assigned_provider_id = @assigned_provider_id
+  AND q.deleted_at IS NULL AND q.state IN ('waiting','called','in_consult')
+  AND q.enqueued_at >= @since
+ORDER BY q.priority DESC, q.enqueued_at;
+
+-- name: AssignQueueProvider :one
+UPDATE queue_entries
+SET assigned_provider_id = @assigned_provider_id, stage = 'with_doctor', updated_at = now()
+WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL
+RETURNING id, branch_id, department_id;
 
 -- name: TransitionQueueEntry :one
 UPDATE queue_entries

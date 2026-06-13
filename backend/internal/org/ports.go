@@ -42,6 +42,26 @@ type Resource struct {
 	Type         string     `json:"type"`
 }
 
+// Settings holds the per-clinic flow configuration (Phase 3a).
+type Settings struct {
+	CardFeeEnabled   bool   `json:"card_fee_enabled"`
+	CardFeeAmount    string `json:"card_fee_amount"`
+	CardCurrency     string `json:"card_currency"`
+	FreeWindowDays   int    `json:"free_window_days"`
+	TriageRequired   bool   `json:"triage_required"`
+	DoctorAssignment string `json:"doctor_assignment"`
+}
+
+// SettingsInput updates the clinic flow settings.
+type SettingsInput struct {
+	CardFeeEnabled   bool
+	CardFeeAmount    string
+	CardCurrency     string
+	FreeWindowDays   int
+	TriageRequired   bool
+	DoctorAssignment string
+}
+
 type ClinicInput struct{ Name, Timezone, Locale string }
 
 type BranchInput struct {
@@ -71,6 +91,9 @@ type ResourceInput struct {
 type Service interface {
 	GetClinic(ctx context.Context) (*Clinic, error)
 	SaveClinic(ctx context.Context, in ClinicInput) (*Clinic, error)
+
+	GetSettings(ctx context.Context) (*Settings, error)
+	SaveSettings(ctx context.Context, in SettingsInput) (*Settings, error)
 
 	ListBranches(ctx context.Context) ([]Branch, error)
 	CreateBranch(ctx context.Context, in BranchInput) (*Branch, error)

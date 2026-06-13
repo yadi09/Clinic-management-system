@@ -12,20 +12,48 @@ import (
 	"github.com/google/uuid"
 )
 
+const assignQueueProvider = `-- name: AssignQueueProvider :one
+UPDATE queue_entries
+SET assigned_provider_id = $1, stage = 'with_doctor', updated_at = now()
+WHERE tenant_id = $2 AND id = $3 AND deleted_at IS NULL
+RETURNING id, branch_id, department_id
+`
+
+type AssignQueueProviderParams struct {
+	AssignedProviderID *uuid.UUID `json:"assigned_provider_id"`
+	TenantID           uuid.UUID  `json:"tenant_id"`
+	ID                 uuid.UUID  `json:"id"`
+}
+
+type AssignQueueProviderRow struct {
+	ID           uuid.UUID `json:"id"`
+	BranchID     uuid.UUID `json:"branch_id"`
+	DepartmentID uuid.UUID `json:"department_id"`
+}
+
+func (q *Queries) AssignQueueProvider(ctx context.Context, arg AssignQueueProviderParams) (AssignQueueProviderRow, error) {
+	row := q.db.QueryRow(ctx, assignQueueProvider, arg.AssignedProviderID, arg.TenantID, arg.ID)
+	var i AssignQueueProviderRow
+	err := row.Scan(&i.ID, &i.BranchID, &i.DepartmentID)
+	return i, err
+}
+
 const createQueueEntry = `-- name: CreateQueueEntry :one
-INSERT INTO queue_entries (tenant_id, branch_id, department_id, patient_id, appointment_id, priority, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO queue_entries (tenant_id, branch_id, department_id, patient_id, appointment_id, stage, assigned_provider_id, priority, created_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING id, branch_id, department_id
 `
 
 type CreateQueueEntryParams struct {
-	TenantID      uuid.UUID  `json:"tenant_id"`
-	BranchID      uuid.UUID  `json:"branch_id"`
-	DepartmentID  uuid.UUID  `json:"department_id"`
-	PatientID     uuid.UUID  `json:"patient_id"`
-	AppointmentID *uuid.UUID `json:"appointment_id"`
-	Priority      int32      `json:"priority"`
-	CreatedBy     *uuid.UUID `json:"created_by"`
+	TenantID           uuid.UUID  `json:"tenant_id"`
+	BranchID           uuid.UUID  `json:"branch_id"`
+	DepartmentID       uuid.UUID  `json:"department_id"`
+	PatientID          uuid.UUID  `json:"patient_id"`
+	AppointmentID      *uuid.UUID `json:"appointment_id"`
+	Stage              string     `json:"stage"`
+	AssignedProviderID *uuid.UUID `json:"assigned_provider_id"`
+	Priority           int32      `json:"priority"`
+	CreatedBy          *uuid.UUID `json:"created_by"`
 }
 
 type CreateQueueEntryRow struct {
@@ -41,6 +69,8 @@ func (q *Queries) CreateQueueEntry(ctx context.Context, arg CreateQueueEntryPara
 		arg.DepartmentID,
 		arg.PatientID,
 		arg.AppointmentID,
+		arg.Stage,
+		arg.AssignedProviderID,
 		arg.Priority,
 		arg.CreatedBy,
 	)
@@ -50,13 +80,16 @@ func (q *Queries) CreateQueueEntry(ctx context.Context, arg CreateQueueEntryPara
 }
 
 const listQueue = `-- name: ListQueue :many
-SELECT q.id, q.patient_id, q.appointment_id, q.state, q.priority,
+SELECT q.id, q.patient_id, q.appointment_id, q.state, q.priority, q.stage, q.assigned_provider_id,
        q.enqueued_at, q.called_at, q.started_at, q.ended_at,
-       p.first_name, p.last_name, p.mrn
+       p.first_name, p.last_name, p.mrn,
+       u.full_name AS provider_name
 FROM queue_entries q
 JOIN patients p ON p.id = q.patient_id AND p.tenant_id = q.tenant_id
+LEFT JOIN users u ON u.id = q.assigned_provider_id AND u.tenant_id = q.tenant_id
 WHERE q.tenant_id = $1 AND q.department_id = $2 AND q.deleted_at IS NULL
   AND q.enqueued_at >= $3
+  AND ($4::text IS NULL OR q.stage = $4)
 ORDER BY q.priority DESC, q.enqueued_at
 `
 
@@ -64,25 +97,34 @@ type ListQueueParams struct {
 	TenantID     uuid.UUID `json:"tenant_id"`
 	DepartmentID uuid.UUID `json:"department_id"`
 	Since        time.Time `json:"since"`
+	Stage        *string   `json:"stage"`
 }
 
 type ListQueueRow struct {
-	ID            uuid.UUID  `json:"id"`
-	PatientID     uuid.UUID  `json:"patient_id"`
-	AppointmentID *uuid.UUID `json:"appointment_id"`
-	State         string     `json:"state"`
-	Priority      int32      `json:"priority"`
-	EnqueuedAt    time.Time  `json:"enqueued_at"`
-	CalledAt      *time.Time `json:"called_at"`
-	StartedAt     *time.Time `json:"started_at"`
-	EndedAt       *time.Time `json:"ended_at"`
-	FirstName     string     `json:"first_name"`
-	LastName      string     `json:"last_name"`
-	Mrn           string     `json:"mrn"`
+	ID                 uuid.UUID  `json:"id"`
+	PatientID          uuid.UUID  `json:"patient_id"`
+	AppointmentID      *uuid.UUID `json:"appointment_id"`
+	State              string     `json:"state"`
+	Priority           int32      `json:"priority"`
+	Stage              string     `json:"stage"`
+	AssignedProviderID *uuid.UUID `json:"assigned_provider_id"`
+	EnqueuedAt         time.Time  `json:"enqueued_at"`
+	CalledAt           *time.Time `json:"called_at"`
+	StartedAt          *time.Time `json:"started_at"`
+	EndedAt            *time.Time `json:"ended_at"`
+	FirstName          string     `json:"first_name"`
+	LastName           string     `json:"last_name"`
+	Mrn                string     `json:"mrn"`
+	ProviderName       *string    `json:"provider_name"`
 }
 
 func (q *Queries) ListQueue(ctx context.Context, arg ListQueueParams) ([]ListQueueRow, error) {
-	rows, err := q.db.Query(ctx, listQueue, arg.TenantID, arg.DepartmentID, arg.Since)
+	rows, err := q.db.Query(ctx, listQueue,
+		arg.TenantID,
+		arg.DepartmentID,
+		arg.Since,
+		arg.Stage,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -96,6 +138,8 @@ func (q *Queries) ListQueue(ctx context.Context, arg ListQueueParams) ([]ListQue
 			&i.AppointmentID,
 			&i.State,
 			&i.Priority,
+			&i.Stage,
+			&i.AssignedProviderID,
 			&i.EnqueuedAt,
 			&i.CalledAt,
 			&i.StartedAt,
@@ -103,6 +147,83 @@ func (q *Queries) ListQueue(ctx context.Context, arg ListQueueParams) ([]ListQue
 			&i.FirstName,
 			&i.LastName,
 			&i.Mrn,
+			&i.ProviderName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWorklist = `-- name: ListWorklist :many
+SELECT q.id, q.patient_id, q.appointment_id, q.state, q.priority, q.stage, q.assigned_provider_id,
+       q.department_id, q.enqueued_at, q.called_at, q.started_at, q.ended_at,
+       p.first_name, p.last_name, p.mrn,
+       d.name AS department_name
+FROM queue_entries q
+JOIN patients p ON p.id = q.patient_id AND p.tenant_id = q.tenant_id
+LEFT JOIN departments d ON d.id = q.department_id AND d.tenant_id = q.tenant_id
+WHERE q.tenant_id = $1 AND q.assigned_provider_id = $2
+  AND q.deleted_at IS NULL AND q.state IN ('waiting','called','in_consult')
+  AND q.enqueued_at >= $3
+ORDER BY q.priority DESC, q.enqueued_at
+`
+
+type ListWorklistParams struct {
+	TenantID           uuid.UUID  `json:"tenant_id"`
+	AssignedProviderID *uuid.UUID `json:"assigned_provider_id"`
+	Since              time.Time  `json:"since"`
+}
+
+type ListWorklistRow struct {
+	ID                 uuid.UUID  `json:"id"`
+	PatientID          uuid.UUID  `json:"patient_id"`
+	AppointmentID      *uuid.UUID `json:"appointment_id"`
+	State              string     `json:"state"`
+	Priority           int32      `json:"priority"`
+	Stage              string     `json:"stage"`
+	AssignedProviderID *uuid.UUID `json:"assigned_provider_id"`
+	DepartmentID       uuid.UUID  `json:"department_id"`
+	EnqueuedAt         time.Time  `json:"enqueued_at"`
+	CalledAt           *time.Time `json:"called_at"`
+	StartedAt          *time.Time `json:"started_at"`
+	EndedAt            *time.Time `json:"ended_at"`
+	FirstName          string     `json:"first_name"`
+	LastName           string     `json:"last_name"`
+	Mrn                string     `json:"mrn"`
+	DepartmentName     *string    `json:"department_name"`
+}
+
+func (q *Queries) ListWorklist(ctx context.Context, arg ListWorklistParams) ([]ListWorklistRow, error) {
+	rows, err := q.db.Query(ctx, listWorklist, arg.TenantID, arg.AssignedProviderID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListWorklistRow{}
+	for rows.Next() {
+		var i ListWorklistRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PatientID,
+			&i.AppointmentID,
+			&i.State,
+			&i.Priority,
+			&i.Stage,
+			&i.AssignedProviderID,
+			&i.DepartmentID,
+			&i.EnqueuedAt,
+			&i.CalledAt,
+			&i.StartedAt,
+			&i.EndedAt,
+			&i.FirstName,
+			&i.LastName,
+			&i.Mrn,
+			&i.DepartmentName,
 		); err != nil {
 			return nil, err
 		}

@@ -22,7 +22,9 @@ export interface Appointment {
 export interface QueueEntry {
   id: string;
   patient_id: string;
+  assigned_provider_id?: string | null;
   state: string;
+  stage: string;
   priority: number;
   enqueued_at: string;
   called_at?: string;
@@ -30,6 +32,22 @@ export interface QueueEntry {
   ended_at?: string;
   patient_name: string;
   mrn: string;
+  provider_name?: string;
+}
+
+export interface WorklistEntry {
+  id: string;
+  patient_id: string;
+  department_id: string;
+  state: string;
+  stage: string;
+  priority: number;
+  enqueued_at: string;
+  called_at?: string;
+  started_at?: string;
+  patient_name: string;
+  mrn: string;
+  department_name?: string;
 }
 
 export interface BookBody {
@@ -57,17 +75,42 @@ export function rescheduleAppointment(id: string, body: Omit<BookBody, "branch_i
 export function setAppointmentStatus(id: string, status: string, cancelReason?: string) {
   return apiFetch<void>(`/appointments/${id}/status`, { method: "POST", body: { status, cancel_reason: cancelReason } });
 }
-export function checkInAppointment(id: string, priority = 0) {
-  return apiFetch<void>(`/appointments/${id}/check-in`, { method: "POST", body: { priority } });
+export interface CheckInOpts {
+  priority?: number;
+  to_triage?: boolean;
+  provider_id?: string;
+}
+export function checkInAppointment(id: string, opts: CheckInOpts = {}) {
+  return apiFetch<void>(`/appointments/${id}/check-in`, { method: "POST", body: { priority: 0, ...opts } });
+}
+/** Mark an appointment as a covered (doctor-booked) follow-up, free of the card fee within its window. */
+export function markFollowup(id: string, freeUntilISO?: string) {
+  return apiFetch<void>(`/appointments/${id}/followup`, { method: "POST", body: { free_until: freeUntilISO } });
 }
 
-export function listQueue(departmentId: string) {
-  return apiFetch<QueueEntry[]>(`/queue?department=${departmentId}`);
+export function listQueue(departmentId: string, stage?: string) {
+  const p = new URLSearchParams({ department: departmentId });
+  if (stage) p.set("stage", stage);
+  return apiFetch<QueueEntry[]>(`/queue?${p.toString()}`);
 }
 export function transitionQueue(id: string, state: string) {
   return apiFetch<void>(`/queue/${id}/transition`, { method: "POST", body: { state } });
 }
-export function walkIn(body: { branch_id: string; department_id: string; patient_id: string; priority?: number }) {
+export function assignProvider(id: string, providerId: string) {
+  return apiFetch<void>(`/queue/${id}/assign`, { method: "POST", body: { provider_id: providerId } });
+}
+export function listWorklist(providerId?: string) {
+  const q = providerId ? `?provider=${providerId}` : "";
+  return apiFetch<WorklistEntry[]>(`/worklist${q}`);
+}
+export function walkIn(body: {
+  branch_id: string;
+  department_id: string;
+  patient_id: string;
+  priority?: number;
+  to_triage?: boolean;
+  provider_id?: string;
+}) {
   return apiFetch<{ status: string }>("/queue/walk-in", { method: "POST", body });
 }
 

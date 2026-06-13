@@ -74,6 +74,66 @@ func (s *Service) SaveClinic(ctx context.Context, in org.ClinicInput) (*org.Clin
 	return s.GetClinic(ctx)
 }
 
+// GetSettings returns the clinic's flow configuration (card fee, triage, etc.).
+func (s *Service) GetSettings(ctx context.Context) (*org.Settings, error) {
+	tenantID, _ := actor(ctx)
+	var out *org.Settings
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		r, e := orgdb.New(tx).GetClinicSettings(ctx, tenantID)
+		if e != nil {
+			return e
+		}
+		out = &org.Settings{
+			CardFeeEnabled: r.CardFeeEnabled, CardFeeAmount: r.CardFeeAmount, CardCurrency: r.CardCurrency,
+			FreeWindowDays: int(r.FreeWindowDays), TriageRequired: r.TriageRequired, DoctorAssignment: r.DoctorAssignment,
+		}
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, apperr.NotFound("CLINIC_NOT_CONFIGURED", "clinic profile not configured")
+		}
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+// SaveSettings updates the clinic's flow configuration.
+func (s *Service) SaveSettings(ctx context.Context, in org.SettingsInput) (*org.Settings, error) {
+	tenantID, _ := actor(ctx)
+	if in.DoctorAssignment != "manual" && in.DoctorAssignment != "auto" {
+		in.DoctorAssignment = "manual"
+	}
+	if strings.TrimSpace(in.CardCurrency) == "" {
+		in.CardCurrency = "ETB"
+	}
+	if strings.TrimSpace(in.CardFeeAmount) == "" {
+		in.CardFeeAmount = "0"
+	}
+	if in.FreeWindowDays < 0 {
+		in.FreeWindowDays = 0
+	}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := orgdb.New(tx)
+		cur, e := q.GetClinicSettings(ctx, tenantID)
+		if e != nil {
+			return e
+		}
+		return q.UpdateClinicSettings(ctx, orgdb.UpdateClinicSettingsParams{
+			CardFeeEnabled: in.CardFeeEnabled, CardFeeAmount: in.CardFeeAmount, CardCurrency: in.CardCurrency,
+			FreeWindowDays: int32(in.FreeWindowDays), TriageRequired: in.TriageRequired, DoctorAssignment: in.DoctorAssignment,
+			TenantID: tenantID, ID: cur.ID,
+		})
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, apperr.NotFound("CLINIC_NOT_CONFIGURED", "configure the clinic profile first")
+		}
+		return nil, apperr.Internal(err)
+	}
+	return s.GetSettings(ctx)
+}
+
 func (s *Service) ListBranches(ctx context.Context) ([]org.Branch, error) {
 	tenantID, _ := actor(ctx)
 	var out []org.Branch

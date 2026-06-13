@@ -224,6 +224,40 @@ func (q *Queries) RescheduleAppointment(ctx context.Context, arg RescheduleAppoi
 	return id, err
 }
 
+const setAppointmentFollowup = `-- name: SetAppointmentFollowup :one
+UPDATE appointments
+SET is_followup = $1, free_until = $2, updated_at = now()
+WHERE tenant_id = $3 AND id = $4 AND deleted_at IS NULL
+RETURNING id, patient_id
+`
+
+type SetAppointmentFollowupParams struct {
+	IsFollowup bool       `json:"is_followup"`
+	FreeUntil  *time.Time `json:"free_until"`
+	TenantID   uuid.UUID  `json:"tenant_id"`
+	ID         uuid.UUID  `json:"id"`
+}
+
+type SetAppointmentFollowupRow struct {
+	ID        uuid.UUID `json:"id"`
+	PatientID uuid.UUID `json:"patient_id"`
+}
+
+// Mark an appointment as a covered (doctor-booked) follow-up that is free of the
+// card fee when attended on or before free_until. In Phase 3b the doctor sets
+// this when booking a follow-up; in 3a reception can mark it manually.
+func (q *Queries) SetAppointmentFollowup(ctx context.Context, arg SetAppointmentFollowupParams) (SetAppointmentFollowupRow, error) {
+	row := q.db.QueryRow(ctx, setAppointmentFollowup,
+		arg.IsFollowup,
+		arg.FreeUntil,
+		arg.TenantID,
+		arg.ID,
+	)
+	var i SetAppointmentFollowupRow
+	err := row.Scan(&i.ID, &i.PatientID)
+	return i, err
+}
+
 const setAppointmentStatus = `-- name: SetAppointmentStatus :one
 UPDATE appointments
 SET status = $1, cancel_reason = $2, updated_at = now()

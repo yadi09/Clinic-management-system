@@ -197,6 +197,39 @@ func (q *Queries) GetClinic(ctx context.Context, tenantID uuid.UUID) (GetClinicR
 	return i, err
 }
 
+const getClinicSettings = `-- name: GetClinicSettings :one
+SELECT id, card_fee_enabled, card_fee_amount, card_currency, free_window_days, triage_required, doctor_assignment
+FROM clinics
+WHERE tenant_id = $1 AND deleted_at IS NULL
+ORDER BY created_at
+LIMIT 1
+`
+
+type GetClinicSettingsRow struct {
+	ID               uuid.UUID `json:"id"`
+	CardFeeEnabled   bool      `json:"card_fee_enabled"`
+	CardFeeAmount    string    `json:"card_fee_amount"`
+	CardCurrency     string    `json:"card_currency"`
+	FreeWindowDays   int32     `json:"free_window_days"`
+	TriageRequired   bool      `json:"triage_required"`
+	DoctorAssignment string    `json:"doctor_assignment"`
+}
+
+func (q *Queries) GetClinicSettings(ctx context.Context, tenantID uuid.UUID) (GetClinicSettingsRow, error) {
+	row := q.db.QueryRow(ctx, getClinicSettings, tenantID)
+	var i GetClinicSettingsRow
+	err := row.Scan(
+		&i.ID,
+		&i.CardFeeEnabled,
+		&i.CardFeeAmount,
+		&i.CardCurrency,
+		&i.FreeWindowDays,
+		&i.TriageRequired,
+		&i.DoctorAssignment,
+	)
+	return i, err
+}
+
 const listBranches = `-- name: ListBranches :many
 
 SELECT id, clinic_id, name, code, address, phone, is_active, created_at
@@ -428,6 +461,43 @@ func (q *Queries) UpdateClinic(ctx context.Context, arg UpdateClinicParams) erro
 		arg.Name,
 		arg.Timezone,
 		arg.Locale,
+		arg.TenantID,
+		arg.ID,
+	)
+	return err
+}
+
+const updateClinicSettings = `-- name: UpdateClinicSettings :exec
+UPDATE clinics SET
+  card_fee_enabled = $1,
+  card_fee_amount = $2,
+  card_currency = $3,
+  free_window_days = $4,
+  triage_required = $5,
+  doctor_assignment = $6,
+  updated_at = now()
+WHERE tenant_id = $7 AND id = $8 AND deleted_at IS NULL
+`
+
+type UpdateClinicSettingsParams struct {
+	CardFeeEnabled   bool      `json:"card_fee_enabled"`
+	CardFeeAmount    string    `json:"card_fee_amount"`
+	CardCurrency     string    `json:"card_currency"`
+	FreeWindowDays   int32     `json:"free_window_days"`
+	TriageRequired   bool      `json:"triage_required"`
+	DoctorAssignment string    `json:"doctor_assignment"`
+	TenantID         uuid.UUID `json:"tenant_id"`
+	ID               uuid.UUID `json:"id"`
+}
+
+func (q *Queries) UpdateClinicSettings(ctx context.Context, arg UpdateClinicSettingsParams) error {
+	_, err := q.db.Exec(ctx, updateClinicSettings,
+		arg.CardFeeEnabled,
+		arg.CardFeeAmount,
+		arg.CardCurrency,
+		arg.FreeWindowDays,
+		arg.TriageRequired,
+		arg.DoctorAssignment,
 		arg.TenantID,
 		arg.ID,
 	)

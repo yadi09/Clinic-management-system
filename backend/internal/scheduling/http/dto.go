@@ -35,7 +35,9 @@ type statusRequest struct {
 }
 
 type checkInRequest struct {
-	Priority int `json:"priority"`
+	Priority   int    `json:"priority"`
+	ToTriage   bool   `json:"to_triage"`
+	ProviderID string `json:"provider_id"`
 }
 
 type walkInRequest struct {
@@ -43,6 +45,8 @@ type walkInRequest struct {
 	DepartmentID string `json:"department_id" binding:"required"`
 	PatientID    string `json:"patient_id" binding:"required"`
 	Priority     int    `json:"priority"`
+	ToTriage     bool   `json:"to_triage"`
+	ProviderID   string `json:"provider_id"`
 }
 
 type transitionRequest struct {
@@ -51,6 +55,14 @@ type transitionRequest struct {
 
 type priorityRequest struct {
 	Priority int `json:"priority"`
+}
+
+type assignRequest struct {
+	ProviderID string `json:"provider_id" binding:"required"`
+}
+
+type followupRequest struct {
+	FreeUntil string `json:"free_until"` // RFC3339; optional (defaults applied by caller)
 }
 
 // --- responses (prefixed external IDs; times serialize as RFC3339) ---
@@ -76,16 +88,34 @@ func toAppointmentDTO(a scheduling.Appointment) appointmentDTO {
 }
 
 type queueEntryDTO struct {
-	ID        string `json:"id"`
-	PatientID string `json:"patient_id"`
+	ID                 string  `json:"id"`
+	PatientID          string  `json:"patient_id"`
+	AssignedProviderID *string `json:"assigned_provider_id"`
 	scheduling.QueueEntry
 }
 
 func toQueueDTO(q scheduling.QueueEntry) queueEntryDTO {
 	return queueEntryDTO{
-		ID:         id.Encode(id.PrefixQueueEntry, q.ID),
-		PatientID:  id.Encode(id.PrefixPatient, q.PatientID),
-		QueueEntry: q,
+		ID:                 id.Encode(id.PrefixQueueEntry, q.ID),
+		PatientID:          id.Encode(id.PrefixPatient, q.PatientID),
+		AssignedProviderID: encodePtr(id.PrefixUser, q.AssignedProviderID),
+		QueueEntry:         q,
+	}
+}
+
+type worklistDTO struct {
+	ID           string `json:"id"`
+	PatientID    string `json:"patient_id"`
+	DepartmentID string `json:"department_id"`
+	scheduling.WorklistEntry
+}
+
+func toWorklistDTO(w scheduling.WorklistEntry) worklistDTO {
+	return worklistDTO{
+		ID:            id.Encode(id.PrefixQueueEntry, w.ID),
+		PatientID:     id.Encode(id.PrefixPatient, w.PatientID),
+		DepartmentID:  id.Encode(id.PrefixDepartment, w.DepartmentID),
+		WorklistEntry: w,
 	}
 }
 

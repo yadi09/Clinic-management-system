@@ -24,6 +24,10 @@ import (
 	"github.com/reicb/clinicsaas/internal/kernel/ratelimit"
 	"github.com/reicb/clinicsaas/internal/kernel/storage"
 
+	billinghttp "github.com/reicb/clinicsaas/internal/billing/http"
+	billingservice "github.com/reicb/clinicsaas/internal/billing/service"
+	clinicalhttp "github.com/reicb/clinicsaas/internal/clinical/http"
+	clinicalservice "github.com/reicb/clinicsaas/internal/clinical/service"
 	identityhttp "github.com/reicb/clinicsaas/internal/identity/http"
 	identityservice "github.com/reicb/clinicsaas/internal/identity/service"
 	orghttp "github.com/reicb/clinicsaas/internal/org/http"
@@ -77,13 +81,15 @@ func main() {
 		CookiePath:    "/api/v1/auth",
 	})
 
-	// Org + Patient + Scheduling modules.
+	// Org + Patient + Scheduling + Billing + Clinical modules.
 	orgHandlers := orghttp.NewHandlers(orgservice.NewService(db))
 	patientSvc := patientservice.NewService(db, store, publisher)
 	patientHandlers := patienthttp.NewHandlers(patientSvc)
 	schedulingHandlers := schedulinghttp.NewHandlers(schedulingservice.NewService(db, publisher), db)
+	billingHandlers := billinghttp.NewHandlers(billingservice.NewService(db, publisher))
+	clinicalHandlers := clinicalhttp.NewHandlers(clinicalservice.NewService(db, publisher))
 
-	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers)
+	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -118,6 +124,8 @@ func newRouter(
 	orgHandlers *orghttp.Handlers,
 	patientHandlers *patienthttp.Handlers,
 	schedulingHandlers *schedulinghttp.Handlers,
+	billingHandlers *billinghttp.Handlers,
+	clinicalHandlers *clinicalhttp.Handlers,
 ) *gin.Engine {
 	if cfg.IsProd() {
 		gin.SetMode(gin.ReleaseMode)
@@ -152,7 +160,9 @@ func newRouter(
 	identityHandlers.RegisterProtected(protected)        // /auth/me
 	orgHandlers.RegisterProtected(protected)             // /org/...
 	patientHandlers.RegisterProtected(protected)         // /patients/...
-	schedulingHandlers.RegisterProtected(protected)      // /appointments/..., /queue/...
+	schedulingHandlers.RegisterProtected(protected)      // /appointments/..., /queue/..., /worklist
+	billingHandlers.RegisterProtected(protected)         // /billing/card/...
+	clinicalHandlers.RegisterProtected(protected)        // /visits/...
 
 	// SSE queue stream authenticates via ?token= (EventSource can't set headers).
 	v1.GET("/queue/stream", httpx.RequireAuthQuery(tokens), schedulingHandlers.QueueStream)

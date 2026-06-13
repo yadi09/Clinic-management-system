@@ -157,8 +157,29 @@ func (s *Service) SetStatus(ctx context.Context, id uuid.UUID, status, cancelRea
 	return nil
 }
 
+// MarkFollowup flags an appointment as a covered (doctor-booked) follow-up that
+// is free of the card fee when attended on or before freeUntil.
+func (s *Service) MarkFollowup(ctx context.Context, id uuid.UUID, freeUntil time.Time) error {
+	tenantID, _ := actorOf(ctx)
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		_, e := schedulingdb.New(tx).SetAppointmentFollowup(ctx, schedulingdb.SetAppointmentFollowupParams{
+			IsFollowup: true, FreeUntil: &freeUntil, TenantID: tenantID, ID: id,
+		})
+		return e
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return apperr.NotFound("APPOINTMENT_NOT_FOUND", "appointment not found")
+	}
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}
+
 // CheckIn marks an appointment checked-in and enqueues the patient (FR-QUE-01).
-func (s *Service) CheckIn(ctx context.Context, id uuid.UUID, priority int) error {
+// Routing: to triage (nurse assigns later) or straight to a doctor (the chosen
+// provider, defaulting to the appointment's booked provider).
+func (s *Service) CheckIn(ctx context.Context, id uuid.UUID, in scheduling.CheckInInput) error {
 	tenantID, actor := actorOf(ctx)
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := schedulingdb.New(tx)
@@ -172,9 +193,17 @@ func (s *Service) CheckIn(ctx context.Context, id uuid.UUID, priority int) error
 		if _, e := q.SetAppointmentStatus(ctx, schedulingdb.SetAppointmentStatusParams{Status: "checked_in", TenantID: tenantID, ID: id}); e != nil {
 			return e
 		}
+		stage := "with_doctor"
+		prov := in.ProviderID
+		if in.ToTriage {
+			stage = "triage"
+		} else if prov == nil {
+			p := appt.ProviderID
+			prov = &p
+		}
 		qe, e := q.CreateQueueEntry(ctx, schedulingdb.CreateQueueEntryParams{
 			TenantID: tenantID, BranchID: appt.BranchID, DepartmentID: *appt.DepartmentID, PatientID: appt.PatientID,
-			AppointmentID: &id, Priority: int32(priority), CreatedBy: actor,
+			AppointmentID: &id, Stage: stage, AssignedProviderID: prov, Priority: int32(in.Priority), CreatedBy: actor,
 		})
 		if e != nil {
 			return e
@@ -200,9 +229,13 @@ func (s *Service) EnqueueWalkIn(ctx context.Context, in scheduling.WalkInInput) 
 	tenantID, actor := actorOf(ctx)
 	return s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := schedulingdb.New(tx)
+		stage := "with_doctor"
+		if in.ToTriage {
+			stage = "triage"
+		}
 		qe, e := q.CreateQueueEntry(ctx, schedulingdb.CreateQueueEntryParams{
 			TenantID: tenantID, BranchID: in.BranchID, DepartmentID: in.DepartmentID, PatientID: in.PatientID,
-			AppointmentID: nil, Priority: int32(in.Priority), CreatedBy: actor,
+			AppointmentID: nil, Stage: stage, AssignedProviderID: in.ProviderID, Priority: int32(in.Priority), CreatedBy: actor,
 		})
 		if e != nil {
 			return e
@@ -212,20 +245,26 @@ func (s *Service) EnqueueWalkIn(ctx context.Context, in scheduling.WalkInInput) 
 	})
 }
 
-// ListQueue returns today's queue entries for a department.
-func (s *Service) ListQueue(ctx context.Context, departmentID uuid.UUID) ([]scheduling.QueueEntry, error) {
+// ListQueue returns today's queue entries for a department, optionally filtered
+// to a stage ("triage" or "with_doctor"; empty = all).
+func (s *Service) ListQueue(ctx context.Context, departmentID uuid.UUID, stage string) ([]scheduling.QueueEntry, error) {
 	tenantID, _ := actorOf(ctx)
+	var st *string
+	if stage != "" {
+		st = &stage
+	}
 	var out []scheduling.QueueEntry
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		rows, e := schedulingdb.New(tx).ListQueue(ctx, schedulingdb.ListQueueParams{TenantID: tenantID, DepartmentID: departmentID, Since: startOfDayUTC()})
+		rows, e := schedulingdb.New(tx).ListQueue(ctx, schedulingdb.ListQueueParams{TenantID: tenantID, DepartmentID: departmentID, Since: startOfDayUTC(), Stage: st})
 		if e != nil {
 			return e
 		}
 		for _, r := range rows {
 			out = append(out, scheduling.QueueEntry{
-				ID: r.ID, PatientID: r.PatientID, AppointmentID: r.AppointmentID, State: r.State, Priority: int(r.Priority),
+				ID: r.ID, PatientID: r.PatientID, AppointmentID: r.AppointmentID, AssignedProviderID: r.AssignedProviderID,
+				State: r.State, Stage: r.Stage, Priority: int(r.Priority),
 				EnqueuedAt: r.EnqueuedAt, CalledAt: r.CalledAt, StartedAt: r.StartedAt, EndedAt: r.EndedAt,
-				PatientName: r.FirstName + " " + r.LastName, MRN: r.Mrn,
+				PatientName: r.FirstName + " " + r.LastName, MRN: r.Mrn, ProviderName: deref(r.ProviderName),
 			})
 		}
 		return nil
@@ -234,6 +273,53 @@ func (s *Service) ListQueue(ctx context.Context, departmentID uuid.UUID) ([]sche
 		return nil, apperr.Internal(err)
 	}
 	return out, nil
+}
+
+// ListWorklist returns the active patients assigned to one provider (their
+// personal "patients waiting for me" list), across departments.
+func (s *Service) ListWorklist(ctx context.Context, providerID uuid.UUID) ([]scheduling.WorklistEntry, error) {
+	tenantID, _ := actorOf(ctx)
+	var out []scheduling.WorklistEntry
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		rows, e := schedulingdb.New(tx).ListWorklist(ctx, schedulingdb.ListWorklistParams{TenantID: tenantID, AssignedProviderID: &providerID, Since: startOfDayUTC()})
+		if e != nil {
+			return e
+		}
+		for _, r := range rows {
+			out = append(out, scheduling.WorklistEntry{
+				ID: r.ID, PatientID: r.PatientID, DepartmentID: r.DepartmentID, State: r.State, Stage: r.Stage, Priority: int(r.Priority),
+				EnqueuedAt: r.EnqueuedAt, CalledAt: r.CalledAt, StartedAt: r.StartedAt,
+				PatientName: r.FirstName + " " + r.LastName, MRN: r.Mrn, DepartmentName: deref(r.DepartmentName),
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+// AssignProvider routes a queue entry to a doctor (and moves it to the
+// with-doctor stage), so it appears on that doctor's worklist.
+func (s *Service) AssignProvider(ctx context.Context, id, providerID uuid.UUID) error {
+	tenantID, _ := actorOf(ctx)
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := schedulingdb.New(tx)
+		r, e := q.AssignQueueProvider(ctx, schedulingdb.AssignQueueProviderParams{AssignedProviderID: &providerID, TenantID: tenantID, ID: id})
+		if e != nil {
+			return e
+		}
+		notifyQueue(ctx, q, tenantID, r.BranchID, r.DepartmentID)
+		return nil
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return apperr.NotFound("QUEUE_ENTRY_NOT_FOUND", "queue entry not found")
+	}
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
 }
 
 // TransitionQueue moves a queue entry to a new state (FR-QUE-01).

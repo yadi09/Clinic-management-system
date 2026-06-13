@@ -21,10 +21,11 @@ import (
 
 func main() {
 	command := "up"
+	var args []string
 	if len(os.Args) > 1 {
 		command = os.Args[1]
+		args = os.Args[2:]
 	}
-	args := os.Args[2:]
 
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
