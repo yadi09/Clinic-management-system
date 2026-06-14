@@ -34,6 +34,8 @@ import (
 	orgservice "github.com/reicb/clinicsaas/internal/org/service"
 	patienthttp "github.com/reicb/clinicsaas/internal/patient/http"
 	patientservice "github.com/reicb/clinicsaas/internal/patient/service"
+	pharmacyhttp "github.com/reicb/clinicsaas/internal/pharmacy/http"
+	pharmacyservice "github.com/reicb/clinicsaas/internal/pharmacy/service"
 	schedulinghttp "github.com/reicb/clinicsaas/internal/scheduling/http"
 	schedulingservice "github.com/reicb/clinicsaas/internal/scheduling/service"
 )
@@ -88,8 +90,9 @@ func main() {
 	schedulingHandlers := schedulinghttp.NewHandlers(schedulingservice.NewService(db, publisher), db)
 	billingHandlers := billinghttp.NewHandlers(billingservice.NewService(db, publisher))
 	clinicalHandlers := clinicalhttp.NewHandlers(clinicalservice.NewService(db, publisher))
+	pharmacyHandlers := pharmacyhttp.NewHandlers(pharmacyservice.NewService(db, publisher))
 
-	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers)
+	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, pharmacyHandlers)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -126,6 +129,7 @@ func newRouter(
 	schedulingHandlers *schedulinghttp.Handlers,
 	billingHandlers *billinghttp.Handlers,
 	clinicalHandlers *clinicalhttp.Handlers,
+	pharmacyHandlers *pharmacyhttp.Handlers,
 ) *gin.Engine {
 	if cfg.IsProd() {
 		gin.SetMode(gin.ReleaseMode)
@@ -162,7 +166,8 @@ func newRouter(
 	patientHandlers.RegisterProtected(protected)         // /patients/...
 	schedulingHandlers.RegisterProtected(protected)      // /appointments/..., /queue/..., /worklist
 	billingHandlers.RegisterProtected(protected)         // /billing/card/...
-	clinicalHandlers.RegisterProtected(protected)        // /visits/...
+	clinicalHandlers.RegisterProtected(protected)        // /visits/..., /encounters/..., /diagnosis-*
+	pharmacyHandlers.RegisterProtected(protected)        // /pharmacy/...
 
 	// SSE queue stream authenticates via ?token= (EventSource can't set headers).
 	v1.GET("/queue/stream", httpx.RequireAuthQuery(tokens), schedulingHandlers.QueueStream)

@@ -220,6 +220,36 @@ type DiagnosisCategory struct {
 	DeletedAt *time.Time `json:"deleted_at"`
 }
 
+type Drug struct {
+	ID           uuid.UUID  `json:"id"`
+	TenantID     uuid.UUID  `json:"tenant_id"`
+	Name         string     `json:"name"`
+	Form         *string    `json:"form"`
+	DrugClass    *string    `json:"drug_class"`
+	IsControlled bool       `json:"is_controlled"`
+	UnitPrice    string     `json:"unit_price"`
+	ReorderLevel int32      `json:"reorder_level"`
+	IsActive     bool       `json:"is_active"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	CreatedBy    *uuid.UUID `json:"created_by"`
+	DeletedAt    *time.Time `json:"deleted_at"`
+}
+
+type DrugBatch struct {
+	ID          uuid.UUID  `json:"id"`
+	TenantID    uuid.UUID  `json:"tenant_id"`
+	DrugID      uuid.UUID  `json:"drug_id"`
+	BatchNo     string     `json:"batch_no"`
+	ExpiryDate  *time.Time `json:"expiry_date"`
+	QtyOnHand   int32      `json:"qty_on_hand"`
+	Quarantined bool       `json:"quarantined"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	CreatedBy   *uuid.UUID `json:"created_by"`
+	DeletedAt   *time.Time `json:"deleted_at"`
+}
+
 type Encounter struct {
 	ID           uuid.UUID  `json:"id"`
 	TenantID     uuid.UUID  `json:"tenant_id"`
@@ -310,6 +340,36 @@ type Permission struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+type PharmacySale struct {
+	ID               uuid.UUID  `json:"id"`
+	TenantID         uuid.UUID  `json:"tenant_id"`
+	SaleType         string     `json:"sale_type"`
+	PatientID        *uuid.UUID `json:"patient_id"`
+	PrescriptionID   *uuid.UUID `json:"prescription_id"`
+	Status           string     `json:"status"`
+	Subtotal         string     `json:"subtotal"`
+	Total            string     `json:"total"`
+	Currency         string     `json:"currency"`
+	CounsellingNotes *string    `json:"counselling_notes"`
+	PaidAt           *time.Time `json:"paid_at"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	CreatedBy        *uuid.UUID `json:"created_by"`
+	DeletedAt        *time.Time `json:"deleted_at"`
+}
+
+type PharmacySaleItem struct {
+	ID          uuid.UUID  `json:"id"`
+	TenantID    uuid.UUID  `json:"tenant_id"`
+	SaleID      uuid.UUID  `json:"sale_id"`
+	DrugID      *uuid.UUID `json:"drug_id"`
+	BatchID     *uuid.UUID `json:"batch_id"`
+	Description string     `json:"description"`
+	Qty         int32      `json:"qty"`
+	UnitPrice   string     `json:"unit_price"`
+	LineTotal   string     `json:"line_total"`
+}
+
 type Plan struct {
 	ID                 uuid.UUID `json:"id"`
 	Code               string    `json:"code"`
@@ -333,6 +393,8 @@ type Prescription struct {
 	UpdatedAt   time.Time  `json:"updated_at"`
 	CreatedBy   *uuid.UUID `json:"created_by"`
 	DeletedAt   *time.Time `json:"deleted_at"`
+	DispensedAt *time.Time `json:"dispensed_at"`
+	RxNo        int64      `json:"rx_no"`
 }
 
 type PrescriptionItem struct {
@@ -410,6 +472,20 @@ type Session struct {
 	RevokedAt        *time.Time `json:"revoked_at"`
 	RotatedFrom      *uuid.UUID `json:"rotated_from"`
 	CreatedAt        time.Time  `json:"created_at"`
+}
+
+type StockMovement struct {
+	ID        uuid.UUID  `json:"id"`
+	TenantID  uuid.UUID  `json:"tenant_id"`
+	DrugID    uuid.UUID  `json:"drug_id"`
+	BatchID   *uuid.UUID `json:"batch_id"`
+	Delta     int32      `json:"delta"`
+	Reason    string     `json:"reason"`
+	RefType   *string    `json:"ref_type"`
+	RefID     *uuid.UUID `json:"ref_id"`
+	Note      *string    `json:"note"`
+	CreatedAt time.Time  `json:"created_at"`
+	CreatedBy *uuid.UUID `json:"created_by"`
 }
 
 type Subscription struct {

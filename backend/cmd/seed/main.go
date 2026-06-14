@@ -62,6 +62,9 @@ var basePermissions = []struct{ Code, Desc string }{
 	{"payment.collect", "Collect the card / consultation fee"},
 	{"encounter.manage", "Conduct consultations and EMR"},
 	{"prescription.create", "Create prescriptions"},
+	{"pharmacy.read", "View the drug catalog and stock"},
+	{"pharmacy.dispense", "Dispense prescriptions"},
+	{"pharmacy.stock", "Adjust pharmacy stock"},
 	{"settings.manage", "Manage tenant/branch settings"},
 	{"audit.read", "View audit logs"},
 }
@@ -117,6 +120,65 @@ func seedDiagnosisCatalog(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) er
 			 ON CONFLICT DO NOTHING`,
 			tenantID, catID[e.Cat], e.Code, e.Name); err != nil {
 			return fmt.Errorf("diagnosis entry %s: %w", e.Code, err)
+		}
+	}
+	return nil
+}
+
+// seedPharmacy inserts a starter drug catalog and stock batches (managers extend
+// it). Idempotent.
+func seedPharmacy(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) error {
+	type drug struct {
+		Name, Form, Class, Price string
+		Controlled               bool
+		Reorder                  int
+	}
+	drugs := []drug{
+		{"Azithromycin 500mg", "Tablet", "Macrolide", "2.50", false, 50},
+		{"Amoxicillin 500mg", "Capsule", "Penicillin", "0.80", false, 60},
+		{"Cetirizine 10mg", "Tablet", "Antihistamine", "0.30", false, 100},
+		{"Tramadol 50mg", "Capsule", "Opioid", "1.20", true, 20},
+		{"Salbutamol inhaler", "Inhaler", "Bronchodilator", "6.40", false, 30},
+		{"Metformin 500mg", "Tablet", "Biguanide", "0.20", false, 150},
+	}
+	drugID := map[string]uuid.UUID{}
+	for _, d := range drugs {
+		var did uuid.UUID
+		err := tx.QueryRow(ctx,
+			`SELECT id FROM drugs WHERE tenant_id=$1 AND lower(name)=lower($2) AND deleted_at IS NULL`,
+			tenantID, d.Name).Scan(&did)
+		if errors.Is(err, pgx.ErrNoRows) {
+			if err = tx.QueryRow(ctx,
+				`INSERT INTO drugs (tenant_id, name, form, drug_class, is_controlled, unit_price, reorder_level)
+				 VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+				tenantID, d.Name, d.Form, d.Class, d.Controlled, d.Price, d.Reorder).Scan(&did); err != nil {
+				return fmt.Errorf("drug %s: %w", d.Name, err)
+			}
+		} else if err != nil {
+			return fmt.Errorf("drug %s: %w", d.Name, err)
+		}
+		drugID[d.Name] = did
+	}
+	type batch struct {
+		Drug, No, Expiry string
+		Qty              int
+	}
+	batches := []batch{
+		{"Amoxicillin 500mg", "AM-2025-11", "2025-11-01", 40},
+		{"Azithromycin 500mg", "AZ-2026-04", "2027-04-01", 240},
+		{"Cetirizine 10mg", "CT-2024-09", "2024-09-01", 0},
+		{"Cetirizine 10mg", "CT-2026-01", "2027-01-01", 520},
+		{"Salbutamol inhaler", "SB-2026-02", "2027-02-01", 45},
+		{"Tramadol 50mg", "TR-2025-12", "2025-12-01", 20},
+		{"Metformin 500mg", "MF-2026-03", "2027-03-01", 700},
+	}
+	for _, b := range batches {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO drug_batches (tenant_id, drug_id, batch_no, expiry_date, qty_on_hand)
+			 SELECT $1,$2,$3,$4::date,$5
+			 WHERE NOT EXISTS (SELECT 1 FROM drug_batches WHERE tenant_id=$1 AND drug_id=$2 AND batch_no=$3)`,
+			tenantID, drugID[b.Drug], b.No, b.Expiry, b.Qty); err != nil {
+			return fmt.Errorf("batch %s: %w", b.No, err)
 		}
 	}
 	return nil
@@ -239,6 +301,7 @@ func main() {
 			"doctor":         {"patient.read", "patient.search", "encounter.manage", "prescription.create", "queue.manage", "appointment.manage"},
 			"nurse":          {"patient.read", "patient.search", "triage.manage", "queue.manage"},
 			"cashier":        {"payment.collect", "patient.read", "patient.search"},
+			"pharmacist":     {"patient.read", "patient.search", "pharmacy.read", "pharmacy.dispense", "pharmacy.stock"},
 		}
 		for code, perms := range roleGrants {
 			rid, ok := roleIDs[code]
@@ -286,6 +349,10 @@ func main() {
 		}
 		// Starter diagnosis catalog (admins extend it in Settings).
 		if e := seedDiagnosisCatalog(ctx, tx, tenantID); e != nil {
+			return e
+		}
+		// Starter drug catalog + stock (pharmacy managers extend it).
+		if e := seedPharmacy(ctx, tx, tenantID); e != nil {
 			return e
 		}
 		return nil

@@ -40,6 +40,10 @@ const (
 	PrefixRxItem         = "rxi"
 	PrefixDiagCategory   = "dgc"
 	PrefixDiagCatalog    = "dgx"
+	PrefixPrescription   = "rx"
+	PrefixDrug           = "drg"
+	PrefixBatch          = "bat"
+	PrefixSale           = "sal"
 )
 
 // base32 lower-case, no padding. Decoding is case-insensitive.

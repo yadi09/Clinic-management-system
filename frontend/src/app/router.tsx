@@ -17,6 +17,10 @@ import { ReceptionPage } from "@/features/scheduling/pages/ReceptionPage";
 import { TriagePage } from "@/features/scheduling/pages/TriagePage";
 import { WorklistPage } from "@/features/scheduling/pages/WorklistPage";
 import { EncounterWorkspacePage } from "@/features/clinical/pages/EncounterWorkspacePage";
+import { DispenseQueuePage } from "@/features/pharmacy/pages/DispenseQueuePage";
+import { DispensePage } from "@/features/pharmacy/pages/DispensePage";
+import { BatchesPage } from "@/features/pharmacy/pages/BatchesPage";
+import { DrugCatalogPage } from "@/features/pharmacy/pages/DrugCatalogPage";
 import { NotFoundPage } from "@/features/misc/NotFoundPage";
 
 export function AppRoutes() {
@@ -40,6 +44,10 @@ export function AppRoutes() {
           <Route path="/queue" element={<QueuePage />} />
           <Route path="/worklist" element={<WorklistPage />} />
           <Route path="/encounter/:queueEntryId" element={<EncounterWorkspacePage />} />
+          <Route path="/pharmacy/queue" element={<DispenseQueuePage />} />
+          <Route path="/pharmacy/dispense/:rxId" element={<DispensePage />} />
+          <Route path="/pharmacy/batches" element={<BatchesPage />} />
+          <Route path="/pharmacy/catalog" element={<DrugCatalogPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
