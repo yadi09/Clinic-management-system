@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowLeft, BellRing, Check, FlaskConical, Send, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BellRing, Check, FlaskConical, Printer, Send, ShieldCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -15,6 +15,44 @@ import { accession, getItem, markNotified, saveResults, submitResults, validateI
 function when(iso?: string) {
   if (!iso) return "";
   return new Date(iso).toLocaleString([], { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function esc(s: string) {
+  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
+}
+
+// printReport opens a clean, print-styled window for a resulted/validated sample.
+function printReport(d: OrderItemDetail) {
+  const w = window.open("", "_blank", "width=820,height=900");
+  if (!w) return;
+  const rows = d.analytes
+    .map((a) => {
+      const ref = [a.ref_low, a.ref_high].some(Boolean) ? `${a.ref_low ?? ""}–${a.ref_high ?? ""}${a.unit ? ` ${a.unit}` : ""}` : "—";
+      const flag = (a.flag || "normal").toUpperCase();
+      const cls = a.flag === "critical" ? "crit" : a.flag === "high" || a.flag === "low" ? "abn" : "";
+      return `<tr class="${cls}"><td>${esc(a.name)}</td><td>${esc(a.value || "—")}${a.value && a.unit ? " " + esc(a.unit) : ""}</td><td>${ref}</td><td>${flag}</td></tr>`;
+    })
+    .join("");
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Lab report S-${d.sample_no}</title>
+    <style>
+      body{font:13px/1.45 system-ui,Segoe UI,Roboto,sans-serif;color:#0f172a;margin:32px}
+      h1{font-size:18px;margin:0 0 2px} .muted{color:#64748b}
+      .head{display:flex;justify-content:space-between;border-bottom:2px solid #0f172a;padding-bottom:8px;margin-bottom:14px}
+      table{width:100%;border-collapse:collapse;margin-top:10px} th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #e2e8f0}
+      th{font-size:11px;text-transform:uppercase;color:#64748b}
+      tr.abn td{background:#fffbeb} tr.crit td{background:#fef2f2;font-weight:600;color:#b91c1c}
+      .foot{margin-top:24px;font-size:11px;color:#64748b}
+    </style></head><body>
+    <div class="head"><div><h1>Laboratory Report</h1><div class="muted">${esc(d.test_name)} · Sample S-${d.sample_no}</div></div>
+    <div style="text-align:right"><div><strong>${esc(d.patient_name)}</strong></div><div class="muted">MRN ${esc(d.mrn)}</div></div></div>
+    <div class="muted">Priority ${esc(d.priority)}${d.ordered_by ? " · Ordered by " + esc(d.ordered_by) : ""} · Status ${esc(d.status)}</div>
+    <table><thead><tr><th>Analyte</th><th>Result</th><th>Reference</th><th>Flag</th></tr></thead><tbody>${rows}</tbody></table>
+    ${d.critical ? `<p style="color:#b91c1c;font-weight:600;margin-top:12px">Critical value${d.notified_at ? " — notified " + esc(when(d.notified_at)) + (d.notified_by ? " by " + esc(d.notified_by) : "") : " — NOT YET COMMUNICATED"}</p>` : ""}
+    <div class="foot">Generated ${esc(new Date().toLocaleString())} · This report is for the named patient only.</div>
+    </body></html>`);
+  w.document.close();
+  w.focus();
+  w.print();
 }
 
 const FLAG: Record<string, { label: string; cls: string }> = {
@@ -158,11 +196,18 @@ function ItemInner({ d, onChanged, onBack }: { d: OrderItemDetail; onChanged: ()
         <Card className="p-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-h3">Results</h2>
-            {released && (
-              <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
-                <ShieldCheck className="mr-1 h-3.5 w-3.5" /> Validated
-              </Badge>
-            )}
+            <div className="flex items-center gap-2">
+              {(released || d.status === "resulted") && (
+                <Button size="sm" variant="outline" onClick={() => printReport(d)}>
+                  <Printer className="h-3.5 w-3.5" /> Print report
+                </Button>
+              )}
+              {released && (
+                <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                  <ShieldCheck className="mr-1 h-3.5 w-3.5" /> Validated
+                </Badge>
+              )}
+            </div>
           </div>
           <table className="w-full text-sm">
             <thead className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">

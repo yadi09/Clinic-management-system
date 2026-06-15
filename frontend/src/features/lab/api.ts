@@ -156,3 +156,28 @@ export function resultsInbox(providerId?: string) {
 export function inboxCount() {
   return apiFetch<{ count: number }>("/lab/inbox/count");
 }
+
+// ---- Phase 5b-2: catalog import + barcode/sample lookup ----
+
+export interface ImportRow {
+  test_code: string;
+  test_name: string;
+  specimen?: string;
+  analyte_name?: string;
+  unit?: string;
+  ref_low?: string;
+  ref_high?: string;
+  critical_low?: string;
+  critical_high?: string;
+}
+export interface ImportResult {
+  tests_created: number;
+  analytes_added: number;
+  rows_skipped_dup: number;
+}
+export function importCatalog(rows: ImportRow[]) {
+  return apiFetch<ImportResult>("/lab/catalog/import", { method: "POST", body: { rows } });
+}
+export function findSample(sampleNo: number) {
+  return apiFetch<{ id: string; status: string }>(`/lab/find-sample?sample_no=${sampleNo}`);
+}

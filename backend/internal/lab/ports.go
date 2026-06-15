@@ -121,6 +121,32 @@ type ResultInput struct {
 	Value     string
 }
 
+// CatalogImportRow is one CSV line: a test (by code) and one of its analytes.
+type CatalogImportRow struct {
+	TestCode     string
+	TestName     string
+	Specimen     string
+	AnalyteName  string
+	Unit         string
+	RefLow       string
+	RefHigh      string
+	CriticalLow  string
+	CriticalHigh string
+}
+
+// CatalogImportResult summarises a bulk import.
+type CatalogImportResult struct {
+	TestsCreated   int `json:"tests_created"`
+	AnalytesAdded  int `json:"analytes_added"`
+	RowsSkippedDup int `json:"rows_skipped_dup"`
+}
+
+// SampleRef resolves a scanned sample number to an item id + status.
+type SampleRef struct {
+	ID     uuid.UUID `json:"-"`
+	Status string    `json:"status"`
+}
+
 // EncounterOrderItem / EncounterOrder show a doctor their ordered labs + results.
 type EncounterOrderItem struct {
 	SampleNo int64           `json:"sample_no"`
@@ -147,6 +173,8 @@ type Service interface {
 	ListAnalytes(ctx context.Context, testID uuid.UUID) ([]Analyte, error)
 	CreateTest(ctx context.Context, code, name, specimen string) (*LabTest, error)
 	AddAnalyte(ctx context.Context, testID uuid.UUID, in Analyte) error
+	ImportCatalog(ctx context.Context, rows []CatalogImportRow) (*CatalogImportResult, error)
+	FindSample(ctx context.Context, sampleNo int64) (*SampleRef, error)
 
 	CreateOrder(ctx context.Context, in OrderInput) (*Order, error)
 	EncounterLabs(ctx context.Context, encounterID uuid.UUID) ([]EncounterOrder, error)

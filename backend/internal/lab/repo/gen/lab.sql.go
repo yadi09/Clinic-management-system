@@ -211,6 +211,29 @@ func (q *Queries) CreateLabTest(ctx context.Context, arg CreateLabTestParams) (C
 	return i, err
 }
 
+const findOrderItemBySampleNo = `-- name: FindOrderItemBySampleNo :one
+SELECT id, status FROM lab_order_items
+WHERE tenant_id = $1 AND sample_no = $2
+`
+
+type FindOrderItemBySampleNoParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	SampleNo int64     `json:"sample_no"`
+}
+
+type FindOrderItemBySampleNoRow struct {
+	ID     uuid.UUID `json:"id"`
+	Status string    `json:"status"`
+}
+
+// Barcode/sample lookup: a scanner types the sample number; resolve it to an item.
+func (q *Queries) FindOrderItemBySampleNo(ctx context.Context, arg FindOrderItemBySampleNoParams) (FindOrderItemBySampleNoRow, error) {
+	row := q.db.QueryRow(ctx, findOrderItemBySampleNo, arg.TenantID, arg.SampleNo)
+	var i FindOrderItemBySampleNoRow
+	err := row.Scan(&i.ID, &i.Status)
+	return i, err
+}
+
 const getLabTest = `-- name: GetLabTest :one
 SELECT id, code, name, specimen, is_active FROM lab_tests
 WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
@@ -232,6 +255,37 @@ type GetLabTestRow struct {
 func (q *Queries) GetLabTest(ctx context.Context, arg GetLabTestParams) (GetLabTestRow, error) {
 	row := q.db.QueryRow(ctx, getLabTest, arg.TenantID, arg.ID)
 	var i GetLabTestRow
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.Specimen,
+		&i.IsActive,
+	)
+	return i, err
+}
+
+const getLabTestByCode = `-- name: GetLabTestByCode :one
+SELECT id, code, name, specimen, is_active FROM lab_tests
+WHERE tenant_id = $1 AND lower(code) = lower($2) AND deleted_at IS NULL
+`
+
+type GetLabTestByCodeParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	Code     string    `json:"code"`
+}
+
+type GetLabTestByCodeRow struct {
+	ID       uuid.UUID `json:"id"`
+	Code     string    `json:"code"`
+	Name     string    `json:"name"`
+	Specimen *string   `json:"specimen"`
+	IsActive bool      `json:"is_active"`
+}
+
+func (q *Queries) GetLabTestByCode(ctx context.Context, arg GetLabTestByCodeParams) (GetLabTestByCodeRow, error) {
+	row := q.db.QueryRow(ctx, getLabTestByCode, arg.TenantID, arg.Code)
+	var i GetLabTestByCodeRow
 	err := row.Scan(
 		&i.ID,
 		&i.Code,

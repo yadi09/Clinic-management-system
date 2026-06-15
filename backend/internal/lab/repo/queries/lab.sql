@@ -13,6 +13,10 @@ ORDER BY t.name;
 SELECT id, code, name, specimen, is_active FROM lab_tests
 WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
 
+-- name: GetLabTestByCode :one
+SELECT id, code, name, specimen, is_active FROM lab_tests
+WHERE tenant_id = @tenant_id AND lower(code) = lower(@code) AND deleted_at IS NULL;
+
 -- name: CreateLabTest :one
 INSERT INTO lab_tests (tenant_id, code, name, specimen, created_by)
 VALUES (@tenant_id, @code, @name, @specimen, @created_by)
@@ -88,6 +92,11 @@ WHERE i.tenant_id = @tenant_id AND o.deleted_at IS NULL
   AND (sqlc.narg(status)::text IS NULL OR i.status = sqlc.narg(status))
 ORDER BY (o.priority = 'stat') DESC, (o.priority = 'urgent') DESC, i.created_at
 LIMIT 200;
+
+-- name: FindOrderItemBySampleNo :one
+-- Barcode/sample lookup: a scanner types the sample number; resolve it to an item.
+SELECT id, status FROM lab_order_items
+WHERE tenant_id = @tenant_id AND sample_no = @sample_no;
 
 -- name: GetOrderItem :one
 SELECT i.id, i.sample_no, i.status, i.specimen, i.test_id, i.order_id,

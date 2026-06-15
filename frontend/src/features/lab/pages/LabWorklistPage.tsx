@@ -1,11 +1,15 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { FlaskConical } from "lucide-react";
+import { FlaskConical, ScanLine } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { worklist, type WorklistItem } from "@/features/lab/api";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/sonner";
+import { AppError } from "@/lib/api-client";
+import { findSample, worklist, type WorklistItem } from "@/features/lab/api";
 
 function waitMins(iso: string) {
   return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
@@ -38,11 +42,45 @@ export function LabWorklistPage() {
 
   const rows = buckets[tab] ?? [];
 
+  const [scan, setScan] = useState("");
+  const [finding, setFinding] = useState(false);
+  const lookup = async () => {
+    const n = parseInt(scan.replace(/[^0-9]/g, ""), 10); // tolerate an "S-" prefix from a scanner
+    if (!n) {
+      toast.error("Enter a sample number");
+      return;
+    }
+    setFinding(true);
+    try {
+      const ref = await findSample(n);
+      navigate(`/lab/items/${ref.id}`);
+    } catch (e) {
+      toast.error(e instanceof AppError ? e.message : "Sample not found");
+    } finally {
+      setFinding(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1>Laboratory worklist</h1>
-        <p className="text-sm text-muted-foreground">Collect samples, enter results, release to the ordering doctor.</p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1>Laboratory worklist</h1>
+          <p className="text-sm text-muted-foreground">Collect samples, enter results, release to the ordering doctor.</p>
+        </div>
+        <div className="flex items-end gap-2">
+          <div className="relative">
+            <ScanLine className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              className="w-44 pl-8"
+              placeholder="Scan / sample #"
+              value={scan}
+              onChange={(e) => setScan(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") lookup(); }}
+            />
+          </div>
+          <Button variant="outline" loading={finding} onClick={lookup}>Find</Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-1 border-b">

@@ -2,6 +2,8 @@
 package http
 
 import (
+	"strconv"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
@@ -136,6 +138,57 @@ func (h *Handlers) AddAnalyte(c *gin.Context) {
 		return
 	}
 	httpx.NoContent(c)
+}
+
+type importRequest struct {
+	Rows []struct {
+		TestCode     string `json:"test_code"`
+		TestName     string `json:"test_name"`
+		Specimen     string `json:"specimen"`
+		AnalyteName  string `json:"analyte_name"`
+		Unit         string `json:"unit"`
+		RefLow       string `json:"ref_low"`
+		RefHigh      string `json:"ref_high"`
+		CriticalLow  string `json:"critical_low"`
+		CriticalHigh string `json:"critical_high"`
+	} `json:"rows"`
+}
+
+// ImportCatalog handles POST /lab/catalog/import — bulk tests + analytes.
+func (h *Handlers) ImportCatalog(c *gin.Context) {
+	var req importRequest
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.Rows) == 0 {
+		httpx.Fail(c, apperr.Validation("at least one row is required"))
+		return
+	}
+	rows := make([]lab.CatalogImportRow, 0, len(req.Rows))
+	for _, r := range req.Rows {
+		rows = append(rows, lab.CatalogImportRow{
+			TestCode: r.TestCode, TestName: r.TestName, Specimen: r.Specimen, AnalyteName: r.AnalyteName,
+			Unit: r.Unit, RefLow: r.RefLow, RefHigh: r.RefHigh, CriticalLow: r.CriticalLow, CriticalHigh: r.CriticalHigh,
+		})
+	}
+	res, err := h.svc.ImportCatalog(c.Request.Context(), rows)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, res)
+}
+
+// FindSample handles GET /lab/items/find?sample_no= — barcode/sample lookup.
+func (h *Handlers) FindSample(c *gin.Context) {
+	n, err := strconv.ParseInt(c.Query("sample_no"), 10, 64)
+	if err != nil || n <= 0 {
+		httpx.Fail(c, apperr.Validation("a numeric sample_no is required"))
+		return
+	}
+	ref, err := h.svc.FindSample(c.Request.Context(), n)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"id": id.Encode(id.PrefixLabItem, ref.ID), "status": ref.Status})
 }
 
 // ---- orders + doctor views ----

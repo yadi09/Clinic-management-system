@@ -113,6 +113,96 @@ func (s *Service) AddAnalyte(ctx context.Context, testID uuid.UUID, in lab.Analy
 	return nil
 }
 
+// ImportCatalog bulk-loads tests + analytes (one row per analyte). Tests are
+// reused/created by code; an analyte already present on its test is skipped. The
+// whole import is one transaction (all-or-nothing).
+func (s *Service) ImportCatalog(ctx context.Context, rows []lab.CatalogImportRow) (*lab.CatalogImportResult, error) {
+	tenantID, actor := actorOf(ctx)
+	res := &lab.CatalogImportResult{}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := labdb.New(tx)
+		testByCode := map[string]uuid.UUID{}
+		seen := map[uuid.UUID]map[string]bool{} // testID -> lower(analyte name) set
+		for _, r := range rows {
+			code, name := strings.TrimSpace(r.TestCode), strings.TrimSpace(r.TestName)
+			if code == "" || name == "" {
+				continue
+			}
+			lc := strings.ToLower(code)
+			tid, ok := testByCode[lc]
+			if !ok {
+				ex, e := q.GetLabTestByCode(ctx, labdb.GetLabTestByCodeParams{TenantID: tenantID, Code: code})
+				switch {
+				case e == nil:
+					tid = ex.ID
+				case errors.Is(e, pgx.ErrNoRows):
+					created, e2 := q.CreateLabTest(ctx, labdb.CreateLabTestParams{TenantID: tenantID, Code: code, Name: name, Specimen: strPtr(r.Specimen), CreatedBy: actor})
+					if e2 != nil {
+						return e2
+					}
+					tid = created.ID
+					res.TestsCreated++
+				default:
+					return e
+				}
+				testByCode[lc] = tid
+				set := map[string]bool{}
+				cur, e := q.ListAnalytesByTest(ctx, labdb.ListAnalytesByTestParams{TenantID: tenantID, TestID: tid})
+				if e != nil {
+					return e
+				}
+				for _, a := range cur {
+					set[strings.ToLower(a.Name)] = true
+				}
+				seen[tid] = set
+			}
+			an := strings.TrimSpace(r.AnalyteName)
+			if an == "" {
+				continue
+			}
+			if seen[tid][strings.ToLower(an)] {
+				res.RowsSkippedDup++
+				continue
+			}
+			if e := q.CreateAnalyte(ctx, labdb.CreateAnalyteParams{
+				TenantID: tenantID, TestID: tid, Name: an, Unit: strPtr(r.Unit),
+				RefLow: strPtr(r.RefLow), RefHigh: strPtr(r.RefHigh), CriticalLow: strPtr(r.CriticalLow), CriticalHigh: strPtr(r.CriticalHigh),
+				SortOrder: int32(len(seen[tid])),
+			}); e != nil {
+				return e
+			}
+			seen[tid][strings.ToLower(an)] = true
+			res.AnalytesAdded++
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return res, nil
+}
+
+// FindSample resolves a scanned/typed sample number to its item id + status.
+func (s *Service) FindSample(ctx context.Context, sampleNo int64) (*lab.SampleRef, error) {
+	tenantID, _ := actorOf(ctx)
+	var out *lab.SampleRef
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		r, e := labdb.New(tx).FindOrderItemBySampleNo(ctx, labdb.FindOrderItemBySampleNoParams{TenantID: tenantID, SampleNo: sampleNo})
+		if e != nil {
+			return e
+		}
+		out = &lab.SampleRef{ID: r.ID, Status: r.Status}
+		return nil
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, apperr.NotFound("SAMPLE_NOT_FOUND", "no sample with that number")
+	}
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
 // ---- orders ----
 
 func (s *Service) CreateOrder(ctx context.Context, in lab.OrderInput) (*lab.Order, error) {

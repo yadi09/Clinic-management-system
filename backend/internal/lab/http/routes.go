@@ -18,6 +18,7 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	mgr := httpx.RequirePermission("lab.manage")
 	g.POST("/tests", mgr, h.CreateTest)
 	g.POST("/tests/:id/analytes", mgr, h.AddAnalyte)
+	g.POST("/catalog/import", mgr, h.ImportCatalog)
 
 	// Orders + doctor views.
 	order := httpx.RequirePermission("lab.order")
@@ -31,6 +32,7 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	// Technician processing.
 	proc := httpx.RequirePermission("lab.process")
 	g.GET("/worklist", proc, h.Worklist)
+	g.GET("/find-sample", proc, h.FindSample) // barcode/sample lookup
 	// Sample detail is readable by the tech, the ordering doctor and the validator.
 	g.GET("/items/:id", httpx.RequireAnyPermission("lab.process", "lab.order", "lab.validate"), h.GetItem)
 	g.POST("/items/:id/accession", proc, h.Accession)

@@ -1,33 +1,59 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
-import { addAnalyte, createTest, listAnalytes, listTests, type LabTest } from "@/features/lab/api";
+import { addAnalyte, createTest, importCatalog, listAnalytes, listTests, type ImportRow, type LabTest } from "@/features/lab/api";
+
+const IMPORT_COLS = ["test_code", "test_name", "specimen", "analyte_name", "unit", "ref_low", "ref_high", "critical_low", "critical_high"];
+
+// parseCsv accepts an optional header row; values here are simple (no embedded commas).
+function parseCsv(text: string): ImportRow[] {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return [];
+  const start = lines[0].toLowerCase().includes("test_code") ? 1 : 0;
+  const rows: ImportRow[] = [];
+  for (let i = start; i < lines.length; i++) {
+    const c = lines[i].split(",").map((s) => s.trim());
+    if (!c[0]) continue;
+    rows.push({
+      test_code: c[0], test_name: c[1] ?? "", specimen: c[2] ?? "", analyte_name: c[3] ?? "",
+      unit: c[4] ?? "", ref_low: c[5] ?? "", ref_high: c[6] ?? "", critical_low: c[7] ?? "", critical_high: c[8] ?? "",
+    });
+  }
+  return rows;
+}
 
 export function LabCatalogPage() {
   const qc = useQueryClient();
   const tests = useQuery({ queryKey: ["lab-tests"], queryFn: () => listTests(false) });
   const [open, setOpen] = useState<string | null>(null);
   const [newTest, setNewTest] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1>Lab test catalog</h1>
           <p className="text-sm text-muted-foreground">Tests/panels and their analytes with reference &amp; critical ranges.</p>
         </div>
-        <Button onClick={() => setNewTest(true)}>
-          <Plus className="h-4 w-4" /> New test
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setImporting(true)}>
+            <Upload className="h-4 w-4" /> Import CSV
+          </Button>
+          <Button onClick={() => setNewTest(true)}>
+            <Plus className="h-4 w-4" /> New test
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-2">
@@ -54,7 +80,45 @@ export function LabCatalogPage() {
       </div>
 
       <NewTestDialog open={newTest} onOpenChange={setNewTest} onCreated={() => qc.invalidateQueries({ queryKey: ["lab-tests"] })} />
+      <ImportDialog open={importing} onOpenChange={setImporting} onDone={() => qc.invalidateQueries({ queryKey: ["lab-tests"] })} />
     </div>
+  );
+}
+
+function ImportDialog({ open, onOpenChange, onDone }: { open: boolean; onOpenChange: (v: boolean) => void; onDone: () => void }) {
+  const [text, setText] = useState("");
+  const rows = parseCsv(text);
+  const mut = useMutation({
+    mutationFn: () => importCatalog(rows),
+    onSuccess: (r) => {
+      toast.success(`Imported: ${r.tests_created} test(s), ${r.analytes_added} analyte(s)${r.rows_skipped_dup ? `, ${r.rows_skipped_dup} dup skipped` : ""}`);
+      setText("");
+      onOpenChange(false);
+      onDone();
+    },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Import failed — check the numeric columns"),
+  });
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Import catalog (CSV)</DialogTitle></DialogHeader>
+        <p className="text-xs text-muted-foreground">
+          One row per analyte. Columns: <span className="font-mono">{IMPORT_COLS.join(",")}</span>. Tests are reused/created by code; existing analytes are skipped.
+        </p>
+        <Textarea
+          rows={8}
+          className="font-mono text-xs"
+          placeholder={"test_code,test_name,specimen,analyte_name,unit,ref_low,ref_high,critical_low,critical_high\nTSH,Thyroid stimulating hormone,Serum,TSH,mIU/L,0.4,4.0,0.1,10"}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
+        <DialogFooter>
+          <span className="mr-auto self-center text-xs text-muted-foreground">{rows.length} row{rows.length === 1 ? "" : "s"} parsed</span>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button disabled={rows.length === 0} loading={mut.isPending} onClick={() => mut.mutate()}>Import</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

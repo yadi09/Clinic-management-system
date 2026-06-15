@@ -94,7 +94,7 @@ export function AppShell() {
       <div className="flex">
         {/* Left nav rail (brand-blue) */}
         <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-60 shrink-0 flex-col bg-brand px-3 py-4 text-brand-foreground md:flex">
-          <nav className="flex-1 space-y-6">
+          <nav className="min-h-0 flex-1 space-y-6 overflow-y-auto pr-1">
             {sections.map((section, i) => (
               <div key={i}>
                 {section.heading && (
