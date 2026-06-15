@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, UserCog, Settings, CalendarDays, ListChecks, ClipboardCheck, Activity, Stethoscope, Pill, Boxes, BookOpen, ShoppingCart, Gauge, Tags, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Users, UserCog, Settings, CalendarDays, ListChecks, ClipboardCheck, Activity, Stethoscope, Pill, Boxes, BookOpen, ShoppingCart, Gauge, Tags, Truck, ClipboardList, BarChart3, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   to: string;
@@ -35,6 +35,9 @@ export const navSections: NavSection[] = [
       { to: "/pharmacy/batches", label: "Batches & expiry", icon: Boxes, perm: ["pharmacy.read", "pharmacy.stock"] },
       { to: "/pharmacy/dashboard", label: "Pharmacy dashboard", icon: Gauge, perm: ["pharmacy.manage"] },
       { to: "/pharmacy/admin/catalog", label: "Catalog admin", icon: Tags, perm: ["pharmacy.manage"] },
+      { to: "/pharmacy/purchasing", label: "Purchasing", icon: Truck, perm: ["pharmacy.manage"] },
+      { to: "/pharmacy/stock-control", label: "Stock control", icon: ClipboardList, perm: ["pharmacy.stock"] },
+      { to: "/pharmacy/reports", label: "Reports", icon: BarChart3, perm: ["pharmacy.manage"] },
     ],
   },
   {

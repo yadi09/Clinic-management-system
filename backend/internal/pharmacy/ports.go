@@ -174,4 +174,105 @@ type Service interface {
 	UpdateDrug(ctx context.Context, id uuid.UUID, in DrugInput) error
 	SellOTC(ctx context.Context, in OtcInput) (*Sale, error)
 	Dashboard(ctx context.Context) (*Dashboard, error)
+
+	// Phase 4b-2: purchasing, stock control, reports.
+	ListSuppliers(ctx context.Context) ([]Supplier, error)
+	CreateSupplier(ctx context.Context, in SupplierInput) (*Supplier, error)
+	ListPOs(ctx context.Context) ([]PO, error)
+	GetPO(ctx context.Context, id uuid.UUID) (*PODetail, error)
+	CreatePO(ctx context.Context, in POInput) (*PO, error)
+	SetPOStatus(ctx context.Context, id uuid.UUID, status string) error
+	ReceivePO(ctx context.Context, in ReceiveInput) error
+
+	CreateStockCount(ctx context.Context, note string) (uuid.UUID, error)
+	ListStockCounts(ctx context.Context) ([]StockCount, error)
+	GetStockCount(ctx context.Context, id uuid.UUID) (*StockCountDetail, error)
+	SetCounted(ctx context.Context, itemID uuid.UUID, counted int) error
+	AdjustCountItem(ctx context.Context, itemID uuid.UUID) error
+	ApproveStockCount(ctx context.Context, id uuid.UUID) error
+
+	Report(ctx context.Context, kind string) (*Report, error)
+}
+
+// --- Phase 4b-2 types ---
+
+type Supplier struct {
+	ID           uuid.UUID `json:"-"`
+	Name         string    `json:"name"`
+	Contact      string    `json:"contact,omitempty"`
+	LeadTimeDays int       `json:"lead_time_days"`
+	IsActive     bool      `json:"is_active"`
+}
+type SupplierInput struct {
+	Name         string
+	Contact      string
+	LeadTimeDays int
+}
+
+type POLineInput struct {
+	DrugID   uuid.UUID
+	Qty      int
+	UnitCost float64
+}
+type POInput struct {
+	SupplierID   uuid.UUID
+	ExpectedDate *time.Time
+	Notes        string
+	Lines        []POLineInput
+}
+type PO struct {
+	ID           uuid.UUID  `json:"-"`
+	PONo         int64      `json:"po_no"`
+	Supplier     string     `json:"supplier"`
+	Status       string     `json:"status"`
+	ExpectedDate *time.Time `json:"expected_date,omitempty"`
+	Total        string     `json:"total"`
+	ItemCount    int        `json:"item_count"`
+}
+type POItem struct {
+	ID        uuid.UUID `json:"-"`
+	DrugID    uuid.UUID `json:"-"`
+	DrugName  string    `json:"drug_name"`
+	Qty       int       `json:"qty"`
+	UnitCost  string    `json:"unit_cost"`
+	LineTotal string    `json:"line_total"`
+	Received  bool      `json:"received"`
+}
+type PODetail struct {
+	PO
+	Items []POItem `json:"items"`
+}
+type ReceiveItem struct {
+	POItemID uuid.UUID
+	BatchNo  string
+	Expiry   *time.Time
+}
+type ReceiveInput struct {
+	POID  uuid.UUID
+	Items []ReceiveItem
+}
+
+type StockCount struct {
+	ID         uuid.UUID  `json:"-"`
+	Status     string     `json:"status"`
+	CreatedAt  time.Time  `json:"created_at"`
+	ApprovedAt *time.Time `json:"approved_at,omitempty"`
+}
+type StockCountItem struct {
+	ID       uuid.UUID `json:"-"`
+	DrugName string    `json:"drug_name"`
+	OnHand   int       `json:"on_hand"`
+	Counted  int       `json:"counted"`
+	Variance int       `json:"variance"`
+	Adjusted bool      `json:"adjusted"`
+}
+type StockCountDetail struct {
+	StockCount
+	Items []StockCountItem `json:"items"`
+}
+
+// Report is a generic tabular report (columns + string rows).
+type Report struct {
+	Columns []string   `json:"columns"`
+	Rows    [][]string `json:"rows"`
 }

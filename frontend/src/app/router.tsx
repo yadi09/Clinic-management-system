@@ -24,6 +24,9 @@ import { DrugCatalogPage } from "@/features/pharmacy/pages/DrugCatalogPage";
 import { OtcSalePage } from "@/features/pharmacy/pages/OtcSalePage";
 import { PharmacyDashboardPage } from "@/features/pharmacy/pages/PharmacyDashboardPage";
 import { CatalogAdminPage } from "@/features/pharmacy/pages/CatalogAdminPage";
+import { PurchasingPage } from "@/features/pharmacy/pages/PurchasingPage";
+import { StockControlPage } from "@/features/pharmacy/pages/StockControlPage";
+import { ReportsPage } from "@/features/pharmacy/pages/ReportsPage";
 import { NotFoundPage } from "@/features/misc/NotFoundPage";
 
 export function AppRoutes() {
@@ -54,6 +57,9 @@ export function AppRoutes() {
           <Route path="/pharmacy/otc" element={<OtcSalePage />} />
           <Route path="/pharmacy/dashboard" element={<PharmacyDashboardPage />} />
           <Route path="/pharmacy/admin/catalog" element={<CatalogAdminPage />} />
+          <Route path="/pharmacy/purchasing" element={<PurchasingPage />} />
+          <Route path="/pharmacy/stock-control" element={<StockControlPage />} />
+          <Route path="/pharmacy/reports" element={<ReportsPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>

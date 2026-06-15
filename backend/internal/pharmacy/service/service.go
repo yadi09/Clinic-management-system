@@ -556,6 +556,7 @@ func (s *Service) Dashboard(ctx context.Context) (*pharmacy.Dashboard, error) {
 		for _, p := range vol {
 			out.Volume = append(out.Volume, pharmacy.VolumePoint{Day: p.Day.Format("2006-01-02"), Count: int(p.Count)})
 		}
+		out.OpenPOs = s.openPOCount(ctx, q, tenantID)
 		return nil
 	})
 	if err != nil {

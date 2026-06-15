@@ -114,3 +114,97 @@ export function sellOtc(body: { patient_id?: string; discount?: number; tax?: nu
 export function pharmacyDashboard() {
   return apiFetch<Dashboard>("/pharmacy/dashboard");
 }
+
+// ---- Phase 4b-2: purchasing, stock control, reports ----
+
+export interface Supplier {
+  id: string;
+  name: string;
+  contact?: string;
+  lead_time_days: number;
+  is_active: boolean;
+}
+export interface PO {
+  id: string;
+  po_no: number;
+  supplier: string;
+  status: string;
+  expected_date?: string;
+  total: string;
+  item_count: number;
+}
+export interface POItem {
+  id: string;
+  drug_name: string;
+  qty: number;
+  unit_cost: string;
+  line_total: string;
+  received: boolean;
+}
+export interface PODetail extends PO {
+  items: POItem[];
+}
+export interface StockCount {
+  id: string;
+  status: string;
+  created_at: string;
+  approved_at?: string;
+}
+export interface StockCountItem {
+  id: string;
+  drug_name: string;
+  on_hand: number;
+  counted: number;
+  variance: number;
+  adjusted: boolean;
+}
+export interface StockCountDetail extends StockCount {
+  items: StockCountItem[];
+}
+export interface Report {
+  columns: string[];
+  rows: string[][];
+}
+
+export function listSuppliers() {
+  return apiFetch<Supplier[]>("/pharmacy/suppliers");
+}
+export function createSupplier(body: { name: string; contact?: string; lead_time_days?: number }) {
+  return apiFetch<Supplier>("/pharmacy/suppliers", { method: "POST", body });
+}
+export function listPOs() {
+  return apiFetch<PO[]>("/pharmacy/pos");
+}
+export function getPO(id: string) {
+  return apiFetch<PODetail>(`/pharmacy/pos/${id}`);
+}
+export function createPO(body: { supplier_id: string; expected_date?: string; notes?: string; lines: { drug_id: string; qty: number; unit_cost: number }[] }) {
+  return apiFetch<PO>("/pharmacy/pos", { method: "POST", body });
+}
+export function setPOStatus(id: string, status: string) {
+  return apiFetch<void>(`/pharmacy/pos/${id}/status`, { method: "POST", body: { status } });
+}
+export function receivePO(id: string, items: { po_item_id: string; batch_no?: string; expiry?: string }[]) {
+  return apiFetch<void>(`/pharmacy/pos/${id}/receive`, { method: "POST", body: { items } });
+}
+export function listStockCounts() {
+  return apiFetch<StockCount[]>("/pharmacy/stock-counts");
+}
+export function createStockCount(note?: string) {
+  return apiFetch<{ id: string }>("/pharmacy/stock-counts", { method: "POST", body: { note } });
+}
+export function getStockCount(id: string) {
+  return apiFetch<StockCountDetail>(`/pharmacy/stock-counts/${id}`);
+}
+export function setCounted(itemId: string, counted: number) {
+  return apiFetch<void>(`/pharmacy/stock-count-items/${itemId}/counted`, { method: "PUT", body: { counted } });
+}
+export function adjustCountItem(itemId: string) {
+  return apiFetch<void>(`/pharmacy/stock-count-items/${itemId}/adjust`, { method: "POST" });
+}
+export function approveStockCount(id: string) {
+  return apiFetch<void>(`/pharmacy/stock-counts/${id}/approve`, { method: "POST" });
+}
+export function pharmacyReport(kind: string) {
+  return apiFetch<Report>(`/pharmacy/reports/${kind}`);
+}

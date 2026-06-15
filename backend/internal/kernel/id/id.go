@@ -44,6 +44,11 @@ const (
 	PrefixDrug           = "drg"
 	PrefixBatch          = "bat"
 	PrefixSale           = "sal"
+	PrefixSupplier       = "sup"
+	PrefixPO             = "po"
+	PrefixPOItem         = "poi"
+	PrefixStockCount     = "cnt"
+	PrefixCountItem      = "cni"
 )
 
 // base32 lower-case, no padding. Decoding is case-insensitive.

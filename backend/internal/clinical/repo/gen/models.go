@@ -386,6 +386,17 @@ type Plan struct {
 	UpdatedAt          time.Time `json:"updated_at"`
 }
 
+type PoItem struct {
+	ID        uuid.UUID `json:"id"`
+	TenantID  uuid.UUID `json:"tenant_id"`
+	PoID      uuid.UUID `json:"po_id"`
+	DrugID    uuid.UUID `json:"drug_id"`
+	Qty       int32     `json:"qty"`
+	UnitCost  string    `json:"unit_cost"`
+	LineTotal string    `json:"line_total"`
+	Received  bool      `json:"received"`
+}
+
 type Prescription struct {
 	ID          uuid.UUID  `json:"id"`
 	TenantID    uuid.UUID  `json:"tenant_id"`
@@ -410,6 +421,22 @@ type PrescriptionItem struct {
 	Duration       *string   `json:"duration"`
 	Instructions   *string   `json:"instructions"`
 	CreatedAt      time.Time `json:"created_at"`
+}
+
+type PurchaseOrder struct {
+	ID           uuid.UUID  `json:"id"`
+	TenantID     uuid.UUID  `json:"tenant_id"`
+	PoNo         int64      `json:"po_no"`
+	SupplierID   uuid.UUID  `json:"supplier_id"`
+	Status       string     `json:"status"`
+	ExpectedDate *time.Time `json:"expected_date"`
+	Total        string     `json:"total"`
+	Notes        *string    `json:"notes"`
+	ReceivedAt   *time.Time `json:"received_at"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	CreatedBy    *uuid.UUID `json:"created_by"`
+	DeletedAt    *time.Time `json:"deleted_at"`
 }
 
 type QueueEntry struct {
@@ -477,6 +504,27 @@ type Session struct {
 	CreatedAt        time.Time  `json:"created_at"`
 }
 
+type StockCount struct {
+	ID         uuid.UUID  `json:"id"`
+	TenantID   uuid.UUID  `json:"tenant_id"`
+	Status     string     `json:"status"`
+	Note       *string    `json:"note"`
+	CreatedAt  time.Time  `json:"created_at"`
+	CreatedBy  *uuid.UUID `json:"created_by"`
+	ApprovedAt *time.Time `json:"approved_at"`
+	ApprovedBy *uuid.UUID `json:"approved_by"`
+}
+
+type StockCountItem struct {
+	ID       uuid.UUID `json:"id"`
+	TenantID uuid.UUID `json:"tenant_id"`
+	CountID  uuid.UUID `json:"count_id"`
+	DrugID   uuid.UUID `json:"drug_id"`
+	OnHand   int32     `json:"on_hand"`
+	Counted  int32     `json:"counted"`
+	Adjusted bool      `json:"adjusted"`
+}
+
 type StockMovement struct {
 	ID        uuid.UUID  `json:"id"`
 	TenantID  uuid.UUID  `json:"tenant_id"`
@@ -501,6 +549,19 @@ type Subscription struct {
 	CancelAt           *time.Time `json:"cancel_at"`
 	CreatedAt          time.Time  `json:"created_at"`
 	UpdatedAt          time.Time  `json:"updated_at"`
+}
+
+type Supplier struct {
+	ID           uuid.UUID  `json:"id"`
+	TenantID     uuid.UUID  `json:"tenant_id"`
+	Name         string     `json:"name"`
+	Contact      *string    `json:"contact"`
+	LeadTimeDays int32      `json:"lead_time_days"`
+	IsActive     bool       `json:"is_active"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	CreatedBy    *uuid.UUID `json:"created_by"`
+	DeletedAt    *time.Time `json:"deleted_at"`
 }
 
 type Tenant struct {
