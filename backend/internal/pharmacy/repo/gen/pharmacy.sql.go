@@ -37,6 +37,24 @@ func (q *Queries) AdjustBatchQty(ctx context.Context, arg AdjustBatchQtyParams) 
 	return i, err
 }
 
+const countExpiredBatches = `-- name: CountExpiredBatches :one
+SELECT count(*)::int FROM drug_batches
+WHERE tenant_id = $1 AND deleted_at IS NULL AND qty_on_hand > 0
+  AND expiry_date IS NOT NULL AND expiry_date < $2
+`
+
+type CountExpiredBatchesParams struct {
+	TenantID uuid.UUID  `json:"tenant_id"`
+	Today    *time.Time `json:"today"`
+}
+
+func (q *Queries) CountExpiredBatches(ctx context.Context, arg CountExpiredBatchesParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countExpiredBatches, arg.TenantID, arg.Today)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createBatch = `-- name: CreateBatch :one
 INSERT INTO drug_batches (tenant_id, drug_id, batch_no, expiry_date, qty_on_hand, created_by)
 VALUES ($1, $2, $3, $4, $5, $6)
@@ -77,6 +95,84 @@ func (q *Queries) CreateBatch(ctx context.Context, arg CreateBatchParams) (Creat
 		&i.QtyOnHand,
 		&i.Quarantined,
 	)
+	return i, err
+}
+
+const createDrug = `-- name: CreateDrug :one
+
+INSERT INTO drugs (tenant_id, name, form, drug_class, is_controlled, unit_price, reorder_level, created_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id
+`
+
+type CreateDrugParams struct {
+	TenantID     uuid.UUID  `json:"tenant_id"`
+	Name         string     `json:"name"`
+	Form         *string    `json:"form"`
+	DrugClass    *string    `json:"drug_class"`
+	IsControlled bool       `json:"is_controlled"`
+	UnitPrice    string     `json:"unit_price"`
+	ReorderLevel int32      `json:"reorder_level"`
+	CreatedBy    *uuid.UUID `json:"created_by"`
+}
+
+// ---- Catalog admin (Phase 4b-1) -------------------------------------------
+func (q *Queries) CreateDrug(ctx context.Context, arg CreateDrugParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, createDrug,
+		arg.TenantID,
+		arg.Name,
+		arg.Form,
+		arg.DrugClass,
+		arg.IsControlled,
+		arg.UnitPrice,
+		arg.ReorderLevel,
+		arg.CreatedBy,
+	)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const createOtcSale = `-- name: CreateOtcSale :one
+
+INSERT INTO pharmacy_sales (tenant_id, sale_type, patient_id, status, subtotal, discount, tax, total, currency, payment_method, paid_at, created_by)
+VALUES ($1, 'otc', $2, 'paid', $3, $4, $5, $6, $7, $8, now(), $9)
+RETURNING id, total, status
+`
+
+type CreateOtcSaleParams struct {
+	TenantID      uuid.UUID  `json:"tenant_id"`
+	PatientID     *uuid.UUID `json:"patient_id"`
+	Subtotal      string     `json:"subtotal"`
+	Discount      string     `json:"discount"`
+	Tax           string     `json:"tax"`
+	Total         string     `json:"total"`
+	Currency      string     `json:"currency"`
+	PaymentMethod *string    `json:"payment_method"`
+	CreatedBy     *uuid.UUID `json:"created_by"`
+}
+
+type CreateOtcSaleRow struct {
+	ID     uuid.UUID `json:"id"`
+	Total  string    `json:"total"`
+	Status string    `json:"status"`
+}
+
+// ---- OTC sale (Phase 4b-1) -------------------------------------------------
+func (q *Queries) CreateOtcSale(ctx context.Context, arg CreateOtcSaleParams) (CreateOtcSaleRow, error) {
+	row := q.db.QueryRow(ctx, createOtcSale,
+		arg.TenantID,
+		arg.PatientID,
+		arg.Subtotal,
+		arg.Discount,
+		arg.Tax,
+		arg.Total,
+		arg.Currency,
+		arg.PaymentMethod,
+		arg.CreatedBy,
+	)
+	var i CreateOtcSaleRow
+	err := row.Scan(&i.ID, &i.Total, &i.Status)
 	return i, err
 }
 
@@ -229,6 +325,44 @@ func (q *Queries) DispenseQueueKpis(ctx context.Context, arg DispenseQueueKpisPa
 		&i.NearExpiry,
 	)
 	return i, err
+}
+
+const dispensingVolume = `-- name: DispensingVolume :many
+SELECT created_at::date AS day, count(*)::int AS count
+FROM pharmacy_sales
+WHERE tenant_id = $1 AND sale_type = 'dispense' AND created_at >= $2
+GROUP BY created_at::date
+ORDER BY day
+`
+
+type DispensingVolumeParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	Since    time.Time `json:"since"`
+}
+
+type DispensingVolumeRow struct {
+	Day   time.Time `json:"day"`
+	Count int32     `json:"count"`
+}
+
+func (q *Queries) DispensingVolume(ctx context.Context, arg DispensingVolumeParams) ([]DispensingVolumeRow, error) {
+	rows, err := q.db.Query(ctx, dispensingVolume, arg.TenantID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DispensingVolumeRow{}
+	for rows.Next() {
+		var i DispensingVolumeRow
+		if err := rows.Scan(&i.Day, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const findDrugByName = `-- name: FindDrugByName :one
@@ -787,4 +921,52 @@ type SetBatchQuarantineParams struct {
 func (q *Queries) SetBatchQuarantine(ctx context.Context, arg SetBatchQuarantineParams) error {
 	_, err := q.db.Exec(ctx, setBatchQuarantine, arg.Quarantined, arg.TenantID, arg.ID)
 	return err
+}
+
+const updateDrug = `-- name: UpdateDrug :exec
+UPDATE drugs SET name = $1, form = $2, drug_class = $3, is_controlled = $4,
+  unit_price = $5, reorder_level = $6, is_active = $7, updated_at = now()
+WHERE tenant_id = $8 AND id = $9 AND deleted_at IS NULL
+`
+
+type UpdateDrugParams struct {
+	Name         string    `json:"name"`
+	Form         *string   `json:"form"`
+	DrugClass    *string   `json:"drug_class"`
+	IsControlled bool      `json:"is_controlled"`
+	UnitPrice    string    `json:"unit_price"`
+	ReorderLevel int32     `json:"reorder_level"`
+	IsActive     bool      `json:"is_active"`
+	TenantID     uuid.UUID `json:"tenant_id"`
+	ID           uuid.UUID `json:"id"`
+}
+
+func (q *Queries) UpdateDrug(ctx context.Context, arg UpdateDrugParams) error {
+	_, err := q.db.Exec(ctx, updateDrug,
+		arg.Name,
+		arg.Form,
+		arg.DrugClass,
+		arg.IsControlled,
+		arg.UnitPrice,
+		arg.ReorderLevel,
+		arg.IsActive,
+		arg.TenantID,
+		arg.ID,
+	)
+	return err
+}
+
+const valueOnHand = `-- name: ValueOnHand :one
+
+SELECT COALESCE(SUM(b.qty_on_hand * d.unit_price), 0)::numeric AS value_on_hand
+FROM drug_batches b JOIN drugs d ON d.id = b.drug_id AND d.tenant_id = b.tenant_id
+WHERE b.tenant_id = $1 AND b.deleted_at IS NULL
+`
+
+// ---- Dashboard (Phase 4b-1) ------------------------------------------------
+func (q *Queries) ValueOnHand(ctx context.Context, tenantID uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, valueOnHand, tenantID)
+	var value_on_hand string
+	err := row.Scan(&value_on_hand)
+	return value_on_hand, err
 }

@@ -65,6 +65,8 @@ var basePermissions = []struct{ Code, Desc string }{
 	{"pharmacy.read", "View the drug catalog and stock"},
 	{"pharmacy.dispense", "Dispense prescriptions"},
 	{"pharmacy.stock", "Adjust pharmacy stock"},
+	{"pharmacy.sell", "Make OTC counter sales"},
+	{"pharmacy.manage", "Manage the drug catalog, purchasing and reports"},
 	{"settings.manage", "Manage tenant/branch settings"},
 	{"audit.read", "View audit logs"},
 }
@@ -301,7 +303,8 @@ func main() {
 			"doctor":         {"patient.read", "patient.search", "encounter.manage", "prescription.create", "queue.manage", "appointment.manage"},
 			"nurse":          {"patient.read", "patient.search", "triage.manage", "queue.manage"},
 			"cashier":        {"payment.collect", "patient.read", "patient.search"},
-			"pharmacist":     {"patient.read", "patient.search", "pharmacy.read", "pharmacy.dispense", "pharmacy.stock"},
+			"pharmacist":      {"patient.read", "patient.search", "pharmacy.read", "pharmacy.dispense", "pharmacy.stock", "pharmacy.sell"},
+			"pharmacy_manager": {"patient.read", "patient.search", "pharmacy.read", "pharmacy.dispense", "pharmacy.stock", "pharmacy.sell", "pharmacy.manage"},
 		}
 		for code, perms := range roleGrants {
 			rid, ok := roleIDs[code]

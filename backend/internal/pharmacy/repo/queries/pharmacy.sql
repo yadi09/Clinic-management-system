@@ -131,6 +131,44 @@ RETURNING id, total, status, created_at;
 INSERT INTO pharmacy_sale_items (tenant_id, sale_id, drug_id, batch_id, description, qty, unit_price, line_total)
 VALUES (@tenant_id, @sale_id, @drug_id, @batch_id, @description, @qty, @unit_price, @line_total);
 
+-- ---- Catalog admin (Phase 4b-1) -------------------------------------------
+
+-- name: CreateDrug :one
+INSERT INTO drugs (tenant_id, name, form, drug_class, is_controlled, unit_price, reorder_level, created_by)
+VALUES (@tenant_id, @name, @form, @drug_class, @is_controlled, @unit_price, @reorder_level, @created_by)
+RETURNING id;
+
+-- name: UpdateDrug :exec
+UPDATE drugs SET name = @name, form = @form, drug_class = @drug_class, is_controlled = @is_controlled,
+  unit_price = @unit_price, reorder_level = @reorder_level, is_active = @is_active, updated_at = now()
+WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
+
+-- ---- OTC sale (Phase 4b-1) -------------------------------------------------
+
+-- name: CreateOtcSale :one
+INSERT INTO pharmacy_sales (tenant_id, sale_type, patient_id, status, subtotal, discount, tax, total, currency, payment_method, paid_at, created_by)
+VALUES (@tenant_id, 'otc', @patient_id, 'paid', @subtotal, @discount, @tax, @total, @currency, @payment_method, now(), @created_by)
+RETURNING id, total, status;
+
+-- ---- Dashboard (Phase 4b-1) ------------------------------------------------
+
+-- name: ValueOnHand :one
+SELECT COALESCE(SUM(b.qty_on_hand * d.unit_price), 0)::numeric AS value_on_hand
+FROM drug_batches b JOIN drugs d ON d.id = b.drug_id AND d.tenant_id = b.tenant_id
+WHERE b.tenant_id = @tenant_id AND b.deleted_at IS NULL;
+
+-- name: CountExpiredBatches :one
+SELECT count(*)::int FROM drug_batches
+WHERE tenant_id = @tenant_id AND deleted_at IS NULL AND qty_on_hand > 0
+  AND expiry_date IS NOT NULL AND expiry_date < @today;
+
+-- name: DispensingVolume :many
+SELECT created_at::date AS day, count(*)::int AS count
+FROM pharmacy_sales
+WHERE tenant_id = @tenant_id AND sale_type = 'dispense' AND created_at >= @since
+GROUP BY created_at::date
+ORDER BY day;
+
 -- ---- KPIs ------------------------------------------------------------------
 
 -- name: DispenseQueueKpis :one

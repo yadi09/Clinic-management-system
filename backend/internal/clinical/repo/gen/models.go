@@ -356,6 +356,9 @@ type PharmacySale struct {
 	UpdatedAt        time.Time  `json:"updated_at"`
 	CreatedBy        *uuid.UUID `json:"created_by"`
 	DeletedAt        *time.Time `json:"deleted_at"`
+	Discount         string     `json:"discount"`
+	Tax              string     `json:"tax"`
+	PaymentMethod    *string    `json:"payment_method"`
 }
 
 type PharmacySaleItem struct {

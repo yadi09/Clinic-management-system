@@ -116,6 +116,48 @@ type StockAdjustInput struct {
 	Note    string
 }
 
+// DrugInput is a catalog create/update payload (Phase 4b-1).
+type DrugInput struct {
+	Name         string
+	Form         string
+	Class        string
+	IsControlled bool
+	UnitPrice    string
+	ReorderLevel int
+	IsActive     bool
+}
+
+// OtcLine / OtcInput is a counter sale.
+type OtcLine struct {
+	DrugID uuid.UUID
+	Qty    int
+}
+type OtcInput struct {
+	PatientID     *uuid.UUID
+	Lines         []OtcLine
+	Discount      float64
+	Tax           float64
+	PaymentMethod string
+}
+
+// VolumePoint is one day on the dispensing chart.
+type VolumePoint struct {
+	Day   string `json:"day"`
+	Count int    `json:"count"`
+}
+
+// Dashboard is the pharmacy-manager overview.
+type Dashboard struct {
+	DispensedToday int           `json:"dispensed_today"`
+	ValueOnHand    string        `json:"value_on_hand"`
+	LowStock       int           `json:"low_stock"`
+	NearExpiry     int           `json:"near_expiry"`
+	Expired        int           `json:"expired"`
+	OpenPOs        int           `json:"open_pos"`
+	Volume         []VolumePoint `json:"volume"`
+	Alerts         []string      `json:"alerts"`
+}
+
 // Service is the pharmacy module API.
 type Service interface {
 	ListDrugs(ctx context.Context, class *string, controlled *bool) ([]Drug, error)
@@ -126,4 +168,10 @@ type Service interface {
 	Dispense(ctx context.Context, in DispenseInput) (*Sale, error)
 	AdjustStock(ctx context.Context, in StockAdjustInput) error
 	SetQuarantine(ctx context.Context, batchID uuid.UUID, quarantined bool) error
+
+	// Phase 4b-1: catalog admin, OTC sale, manager dashboard.
+	CreateDrug(ctx context.Context, in DrugInput) (*Drug, error)
+	UpdateDrug(ctx context.Context, id uuid.UUID, in DrugInput) error
+	SellOTC(ctx context.Context, in OtcInput) (*Sale, error)
+	Dashboard(ctx context.Context) (*Dashboard, error)
 }

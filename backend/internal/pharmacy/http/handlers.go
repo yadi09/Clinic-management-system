@@ -3,6 +3,7 @@
 package http
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -250,6 +251,116 @@ func (h *Handlers) DispenseDetail(c *gin.Context) {
 		out.Items = append(out.Items, di)
 	}
 	httpx.OK(c, out)
+}
+
+// ---- catalog admin / OTC / dashboard (Phase 4b-1) ----
+
+type drugRequest struct {
+	Name         string  `json:"name" binding:"required"`
+	Form         string  `json:"form"`
+	DrugClass    string  `json:"drug_class"`
+	IsControlled bool    `json:"is_controlled"`
+	UnitPrice    float64 `json:"unit_price"`
+	ReorderLevel int     `json:"reorder_level"`
+	IsActive     *bool   `json:"is_active"`
+}
+
+type otcRequest struct {
+	PatientID     string  `json:"patient_id"`
+	Discount      float64 `json:"discount"`
+	Tax           float64 `json:"tax"`
+	PaymentMethod string  `json:"payment_method"`
+	Lines         []struct {
+		DrugID string `json:"drug_id"`
+		Qty    int    `json:"qty"`
+	} `json:"lines"`
+}
+
+func drugInput(req drugRequest) pharmacy.DrugInput {
+	active := true
+	if req.IsActive != nil {
+		active = *req.IsActive
+	}
+	return pharmacy.DrugInput{
+		Name: req.Name, Form: req.Form, Class: req.DrugClass, IsControlled: req.IsControlled,
+		UnitPrice: strconv.FormatFloat(req.UnitPrice, 'f', 2, 64), ReorderLevel: req.ReorderLevel, IsActive: active,
+	}
+}
+
+// CreateDrug handles POST /pharmacy/drugs.
+func (h *Handlers) CreateDrug(c *gin.Context) {
+	var req drugRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("name is required"))
+		return
+	}
+	d, err := h.svc.CreateDrug(c.Request.Context(), drugInput(req))
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.Created(c, drugOut(*d))
+}
+
+// UpdateDrug handles PUT /pharmacy/drugs/:id.
+func (h *Handlers) UpdateDrug(c *gin.Context) {
+	id2, err := id.Decode(id.PrefixDrug, c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("invalid drug id"))
+		return
+	}
+	var req drugRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("name is required"))
+		return
+	}
+	if err := h.svc.UpdateDrug(c.Request.Context(), id2, drugInput(req)); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+// SellOTC handles POST /pharmacy/otc.
+func (h *Handlers) SellOTC(c *gin.Context) {
+	var req otcRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("lines are required"))
+		return
+	}
+	in := pharmacy.OtcInput{Discount: req.Discount, Tax: req.Tax, PaymentMethod: req.PaymentMethod}
+	if req.PatientID != "" {
+		pid, err := id.Decode(id.PrefixPatient, req.PatientID)
+		if err != nil {
+			httpx.Fail(c, apperr.Validation("invalid patient_id"))
+			return
+		}
+		in.PatientID = &pid
+	}
+	for _, l := range req.Lines {
+		drugID, err := id.Decode(id.PrefixDrug, l.DrugID)
+		if err != nil {
+			httpx.Fail(c, apperr.Validation("invalid drug_id"))
+			return
+		}
+		in.Lines = append(in.Lines, pharmacy.OtcLine{DrugID: drugID, Qty: l.Qty})
+	}
+	sale, err := h.svc.SellOTC(c.Request.Context(), in)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.Created(c, saleDTO{ID: id.Encode(id.PrefixSale, sale.ID), Sale: *sale})
+}
+
+// Dashboard handles GET /pharmacy/dashboard.
+func (h *Handlers) Dashboard(c *gin.Context) {
+	d, err := h.svc.Dashboard(c.Request.Context())
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, d)
 }
 
 // Dispense handles POST /pharmacy/dispense/:id.

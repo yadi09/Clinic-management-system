@@ -85,3 +85,32 @@ export function adjustStock(body: { drug_id: string; batch_id?: string; batch_no
 export function quarantineBatch(batchId: string, quarantined: boolean) {
   return apiFetch<void>(`/pharmacy/batches/${batchId}/quarantine`, { method: "POST", body: { quarantined } });
 }
+
+// ---- Phase 4b-1: OTC sale, catalog admin, dashboard ----
+
+export interface Dashboard {
+  dispensed_today: number;
+  value_on_hand: string;
+  low_stock: number;
+  near_expiry: number;
+  expired: number;
+  open_pos: number;
+  volume: { day: string; count: number }[];
+  alerts: string[];
+}
+
+export function searchDrugs(q: string) {
+  return apiFetch<Drug[]>(`/pharmacy/drugs/search?q=${encodeURIComponent(q)}`);
+}
+export function createDrug(body: { name: string; form?: string; drug_class?: string; is_controlled?: boolean; unit_price: number; reorder_level: number }) {
+  return apiFetch<Drug>("/pharmacy/drugs", { method: "POST", body });
+}
+export function updateDrug(id: string, body: { name: string; form?: string; drug_class?: string; is_controlled?: boolean; unit_price: number; reorder_level: number; is_active?: boolean }) {
+  return apiFetch<void>(`/pharmacy/drugs/${id}`, { method: "PUT", body });
+}
+export function sellOtc(body: { patient_id?: string; discount?: number; tax?: number; payment_method?: string; lines: { drug_id: string; qty: number }[] }) {
+  return apiFetch<{ id: string; total: string; status: string }>("/pharmacy/otc", { method: "POST", body });
+}
+export function pharmacyDashboard() {
+  return apiFetch<Dashboard>("/pharmacy/dashboard");
+}

@@ -386,6 +386,198 @@ func (s *Service) SetQuarantine(ctx context.Context, batchID uuid.UUID, quaranti
 	return nil
 }
 
+// ============================================================================
+// Phase 4b-1: catalog admin, OTC sale, dashboard
+// ============================================================================
+
+// CreateDrug adds a catalog drug.
+func (s *Service) CreateDrug(ctx context.Context, in pharmacy.DrugInput) (*pharmacy.Drug, error) {
+	tenantID, actor := actorOf(ctx)
+	if strings.TrimSpace(in.Name) == "" {
+		return nil, apperr.Validation("a drug name is required")
+	}
+	var id uuid.UUID
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		var e error
+		id, e = pharmacydb.New(tx).CreateDrug(ctx, pharmacydb.CreateDrugParams{
+			TenantID: tenantID, Name: in.Name, Form: strPtr(in.Form), DrugClass: strPtr(in.Class),
+			IsControlled: in.IsControlled, UnitPrice: moneyStr(in.UnitPrice), ReorderLevel: int32(in.ReorderLevel), CreatedBy: actor,
+		})
+		return e
+	})
+	if err != nil {
+		return nil, mapWriteErr(err, "DRUG_EXISTS", "a drug with this name already exists")
+	}
+	return &pharmacy.Drug{ID: id, Name: in.Name, Form: in.Form, Class: in.Class, IsControlled: in.IsControlled, UnitPrice: moneyStr(in.UnitPrice), ReorderLevel: in.ReorderLevel, IsActive: true}, nil
+}
+
+// UpdateDrug edits a catalog drug.
+func (s *Service) UpdateDrug(ctx context.Context, id uuid.UUID, in pharmacy.DrugInput) error {
+	tenantID, _ := actorOf(ctx)
+	if strings.TrimSpace(in.Name) == "" {
+		return apperr.Validation("a drug name is required")
+	}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		return pharmacydb.New(tx).UpdateDrug(ctx, pharmacydb.UpdateDrugParams{
+			Name: in.Name, Form: strPtr(in.Form), DrugClass: strPtr(in.Class), IsControlled: in.IsControlled,
+			UnitPrice: moneyStr(in.UnitPrice), ReorderLevel: int32(in.ReorderLevel), IsActive: in.IsActive, TenantID: tenantID, ID: id,
+		})
+	})
+	if err != nil {
+		return mapWriteErr(err, "DRUG_EXISTS", "a drug with this name already exists")
+	}
+	return nil
+}
+
+// SellOTC records a counter sale: picks a FEFO batch per line, decrements stock,
+// and records a paid sale.
+func (s *Service) SellOTC(ctx context.Context, in pharmacy.OtcInput) (*pharmacy.Sale, error) {
+	tenantID, actor := actorOf(ctx)
+	if len(in.Lines) == 0 {
+		return nil, apperr.Validation("nothing to sell")
+	}
+	var out pharmacy.Sale
+	today := startOfDayUTC()
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := pharmacydb.New(tx)
+		type li struct {
+			drugID, batchID uuid.UUID
+			qty             int
+			price           float64
+			desc            string
+		}
+		var lines []li
+		var subtotal float64
+		for _, ln := range in.Lines {
+			if ln.Qty <= 0 {
+				return apperr.Validation("quantity must be positive")
+			}
+			drug, e := q.GetDrug(ctx, pharmacydb.GetDrugParams{TenantID: tenantID, ID: ln.DrugID})
+			if errors.Is(e, pgx.ErrNoRows) {
+				return apperr.Validation("unknown drug")
+			}
+			if e != nil {
+				return e
+			}
+			// FEFO: first dispensable batch with enough stock.
+			batches, e := q.ListBatchesByDrug(ctx, pharmacydb.ListBatchesByDrugParams{TenantID: tenantID, DrugID: ln.DrugID})
+			if e != nil {
+				return e
+			}
+			var batchID uuid.UUID
+			for _, b := range batches {
+				if b.Quarantined || b.QtyOnHand < int32(ln.Qty) {
+					continue
+				}
+				if b.ExpiryDate != nil && b.ExpiryDate.Before(today) {
+					continue
+				}
+				batchID = b.ID
+				break
+			}
+			if batchID == uuid.Nil {
+				return apperr.Conflict("INSUFFICIENT_STOCK", "no in-date batch with enough stock for "+drug.Name)
+			}
+			if _, e := q.DecrementBatch(ctx, pharmacydb.DecrementBatchParams{Qty: int32(ln.Qty), TenantID: tenantID, ID: batchID}); errors.Is(e, pgx.ErrNoRows) {
+				return apperr.Conflict("INSUFFICIENT_STOCK", "not enough stock for "+drug.Name)
+			} else if e != nil {
+				return e
+			}
+			price := parseMoney(drug.UnitPrice)
+			subtotal += price * float64(ln.Qty)
+			bid := batchID
+			if e := q.InsertStockMovement(ctx, pharmacydb.InsertStockMovementParams{
+				TenantID: tenantID, DrugID: ln.DrugID, BatchID: &bid, Delta: int32(-ln.Qty), Reason: "otc_sale", RefType: strPtr("otc"), CreatedBy: actor,
+			}); e != nil {
+				return e
+			}
+			lines = append(lines, li{drugID: ln.DrugID, batchID: batchID, qty: ln.Qty, price: price, desc: drug.Name})
+		}
+		total := subtotal - in.Discount + in.Tax
+		if total < 0 {
+			total = 0
+		}
+		sale, e := q.CreateOtcSale(ctx, pharmacydb.CreateOtcSaleParams{
+			TenantID: tenantID, PatientID: in.PatientID, Subtotal: money(subtotal), Discount: money(in.Discount),
+			Tax: money(in.Tax), Total: money(total), Currency: "ETB", PaymentMethod: strPtr(in.PaymentMethod), CreatedBy: actor,
+		})
+		if e != nil {
+			return e
+		}
+		for _, l := range lines {
+			did, bid := l.drugID, l.batchID
+			if e := q.CreateSaleItem(ctx, pharmacydb.CreateSaleItemParams{
+				TenantID: tenantID, SaleID: sale.ID, DrugID: &did, BatchID: &bid, Description: l.desc,
+				Qty: int32(l.qty), UnitPrice: money(l.price), LineTotal: money(l.price * float64(l.qty)),
+			}); e != nil {
+				return e
+			}
+		}
+		out = pharmacy.Sale{ID: sale.ID, Total: sale.Total, Status: sale.Status}
+		return s.publisher.Publish(ctx, tx, &tenantID, "pharmacy_sale", sale.ID, "pharmacy.otc_sold", map[string]any{"total": sale.Total})
+	})
+	if ae, ok := apperr.As(err); ok {
+		return nil, ae
+	}
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return &out, nil
+}
+
+// Dashboard returns the pharmacy-manager overview.
+func (s *Service) Dashboard(ctx context.Context) (*pharmacy.Dashboard, error) {
+	tenantID, _ := actorOf(ctx)
+	out := &pharmacy.Dashboard{Volume: []pharmacy.VolumePoint{}, Alerts: []string{}}
+	today := startOfDayUTC()
+	nearExpiry := time.Now().AddDate(0, 0, 90)
+	since := startOfDayUTC().AddDate(0, 0, -13)
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := pharmacydb.New(tx)
+		k, e := q.DispenseQueueKpis(ctx, pharmacydb.DispenseQueueKpisParams{TenantID: tenantID, Today: &today, NearExpiryBefore: &nearExpiry})
+		if e != nil {
+			return e
+		}
+		out.DispensedToday, out.LowStock, out.NearExpiry = int(k.DispensedToday), int(k.LowStock), int(k.NearExpiry)
+		v, e := q.ValueOnHand(ctx, tenantID)
+		if e != nil {
+			return e
+		}
+		out.ValueOnHand = v
+		exp, e := q.CountExpiredBatches(ctx, pharmacydb.CountExpiredBatchesParams{TenantID: tenantID, Today: &today})
+		if e != nil {
+			return e
+		}
+		out.Expired = int(exp)
+		vol, e := q.DispensingVolume(ctx, pharmacydb.DispensingVolumeParams{TenantID: tenantID, Since: since})
+		if e != nil {
+			return e
+		}
+		for _, p := range vol {
+			out.Volume = append(out.Volume, pharmacy.VolumePoint{Day: p.Day.Format("2006-01-02"), Count: int(p.Count)})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	if out.LowStock > 0 {
+		out.Alerts = append(out.Alerts, itoa(out.LowStock)+" items below reorder level")
+	}
+	if out.NearExpiry > 0 {
+		out.Alerts = append(out.Alerts, itoa(out.NearExpiry)+" batches near expiry")
+	}
+	if out.Expired > 0 {
+		out.Alerts = append(out.Alerts, itoa(out.Expired)+" expired → return")
+	}
+	return out, nil
+}
+
+func itoa(n int) string { return strconv.Itoa(n) }
+
+// moneyStr normalises a user-supplied price string to 2dp.
+func moneyStr(s string) string { return money(parseMoney(s)) }
+
 // --- helpers ---
 
 func actorOf(ctx context.Context) (uuid.UUID, *uuid.UUID) {
@@ -437,6 +629,17 @@ func sig(dose, freq, dur *string) string {
 		}
 	}
 	return strings.Join(parts, " · ")
+}
+
+func mapWriteErr(err error, code, msg string) error {
+	if err == nil {
+		return nil
+	}
+	m := err.Error()
+	if strings.Contains(m, "duplicate key") || strings.Contains(m, "unique constraint") {
+		return apperr.Conflict(code, msg)
+	}
+	return apperr.Internal(err)
 }
 
 func money(f float64) string { return strconv.FormatFloat(f, 'f', 2, 64) }
