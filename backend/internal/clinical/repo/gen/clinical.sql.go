@@ -864,6 +864,119 @@ func (q *Queries) ListDiagnosisCategories(ctx context.Context, tenantID uuid.UUI
 	return items, nil
 }
 
+const listMyActiveEncounters = `-- name: ListMyActiveEncounters :many
+SELECT e.id, e.queue_entry_id, e.status, e.started_at, e.patient_id,
+       p.first_name, p.last_name, p.mrn,
+       (SELECT count(*) FROM lab_order_items i
+          JOIN lab_orders o ON o.id = i.order_id AND o.tenant_id = i.tenant_id
+          WHERE o.encounter_id = e.id AND o.deleted_at IS NULL AND i.status NOT IN ('validated','cancelled'))::int AS pending_labs
+FROM encounters e
+JOIN patients p ON p.id = e.patient_id AND p.tenant_id = e.tenant_id
+WHERE e.tenant_id = $1 AND e.provider_id = $2 AND e.deleted_at IS NULL
+  AND e.status IN ('open','awaiting_results')
+ORDER BY e.started_at DESC LIMIT 100
+`
+
+type ListMyActiveEncountersParams struct {
+	TenantID   uuid.UUID  `json:"tenant_id"`
+	ProviderID *uuid.UUID `json:"provider_id"`
+}
+
+type ListMyActiveEncountersRow struct {
+	ID           uuid.UUID  `json:"id"`
+	QueueEntryID *uuid.UUID `json:"queue_entry_id"`
+	Status       string     `json:"status"`
+	StartedAt    time.Time  `json:"started_at"`
+	PatientID    uuid.UUID  `json:"patient_id"`
+	FirstName    string     `json:"first_name"`
+	LastName     string     `json:"last_name"`
+	Mrn          string     `json:"mrn"`
+	PendingLabs  int32      `json:"pending_labs"`
+}
+
+// The doctor board's "In progress" — open / awaiting-results encounters, with a
+// pending-lab count for the reason (cross-module read of lab tables).
+func (q *Queries) ListMyActiveEncounters(ctx context.Context, arg ListMyActiveEncountersParams) ([]ListMyActiveEncountersRow, error) {
+	rows, err := q.db.Query(ctx, listMyActiveEncounters, arg.TenantID, arg.ProviderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMyActiveEncountersRow{}
+	for rows.Next() {
+		var i ListMyActiveEncountersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.QueueEntryID,
+			&i.Status,
+			&i.StartedAt,
+			&i.PatientID,
+			&i.FirstName,
+			&i.LastName,
+			&i.Mrn,
+			&i.PendingLabs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMyDoneEncountersToday = `-- name: ListMyDoneEncountersToday :many
+SELECT e.id, e.started_at, e.closed_at, p.first_name, p.last_name, p.mrn
+FROM encounters e
+JOIN patients p ON p.id = e.patient_id AND p.tenant_id = e.tenant_id
+WHERE e.tenant_id = $1 AND e.provider_id = $2 AND e.deleted_at IS NULL
+  AND e.status = 'closed' AND e.closed_at >= $3
+ORDER BY e.closed_at DESC LIMIT 100
+`
+
+type ListMyDoneEncountersTodayParams struct {
+	TenantID   uuid.UUID  `json:"tenant_id"`
+	ProviderID *uuid.UUID `json:"provider_id"`
+	Since      *time.Time `json:"since"`
+}
+
+type ListMyDoneEncountersTodayRow struct {
+	ID        uuid.UUID  `json:"id"`
+	StartedAt time.Time  `json:"started_at"`
+	ClosedAt  *time.Time `json:"closed_at"`
+	FirstName string     `json:"first_name"`
+	LastName  string     `json:"last_name"`
+	Mrn       string     `json:"mrn"`
+}
+
+func (q *Queries) ListMyDoneEncountersToday(ctx context.Context, arg ListMyDoneEncountersTodayParams) ([]ListMyDoneEncountersTodayRow, error) {
+	rows, err := q.db.Query(ctx, listMyDoneEncountersToday, arg.TenantID, arg.ProviderID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMyDoneEncountersTodayRow{}
+	for rows.Next() {
+		var i ListMyDoneEncountersTodayRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.StartedAt,
+			&i.ClosedAt,
+			&i.FirstName,
+			&i.LastName,
+			&i.Mrn,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPatientAllergies = `-- name: ListPatientAllergies :many
 SELECT substance, severity, reaction
 FROM allergies
@@ -1062,6 +1175,25 @@ func (q *Queries) ListVitalsByEncounter(ctx context.Context, arg ListVitalsByEnc
 		return nil, err
 	}
 	return items, nil
+}
+
+const setEncounterAwaitingResults = `-- name: SetEncounterAwaitingResults :one
+UPDATE encounters SET status = 'awaiting_results', updated_at = now()
+WHERE tenant_id = $1 AND id = $2 AND status = 'open' AND deleted_at IS NULL
+RETURNING id
+`
+
+type SetEncounterAwaitingResultsParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+// Park an open encounter while labs run (doctor's "set aside").
+func (q *Queries) SetEncounterAwaitingResults(ctx context.Context, arg SetEncounterAwaitingResultsParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, setEncounterAwaitingResults, arg.TenantID, arg.ID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const signNote = `-- name: SignNote :one

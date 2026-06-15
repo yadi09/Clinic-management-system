@@ -431,6 +431,70 @@ func (h *Handlers) SignAndClose(c *gin.Context) {
 	httpx.NoContent(c)
 }
 
+// SetAside handles POST /encounters/:id/set-aside — park an open encounter as
+// awaiting_results (e.g. labs pending) without locking it.
+func (h *Handlers) SetAside(c *gin.Context) {
+	encID, ok := decodeParam(c, id.PrefixEncounter, "id")
+	if !ok {
+		return
+	}
+	if err := h.svc.SetAside(c.Request.Context(), encID); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+// ---- doctor "My day" board ----
+
+type boardActiveDTO struct {
+	EncounterID  string  `json:"encounter_id"`
+	QueueEntryID *string `json:"queue_entry_id"`
+	clinical.BoardActive
+}
+type boardDoneDTO struct {
+	EncounterID string `json:"encounter_id"`
+	clinical.BoardDone
+}
+type boardDTO struct {
+	Active []boardActiveDTO `json:"active"`
+	Done   []boardDoneDTO   `json:"done"`
+}
+
+// MyBoard handles GET /encounters/board?provider= — the doctor's in-progress and
+// done-today encounters. Defaults to the authenticated user.
+func (h *Handlers) MyBoard(c *gin.Context) {
+	var provider uuid.UUID
+	if q := c.Query("provider"); q != "" {
+		pid, err := id.Decode(id.PrefixUser, q)
+		if err != nil {
+			httpx.Fail(c, apperr.Validation("invalid provider"))
+			return
+		}
+		provider = pid
+	} else if p, ok := httpx.PrincipalFrom(c); ok {
+		provider = p.UserID
+	} else {
+		httpx.Fail(c, apperr.Unauthenticated("authentication required"))
+		return
+	}
+	board, err := h.svc.MyBoard(c.Request.Context(), provider)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out := boardDTO{Active: make([]boardActiveDTO, 0, len(board.Active)), Done: make([]boardDoneDTO, 0, len(board.Done))}
+	for _, a := range board.Active {
+		out.Active = append(out.Active, boardActiveDTO{
+			EncounterID: id.Encode(id.PrefixEncounter, a.EncounterID), QueueEntryID: encodePtr(id.PrefixQueueEntry, a.QueueEntryID), BoardActive: a,
+		})
+	}
+	for _, d := range board.Done {
+		out.Done = append(out.Done, boardDoneDTO{EncounterID: id.Encode(id.PrefixEncounter, d.EncounterID), BoardDone: d})
+	}
+	httpx.OK(c, out)
+}
+
 // ---- diagnosis catalog handlers ----
 
 // ListCategories handles GET /diagnosis-categories.

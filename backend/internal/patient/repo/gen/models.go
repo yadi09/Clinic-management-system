@@ -306,6 +306,76 @@ type GuardianLink struct {
 	DeletedAt         *time.Time `json:"deleted_at"`
 }
 
+type LabAnalyte struct {
+	ID           uuid.UUID      `json:"id"`
+	TenantID     uuid.UUID      `json:"tenant_id"`
+	TestID       uuid.UUID      `json:"test_id"`
+	Name         string         `json:"name"`
+	Unit         *string        `json:"unit"`
+	RefLow       pgtype.Numeric `json:"ref_low"`
+	RefHigh      pgtype.Numeric `json:"ref_high"`
+	CriticalLow  pgtype.Numeric `json:"critical_low"`
+	CriticalHigh pgtype.Numeric `json:"critical_high"`
+	SortOrder    int32          `json:"sort_order"`
+	CreatedAt    time.Time      `json:"created_at"`
+}
+
+type LabOrder struct {
+	ID           uuid.UUID  `json:"id"`
+	TenantID     uuid.UUID  `json:"tenant_id"`
+	OrderNo      int64      `json:"order_no"`
+	EncounterID  *uuid.UUID `json:"encounter_id"`
+	PatientID    uuid.UUID  `json:"patient_id"`
+	ProviderID   *uuid.UUID `json:"provider_id"`
+	Priority     string     `json:"priority"`
+	ClinicalNote *string    `json:"clinical_note"`
+	Status       string     `json:"status"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	CreatedBy    *uuid.UUID `json:"created_by"`
+	DeletedAt    *time.Time `json:"deleted_at"`
+}
+
+type LabOrderItem struct {
+	ID          uuid.UUID  `json:"id"`
+	TenantID    uuid.UUID  `json:"tenant_id"`
+	OrderID     uuid.UUID  `json:"order_id"`
+	TestID      uuid.UUID  `json:"test_id"`
+	SampleNo    int64      `json:"sample_no"`
+	Specimen    *string    `json:"specimen"`
+	Status      string     `json:"status"`
+	CollectedBy *string    `json:"collected_by"`
+	CollectedAt *time.Time `json:"collected_at"`
+	ResultedAt  *time.Time `json:"resulted_at"`
+	ValidatedAt *time.Time `json:"validated_at"`
+	ValidatedBy *uuid.UUID `json:"validated_by"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+type LabResult struct {
+	ID          uuid.UUID `json:"id"`
+	TenantID    uuid.UUID `json:"tenant_id"`
+	OrderItemID uuid.UUID `json:"order_item_id"`
+	AnalyteID   uuid.UUID `json:"analyte_id"`
+	Value       *string   `json:"value"`
+	Flag        string    `json:"flag"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type LabTest struct {
+	ID        uuid.UUID  `json:"id"`
+	TenantID  uuid.UUID  `json:"tenant_id"`
+	Code      string     `json:"code"`
+	Name      string     `json:"name"`
+	Specimen  *string    `json:"specimen"`
+	IsActive  bool       `json:"is_active"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	CreatedBy *uuid.UUID `json:"created_by"`
+	DeletedAt *time.Time `json:"deleted_at"`
+}
+
 type MrnCounter struct {
 	TenantID  uuid.UUID `json:"tenant_id"`
 	LastValue int64     `json:"last_value"`

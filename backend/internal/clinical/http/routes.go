@@ -18,12 +18,14 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	enc := rg.Group("/encounters", httpx.RequirePermission("encounter.manage"))
 	enc.POST("", h.OpenEncounter)   // open-or-get the encounter for a queue entry
 	enc.GET("", h.History)          // ?patient= → patient history timeline
+	enc.GET("/board", h.MyBoard)    // doctor's "My day": in-progress + done today
 	enc.GET("/:id", h.GetWorkspace)
 	enc.PUT("/:id/note", h.SaveNote)
 	enc.POST("/:id/diagnoses", h.AddDiagnosis)
 	enc.DELETE("/:id/diagnoses/:dxId", h.RemoveDiagnosis)
 	enc.POST("/:id/prescriptions", h.AddMedication)
 	enc.DELETE("/:id/prescriptions/:itemId", h.RemoveMedication)
+	enc.POST("/:id/set-aside", h.SetAside)
 	enc.POST("/:id/sign", h.SignAndClose)
 
 	// Diagnosis catalog — reads open to any authenticated staff (non-PHI

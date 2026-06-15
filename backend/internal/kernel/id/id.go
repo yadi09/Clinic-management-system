@@ -49,6 +49,10 @@ const (
 	PrefixPOItem         = "poi"
 	PrefixStockCount     = "cnt"
 	PrefixCountItem      = "cni"
+	PrefixLabTest        = "lt"
+	PrefixAnalyte        = "lan"
+	PrefixLabOrder       = "lo"
+	PrefixLabItem        = "smp"
 )
 
 // base32 lower-case, no padding. Decoding is case-insensitive.

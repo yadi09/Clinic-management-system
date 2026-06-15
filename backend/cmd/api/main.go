@@ -30,6 +30,8 @@ import (
 	clinicalservice "github.com/reicb/clinicsaas/internal/clinical/service"
 	identityhttp "github.com/reicb/clinicsaas/internal/identity/http"
 	identityservice "github.com/reicb/clinicsaas/internal/identity/service"
+	labhttp "github.com/reicb/clinicsaas/internal/lab/http"
+	labservice "github.com/reicb/clinicsaas/internal/lab/service"
 	orghttp "github.com/reicb/clinicsaas/internal/org/http"
 	orgservice "github.com/reicb/clinicsaas/internal/org/service"
 	patienthttp "github.com/reicb/clinicsaas/internal/patient/http"
@@ -91,8 +93,9 @@ func main() {
 	billingHandlers := billinghttp.NewHandlers(billingservice.NewService(db, publisher))
 	clinicalHandlers := clinicalhttp.NewHandlers(clinicalservice.NewService(db, publisher))
 	pharmacyHandlers := pharmacyhttp.NewHandlers(pharmacyservice.NewService(db, publisher))
+	labHandlers := labhttp.NewHandlers(labservice.NewService(db, publisher))
 
-	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, pharmacyHandlers)
+	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, pharmacyHandlers, labHandlers)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -130,6 +133,7 @@ func newRouter(
 	billingHandlers *billinghttp.Handlers,
 	clinicalHandlers *clinicalhttp.Handlers,
 	pharmacyHandlers *pharmacyhttp.Handlers,
+	labHandlers *labhttp.Handlers,
 ) *gin.Engine {
 	if cfg.IsProd() {
 		gin.SetMode(gin.ReleaseMode)
@@ -168,6 +172,7 @@ func newRouter(
 	billingHandlers.RegisterProtected(protected)         // /billing/card/...
 	clinicalHandlers.RegisterProtected(protected)        // /visits/..., /encounters/..., /diagnosis-*
 	pharmacyHandlers.RegisterProtected(protected)        // /pharmacy/...
+	labHandlers.RegisterProtected(protected)             // /lab/...
 
 	// SSE queue stream authenticates via ?token= (EventSource can't set headers).
 	v1.GET("/queue/stream", httpx.RequireAuthQuery(tokens), schedulingHandlers.QueueStream)

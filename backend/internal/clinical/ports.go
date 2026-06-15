@@ -122,6 +122,33 @@ type Workspace struct {
 	Prescription []Medication  `json:"prescription"`
 }
 
+// BoardActive is one in-progress encounter on the doctor's "My day" board.
+// PendingLabs > 0 (or status == awaiting_results) is the reason it's parked.
+type BoardActive struct {
+	EncounterID  uuid.UUID  `json:"-"`
+	QueueEntryID *uuid.UUID `json:"-"`
+	Status       string     `json:"status"`
+	StartedAt    time.Time  `json:"started_at"`
+	PatientName  string     `json:"patient_name"`
+	MRN          string     `json:"mrn"`
+	PendingLabs  int        `json:"pending_labs"`
+}
+
+// BoardDone is one encounter the doctor closed today.
+type BoardDone struct {
+	EncounterID uuid.UUID  `json:"-"`
+	ClosedAt    *time.Time `json:"closed_at,omitempty"`
+	StartedAt   time.Time  `json:"started_at"`
+	PatientName string     `json:"patient_name"`
+	MRN         string     `json:"mrn"`
+}
+
+// Board is the doctor's own active + done-today encounters.
+type Board struct {
+	Active []BoardActive `json:"active"`
+	Done   []BoardDone   `json:"done"`
+}
+
 // HistoryItem is one past encounter on the patient timeline.
 type HistoryItem struct {
 	ID           uuid.UUID `json:"-"`
@@ -195,6 +222,11 @@ type Service interface {
 	AddMedication(ctx context.Context, encounterID uuid.UUID, in MedicationInput) (*Medication, error)
 	RemoveMedication(ctx context.Context, encounterID, itemID uuid.UUID) error
 	SignAndClose(ctx context.Context, encounterID uuid.UUID) error
+	// SetAside parks an open encounter as awaiting_results (e.g. labs pending);
+	// it stays editable — only SignAndClose locks it.
+	SetAside(ctx context.Context, encounterID uuid.UUID) error
+	// MyBoard returns the calling doctor's in-progress and done-today encounters.
+	MyBoard(ctx context.Context, providerID uuid.UUID) (*Board, error)
 	History(ctx context.Context, patientID uuid.UUID) ([]HistoryItem, error)
 
 	// Diagnosis catalog (admin config + doctor search).

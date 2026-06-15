@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CalendarPlus, Check, Plus, X } from "lucide-react";
+import { AlertTriangle, CalendarPlus, Check, FlaskConical, PauseCircle, Plus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
@@ -14,6 +15,7 @@ import { AppError } from "@/lib/api-client";
 import { useAuth } from "@/app/auth-context";
 import { getSettings } from "@/features/admin/api";
 import { bookAppointment, markFollowup, transitionQueue } from "@/features/scheduling/api";
+import { createOrder, encounterLabs, listTests } from "@/features/lab/api";
 import {
   addDiagnosis,
   addMedication,
@@ -23,6 +25,7 @@ import {
   removeMedication,
   saveNote,
   searchCatalog,
+  setAside,
   signEncounter,
   type CatalogEntry,
   type Workspace,
@@ -33,9 +36,17 @@ const SECTIONS = [
   { id: "objective", label: "Objective / Vitals" },
   { id: "assessment", label: "Assessment / Dx" },
   { id: "plan", label: "Plan" },
+  { id: "lab", label: "Orders / Lab" },
   { id: "prescription", label: "Prescription" },
 ];
-const DEFERRED = ["Orders (Lab)", "Attachments"];
+const DEFERRED = ["Attachments"];
+
+const FLAG_CLS: Record<string, string> = {
+  normal: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  low: "border-sky-300 bg-sky-50 text-sky-700",
+  high: "border-amber-300 bg-amber-50 text-amber-700",
+  critical: "border-rose-300 bg-rose-50 text-rose-700",
+};
 
 function hhmm(iso?: string) {
   if (!iso) return "";
@@ -64,8 +75,18 @@ export function EncounterWorkspacePage() {
 
 function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace; queueEntryId: string; onChanged: () => void; onClosed: () => void }) {
   const locked = ws.status === "closed" || ws.note.status === "signed";
+  const awaiting = ws.status === "awaiting_results";
   const latest = ws.vitals[0];
   const [confirmSign, setConfirmSign] = useState(false);
+
+  const park = useMutation({
+    mutationFn: () => setAside(ws.encounter_id),
+    onSuccess: () => {
+      toast.success("Set aside — patient stays on your board under “In progress”");
+      onClosed();
+    },
+    onError: () => toast.error("Could not set this encounter aside"),
+  });
 
   // SOAP local state + debounced auto-save.
   const [soap, setSoap] = useState({ subjective: ws.note.subjective, objective: ws.note.objective, assessment: ws.note.assessment, plan: ws.note.plan });
@@ -137,6 +158,11 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
           <Check className="h-4 w-4" /> This encounter is signed and locked{ws.note.signed_at ? ` (${hhmm(ws.note.signed_at)})` : ""} — read only.
         </div>
       )}
+      {awaiting && (
+        <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+          <PauseCircle className="h-4 w-4" /> Set aside — awaiting results. Still editable; review the labs below, then sign &amp; close.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[180px_1fr_240px]">
         {/* Left rail */}
@@ -188,6 +214,10 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
             <Textarea rows={3} placeholder="Plan, advice, follow-up…" value={soap.plan} disabled={locked} onChange={(e) => setField("plan", e.target.value)} />
           </section>
 
+          <section id="lab">
+            <LabOrders ws={ws} locked={locked} />
+          </section>
+
           <section id="prescription">
             <PrescriptionPanel ws={ws} locked={locked} onChanged={onChanged} />
           </section>
@@ -195,7 +225,12 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
           {!locked && <FollowUp ws={ws} />}
 
           {!locked && (
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              {ws.status === "open" && (
+                <Button variant="outline" loading={park.isPending} onClick={() => park.mutate()}>
+                  <PauseCircle className="h-4 w-4" /> Set aside (awaiting results)
+                </Button>
+              )}
               <Button className="bg-primary" loading={sign.isPending} onClick={() => setConfirmSign(true)}>
                 <Check /> Sign &amp; close
               </Button>
@@ -355,6 +390,140 @@ function DiagnosisPicker({ ws, locked, onChanged }: { ws: Workspace; locked: boo
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function LabOrders({ ws, locked }: { ws: Workspace; locked: boolean }) {
+  const { can, flagOn } = useAuth();
+  const qc = useQueryClient();
+  const enabled = flagOn("laboratory");
+  const canOrder = can("lab.order");
+  const [open, setOpen] = useState(false);
+  const [priority, setPriority] = useState("routine");
+  const [note, setNote] = useState("");
+  const [picked, setPicked] = useState<Record<string, boolean>>({});
+
+  const orders = useQuery({
+    queryKey: ["enc-labs", ws.encounter_id],
+    queryFn: () => encounterLabs(ws.encounter_id),
+    enabled,
+  });
+  const tests = useQuery({ queryKey: ["lab-tests-active"], queryFn: () => listTests(true), enabled: enabled && open });
+
+  const place = useMutation({
+    mutationFn: () =>
+      createOrder({
+        encounter_id: ws.encounter_id,
+        patient_id: ws.patient.patient_id,
+        priority,
+        clinical_note: note,
+        test_ids: Object.keys(picked).filter((k) => picked[k]),
+      }),
+    onSuccess: () => {
+      toast.success("Lab order placed");
+      setOpen(false);
+      setPicked({});
+      setNote("");
+      setPriority("routine");
+      qc.invalidateQueries({ queryKey: ["enc-labs", ws.encounter_id] });
+    },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not place order"),
+  });
+
+  if (!enabled) return null;
+  const pickedCount = Object.values(picked).filter(Boolean).length;
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="text-h3">Orders / Lab</h2>
+        {!locked && canOrder && (
+          <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+            <FlaskConical className="h-3.5 w-3.5" /> Order labs
+          </Button>
+        )}
+      </div>
+
+      {(orders.data?.length ?? 0) === 0 ? (
+        <p className="text-xs text-muted-foreground">No labs ordered.</p>
+      ) : (
+        <div className="space-y-3">
+          {(orders.data ?? []).map((o) => (
+            <div key={o.order_no} className="rounded-md border">
+              <div className="flex items-center justify-between border-b bg-muted/30 px-3 py-1.5 text-xs">
+                <span className="font-mono">Order L-{o.order_no}</span>
+                <Badge variant="outline">{o.priority}</Badge>
+              </div>
+              <div className="divide-y">
+                {o.items.map((it) => (
+                  <div key={it.sample_no} className="px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">{it.test_name}</span>
+                      <Badge variant={it.status === "validated" ? "success" : "outline"}>{it.status.replace("_", " ")}</Badge>
+                    </div>
+                    {it.results.length > 0 && (
+                      <table className="mt-1.5 w-full text-xs">
+                        <tbody>
+                          {it.results.map((r) => (
+                            <tr key={r.analyte_id}>
+                              <td className="py-0.5 text-muted-foreground">{r.name}</td>
+                              <td className="py-0.5 font-medium">{r.value || "—"}{r.value && r.unit ? ` ${r.unit}` : ""}</td>
+                              <td className="py-0.5 text-right">
+                                {r.value ? <Badge variant="outline" className={FLAG_CLS[r.flag] ?? FLAG_CLS.normal}>{r.flag}</Badge> : null}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                    {it.results.length === 0 && it.status !== "validated" && (
+                      <p className="mt-1 text-xs text-muted-foreground">Awaiting lab…</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Order laboratory tests</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Label className="text-xs">Priority</Label>
+              {["routine", "urgent", "stat"].map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPriority(p)}
+                  className={`rounded-full border px-3 py-1 text-xs capitalize ${priority === p ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground"}`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+            <div className="max-h-60 space-y-1 overflow-auto rounded-md border p-1">
+              {(tests.data ?? []).map((t) => (
+                <label key={t.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
+                  <input type="checkbox" checked={!!picked[t.id]} onChange={(e) => setPicked({ ...picked, [t.id]: e.target.checked })} />
+                  <span className="font-mono text-xs text-muted-foreground">{t.code}</span>
+                  <span>{t.name}</span>
+                </label>
+              ))}
+              {(tests.data?.length ?? 0) === 0 && <p className="px-2 py-3 text-xs text-muted-foreground">No active tests in the catalog.</p>}
+            </div>
+            <Textarea rows={2} placeholder="Clinical note for the lab…" value={note} onChange={(e) => setNote(e.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button disabled={pickedCount === 0} loading={place.isPending} onClick={() => place.mutate()}>
+              Order {pickedCount > 0 ? `(${pickedCount})` : ""}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

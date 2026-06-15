@@ -184,6 +184,34 @@ WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
 UPDATE diagnosis_catalog SET deleted_at = now(), updated_at = now()
 WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
 
+-- name: SetEncounterAwaitingResults :one
+-- Park an open encounter while labs run (doctor's "set aside").
+UPDATE encounters SET status = 'awaiting_results', updated_at = now()
+WHERE tenant_id = @tenant_id AND id = @id AND status = 'open' AND deleted_at IS NULL
+RETURNING id;
+
+-- name: ListMyActiveEncounters :many
+-- The doctor board's "In progress" — open / awaiting-results encounters, with a
+-- pending-lab count for the reason (cross-module read of lab tables).
+SELECT e.id, e.queue_entry_id, e.status, e.started_at, e.patient_id,
+       p.first_name, p.last_name, p.mrn,
+       (SELECT count(*) FROM lab_order_items i
+          JOIN lab_orders o ON o.id = i.order_id AND o.tenant_id = i.tenant_id
+          WHERE o.encounter_id = e.id AND o.deleted_at IS NULL AND i.status NOT IN ('validated','cancelled'))::int AS pending_labs
+FROM encounters e
+JOIN patients p ON p.id = e.patient_id AND p.tenant_id = e.tenant_id
+WHERE e.tenant_id = @tenant_id AND e.provider_id = @provider_id AND e.deleted_at IS NULL
+  AND e.status IN ('open','awaiting_results')
+ORDER BY e.started_at DESC LIMIT 100;
+
+-- name: ListMyDoneEncountersToday :many
+SELECT e.id, e.started_at, e.closed_at, p.first_name, p.last_name, p.mrn
+FROM encounters e
+JOIN patients p ON p.id = e.patient_id AND p.tenant_id = e.tenant_id
+WHERE e.tenant_id = @tenant_id AND e.provider_id = @provider_id AND e.deleted_at IS NULL
+  AND e.status = 'closed' AND e.closed_at >= @since
+ORDER BY e.closed_at DESC LIMIT 100;
+
 -- name: ListPatientEncounters :many
 -- Patient history timeline (Phase 3b-2): past encounters with their primary diagnosis.
 SELECT e.id, e.started_at, e.status,

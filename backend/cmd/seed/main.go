@@ -67,6 +67,10 @@ var basePermissions = []struct{ Code, Desc string }{
 	{"pharmacy.stock", "Adjust pharmacy stock"},
 	{"pharmacy.sell", "Make OTC counter sales"},
 	{"pharmacy.manage", "Manage the drug catalog, purchasing and reports"},
+	{"lab.order", "Order laboratory tests"},
+	{"lab.process", "Accession samples and enter lab results"},
+	{"lab.validate", "Validate and release lab results"},
+	{"lab.manage", "Manage the lab test catalog"},
 	{"settings.manage", "Manage tenant/branch settings"},
 	{"audit.read", "View audit logs"},
 }
@@ -186,6 +190,67 @@ func seedPharmacy(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) error {
 	return nil
 }
 
+// seedLab inserts a starter lab test catalog with analytes + reference ranges
+// (lab managers extend it). Idempotent.
+func seedLab(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) error {
+	f := func(v float64) *float64 { return &v }
+	type an struct {
+		Name, Unit             string
+		Lo, Hi, CLo, CHi       *float64
+	}
+	type tst struct {
+		Code, Name, Specimen string
+		Analytes             []an
+	}
+	tests := []tst{
+		{"CBC", "Complete blood count", "Blood", []an{
+			{"WBC", "10^9/L", f(4.0), f(11.0), f(2.0), f(30.0)},
+			{"RBC", "10^12/L", f(4.2), f(5.4), nil, nil},
+			{"Hemoglobin", "g/dL", f(12.0), f(16.0), nil, nil},
+			{"Hematocrit", "%", f(36), f(46), nil, nil},
+			{"Platelets", "10^9/L", f(150), f(400), f(50), f(1000)},
+			{"Neutrophils", "%", f(40), f(75), nil, nil},
+			{"Lymphocytes", "%", f(20), f(40), nil, nil},
+		}},
+		{"CRP", "C-reactive protein", "Blood", []an{{"CRP", "mg/L", f(0), f(5), nil, nil}}},
+		{"HBA1C", "HbA1c", "Blood", []an{{"HbA1c", "%", f(4), f(5.6), nil, f(10)}}},
+		{"TROP", "Troponin", "Blood", []an{{"Troponin", "ng/mL", f(0), f(0.04), nil, f(0.4)}}},
+		{"LIPID", "Lipid panel", "Blood", []an{
+			{"Total cholesterol", "mg/dL", f(0), f(200), nil, nil},
+			{"LDL", "mg/dL", f(0), f(130), nil, nil},
+			{"HDL", "mg/dL", f(40), f(200), nil, nil},
+			{"Triglycerides", "mg/dL", f(0), f(150), nil, nil},
+		}},
+		{"UA", "Urinalysis", "Urine", []an{{"Urine glucose", "mg/dL", f(0), f(15), nil, nil}}},
+		{"STREP", "Rapid strep test", "Throat swab", []an{{"Result", "", nil, nil, nil, nil}}},
+	}
+	for _, t := range tests {
+		var tid uuid.UUID
+		err := tx.QueryRow(ctx,
+			`SELECT id FROM lab_tests WHERE tenant_id=$1 AND lower(code)=lower($2) AND deleted_at IS NULL`,
+			tenantID, t.Code).Scan(&tid)
+		if errors.Is(err, pgx.ErrNoRows) {
+			if err = tx.QueryRow(ctx,
+				`INSERT INTO lab_tests (tenant_id, code, name, specimen) VALUES ($1,$2,$3,$4) RETURNING id`,
+				tenantID, t.Code, t.Name, t.Specimen).Scan(&tid); err != nil {
+				return fmt.Errorf("lab test %s: %w", t.Code, err)
+			}
+		} else if err != nil {
+			return fmt.Errorf("lab test %s: %w", t.Code, err)
+		}
+		for i, a := range t.Analytes {
+			if _, err := tx.Exec(ctx,
+				`INSERT INTO lab_analytes (tenant_id, test_id, name, unit, ref_low, ref_high, critical_low, critical_high, sort_order)
+				 SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9
+				 WHERE NOT EXISTS (SELECT 1 FROM lab_analytes WHERE test_id=$2 AND name=$3)`,
+				tenantID, tid, a.Name, a.Unit, a.Lo, a.Hi, a.CLo, a.CHi, i); err != nil {
+				return fmt.Errorf("lab analyte %s: %w", a.Name, err)
+			}
+		}
+	}
+	return nil
+}
+
 func env(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -300,11 +365,13 @@ func main() {
 		roleGrants := map[string][]string{
 			"branch_manager": {"patient.create", "patient.read", "patient.update", "patient.search", "appointment.manage", "queue.manage", "triage.manage", "payment.collect", "user.read"},
 			"receptionist":   {"patient.create", "patient.read", "patient.update", "patient.search", "appointment.manage", "queue.manage", "payment.collect"},
-			"doctor":         {"patient.read", "patient.search", "encounter.manage", "prescription.create", "queue.manage", "appointment.manage"},
+			"doctor":         {"patient.read", "patient.search", "encounter.manage", "prescription.create", "queue.manage", "appointment.manage", "lab.order"},
 			"nurse":          {"patient.read", "patient.search", "triage.manage", "queue.manage"},
 			"cashier":        {"payment.collect", "patient.read", "patient.search"},
 			"pharmacist":      {"patient.read", "patient.search", "pharmacy.read", "pharmacy.dispense", "pharmacy.stock", "pharmacy.sell"},
 			"pharmacy_manager": {"patient.read", "patient.search", "pharmacy.read", "pharmacy.dispense", "pharmacy.stock", "pharmacy.sell", "pharmacy.manage"},
+			"lab_technician":   {"patient.read", "patient.search", "lab.process"},
+			"lab_manager":      {"patient.read", "patient.search", "lab.process", "lab.validate", "lab.manage"},
 		}
 		for code, perms := range roleGrants {
 			rid, ok := roleIDs[code]
@@ -356,6 +423,10 @@ func main() {
 		}
 		// Starter drug catalog + stock (pharmacy managers extend it).
 		if e := seedPharmacy(ctx, tx, tenantID); e != nil {
+			return e
+		}
+		// Starter lab test catalog (lab managers extend it).
+		if e := seedLab(ctx, tx, tenantID); e != nil {
 			return e
 		}
 		return nil

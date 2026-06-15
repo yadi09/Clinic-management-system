@@ -27,6 +27,9 @@ import { CatalogAdminPage } from "@/features/pharmacy/pages/CatalogAdminPage";
 import { PurchasingPage } from "@/features/pharmacy/pages/PurchasingPage";
 import { StockControlPage } from "@/features/pharmacy/pages/StockControlPage";
 import { ReportsPage } from "@/features/pharmacy/pages/ReportsPage";
+import { LabWorklistPage } from "@/features/lab/pages/LabWorklistPage";
+import { LabOrderItemPage } from "@/features/lab/pages/LabOrderItemPage";
+import { LabCatalogPage } from "@/features/lab/pages/LabCatalogPage";
 import { NotFoundPage } from "@/features/misc/NotFoundPage";
 
 export function AppRoutes() {
@@ -60,6 +63,9 @@ export function AppRoutes() {
           <Route path="/pharmacy/purchasing" element={<PurchasingPage />} />
           <Route path="/pharmacy/stock-control" element={<StockControlPage />} />
           <Route path="/pharmacy/reports" element={<ReportsPage />} />
+          <Route path="/lab" element={<LabWorklistPage />} />
+          <Route path="/lab/items/:itemId" element={<LabOrderItemPage />} />
+          <Route path="/lab/catalog" element={<LabCatalogPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>

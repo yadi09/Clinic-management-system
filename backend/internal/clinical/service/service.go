@@ -391,6 +391,60 @@ func (s *Service) SignAndClose(ctx context.Context, encounterID uuid.UUID) error
 	return mapErr(err)
 }
 
+// SetAside parks an open encounter as awaiting_results — the doctor's "set aside
+// while labs run" action. It stays editable; only SignAndClose locks it. Emits
+// clinical.encounter.set_aside. No-op-with-conflict if it isn't currently open.
+func (s *Service) SetAside(ctx context.Context, encounterID uuid.UUID) error {
+	tenantID, _ := actorOf(ctx)
+	return mapErr(s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := clinicaldb.New(tx)
+		if _, e := q.SetEncounterAwaitingResults(ctx, clinicaldb.SetEncounterAwaitingResultsParams{TenantID: tenantID, ID: encounterID}); e != nil {
+			if errors.Is(e, pgx.ErrNoRows) {
+				return apperr.Conflict("INVALID_STATE", "only an open encounter can be set aside")
+			}
+			return e
+		}
+		return s.publisher.Publish(ctx, tx, &tenantID, "encounter", encounterID, "clinical.encounter.set_aside",
+			map[string]any{"encounter_id": encounterID})
+	}))
+}
+
+// MyBoard returns the doctor's own in-progress (open/awaiting-results, with a
+// pending-lab count for the reason) and closed-today encounters.
+func (s *Service) MyBoard(ctx context.Context, providerID uuid.UUID) (*clinical.Board, error) {
+	tenantID, _ := actorOf(ctx)
+	out := &clinical.Board{Active: []clinical.BoardActive{}, Done: []clinical.BoardDone{}}
+	since := time.Now().Add(-24 * time.Hour)
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := clinicaldb.New(tx)
+		act, e := q.ListMyActiveEncounters(ctx, clinicaldb.ListMyActiveEncountersParams{TenantID: tenantID, ProviderID: &providerID})
+		if e != nil {
+			return e
+		}
+		for _, r := range act {
+			out.Active = append(out.Active, clinical.BoardActive{
+				EncounterID: r.ID, QueueEntryID: r.QueueEntryID, Status: r.Status, StartedAt: r.StartedAt,
+				PatientName: r.FirstName + " " + r.LastName, MRN: r.Mrn, PendingLabs: int(r.PendingLabs),
+			})
+		}
+		done, e := q.ListMyDoneEncountersToday(ctx, clinicaldb.ListMyDoneEncountersTodayParams{TenantID: tenantID, ProviderID: &providerID, Since: &since})
+		if e != nil {
+			return e
+		}
+		for _, r := range done {
+			out.Done = append(out.Done, clinical.BoardDone{
+				EncounterID: r.ID, ClosedAt: r.ClosedAt, StartedAt: r.StartedAt,
+				PatientName: r.FirstName + " " + r.LastName, MRN: r.Mrn,
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
 // History returns a patient's past encounters (newest first) for the timeline.
 func (s *Service) History(ctx context.Context, patientID uuid.UUID) ([]clinical.HistoryItem, error) {
 	tenantID, _ := actorOf(ctx)

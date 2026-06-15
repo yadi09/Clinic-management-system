@@ -140,6 +140,37 @@ export function removeMedication(encounterId: string, itemId: string) {
 export function signEncounter(encounterId: string) {
   return apiFetch<void>(`/encounters/${encounterId}/sign`, { method: "POST" });
 }
+/** Park an open encounter as awaiting_results (e.g. labs pending) without locking it. */
+export function setAside(encounterId: string) {
+  return apiFetch<void>(`/encounters/${encounterId}/set-aside`, { method: "POST" });
+}
+
+// ---- Phase 5a: doctor "My day" board ----
+
+export interface BoardActive {
+  encounter_id: string;
+  queue_entry_id?: string | null;
+  status: string; // open | awaiting_results
+  started_at: string;
+  patient_name: string;
+  mrn: string;
+  pending_labs: number;
+}
+export interface BoardDone {
+  encounter_id: string;
+  closed_at?: string;
+  started_at: string;
+  patient_name: string;
+  mrn: string;
+}
+export interface Board {
+  active: BoardActive[];
+  done: BoardDone[];
+}
+/** The calling doctor's in-progress and done-today encounters. */
+export function myBoard(providerId?: string) {
+  return apiFetch<Board>(`/encounters/board${providerId ? `?provider=${providerId}` : ""}`);
+}
 
 // Diagnosis catalog
 export function searchCatalog(params: { search?: string; category?: string; all?: boolean } = {}) {

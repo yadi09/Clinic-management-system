@@ -1,0 +1,104 @@
+import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { FlaskConical } from "lucide-react";
+
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { worklist, type WorklistItem } from "@/features/lab/api";
+
+function waitMins(iso: string) {
+  return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+}
+
+const TABS = [
+  { key: "pending", label: "To collect", match: (s: string) => s === "ordered" },
+  { key: "entry", label: "Result entry", match: (s: string) => s === "collected" || s === "in_process" },
+  { key: "validate", label: "Awaiting validation", match: (s: string) => s === "resulted" },
+  { key: "done", label: "Validated", match: (s: string) => s === "validated" },
+] as const;
+
+const PRIORITY: Record<string, string> = {
+  stat: "border-rose-300 bg-rose-50 text-rose-700",
+  urgent: "border-amber-300 bg-amber-50 text-amber-700",
+  routine: "border-slate-200 text-muted-foreground",
+};
+
+export function LabWorklistPage() {
+  const navigate = useNavigate();
+  const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("pending");
+  const q = useQuery({ queryKey: ["lab-worklist"], queryFn: () => worklist(), refetchInterval: 20000 });
+
+  const buckets = useMemo(() => {
+    const all = q.data ?? [];
+    const out: Record<string, WorklistItem[]> = {};
+    for (const t of TABS) out[t.key] = all.filter((i) => t.match(i.status));
+    return out;
+  }, [q.data]);
+
+  const rows = buckets[tab] ?? [];
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1>Laboratory worklist</h1>
+        <p className="text-sm text-muted-foreground">Collect samples, enter results, release to the ordering doctor.</p>
+      </div>
+
+      <div className="flex flex-wrap gap-1 border-b">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${
+              tab === t.key ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {t.label}
+            <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs">{buckets[t.key]?.length ?? 0}</span>
+          </button>
+        ))}
+      </div>
+
+      <Card className="overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
+              <th className="p-3 font-medium">Sample</th>
+              <th className="font-medium">Test</th>
+              <th className="font-medium">Patient</th>
+              <th className="font-medium">Priority</th>
+              <th className="font-medium">Ordered</th>
+              <th className="p-3 font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((it) => (
+              <tr key={it.id} className="cursor-pointer border-b hover:bg-muted/30" onClick={() => navigate(`/lab/items/${it.id}`)}>
+                <td className="p-3 font-mono text-xs">S-{it.sample_no}</td>
+                <td>{it.test_name}</td>
+                <td>
+                  {it.patient_name} <span className="font-mono text-xs text-muted-foreground">{it.mrn}</span>
+                </td>
+                <td>
+                  <Badge variant="outline" className={PRIORITY[it.priority] ?? PRIORITY.routine}>
+                    {it.priority}
+                  </Badge>
+                </td>
+                <td className="text-xs text-muted-foreground">{waitMins(it.ordered_at)}m ago</td>
+                <td className="p-3">
+                  <Badge variant="outline">{it.status.replace("_", " ")}</Badge>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {rows.length === 0 && (
+          <p className="flex items-center justify-center gap-2 p-10 text-sm text-muted-foreground">
+            <FlaskConical className="h-4 w-4" /> Nothing here.
+          </p>
+        )}
+      </Card>
+    </div>
+  );
+}
