@@ -105,7 +105,25 @@ export interface OrderItemDetail {
   priority: string;
   clinical_note?: string;
   ordered_by?: string;
+  critical: boolean;
+  notified_at?: string;
+  notified_by?: string;
   analytes: AnalyteResult[];
+}
+
+export interface InboxItem {
+  id: string;
+  encounter_id?: string | null;
+  sample_no: number;
+  test_name: string;
+  patient_name: string;
+  mrn: string;
+  priority: string;
+  validated_at?: string;
+  critical: boolean;
+  notified_at?: string;
+  critical_count: number;
+  abnormal_count: number;
 }
 
 export function worklist(status?: string) {
@@ -125,4 +143,16 @@ export function submitResults(itemId: string) {
 }
 export function validateItem(itemId: string) {
   return apiFetch<void>(`/lab/items/${itemId}/validate`, { method: "POST" });
+}
+
+// ---- Phase 5b-1: critical acknowledgement + doctor inbox ----
+
+export function markNotified(itemId: string) {
+  return apiFetch<void>(`/lab/items/${itemId}/notify`, { method: "POST" });
+}
+export function resultsInbox(providerId?: string) {
+  return apiFetch<InboxItem[]>(`/lab/inbox${providerId ? `?provider=${providerId}` : ""}`);
+}
+export function inboxCount() {
+  return apiFetch<{ count: number }>("/lab/inbox/count");
 }

@@ -1,8 +1,10 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { Activity, Bell, Search, LogOut, ChevronsUpDown } from "lucide-react";
 
 import { useAuth } from "@/app/auth-context";
 import { navSections } from "@/app/nav";
+import { inboxCount } from "@/features/lab/api";
 import { CommandPalette } from "@/app/command-palette";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -28,6 +30,15 @@ export function AppShell() {
   const sections = navSections
     .map((s) => ({ ...s, items: s.items.filter((i) => !i.perm || i.perm.some((p) => can(p))) }))
     .filter((s) => s.items.length > 0);
+
+  // Live alert badge for the doctor's results inbox (unacknowledged criticals).
+  const labInbox = useQuery({
+    queryKey: ["lab-inbox-count"],
+    queryFn: inboxCount,
+    enabled: can("lab.order"),
+    refetchInterval: 30000,
+  });
+  const badgeCount = (key?: string) => (key === "labInbox" ? labInbox.data?.count ?? 0 : 0);
 
   return (
     <div className="min-h-screen bg-background">
@@ -105,7 +116,12 @@ export function AppShell() {
                       }
                     >
                       <item.icon className="h-4 w-4" />
-                      {item.label}
+                      <span className="flex-1">{item.label}</span>
+                      {badgeCount(item.badge) > 0 && (
+                        <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1.5 text-xs font-semibold text-white">
+                          {badgeCount(item.badge)}
+                        </span>
+                      )}
                     </NavLink>
                   ))}
                 </div>

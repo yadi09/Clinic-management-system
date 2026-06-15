@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, FlaskConical, Send, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BellRing, Check, FlaskConical, Send, ShieldCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -10,7 +10,12 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
 import { useAuth } from "@/app/auth-context";
-import { accession, getItem, saveResults, submitResults, validateItem, type AnalyteResult, type OrderItemDetail } from "@/features/lab/api";
+import { accession, getItem, markNotified, saveResults, submitResults, validateItem, type AnalyteResult, type OrderItemDetail } from "@/features/lab/api";
+
+function when(iso?: string) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleString([], { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
 
 const FLAG: Record<string, { label: string; cls: string }> = {
   normal: { label: "Normal", cls: "border-emerald-200 bg-emerald-50 text-emerald-700" },
@@ -80,6 +85,11 @@ function ItemInner({ d, onChanged, onBack }: { d: OrderItemDetail; onChanged: ()
     onSuccess: () => { toast.success("Validated & released to the ordering doctor"); onChanged(); },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not validate"),
   });
+  const notify = useMutation({
+    mutationFn: () => markNotified(d.id),
+    onSuccess: () => { toast.success("Marked as notified"); onChanged(); },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not acknowledge"),
+  });
 
   return (
     <div className="space-y-4">
@@ -110,6 +120,22 @@ function ItemInner({ d, onChanged, onBack }: { d: OrderItemDetail; onChanged: ()
           <span className="text-xs uppercase tracking-wide text-muted-foreground">Clinical note</span>
           <p>{d.clinical_note}</p>
         </Card>
+      )}
+
+      {d.critical && (
+        <div className="flex flex-wrap items-center gap-3 rounded-md border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          <AlertTriangle className="h-5 w-5 shrink-0" />
+          <span className="font-semibold">Critical value</span>
+          {d.notified_at ? (
+            <span className="ml-auto flex items-center gap-1 text-emerald-700">
+              <Check className="h-4 w-4" /> Notified {when(d.notified_at)}{d.notified_by ? ` · ${d.notified_by}` : ""}
+            </span>
+          ) : (
+            <Button size="sm" className="ml-auto" loading={notify.isPending} onClick={() => notify.mutate()}>
+              <BellRing className="h-3.5 w-3.5" /> Mark notified
+            </Button>
+          )}
+        </div>
       )}
 
       {/* Step 1 — accession */}

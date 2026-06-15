@@ -91,15 +91,17 @@ LIMIT 200;
 
 -- name: GetOrderItem :one
 SELECT i.id, i.sample_no, i.status, i.specimen, i.test_id, i.order_id,
+  i.critical_flag, i.notified_at,
   o.priority, o.clinical_note, o.patient_id, o.encounter_id,
   p.first_name, p.last_name, p.mrn,
   t.name AS test_name, t.specimen AS test_specimen,
-  u.full_name AS ordered_by
+  u.full_name AS ordered_by, un.full_name AS notified_by_name
 FROM lab_order_items i
 JOIN lab_orders o ON o.id = i.order_id AND o.tenant_id = i.tenant_id
 JOIN patients p ON p.id = o.patient_id AND p.tenant_id = i.tenant_id
 JOIN lab_tests t ON t.id = i.test_id AND t.tenant_id = i.tenant_id
 LEFT JOIN users u ON u.id = o.provider_id AND u.tenant_id = i.tenant_id
+LEFT JOIN users un ON un.id = i.notified_by AND un.tenant_id = i.tenant_id
 WHERE i.tenant_id = @tenant_id AND i.id = @id;
 
 -- name: AccessionItem :one
@@ -128,3 +130,41 @@ RETURNING id;
 UPDATE lab_order_items SET status = 'validated', validated_at = now(), validated_by = @validated_by
 WHERE tenant_id = @tenant_id AND id = @id AND status = 'resulted'
 RETURNING id;
+
+-- ---- Phase 5b-1: critical escalation + acknowledgement + doctor inbox ----
+
+-- name: MarkItemCritical :exec
+UPDATE lab_order_items SET critical_flag = true
+WHERE tenant_id = @tenant_id AND id = @id;
+
+-- name: MarkItemNotified :one
+-- Acknowledge that a validated result was communicated to the ordering clinician.
+UPDATE lab_order_items SET notified_at = now(), notified_by = @notified_by
+WHERE tenant_id = @tenant_id AND id = @id AND status = 'validated' AND notified_at IS NULL
+RETURNING id;
+
+-- name: ListResultsInbox :many
+-- The ordering doctor's returned results: unacknowledged criticals first, then
+-- most-recently validated. Includes a per-sample abnormal/critical count.
+SELECT i.id, i.sample_no, i.status, i.validated_at, i.critical_flag, i.notified_at,
+  o.encounter_id, o.priority,
+  p.first_name, p.last_name, p.mrn,
+  t.name AS test_name,
+  (SELECT count(*) FROM lab_results r WHERE r.order_item_id = i.id AND r.flag = 'critical')::int AS critical_count,
+  (SELECT count(*) FROM lab_results r WHERE r.order_item_id = i.id AND r.flag <> 'normal')::int AS abnormal_count
+FROM lab_order_items i
+JOIN lab_orders o ON o.id = i.order_id AND o.tenant_id = i.tenant_id
+JOIN patients p ON p.id = o.patient_id AND p.tenant_id = i.tenant_id
+JOIN lab_tests t ON t.id = i.test_id AND t.tenant_id = i.tenant_id
+WHERE i.tenant_id = @tenant_id AND o.provider_id = @provider_id AND o.deleted_at IS NULL
+  AND i.status = 'validated'
+  AND (i.validated_at > now() - interval '14 days' OR (i.critical_flag AND i.notified_at IS NULL))
+ORDER BY (i.critical_flag AND i.notified_at IS NULL) DESC, i.validated_at DESC
+LIMIT 100;
+
+-- name: CountInboxCriticals :one
+SELECT count(*)::int
+FROM lab_order_items i
+JOIN lab_orders o ON o.id = i.order_id AND o.tenant_id = i.tenant_id
+WHERE i.tenant_id = @tenant_id AND o.provider_id = @provider_id AND o.deleted_at IS NULL
+  AND i.status = 'validated' AND i.critical_flag AND i.notified_at IS NULL;

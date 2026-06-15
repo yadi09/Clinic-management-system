@@ -31,6 +31,26 @@ func (q *Queries) AccessionItem(ctx context.Context, arg AccessionItemParams) (u
 	return id, err
 }
 
+const countInboxCriticals = `-- name: CountInboxCriticals :one
+SELECT count(*)::int
+FROM lab_order_items i
+JOIN lab_orders o ON o.id = i.order_id AND o.tenant_id = i.tenant_id
+WHERE i.tenant_id = $1 AND o.provider_id = $2 AND o.deleted_at IS NULL
+  AND i.status = 'validated' AND i.critical_flag AND i.notified_at IS NULL
+`
+
+type CountInboxCriticalsParams struct {
+	TenantID   uuid.UUID  `json:"tenant_id"`
+	ProviderID *uuid.UUID `json:"provider_id"`
+}
+
+func (q *Queries) CountInboxCriticals(ctx context.Context, arg CountInboxCriticalsParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countInboxCriticals, arg.TenantID, arg.ProviderID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const countPendingLabsByEncounter = `-- name: CountPendingLabsByEncounter :one
 SELECT count(*)::int FROM lab_order_items i
 JOIN lab_orders o ON o.id = i.order_id AND o.tenant_id = i.tenant_id
@@ -224,15 +244,17 @@ func (q *Queries) GetLabTest(ctx context.Context, arg GetLabTestParams) (GetLabT
 
 const getOrderItem = `-- name: GetOrderItem :one
 SELECT i.id, i.sample_no, i.status, i.specimen, i.test_id, i.order_id,
+  i.critical_flag, i.notified_at,
   o.priority, o.clinical_note, o.patient_id, o.encounter_id,
   p.first_name, p.last_name, p.mrn,
   t.name AS test_name, t.specimen AS test_specimen,
-  u.full_name AS ordered_by
+  u.full_name AS ordered_by, un.full_name AS notified_by_name
 FROM lab_order_items i
 JOIN lab_orders o ON o.id = i.order_id AND o.tenant_id = i.tenant_id
 JOIN patients p ON p.id = o.patient_id AND p.tenant_id = i.tenant_id
 JOIN lab_tests t ON t.id = i.test_id AND t.tenant_id = i.tenant_id
 LEFT JOIN users u ON u.id = o.provider_id AND u.tenant_id = i.tenant_id
+LEFT JOIN users un ON un.id = i.notified_by AND un.tenant_id = i.tenant_id
 WHERE i.tenant_id = $1 AND i.id = $2
 `
 
@@ -242,22 +264,25 @@ type GetOrderItemParams struct {
 }
 
 type GetOrderItemRow struct {
-	ID           uuid.UUID  `json:"id"`
-	SampleNo     int64      `json:"sample_no"`
-	Status       string     `json:"status"`
-	Specimen     *string    `json:"specimen"`
-	TestID       uuid.UUID  `json:"test_id"`
-	OrderID      uuid.UUID  `json:"order_id"`
-	Priority     string     `json:"priority"`
-	ClinicalNote *string    `json:"clinical_note"`
-	PatientID    uuid.UUID  `json:"patient_id"`
-	EncounterID  *uuid.UUID `json:"encounter_id"`
-	FirstName    string     `json:"first_name"`
-	LastName     string     `json:"last_name"`
-	Mrn          string     `json:"mrn"`
-	TestName     string     `json:"test_name"`
-	TestSpecimen *string    `json:"test_specimen"`
-	OrderedBy    *string    `json:"ordered_by"`
+	ID             uuid.UUID  `json:"id"`
+	SampleNo       int64      `json:"sample_no"`
+	Status         string     `json:"status"`
+	Specimen       *string    `json:"specimen"`
+	TestID         uuid.UUID  `json:"test_id"`
+	OrderID        uuid.UUID  `json:"order_id"`
+	CriticalFlag   bool       `json:"critical_flag"`
+	NotifiedAt     *time.Time `json:"notified_at"`
+	Priority       string     `json:"priority"`
+	ClinicalNote   *string    `json:"clinical_note"`
+	PatientID      uuid.UUID  `json:"patient_id"`
+	EncounterID    *uuid.UUID `json:"encounter_id"`
+	FirstName      string     `json:"first_name"`
+	LastName       string     `json:"last_name"`
+	Mrn            string     `json:"mrn"`
+	TestName       string     `json:"test_name"`
+	TestSpecimen   *string    `json:"test_specimen"`
+	OrderedBy      *string    `json:"ordered_by"`
+	NotifiedByName *string    `json:"notified_by_name"`
 }
 
 func (q *Queries) GetOrderItem(ctx context.Context, arg GetOrderItemParams) (GetOrderItemRow, error) {
@@ -270,6 +295,8 @@ func (q *Queries) GetOrderItem(ctx context.Context, arg GetOrderItemParams) (Get
 		&i.Specimen,
 		&i.TestID,
 		&i.OrderID,
+		&i.CriticalFlag,
+		&i.NotifiedAt,
 		&i.Priority,
 		&i.ClinicalNote,
 		&i.PatientID,
@@ -280,6 +307,7 @@ func (q *Queries) GetOrderItem(ctx context.Context, arg GetOrderItemParams) (Get
 		&i.TestName,
 		&i.TestSpecimen,
 		&i.OrderedBy,
+		&i.NotifiedByName,
 	)
 	return i, err
 }
@@ -677,6 +705,120 @@ func (q *Queries) ListResultsByItem(ctx context.Context, arg ListResultsByItemPa
 		return nil, err
 	}
 	return items, nil
+}
+
+const listResultsInbox = `-- name: ListResultsInbox :many
+SELECT i.id, i.sample_no, i.status, i.validated_at, i.critical_flag, i.notified_at,
+  o.encounter_id, o.priority,
+  p.first_name, p.last_name, p.mrn,
+  t.name AS test_name,
+  (SELECT count(*) FROM lab_results r WHERE r.order_item_id = i.id AND r.flag = 'critical')::int AS critical_count,
+  (SELECT count(*) FROM lab_results r WHERE r.order_item_id = i.id AND r.flag <> 'normal')::int AS abnormal_count
+FROM lab_order_items i
+JOIN lab_orders o ON o.id = i.order_id AND o.tenant_id = i.tenant_id
+JOIN patients p ON p.id = o.patient_id AND p.tenant_id = i.tenant_id
+JOIN lab_tests t ON t.id = i.test_id AND t.tenant_id = i.tenant_id
+WHERE i.tenant_id = $1 AND o.provider_id = $2 AND o.deleted_at IS NULL
+  AND i.status = 'validated'
+  AND (i.validated_at > now() - interval '14 days' OR (i.critical_flag AND i.notified_at IS NULL))
+ORDER BY (i.critical_flag AND i.notified_at IS NULL) DESC, i.validated_at DESC
+LIMIT 100
+`
+
+type ListResultsInboxParams struct {
+	TenantID   uuid.UUID  `json:"tenant_id"`
+	ProviderID *uuid.UUID `json:"provider_id"`
+}
+
+type ListResultsInboxRow struct {
+	ID            uuid.UUID  `json:"id"`
+	SampleNo      int64      `json:"sample_no"`
+	Status        string     `json:"status"`
+	ValidatedAt   *time.Time `json:"validated_at"`
+	CriticalFlag  bool       `json:"critical_flag"`
+	NotifiedAt    *time.Time `json:"notified_at"`
+	EncounterID   *uuid.UUID `json:"encounter_id"`
+	Priority      string     `json:"priority"`
+	FirstName     string     `json:"first_name"`
+	LastName      string     `json:"last_name"`
+	Mrn           string     `json:"mrn"`
+	TestName      string     `json:"test_name"`
+	CriticalCount int32      `json:"critical_count"`
+	AbnormalCount int32      `json:"abnormal_count"`
+}
+
+// The ordering doctor's returned results: unacknowledged criticals first, then
+// most-recently validated. Includes a per-sample abnormal/critical count.
+func (q *Queries) ListResultsInbox(ctx context.Context, arg ListResultsInboxParams) ([]ListResultsInboxRow, error) {
+	rows, err := q.db.Query(ctx, listResultsInbox, arg.TenantID, arg.ProviderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListResultsInboxRow{}
+	for rows.Next() {
+		var i ListResultsInboxRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SampleNo,
+			&i.Status,
+			&i.ValidatedAt,
+			&i.CriticalFlag,
+			&i.NotifiedAt,
+			&i.EncounterID,
+			&i.Priority,
+			&i.FirstName,
+			&i.LastName,
+			&i.Mrn,
+			&i.TestName,
+			&i.CriticalCount,
+			&i.AbnormalCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markItemCritical = `-- name: MarkItemCritical :exec
+
+UPDATE lab_order_items SET critical_flag = true
+WHERE tenant_id = $1 AND id = $2
+`
+
+type MarkItemCriticalParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+// ---- Phase 5b-1: critical escalation + acknowledgement + doctor inbox ----
+func (q *Queries) MarkItemCritical(ctx context.Context, arg MarkItemCriticalParams) error {
+	_, err := q.db.Exec(ctx, markItemCritical, arg.TenantID, arg.ID)
+	return err
+}
+
+const markItemNotified = `-- name: MarkItemNotified :one
+UPDATE lab_order_items SET notified_at = now(), notified_by = $1
+WHERE tenant_id = $2 AND id = $3 AND status = 'validated' AND notified_at IS NULL
+RETURNING id
+`
+
+type MarkItemNotifiedParams struct {
+	NotifiedBy *uuid.UUID `json:"notified_by"`
+	TenantID   uuid.UUID  `json:"tenant_id"`
+	ID         uuid.UUID  `json:"id"`
+}
+
+// Acknowledge that a validated result was communicated to the ordering clinician.
+func (q *Queries) MarkItemNotified(ctx context.Context, arg MarkItemNotifiedParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, markItemNotified, arg.NotifiedBy, arg.TenantID, arg.ID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const submitResults = `-- name: SubmitResults :one

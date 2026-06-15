@@ -298,6 +298,78 @@ func (h *Handlers) ValidateItem(c *gin.Context) {
 	httpx.NoContent(c)
 }
 
+// ---- Phase 5b-1: critical acknowledgement + doctor inbox ----
+
+func (h *Handlers) MarkNotified(c *gin.Context) {
+	itemID, ok := decode(c, id.PrefixLabItem, "id")
+	if !ok {
+		return
+	}
+	if err := h.svc.MarkNotified(c.Request.Context(), itemID); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+type inboxDTO struct {
+	ID          string  `json:"id"`
+	EncounterID *string `json:"encounter_id"`
+	lab.InboxItem
+}
+
+func (h *Handlers) Inbox(c *gin.Context) {
+	provider, ok := h.resolveProvider(c)
+	if !ok {
+		return
+	}
+	items, err := h.svc.ResultsInbox(c.Request.Context(), provider)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out := make([]inboxDTO, 0, len(items))
+	for _, it := range items {
+		row := inboxDTO{ID: id.Encode(id.PrefixLabItem, it.ID), InboxItem: it}
+		if it.EncounterID != nil {
+			s := id.Encode(id.PrefixEncounter, *it.EncounterID)
+			row.EncounterID = &s
+		}
+		out = append(out, row)
+	}
+	httpx.OK(c, out)
+}
+
+func (h *Handlers) InboxCount(c *gin.Context) {
+	provider, ok := h.resolveProvider(c)
+	if !ok {
+		return
+	}
+	n, err := h.svc.InboxCount(c.Request.Context(), provider)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"count": n})
+}
+
+// resolveProvider picks ?provider= (managers viewing a doctor) or the caller.
+func (h *Handlers) resolveProvider(c *gin.Context) (uuid.UUID, bool) {
+	if q := c.Query("provider"); q != "" {
+		pid, err := id.Decode(id.PrefixUser, q)
+		if err != nil {
+			httpx.Fail(c, apperr.Validation("invalid provider"))
+			return uuid.Nil, false
+		}
+		return pid, true
+	}
+	if p, ok := httpx.PrincipalFrom(c); ok {
+		return p.UserID, true
+	}
+	httpx.Fail(c, apperr.Unauthenticated("authentication required"))
+	return uuid.Nil, false
+}
+
 func decode(c *gin.Context, prefix, param string) (uuid.UUID, bool) {
 	u, err := id.Decode(prefix, c.Param(param))
 	if err != nil {

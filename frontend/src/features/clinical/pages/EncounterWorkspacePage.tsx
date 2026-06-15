@@ -433,6 +433,7 @@ function LabOrders({ ws, locked }: { ws: Workspace; locked: boolean }) {
 
   if (!enabled) return null;
   const pickedCount = Object.values(picked).filter(Boolean).length;
+  const hasCritical = (orders.data ?? []).some((o) => o.items.some((it) => it.results.some((r) => r.flag === "critical")));
 
   return (
     <div>
@@ -444,6 +445,12 @@ function LabOrders({ ws, locked }: { ws: Workspace; locked: boolean }) {
           </Button>
         )}
       </div>
+
+      {hasCritical && (
+        <div className="mb-2 flex items-center gap-2 rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800">
+          <AlertTriangle className="h-4 w-4" /> Critical lab value returned — review below.
+        </div>
+      )}
 
       {(orders.data?.length ?? 0) === 0 ? (
         <p className="text-xs text-muted-foreground">No labs ordered.</p>

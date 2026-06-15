@@ -184,6 +184,25 @@ func RequirePermission(code string) gin.HandlerFunc {
 	}
 }
 
+// RequireAnyPermission authorizes the request if the principal holds at least
+// one of the given permissions.
+func RequireAnyPermission(anyOf ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		p, ok := PrincipalFrom(c)
+		if !ok {
+			Fail(c, apperr.Unauthenticated("authentication required"))
+			return
+		}
+		for _, code := range anyOf {
+			if p.HasPermission(code) {
+				c.Next()
+				return
+			}
+		}
+		Fail(c, apperr.Forbidden("FORBIDDEN_PERMISSION", "you do not have permission to perform this action"))
+	}
+}
+
 // RequireFlag blocks the request when the tenant's feature flag is off (FR-TEN-03).
 func RequireFlag(flag string) gin.HandlerFunc {
 	return func(c *gin.Context) {

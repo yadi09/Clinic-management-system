@@ -24,14 +24,20 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	g.POST("/orders", order, h.CreateOrder)
 	g.GET("/encounters/:id/labs", order, h.EncounterLabs)
 	g.GET("/encounters/:id/pending", order, h.PendingLabs)
+	// Doctor results inbox (returned results; unacknowledged criticals pinned).
+	g.GET("/inbox", order, h.Inbox)
+	g.GET("/inbox/count", order, h.InboxCount)
 
 	// Technician processing.
 	proc := httpx.RequirePermission("lab.process")
 	g.GET("/worklist", proc, h.Worklist)
-	g.GET("/items/:id", proc, h.GetItem)
+	// Sample detail is readable by the tech, the ordering doctor and the validator.
+	g.GET("/items/:id", httpx.RequireAnyPermission("lab.process", "lab.order", "lab.validate"), h.GetItem)
 	g.POST("/items/:id/accession", proc, h.Accession)
 	g.PUT("/items/:id/results", proc, h.SaveResults)
 	g.POST("/items/:id/submit", proc, h.SubmitResults)
+	// Critical-callback acknowledgement — the ordering doctor or the lab.
+	g.POST("/items/:id/notify", httpx.RequireAnyPermission("lab.order", "lab.process"), h.MarkNotified)
 
 	// Validation.
 	g.POST("/items/:id/validate", httpx.RequirePermission("lab.validate"), h.ValidateItem)

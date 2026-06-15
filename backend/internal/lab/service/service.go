@@ -259,7 +259,8 @@ func (s *Service) OrderItem(ctx context.Context, itemID uuid.UUID) (*lab.OrderIt
 		d := &lab.OrderItemDetail{
 			ID: it.ID, SampleNo: it.SampleNo, Status: it.Status, Specimen: deref(it.Specimen), TestName: it.TestName,
 			PatientName: it.FirstName + " " + it.LastName, MRN: it.Mrn, Priority: it.Priority, ClinicalNote: deref(it.ClinicalNote),
-			OrderedBy: deref(it.OrderedBy), Analytes: []lab.AnalyteResult{},
+			OrderedBy: deref(it.OrderedBy), Critical: it.CriticalFlag, NotifiedAt: it.NotifiedAt, NotifiedByName: deref(it.NotifiedByName),
+			Analytes: []lab.AnalyteResult{},
 		}
 		analytes, e := q.ListAnalytesByTest(ctx, labdb.ListAnalytesByTestParams{TenantID: tenantID, TestID: it.TestID})
 		if e != nil {
@@ -369,11 +370,33 @@ func (s *Service) SubmitResults(ctx context.Context, itemID uuid.UUID) error {
 func (s *Service) ValidateItem(ctx context.Context, itemID uuid.UUID) error {
 	tenantID, actor := actorOf(ctx)
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		r, e := labdb.New(tx).ValidateItem(ctx, labdb.ValidateItemParams{ValidatedBy: actor, TenantID: tenantID, ID: itemID})
+		q := labdb.New(tx)
+		r, e := q.ValidateItem(ctx, labdb.ValidateItemParams{ValidatedBy: actor, TenantID: tenantID, ID: itemID})
 		if e != nil {
 			return e
 		}
-		return s.publisher.Publish(ctx, tx, &tenantID, "lab_order_item", r, "lab.result.validated", map[string]any{"item_id": itemID})
+		// Flag the sample if any result is critical; escalate via an event so the
+		// ordering clinician sees it on their results inbox (and must acknowledge).
+		res, e := q.ListResultsByItem(ctx, labdb.ListResultsByItemParams{TenantID: tenantID, OrderItemID: itemID})
+		if e != nil {
+			return e
+		}
+		critical := false
+		for _, x := range res {
+			if x.Flag == "critical" {
+				critical = true
+				break
+			}
+		}
+		if critical {
+			if e := q.MarkItemCritical(ctx, labdb.MarkItemCriticalParams{TenantID: tenantID, ID: itemID}); e != nil {
+				return e
+			}
+			if e := s.publisher.Publish(ctx, tx, &tenantID, "lab_order_item", r, "lab.result.critical", map[string]any{"item_id": itemID}); e != nil {
+				return e
+			}
+		}
+		return s.publisher.Publish(ctx, tx, &tenantID, "lab_order_item", r, "lab.result.validated", map[string]any{"item_id": itemID, "critical": critical})
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return apperr.Conflict("INVALID_STATE", "results must be submitted before validation")
@@ -382,6 +405,72 @@ func (s *Service) ValidateItem(ctx context.Context, itemID uuid.UUID) error {
 		return apperr.Internal(err)
 	}
 	return nil
+}
+
+// MarkNotified records that a validated result was communicated to the ordering
+// clinician (the critical-callback acknowledgement). Idempotent guard: only a
+// validated, not-yet-notified sample can be acknowledged.
+func (s *Service) MarkNotified(ctx context.Context, itemID uuid.UUID) error {
+	tenantID, actor := actorOf(ctx)
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		r, e := labdb.New(tx).MarkItemNotified(ctx, labdb.MarkItemNotifiedParams{NotifiedBy: actor, TenantID: tenantID, ID: itemID})
+		if e != nil {
+			return e
+		}
+		return s.publisher.Publish(ctx, tx, &tenantID, "lab_order_item", r, "lab.result.notified", map[string]any{"item_id": itemID})
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return apperr.Conflict("ALREADY_NOTIFIED", "this result is not validated or has already been acknowledged")
+	}
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}
+
+// ResultsInbox returns the ordering doctor's returned results (unacknowledged
+// criticals first, then most-recently validated).
+func (s *Service) ResultsInbox(ctx context.Context, providerID uuid.UUID) ([]lab.InboxItem, error) {
+	tenantID, _ := actorOf(ctx)
+	out := []lab.InboxItem{}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		rows, e := labdb.New(tx).ListResultsInbox(ctx, labdb.ListResultsInboxParams{TenantID: tenantID, ProviderID: &providerID})
+		if e != nil {
+			return e
+		}
+		for _, r := range rows {
+			out = append(out, lab.InboxItem{
+				ID: r.ID, EncounterID: r.EncounterID, SampleNo: r.SampleNo, TestName: r.TestName,
+				PatientName: r.FirstName + " " + r.LastName, MRN: r.Mrn, Priority: r.Priority,
+				ValidatedAt: r.ValidatedAt, Critical: r.CriticalFlag, NotifiedAt: r.NotifiedAt,
+				CriticalCount: int(r.CriticalCount), AbnormalCount: int(r.AbnormalCount),
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+// InboxCount returns the number of unacknowledged critical results for a provider
+// (the nav alert badge).
+func (s *Service) InboxCount(ctx context.Context, providerID uuid.UUID) (int, error) {
+	tenantID, _ := actorOf(ctx)
+	var n int
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		c, e := labdb.New(tx).CountInboxCriticals(ctx, labdb.CountInboxCriticalsParams{TenantID: tenantID, ProviderID: &providerID})
+		if e != nil {
+			return e
+		}
+		n = int(c)
+		return nil
+	})
+	if err != nil {
+		return 0, apperr.Internal(err)
+	}
+	return n, nil
 }
 
 // --- helpers ---

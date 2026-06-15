@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, UserCog, Settings, CalendarDays, ListChecks, ClipboardCheck, Activity, Stethoscope, Pill, Boxes, BookOpen, ShoppingCart, Gauge, Tags, Truck, ClipboardList, BarChart3, FlaskConical, TestTubes, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Users, UserCog, Settings, CalendarDays, ListChecks, ClipboardCheck, Activity, Stethoscope, Pill, Boxes, BookOpen, ShoppingCart, Gauge, Tags, Truck, ClipboardList, BarChart3, FlaskConical, TestTubes, Inbox, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   to: string;
@@ -6,6 +6,8 @@ export interface NavItem {
   icon: LucideIcon;
   /** any-of permissions required to see this item (omit = always) */
   perm?: string[];
+  /** live alert badge to render next to the item (count fetched in the shell) */
+  badge?: "labInbox";
 }
 
 export interface NavSection {
@@ -24,6 +26,7 @@ export const navSections: NavSection[] = [
       { to: "/triage", label: "Triage", icon: Activity, perm: ["triage.manage"] },
       { to: "/queue", label: "Queue", icon: ListChecks, perm: ["queue.manage"] },
       { to: "/worklist", label: "My day", icon: Stethoscope, perm: ["encounter.manage"] },
+      { to: "/lab/inbox", label: "Results inbox", icon: Inbox, perm: ["lab.order"], badge: "labInbox" },
     ],
   },
   {

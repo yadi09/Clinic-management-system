@@ -83,17 +83,36 @@ type AnalyteResult struct {
 
 // OrderItemDetail is the accession / result-entry view for one sample.
 type OrderItemDetail struct {
-	ID           uuid.UUID       `json:"-"`
-	SampleNo     int64           `json:"sample_no"`
-	Status       string          `json:"status"`
-	Specimen     string          `json:"specimen,omitempty"`
-	TestName     string          `json:"test_name"`
-	PatientName  string          `json:"patient_name"`
-	MRN          string          `json:"mrn"`
-	Priority     string          `json:"priority"`
-	ClinicalNote string          `json:"clinical_note,omitempty"`
-	OrderedBy    string          `json:"ordered_by,omitempty"`
-	Analytes     []AnalyteResult `json:"analytes"`
+	ID             uuid.UUID       `json:"-"`
+	SampleNo       int64           `json:"sample_no"`
+	Status         string          `json:"status"`
+	Specimen       string          `json:"specimen,omitempty"`
+	TestName       string          `json:"test_name"`
+	PatientName    string          `json:"patient_name"`
+	MRN            string          `json:"mrn"`
+	Priority       string          `json:"priority"`
+	ClinicalNote   string          `json:"clinical_note,omitempty"`
+	OrderedBy      string          `json:"ordered_by,omitempty"`
+	Critical       bool            `json:"critical"`
+	NotifiedAt     *time.Time      `json:"notified_at,omitempty"`
+	NotifiedByName string          `json:"notified_by,omitempty"`
+	Analytes       []AnalyteResult `json:"analytes"`
+}
+
+// InboxItem is one returned result on the ordering doctor's results inbox.
+type InboxItem struct {
+	ID            uuid.UUID  `json:"-"`
+	EncounterID   *uuid.UUID `json:"-"`
+	SampleNo      int64      `json:"sample_no"`
+	TestName      string     `json:"test_name"`
+	PatientName   string     `json:"patient_name"`
+	MRN           string     `json:"mrn"`
+	Priority      string     `json:"priority"`
+	ValidatedAt   *time.Time `json:"validated_at,omitempty"`
+	Critical      bool       `json:"critical"`
+	NotifiedAt    *time.Time `json:"notified_at,omitempty"`
+	CriticalCount int        `json:"critical_count"`
+	AbnormalCount int        `json:"abnormal_count"`
 }
 
 // ResultInput is one analyte value entered by the technician.
@@ -139,4 +158,9 @@ type Service interface {
 	SaveResults(ctx context.Context, itemID uuid.UUID, results []ResultInput) error
 	SubmitResults(ctx context.Context, itemID uuid.UUID) error
 	ValidateItem(ctx context.Context, itemID uuid.UUID) error
+
+	// Phase 5b-1: critical escalation + acknowledgement + doctor inbox.
+	MarkNotified(ctx context.Context, itemID uuid.UUID) error
+	ResultsInbox(ctx context.Context, providerID uuid.UUID) ([]InboxItem, error)
+	InboxCount(ctx context.Context, providerID uuid.UUID) (int, error)
 }

@@ -337,19 +337,22 @@ type LabOrder struct {
 }
 
 type LabOrderItem struct {
-	ID          uuid.UUID  `json:"id"`
-	TenantID    uuid.UUID  `json:"tenant_id"`
-	OrderID     uuid.UUID  `json:"order_id"`
-	TestID      uuid.UUID  `json:"test_id"`
-	SampleNo    int64      `json:"sample_no"`
-	Specimen    *string    `json:"specimen"`
-	Status      string     `json:"status"`
-	CollectedBy *string    `json:"collected_by"`
-	CollectedAt *time.Time `json:"collected_at"`
-	ResultedAt  *time.Time `json:"resulted_at"`
-	ValidatedAt *time.Time `json:"validated_at"`
-	ValidatedBy *uuid.UUID `json:"validated_by"`
-	CreatedAt   time.Time  `json:"created_at"`
+	ID           uuid.UUID  `json:"id"`
+	TenantID     uuid.UUID  `json:"tenant_id"`
+	OrderID      uuid.UUID  `json:"order_id"`
+	TestID       uuid.UUID  `json:"test_id"`
+	SampleNo     int64      `json:"sample_no"`
+	Specimen     *string    `json:"specimen"`
+	Status       string     `json:"status"`
+	CollectedBy  *string    `json:"collected_by"`
+	CollectedAt  *time.Time `json:"collected_at"`
+	ResultedAt   *time.Time `json:"resulted_at"`
+	ValidatedAt  *time.Time `json:"validated_at"`
+	ValidatedBy  *uuid.UUID `json:"validated_by"`
+	CreatedAt    time.Time  `json:"created_at"`
+	CriticalFlag bool       `json:"critical_flag"`
+	NotifiedAt   *time.Time `json:"notified_at"`
+	NotifiedBy   *uuid.UUID `json:"notified_by"`
 }
 
 type LabResult struct {
