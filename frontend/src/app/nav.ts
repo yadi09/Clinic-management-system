@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, UserCog, Settings, CalendarDays, ListChecks, ClipboardCheck, Activity, Stethoscope, Pill, Boxes, BookOpen, ShoppingCart, Gauge, Tags, Truck, ClipboardList, BarChart3, FlaskConical, TestTubes, Inbox, LifeBuoy, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Users, UserCog, Settings, CalendarDays, ListChecks, ClipboardCheck, Activity, Stethoscope, Pill, Boxes, BookOpen, ShoppingCart, Gauge, Tags, Truck, ClipboardList, BarChart3, FlaskConical, TestTubes, Inbox, LifeBuoy, BadgeDollarSign, Wallet, ReceiptText, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   to: string;
@@ -22,7 +22,7 @@ export const navSections: NavSection[] = [
     items: [
       { to: "/patients", label: "Patients", icon: Users, perm: ["patient.read", "patient.search"] },
       { to: "/appointments", label: "Appointments", icon: CalendarDays, perm: ["appointment.manage"] },
-      { to: "/reception", label: "Reception", icon: ClipboardCheck, perm: ["payment.collect", "queue.manage"] },
+      { to: "/reception", label: "Reception", icon: ClipboardCheck, perm: ["queue.manage"] },
       { to: "/triage", label: "Triage", icon: Activity, perm: ["triage.manage"] },
       { to: "/queue", label: "Queue", icon: ListChecks, perm: ["queue.manage"] },
       { to: "/worklist", label: "My day", icon: Stethoscope, perm: ["encounter.manage"] },
@@ -41,6 +41,14 @@ export const navSections: NavSection[] = [
       { to: "/pharmacy/purchasing", label: "Purchasing", icon: Truck, perm: ["pharmacy.manage"] },
       { to: "/pharmacy/stock-control", label: "Stock control", icon: ClipboardList, perm: ["pharmacy.stock"] },
       { to: "/pharmacy/reports", label: "Reports", icon: BarChart3, perm: ["pharmacy.manage"] },
+    ],
+  },
+  {
+    heading: "Billing",
+    items: [
+      { to: "/cashier", label: "Cashier", icon: BadgeDollarSign, perm: ["payment.collect"] },
+      { to: "/finance", label: "Finance", icon: Wallet, perm: ["billing.manage"] },
+      { to: "/billing/services", label: "Service catalog", icon: ReceiptText, perm: ["billing.manage"] },
     ],
   },
   {

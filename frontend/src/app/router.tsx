@@ -32,6 +32,9 @@ import { LabOrderItemPage } from "@/features/lab/pages/LabOrderItemPage";
 import { LabCatalogPage } from "@/features/lab/pages/LabCatalogPage";
 import { LabInboxPage } from "@/features/lab/pages/LabInboxPage";
 import { HelpCenterPage } from "@/features/help/HelpCenterPage";
+import { CashierPage } from "@/features/billing/pages/CashierPage";
+import { ServiceCatalogPage } from "@/features/billing/pages/ServiceCatalogPage";
+import { FinancePage } from "@/features/billing/pages/FinancePage";
 import { NotFoundPage } from "@/features/misc/NotFoundPage";
 
 export function AppRoutes() {
@@ -51,6 +54,9 @@ export function AppRoutes() {
           <Route path="/patients/:id" element={<PatientProfilePage />} />
           <Route path="/appointments" element={<AppointmentsPage />} />
           <Route path="/reception" element={<ReceptionPage />} />
+          <Route path="/cashier" element={<CashierPage />} />
+          <Route path="/finance" element={<FinancePage />} />
+          <Route path="/billing/services" element={<ServiceCatalogPage />} />
           <Route path="/triage" element={<TriagePage />} />
           <Route path="/queue" element={<QueuePage />} />
           <Route path="/worklist" element={<WorklistPage />} />

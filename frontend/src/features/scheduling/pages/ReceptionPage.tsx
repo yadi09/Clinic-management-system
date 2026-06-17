@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/sonner";
 import { listBranches, listDepartments, listUsers, getSettings } from "@/features/admin/api";
-import { assessCard, collectCard } from "@/features/billing/api";
+import { assessCard, collectCard, listServices, raiseCharge } from "@/features/billing/api";
 import { walkIn } from "@/features/scheduling/api";
 import { PatientCombobox } from "@/features/scheduling/components/BookingDialog";
 
@@ -29,6 +29,13 @@ export function ReceptionPage() {
   const [waiveReason, setWaiveReason] = useState("");
 
   const branchId = branches.data?.[0]?.id;
+  const cashierMode = settings.data?.payment_mode === "cashier";
+
+  // In cashier mode, payment is taken at the cashier — reception raises a
+  // consultation charge priced from the CONSULT service (fallback: card fee).
+  const services = useQuery({ queryKey: ["services-active"], queryFn: () => listServices(true), enabled: cashierMode });
+  const consultSvc = (services.data ?? []).find((s) => s.code.toUpperCase() === "CONSULT");
+  const consultAmount = consultSvc ? parseFloat(consultSvc.price) : parseFloat(settings.data?.card_fee_amount ?? "0");
 
   // Default the routing choice to the clinic's triage setting.
   useEffect(() => {
@@ -53,27 +60,44 @@ export function ReceptionPage() {
   });
 
   const send = useMutation({
-    mutationFn: () =>
-      walkIn({
+    mutationFn: async () => {
+      if (cashierMode) {
+        // Raise a pending consultation charge with the routing; the cashier's
+        // settlement enqueues the patient (auto-advance after payment).
+        await raiseCharge({
+          patient_id: patient!.id,
+          source: "consultation",
+          description: "Consultation",
+          amount: consultAmount || 0,
+          branch_id: branchId!,
+          department_id: dept,
+          to_triage: toTriage,
+          provider_id: !toTriage && provider ? provider : undefined,
+        });
+        return;
+      }
+      await walkIn({
         branch_id: branchId!,
         department_id: dept,
         patient_id: patient!.id,
         to_triage: toTriage,
         provider_id: !toTriage && provider ? provider : undefined,
-      }),
+      });
+    },
     onSuccess: () => {
-      toast.success(`${patient!.name} sent to ${toTriage ? "triage" : "the doctor's queue"}`);
+      toast.success(cashierMode ? `${patient!.name} sent to the cashier — awaiting payment` : `${patient!.name} sent to ${toTriage ? "triage" : "the doctor's queue"}`);
       setPatient(null);
       setDept("");
       setProvider("");
       qc.invalidateQueries({ queryKey: ["queue"] });
+      qc.invalidateQueries({ queryKey: ["pending-charges"] });
     },
     onError: () => toast.error("Could not route the patient"),
   });
 
   const a = assess.data;
   const mustPay = !!a?.requires_payment;
-  const routeReady = !!patient && !!dept && !!branchId && (toTriage || !!provider) && !mustPay;
+  const routeReady = !!patient && !!dept && !!branchId && (toTriage || !!provider) && (cashierMode || !mustPay);
 
   return (
     <div className="space-y-6">
@@ -95,7 +119,13 @@ export function ReceptionPage() {
               <PatientCombobox value={patient} onSelect={setPatient} />
             </div>
 
-            {patient && (
+            {patient && cashierMode && (
+              <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm text-muted-foreground">
+                Payment is taken at the <span className="font-medium text-foreground">cashier</span>. Routing this patient raises a
+                pending charge (<span className="font-mono">ETB {consultAmount.toFixed(2)}</span>) they settle there; they advance automatically once paid.
+              </div>
+            )}
+            {patient && !cashierMode && (
               <CardStatus
                 loading={assess.isLoading}
                 a={a}
@@ -172,9 +202,9 @@ export function ReceptionPage() {
               </div>
             )}
 
-            {mustPay && <p className="text-sm text-warning">Collect the card fee before routing.</p>}
+            {!cashierMode && mustPay && <p className="text-sm text-warning">Collect the card fee before routing.</p>}
             <Button className="w-full" disabled={!routeReady} loading={send.isPending} onClick={() => send.mutate()}>
-              Send to {toTriage ? "triage" : "doctor"}
+              {cashierMode ? "Send to cashier" : `Send to ${toTriage ? "triage" : "doctor"}`}
             </Button>
           </CardContent>
         </Card>

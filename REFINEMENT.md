@@ -63,7 +63,13 @@ Status: `logged` → `planned` → `in-progress` → `done`.
     per-branch setting; free-follow-up raises no charge (keep consistent).
   - **Scope:** this is effectively the **Billing/checkout phase**; the cashier is its
     front line. Likely its own phase, not a quick refinement.
-  *Status: logged (large — billing phase)*
+  *Status: **Billing-1 done** (backend 5909eab + frontend) — service catalog (admin
+  config of what's billable + price), charges spine, **Cashier** worklist
+  (settle by method / waive), configurable `payment_mode` (Settings → Payment
+  collection), reception cashier-mode raises a consultation charge that
+  auto-advances the patient on settlement, and a **Finance** view
+  (collected/waived/outstanding + by-source). **Billing-2 deferred:** lab/pharmacy
+  charges, printable receipts, free-follow-up handling in cashier mode.*
 
 - **[CASH-2] Payment waiver / exemption · Reception · workflow** — Reception must be
   able to register/route a patient **without payment** for legitimate cases (staff,
@@ -79,7 +85,11 @@ Status: `logged` → `planned` → `in-progress` → `done`.
   - **Waiver report** — who waived what, why, total revenue forgone (manager visibility).
   - **Unify with the existing free-follow-up rule** — treat it as a *system-applied*
     waiver (reason "follow-up within window") so manual + automatic waivers are one
-    concept shown consistently. *Status: logged (with CASH-1)*
+    concept shown consistently. *Status: **core done** (Billing-1) — waive at the
+    cashier with a required reason, attributed (settled_by/at) + audited via event;
+    Finance shows waived total/count. **Deferred:** admin-editable reason list
+    (fixed list for now), a per-waiver who/why report, and the free-follow-up
+    auto-waiver unification.*
 
 ---
 

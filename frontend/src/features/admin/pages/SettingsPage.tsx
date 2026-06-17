@@ -323,6 +323,7 @@ function FlowSettingsCard({ manage }: { manage: boolean }) {
         free_window_days: form!.free_window_days,
         triage_required: form!.triage_required,
         doctor_assignment: form!.doctor_assignment,
+        payment_mode: form!.payment_mode || "reception",
       }),
     onSuccess: () => {
       toast.success("Flow settings saved");
@@ -414,6 +415,18 @@ function FlowSettingsCard({ manage }: { manage: boolean }) {
               <SelectContent>
                 <SelectItem value="manual">Manual (reception/nurse)</SelectItem>
                 <SelectItem value="auto">Auto (next available)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Payment collection</Label>
+            <Select value={form.payment_mode || "reception"} onValueChange={(v) => set("payment_mode", v)}>
+              <SelectTrigger disabled={disabled}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="reception">Reception collects (inline)</SelectItem>
+                <SelectItem value="cashier">Separate cashier (pay then proceed)</SelectItem>
               </SelectContent>
             </Select>
           </div>

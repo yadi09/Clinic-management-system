@@ -215,6 +215,34 @@ export const HELP: Record<string, HelpEntry> = {
     purpose: "One sample — accession it, enter results, validate/release, and acknowledge criticals.",
   },
 
+  // ---- Billing ----
+  "/cashier": {
+    title: "Cashier",
+    purpose: "Pending payments waiting to be collected. Take payment or waive with a reason.",
+    sections: [
+      { h: "Take payment", body: "Pick the payment method, then 'Take payment' on a charge. The patient is grouped so you can see everything they owe." },
+      { h: "Waive", body: "If a patient doesn't pay (staff, charity, exemption), Waive it with a required reason — it's recorded for the finance report." },
+      { h: "Auto-advance", body: "Settling (or waiving) a consultation charge sends the patient on to triage / the doctor automatically." },
+    ],
+    tips: ["This screen is the heart of 'separate cashier' mode (set in Settings → Payment collection)."],
+  },
+  "/finance": {
+    title: "Finance",
+    purpose: "The money view — collected, waived (revenue forgone), and outstanding, with a by-service breakdown.",
+    columns: [
+      { name: "Collected", desc: "Total taken in the period, across all payment methods." },
+      { name: "Waived", desc: "Value waived (free) in the period — your revenue forgone, by reason." },
+      { name: "Outstanding", desc: "Charges still pending payment right now." },
+    ],
+  },
+  "/billing/services": {
+    title: "Service catalog",
+    purpose: "What the clinic bills for, and how much. Prices feed the charges patients pay at the cashier.",
+    sections: [
+      { h: "Availability", body: "Toggle a service Available/Off to control whether it can be charged. Edit a price any time." },
+    ],
+  },
+
   // ---- Administration ----
   "/users": {
     title: "Staff",
