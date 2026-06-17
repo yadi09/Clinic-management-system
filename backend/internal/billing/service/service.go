@@ -137,6 +137,303 @@ func (s *Service) History(ctx context.Context, patientID uuid.UUID) ([]billing.P
 	return out, nil
 }
 
+// ============================================================================
+// Billing-1: service catalog + charges + cashier + cash summary
+// ============================================================================
+
+var defaultWaiverReasons = []string{"Staff / dependent", "Indigent (charity)", "Exemption program", "Courtesy / VIP", "Insurance / credit", "Follow-up", "Other"}
+
+func (s *Service) WaiverReasons() []string { return defaultWaiverReasons }
+
+func (s *Service) ListServices(ctx context.Context, activeOnly bool) ([]billing.ServiceItem, error) {
+	tenantID, _ := actorOf(ctx)
+	var ao *bool
+	if activeOnly {
+		t := true
+		ao = &t
+	}
+	out := []billing.ServiceItem{}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		rows, e := billingdb.New(tx).ListServiceItems(ctx, billingdb.ListServiceItemsParams{TenantID: tenantID, ActiveOnly: ao})
+		if e != nil {
+			return e
+		}
+		for _, r := range rows {
+			out = append(out, billing.ServiceItem{ID: r.ID, Code: r.Code, Name: r.Name, Category: r.Category, Price: r.Price, Currency: r.Currency, IsActive: r.IsActive})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+func (s *Service) CreateService(ctx context.Context, in billing.ServiceItemInput) (*billing.ServiceItem, error) {
+	tenantID, actor := actorOf(ctx)
+	if strings.TrimSpace(in.Code) == "" || strings.TrimSpace(in.Name) == "" {
+		return nil, apperr.Validation("code and name are required")
+	}
+	var out billing.ServiceItem
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		r, e := billingdb.New(tx).CreateServiceItem(ctx, billingdb.CreateServiceItemParams{
+			TenantID: tenantID, Code: in.Code, Name: in.Name, Category: catOrDefault(in.Category), Price: priceOrZero(in.Price), CreatedBy: actor,
+		})
+		if e != nil {
+			return e
+		}
+		out = billing.ServiceItem{ID: r.ID, Code: r.Code, Name: r.Name, Category: r.Category, Price: r.Price, Currency: r.Currency, IsActive: r.IsActive}
+		return nil
+	})
+	if err != nil {
+		return nil, mapWrite(err, "SERVICE_EXISTS", "a service with this code already exists")
+	}
+	return &out, nil
+}
+
+func (s *Service) UpdateService(ctx context.Context, id uuid.UUID, in billing.ServiceItemInput) error {
+	tenantID, _ := actorOf(ctx)
+	if strings.TrimSpace(in.Code) == "" || strings.TrimSpace(in.Name) == "" {
+		return apperr.Validation("code and name are required")
+	}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		return billingdb.New(tx).UpdateServiceItem(ctx, billingdb.UpdateServiceItemParams{
+			TenantID: tenantID, ID: id, Code: in.Code, Name: in.Name, Category: catOrDefault(in.Category), Price: priceOrZero(in.Price),
+		})
+	})
+	if err != nil {
+		return mapWrite(err, "SERVICE_EXISTS", "a service with this code already exists")
+	}
+	return nil
+}
+
+func (s *Service) SetServiceActive(ctx context.Context, id uuid.UUID, active bool) error {
+	tenantID, _ := actorOf(ctx)
+	return apperrOrNil(s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		return billingdb.New(tx).SetServiceItemActive(ctx, billingdb.SetServiceItemActiveParams{TenantID: tenantID, ID: id, IsActive: active})
+	}))
+}
+
+func (s *Service) DeleteService(ctx context.Context, id uuid.UUID) error {
+	tenantID, _ := actorOf(ctx)
+	return apperrOrNil(s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		return billingdb.New(tx).SoftDeleteServiceItem(ctx, billingdb.SoftDeleteServiceItemParams{TenantID: tenantID, ID: id})
+	}))
+}
+
+var validSource = map[string]bool{"consultation": true, "service": true, "lab": true, "pharmacy": true, "other": true}
+
+// RaiseCharge creates a pending charge against a patient.
+func (s *Service) RaiseCharge(ctx context.Context, in billing.ChargeInput) (uuid.UUID, error) {
+	tenantID, actor := actorOf(ctx)
+	if in.PatientID == uuid.Nil || strings.TrimSpace(in.Description) == "" {
+		return uuid.Nil, apperr.Validation("a patient and description are required")
+	}
+	src := in.Source
+	if !validSource[src] {
+		src = "service"
+	}
+	var id uuid.UUID
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		r, e := billingdb.New(tx).CreateCharge(ctx, billingdb.CreateChargeParams{
+			TenantID: tenantID, PatientID: in.PatientID, EncounterID: in.EncounterID, ServiceItemID: in.ServiceItemID,
+			Source: src, Description: in.Description, Amount: priceOrZero(in.Amount), Currency: "ETB",
+			BranchID: in.BranchID, DepartmentID: in.DepartmentID, ToTriage: in.ToTriage, ProviderID: in.ProviderID, CreatedBy: actor,
+		})
+		if e != nil {
+			return e
+		}
+		id = r.ID
+		return s.publisher.Publish(ctx, tx, &tenantID, "charge", r.ID, "billing.charge.raised", map[string]any{"charge_id": r.ID, "patient_id": in.PatientID, "amount": r.Amount})
+	})
+	if ae, ok := apperr.As(err); ok {
+		return uuid.Nil, ae
+	}
+	if err != nil {
+		return uuid.Nil, apperr.Internal(err)
+	}
+	return id, nil
+}
+
+func (s *Service) PendingCharges(ctx context.Context) ([]billing.PendingCharge, error) {
+	tenantID, _ := actorOf(ctx)
+	out := []billing.PendingCharge{}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		rows, e := billingdb.New(tx).ListPendingCharges(ctx, tenantID)
+		if e != nil {
+			return e
+		}
+		for _, r := range rows {
+			out = append(out, billing.PendingCharge{
+				ID: r.ID, Source: r.Source, Description: r.Description, Amount: r.Amount, Currency: r.Currency, CreatedAt: r.CreatedAt,
+				PatientID: r.PatientID, PatientName: r.FirstName + " " + r.LastName, MRN: r.Mrn,
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+func (s *Service) PatientCharges(ctx context.Context, patientID uuid.UUID) ([]billing.ChargeRow, error) {
+	tenantID, _ := actorOf(ctx)
+	out := []billing.ChargeRow{}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		rows, e := billingdb.New(tx).ListChargesByPatient(ctx, billingdb.ListChargesByPatientParams{TenantID: tenantID, PatientID: patientID})
+		if e != nil {
+			return e
+		}
+		for _, r := range rows {
+			out = append(out, billing.ChargeRow{
+				ID: r.ID, Source: r.Source, Description: r.Description, Amount: r.Amount, Currency: r.Currency, Status: r.Status,
+				PaymentMethod: deref(r.PaymentMethod), WaiveReason: deref(r.WaiveReason), SettledAt: r.SettledAt, CreatedAt: r.CreatedAt,
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+// SettleCharge marks a pending charge paid and, for a routed consultation charge,
+// enqueues the patient (auto-advance after payment).
+func (s *Service) SettleCharge(ctx context.Context, id uuid.UUID, method string) error {
+	tenantID, actor := actorOf(ctx)
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := billingdb.New(tx)
+		row, e := q.SettleCharge(ctx, billingdb.SettleChargeParams{PaymentMethod: strPtr(method), SettledBy: actor, TenantID: tenantID, ID: id})
+		if e != nil {
+			return e
+		}
+		if e := enqueueFromCharge(ctx, q, tenantID, actor, row.Source, row.Enqueued, row.BranchID, row.DepartmentID, row.ToTriage, row.ProviderID, row.PatientID, id); e != nil {
+			return e
+		}
+		return s.publisher.Publish(ctx, tx, &tenantID, "charge", row.ID, "billing.charge.paid", map[string]any{"charge_id": row.ID})
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return apperr.Conflict("ALREADY_SETTLED", "this charge is no longer pending")
+	}
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}
+
+// WaiveCharge marks a pending charge waived (free, with reason) and still advances
+// the patient if it's a routed consultation charge.
+func (s *Service) WaiveCharge(ctx context.Context, id uuid.UUID, reason string) error {
+	tenantID, actor := actorOf(ctx)
+	if strings.TrimSpace(reason) == "" {
+		return apperr.Validation("a waiver reason is required")
+	}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := billingdb.New(tx)
+		row, e := q.WaiveCharge(ctx, billingdb.WaiveChargeParams{WaiveReason: strPtr(reason), SettledBy: actor, TenantID: tenantID, ID: id})
+		if e != nil {
+			return e
+		}
+		if e := enqueueFromCharge(ctx, q, tenantID, actor, row.Source, row.Enqueued, row.BranchID, row.DepartmentID, row.ToTriage, row.ProviderID, row.PatientID, id); e != nil {
+			return e
+		}
+		return s.publisher.Publish(ctx, tx, &tenantID, "charge", row.ID, "billing.charge.waived", map[string]any{"charge_id": row.ID, "reason": reason})
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return apperr.Conflict("ALREADY_SETTLED", "this charge is no longer pending")
+	}
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}
+
+func (s *Service) CashSince(ctx context.Context, since time.Time) (*billing.CashSummary, error) {
+	tenantID, _ := actorOf(ctx)
+	out := &billing.CashSummary{BySource: []billing.CashLine{}}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := billingdb.New(tx)
+		col, e := q.CashCollectedSince(ctx, billingdb.CashCollectedSinceParams{TenantID: tenantID, Since: &since})
+		if e != nil {
+			return e
+		}
+		out.Collected, out.CollectedCount = col.Total, int(col.N)
+		wv, e := q.CashWaivedSince(ctx, billingdb.CashWaivedSinceParams{TenantID: tenantID, Since: &since})
+		if e != nil {
+			return e
+		}
+		out.Waived, out.WaivedCount = wv.Total, int(wv.N)
+		os, e := q.CashOutstanding(ctx, tenantID)
+		if e != nil {
+			return e
+		}
+		out.Outstanding, out.OutstandingCount = os.Total, int(os.N)
+		by, e := q.CashBySourceSince(ctx, billingdb.CashBySourceSinceParams{TenantID: tenantID, Since: &since})
+		if e != nil {
+			return e
+		}
+		for _, r := range by {
+			out.BySource = append(out.BySource, billing.CashLine{Source: r.Source, Total: r.Total, Count: int(r.N)})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+// enqueueFromCharge advances a paid/waived routed consultation charge into the queue.
+func enqueueFromCharge(ctx context.Context, q *billingdb.Queries, tenantID uuid.UUID, actor *uuid.UUID, source string, enqueued bool, branchID, departmentID *uuid.UUID, toTriage bool, providerID *uuid.UUID, patientID, chargeID uuid.UUID) error {
+	if source != "consultation" || enqueued || branchID == nil || departmentID == nil {
+		return nil
+	}
+	stage := "with_doctor"
+	if toTriage {
+		stage = "triage"
+	}
+	if e := q.EnqueueFromCharge(ctx, billingdb.EnqueueFromChargeParams{
+		TenantID: tenantID, BranchID: *branchID, DepartmentID: *departmentID, PatientID: patientID, Stage: stage, AssignedProviderID: providerID, CreatedBy: actor,
+	}); e != nil {
+		return e
+	}
+	return q.MarkChargeEnqueued(ctx, billingdb.MarkChargeEnqueuedParams{TenantID: tenantID, ID: chargeID})
+}
+
+func catOrDefault(c string) string {
+	if strings.TrimSpace(c) == "" {
+		return "general"
+	}
+	return c
+}
+func priceOrZero(p string) string {
+	if strings.TrimSpace(p) == "" {
+		return "0"
+	}
+	return p
+}
+func mapWrite(err error, code, msg string) error {
+	if err == nil {
+		return nil
+	}
+	m := err.Error()
+	if strings.Contains(m, "duplicate key") || strings.Contains(m, "unique constraint") {
+		return apperr.Conflict(code, msg)
+	}
+	return apperr.Internal(err)
+}
+func apperrOrNil(err error) error {
+	if err == nil {
+		return nil
+	}
+	if ae, ok := apperr.As(err); ok {
+		return ae
+	}
+	return apperr.Internal(err)
+}
+
 // --- helpers ---
 
 func actorOf(ctx context.Context) (uuid.UUID, *uuid.UUID) {

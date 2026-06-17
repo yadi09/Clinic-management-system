@@ -13,4 +13,23 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	g.GET("/assess", h.Assess)
 	g.POST("/collect", h.Collect)
 	g.GET("/history", h.History)
+
+	// Billing-1: service catalog (admin), charges + cashier, finance view.
+	b := rg.Group("/billing")
+	mgr := httpx.RequirePermission("billing.manage")
+	b.GET("/services", h.ListServices) // readable by any authenticated staff (to price a charge)
+	b.POST("/services", mgr, h.CreateService)
+	b.PUT("/services/:id", mgr, h.UpdateService)
+	b.PUT("/services/:id/active", mgr, h.SetServiceActive)
+	b.DELETE("/services/:id", mgr, h.DeleteService)
+
+	collect := httpx.RequirePermission("payment.collect")
+	b.POST("/charges", collect, h.RaiseCharge)
+	b.GET("/charges/pending", collect, h.PendingCharges)
+	b.GET("/charges", collect, h.PatientCharges) // ?patient=
+	b.POST("/charges/:id/settle", collect, h.SettleCharge)
+	b.POST("/charges/:id/waive", httpx.RequirePermission("payment.waive"), h.WaiveCharge)
+	b.GET("/waiver-reasons", collect, h.WaiverReasons)
+
+	b.GET("/cash", mgr, h.Cash) // owner/manager finance view
 }

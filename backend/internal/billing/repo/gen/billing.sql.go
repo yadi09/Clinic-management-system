@@ -12,6 +12,106 @@ import (
 	"github.com/google/uuid"
 )
 
+const cashBySourceSince = `-- name: CashBySourceSince :many
+SELECT source, COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
+FROM charges WHERE tenant_id = $1 AND status = 'paid' AND settled_at >= $2
+GROUP BY source ORDER BY total DESC
+`
+
+type CashBySourceSinceParams struct {
+	TenantID uuid.UUID  `json:"tenant_id"`
+	Since    *time.Time `json:"since"`
+}
+
+type CashBySourceSinceRow struct {
+	Source string `json:"source"`
+	Total  string `json:"total"`
+	N      int32  `json:"n"`
+}
+
+func (q *Queries) CashBySourceSince(ctx context.Context, arg CashBySourceSinceParams) ([]CashBySourceSinceRow, error) {
+	rows, err := q.db.Query(ctx, cashBySourceSince, arg.TenantID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CashBySourceSinceRow{}
+	for rows.Next() {
+		var i CashBySourceSinceRow
+		if err := rows.Scan(&i.Source, &i.Total, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const cashCollectedSince = `-- name: CashCollectedSince :one
+
+SELECT COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
+FROM charges WHERE tenant_id = $1 AND status = 'paid' AND settled_at >= $2
+`
+
+type CashCollectedSinceParams struct {
+	TenantID uuid.UUID  `json:"tenant_id"`
+	Since    *time.Time `json:"since"`
+}
+
+type CashCollectedSinceRow struct {
+	Total string `json:"total"`
+	N     int32  `json:"n"`
+}
+
+// ---- cash summary (owner finance view) ----
+func (q *Queries) CashCollectedSince(ctx context.Context, arg CashCollectedSinceParams) (CashCollectedSinceRow, error) {
+	row := q.db.QueryRow(ctx, cashCollectedSince, arg.TenantID, arg.Since)
+	var i CashCollectedSinceRow
+	err := row.Scan(&i.Total, &i.N)
+	return i, err
+}
+
+const cashOutstanding = `-- name: CashOutstanding :one
+SELECT COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
+FROM charges WHERE tenant_id = $1 AND status = 'pending' AND deleted_at IS NULL
+`
+
+type CashOutstandingRow struct {
+	Total string `json:"total"`
+	N     int32  `json:"n"`
+}
+
+func (q *Queries) CashOutstanding(ctx context.Context, tenantID uuid.UUID) (CashOutstandingRow, error) {
+	row := q.db.QueryRow(ctx, cashOutstanding, tenantID)
+	var i CashOutstandingRow
+	err := row.Scan(&i.Total, &i.N)
+	return i, err
+}
+
+const cashWaivedSince = `-- name: CashWaivedSince :one
+SELECT COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
+FROM charges WHERE tenant_id = $1 AND status = 'waived' AND settled_at >= $2
+`
+
+type CashWaivedSinceParams struct {
+	TenantID uuid.UUID  `json:"tenant_id"`
+	Since    *time.Time `json:"since"`
+}
+
+type CashWaivedSinceRow struct {
+	Total string `json:"total"`
+	N     int32  `json:"n"`
+}
+
+func (q *Queries) CashWaivedSince(ctx context.Context, arg CashWaivedSinceParams) (CashWaivedSinceRow, error) {
+	row := q.db.QueryRow(ctx, cashWaivedSince, arg.TenantID, arg.Since)
+	var i CashWaivedSinceRow
+	err := row.Scan(&i.Total, &i.N)
+	return i, err
+}
+
 const createCardPayment = `-- name: CreateCardPayment :one
 INSERT INTO card_payments (tenant_id, branch_id, patient_id, appointment_id, amount, currency, waived, waive_reason, received_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -59,6 +159,144 @@ func (q *Queries) CreateCardPayment(ctx context.Context, arg CreateCardPaymentPa
 		&i.PaidAt,
 	)
 	return i, err
+}
+
+const createCharge = `-- name: CreateCharge :one
+
+INSERT INTO charges (tenant_id, patient_id, encounter_id, service_item_id, source, description, amount, currency,
+  branch_id, department_id, to_triage, provider_id, created_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
+  $9, $10, $11, $12, $13)
+RETURNING id, status, amount, currency, created_at
+`
+
+type CreateChargeParams struct {
+	TenantID      uuid.UUID  `json:"tenant_id"`
+	PatientID     uuid.UUID  `json:"patient_id"`
+	EncounterID   *uuid.UUID `json:"encounter_id"`
+	ServiceItemID *uuid.UUID `json:"service_item_id"`
+	Source        string     `json:"source"`
+	Description   string     `json:"description"`
+	Amount        string     `json:"amount"`
+	Currency      string     `json:"currency"`
+	BranchID      *uuid.UUID `json:"branch_id"`
+	DepartmentID  *uuid.UUID `json:"department_id"`
+	ToTriage      bool       `json:"to_triage"`
+	ProviderID    *uuid.UUID `json:"provider_id"`
+	CreatedBy     *uuid.UUID `json:"created_by"`
+}
+
+type CreateChargeRow struct {
+	ID        uuid.UUID `json:"id"`
+	Status    string    `json:"status"`
+	Amount    string    `json:"amount"`
+	Currency  string    `json:"currency"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// ---- charges ----
+func (q *Queries) CreateCharge(ctx context.Context, arg CreateChargeParams) (CreateChargeRow, error) {
+	row := q.db.QueryRow(ctx, createCharge,
+		arg.TenantID,
+		arg.PatientID,
+		arg.EncounterID,
+		arg.ServiceItemID,
+		arg.Source,
+		arg.Description,
+		arg.Amount,
+		arg.Currency,
+		arg.BranchID,
+		arg.DepartmentID,
+		arg.ToTriage,
+		arg.ProviderID,
+		arg.CreatedBy,
+	)
+	var i CreateChargeRow
+	err := row.Scan(
+		&i.ID,
+		&i.Status,
+		&i.Amount,
+		&i.Currency,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const createServiceItem = `-- name: CreateServiceItem :one
+INSERT INTO service_items (tenant_id, code, name, category, price, created_by)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, code, name, category, price, currency, is_active
+`
+
+type CreateServiceItemParams struct {
+	TenantID  uuid.UUID  `json:"tenant_id"`
+	Code      string     `json:"code"`
+	Name      string     `json:"name"`
+	Category  string     `json:"category"`
+	Price     string     `json:"price"`
+	CreatedBy *uuid.UUID `json:"created_by"`
+}
+
+type CreateServiceItemRow struct {
+	ID       uuid.UUID `json:"id"`
+	Code     string    `json:"code"`
+	Name     string    `json:"name"`
+	Category string    `json:"category"`
+	Price    string    `json:"price"`
+	Currency string    `json:"currency"`
+	IsActive bool      `json:"is_active"`
+}
+
+func (q *Queries) CreateServiceItem(ctx context.Context, arg CreateServiceItemParams) (CreateServiceItemRow, error) {
+	row := q.db.QueryRow(ctx, createServiceItem,
+		arg.TenantID,
+		arg.Code,
+		arg.Name,
+		arg.Category,
+		arg.Price,
+		arg.CreatedBy,
+	)
+	var i CreateServiceItemRow
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.Category,
+		&i.Price,
+		&i.Currency,
+		&i.IsActive,
+	)
+	return i, err
+}
+
+const enqueueFromCharge = `-- name: EnqueueFromCharge :exec
+INSERT INTO queue_entries (tenant_id, branch_id, department_id, patient_id, stage, assigned_provider_id, priority, created_by)
+VALUES ($1, $2, $3, $4, $5, $6, 0, $7)
+`
+
+type EnqueueFromChargeParams struct {
+	TenantID           uuid.UUID  `json:"tenant_id"`
+	BranchID           uuid.UUID  `json:"branch_id"`
+	DepartmentID       uuid.UUID  `json:"department_id"`
+	PatientID          uuid.UUID  `json:"patient_id"`
+	Stage              string     `json:"stage"`
+	AssignedProviderID *uuid.UUID `json:"assigned_provider_id"`
+	CreatedBy          *uuid.UUID `json:"created_by"`
+}
+
+// Auto-advance after payment: enqueue the patient to the routing captured on the
+// charge (state defaults to 'waiting', enqueued_at to now()).
+func (q *Queries) EnqueueFromCharge(ctx context.Context, arg EnqueueFromChargeParams) error {
+	_, err := q.db.Exec(ctx, enqueueFromCharge,
+		arg.TenantID,
+		arg.BranchID,
+		arg.DepartmentID,
+		arg.PatientID,
+		arg.Stage,
+		arg.AssignedProviderID,
+		arg.CreatedBy,
+	)
+	return err
 }
 
 const getAppointmentCoverage = `-- name: GetAppointmentCoverage :one
@@ -162,6 +400,41 @@ func (q *Queries) GetCardSettings(ctx context.Context, tenantID uuid.UUID) (GetC
 	return i, err
 }
 
+const getServiceItem = `-- name: GetServiceItem :one
+SELECT id, code, name, category, price, currency, is_active FROM service_items
+WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+`
+
+type GetServiceItemParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+type GetServiceItemRow struct {
+	ID       uuid.UUID `json:"id"`
+	Code     string    `json:"code"`
+	Name     string    `json:"name"`
+	Category string    `json:"category"`
+	Price    string    `json:"price"`
+	Currency string    `json:"currency"`
+	IsActive bool      `json:"is_active"`
+}
+
+func (q *Queries) GetServiceItem(ctx context.Context, arg GetServiceItemParams) (GetServiceItemRow, error) {
+	row := q.db.QueryRow(ctx, getServiceItem, arg.TenantID, arg.ID)
+	var i GetServiceItemRow
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.Category,
+		&i.Price,
+		&i.Currency,
+		&i.IsActive,
+	)
+	return i, err
+}
+
 const listCardPaymentsByPatient = `-- name: ListCardPaymentsByPatient :many
 SELECT id, amount, currency, waived, waive_reason, paid_at
 FROM card_payments
@@ -209,4 +482,332 @@ func (q *Queries) ListCardPaymentsByPatient(ctx context.Context, arg ListCardPay
 		return nil, err
 	}
 	return items, nil
+}
+
+const listChargesByPatient = `-- name: ListChargesByPatient :many
+SELECT id, source, description, amount, currency, status, payment_method, waive_reason, settled_at, created_at
+FROM charges
+WHERE tenant_id = $1 AND patient_id = $2 AND deleted_at IS NULL
+ORDER BY created_at DESC LIMIT 50
+`
+
+type ListChargesByPatientParams struct {
+	TenantID  uuid.UUID `json:"tenant_id"`
+	PatientID uuid.UUID `json:"patient_id"`
+}
+
+type ListChargesByPatientRow struct {
+	ID            uuid.UUID  `json:"id"`
+	Source        string     `json:"source"`
+	Description   string     `json:"description"`
+	Amount        string     `json:"amount"`
+	Currency      string     `json:"currency"`
+	Status        string     `json:"status"`
+	PaymentMethod *string    `json:"payment_method"`
+	WaiveReason   *string    `json:"waive_reason"`
+	SettledAt     *time.Time `json:"settled_at"`
+	CreatedAt     time.Time  `json:"created_at"`
+}
+
+func (q *Queries) ListChargesByPatient(ctx context.Context, arg ListChargesByPatientParams) ([]ListChargesByPatientRow, error) {
+	rows, err := q.db.Query(ctx, listChargesByPatient, arg.TenantID, arg.PatientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListChargesByPatientRow{}
+	for rows.Next() {
+		var i ListChargesByPatientRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Source,
+			&i.Description,
+			&i.Amount,
+			&i.Currency,
+			&i.Status,
+			&i.PaymentMethod,
+			&i.WaiveReason,
+			&i.SettledAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPendingCharges = `-- name: ListPendingCharges :many
+SELECT c.id, c.source, c.description, c.amount, c.currency, c.created_at,
+  c.patient_id, p.first_name, p.last_name, p.mrn
+FROM charges c
+JOIN patients p ON p.id = c.patient_id AND p.tenant_id = c.tenant_id
+WHERE c.tenant_id = $1 AND c.status = 'pending' AND c.deleted_at IS NULL
+ORDER BY c.created_at
+LIMIT 200
+`
+
+type ListPendingChargesRow struct {
+	ID          uuid.UUID `json:"id"`
+	Source      string    `json:"source"`
+	Description string    `json:"description"`
+	Amount      string    `json:"amount"`
+	Currency    string    `json:"currency"`
+	CreatedAt   time.Time `json:"created_at"`
+	PatientID   uuid.UUID `json:"patient_id"`
+	FirstName   string    `json:"first_name"`
+	LastName    string    `json:"last_name"`
+	Mrn         string    `json:"mrn"`
+}
+
+func (q *Queries) ListPendingCharges(ctx context.Context, tenantID uuid.UUID) ([]ListPendingChargesRow, error) {
+	rows, err := q.db.Query(ctx, listPendingCharges, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPendingChargesRow{}
+	for rows.Next() {
+		var i ListPendingChargesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Source,
+			&i.Description,
+			&i.Amount,
+			&i.Currency,
+			&i.CreatedAt,
+			&i.PatientID,
+			&i.FirstName,
+			&i.LastName,
+			&i.Mrn,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listServiceItems = `-- name: ListServiceItems :many
+
+
+SELECT id, code, name, category, price, currency, is_active FROM service_items
+WHERE tenant_id = $1 AND deleted_at IS NULL
+  AND ($2::bool IS NOT TRUE OR is_active)
+ORDER BY category, name
+`
+
+type ListServiceItemsParams struct {
+	TenantID   uuid.UUID `json:"tenant_id"`
+	ActiveOnly *bool     `json:"active_only"`
+}
+
+type ListServiceItemsRow struct {
+	ID       uuid.UUID `json:"id"`
+	Code     string    `json:"code"`
+	Name     string    `json:"name"`
+	Category string    `json:"category"`
+	Price    string    `json:"price"`
+	Currency string    `json:"currency"`
+	IsActive bool      `json:"is_active"`
+}
+
+// ============================================================================
+// Billing-1: service catalog + charges spine + cashier + cash summary
+// ============================================================================
+// ---- service catalog (what's billable, how much) ----
+func (q *Queries) ListServiceItems(ctx context.Context, arg ListServiceItemsParams) ([]ListServiceItemsRow, error) {
+	rows, err := q.db.Query(ctx, listServiceItems, arg.TenantID, arg.ActiveOnly)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListServiceItemsRow{}
+	for rows.Next() {
+		var i ListServiceItemsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.Category,
+			&i.Price,
+			&i.Currency,
+			&i.IsActive,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markChargeEnqueued = `-- name: MarkChargeEnqueued :exec
+UPDATE charges SET enqueued = true, updated_at = now() WHERE tenant_id = $1 AND id = $2
+`
+
+type MarkChargeEnqueuedParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+func (q *Queries) MarkChargeEnqueued(ctx context.Context, arg MarkChargeEnqueuedParams) error {
+	_, err := q.db.Exec(ctx, markChargeEnqueued, arg.TenantID, arg.ID)
+	return err
+}
+
+const setServiceItemActive = `-- name: SetServiceItemActive :exec
+UPDATE service_items SET is_active = $1, updated_at = now()
+WHERE tenant_id = $2 AND id = $3 AND deleted_at IS NULL
+`
+
+type SetServiceItemActiveParams struct {
+	IsActive bool      `json:"is_active"`
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+func (q *Queries) SetServiceItemActive(ctx context.Context, arg SetServiceItemActiveParams) error {
+	_, err := q.db.Exec(ctx, setServiceItemActive, arg.IsActive, arg.TenantID, arg.ID)
+	return err
+}
+
+const settleCharge = `-- name: SettleCharge :one
+UPDATE charges SET status = 'paid', payment_method = $1, settled_by = $2, settled_at = now(), updated_at = now()
+WHERE tenant_id = $3 AND id = $4 AND status = 'pending' AND deleted_at IS NULL
+RETURNING id, source, patient_id, branch_id, department_id, to_triage, provider_id, enqueued
+`
+
+type SettleChargeParams struct {
+	PaymentMethod *string    `json:"payment_method"`
+	SettledBy     *uuid.UUID `json:"settled_by"`
+	TenantID      uuid.UUID  `json:"tenant_id"`
+	ID            uuid.UUID  `json:"id"`
+}
+
+type SettleChargeRow struct {
+	ID           uuid.UUID  `json:"id"`
+	Source       string     `json:"source"`
+	PatientID    uuid.UUID  `json:"patient_id"`
+	BranchID     *uuid.UUID `json:"branch_id"`
+	DepartmentID *uuid.UUID `json:"department_id"`
+	ToTriage     bool       `json:"to_triage"`
+	ProviderID   *uuid.UUID `json:"provider_id"`
+	Enqueued     bool       `json:"enqueued"`
+}
+
+// Atomic claim: only a pending charge can be settled (prevents double-collect).
+func (q *Queries) SettleCharge(ctx context.Context, arg SettleChargeParams) (SettleChargeRow, error) {
+	row := q.db.QueryRow(ctx, settleCharge,
+		arg.PaymentMethod,
+		arg.SettledBy,
+		arg.TenantID,
+		arg.ID,
+	)
+	var i SettleChargeRow
+	err := row.Scan(
+		&i.ID,
+		&i.Source,
+		&i.PatientID,
+		&i.BranchID,
+		&i.DepartmentID,
+		&i.ToTriage,
+		&i.ProviderID,
+		&i.Enqueued,
+	)
+	return i, err
+}
+
+const softDeleteServiceItem = `-- name: SoftDeleteServiceItem :exec
+UPDATE service_items SET deleted_at = now(), is_active = false, updated_at = now()
+WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+`
+
+type SoftDeleteServiceItemParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+func (q *Queries) SoftDeleteServiceItem(ctx context.Context, arg SoftDeleteServiceItemParams) error {
+	_, err := q.db.Exec(ctx, softDeleteServiceItem, arg.TenantID, arg.ID)
+	return err
+}
+
+const updateServiceItem = `-- name: UpdateServiceItem :exec
+UPDATE service_items SET code = $1, name = $2, category = $3, price = $4, updated_at = now()
+WHERE tenant_id = $5 AND id = $6 AND deleted_at IS NULL
+`
+
+type UpdateServiceItemParams struct {
+	Code     string    `json:"code"`
+	Name     string    `json:"name"`
+	Category string    `json:"category"`
+	Price    string    `json:"price"`
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+func (q *Queries) UpdateServiceItem(ctx context.Context, arg UpdateServiceItemParams) error {
+	_, err := q.db.Exec(ctx, updateServiceItem,
+		arg.Code,
+		arg.Name,
+		arg.Category,
+		arg.Price,
+		arg.TenantID,
+		arg.ID,
+	)
+	return err
+}
+
+const waiveCharge = `-- name: WaiveCharge :one
+UPDATE charges SET status = 'waived', waive_reason = $1, settled_by = $2, settled_at = now(), updated_at = now()
+WHERE tenant_id = $3 AND id = $4 AND status = 'pending' AND deleted_at IS NULL
+RETURNING id, source, patient_id, branch_id, department_id, to_triage, provider_id, enqueued
+`
+
+type WaiveChargeParams struct {
+	WaiveReason *string    `json:"waive_reason"`
+	SettledBy   *uuid.UUID `json:"settled_by"`
+	TenantID    uuid.UUID  `json:"tenant_id"`
+	ID          uuid.UUID  `json:"id"`
+}
+
+type WaiveChargeRow struct {
+	ID           uuid.UUID  `json:"id"`
+	Source       string     `json:"source"`
+	PatientID    uuid.UUID  `json:"patient_id"`
+	BranchID     *uuid.UUID `json:"branch_id"`
+	DepartmentID *uuid.UUID `json:"department_id"`
+	ToTriage     bool       `json:"to_triage"`
+	ProviderID   *uuid.UUID `json:"provider_id"`
+	Enqueued     bool       `json:"enqueued"`
+}
+
+func (q *Queries) WaiveCharge(ctx context.Context, arg WaiveChargeParams) (WaiveChargeRow, error) {
+	row := q.db.QueryRow(ctx, waiveCharge,
+		arg.WaiveReason,
+		arg.SettledBy,
+		arg.TenantID,
+		arg.ID,
+	)
+	var i WaiveChargeRow
+	err := row.Scan(
+		&i.ID,
+		&i.Source,
+		&i.PatientID,
+		&i.BranchID,
+		&i.DepartmentID,
+		&i.ToTriage,
+		&i.ProviderID,
+		&i.Enqueued,
+	)
+	return i, err
 }

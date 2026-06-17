@@ -53,6 +53,8 @@ const (
 	PrefixAnalyte        = "lan"
 	PrefixLabOrder       = "lo"
 	PrefixLabItem        = "smp"
+	PrefixServiceItem    = "svc"
+	PrefixCharge         = "chg"
 )
 
 // base32 lower-case, no padding. Decoding is case-insensitive.

@@ -74,7 +74,9 @@ var basePermissions = []struct{ Code, Desc string }{
 	{"appointment.manage", "Book/reschedule/cancel appointments"},
 	{"queue.manage", "Manage department queues and routing"},
 	{"triage.manage", "Record triage vitals"},
-	{"payment.collect", "Collect the card / consultation fee"},
+	{"payment.collect", "Collect the card / consultation fee and settle charges"},
+	{"payment.waive", "Waive a charge / fee with a documented reason"},
+	{"billing.manage", "Manage the service catalog and view the finance dashboard"},
 	{"encounter.manage", "Conduct consultations and EMR"},
 	{"prescription.create", "Create prescriptions"},
 	{"pharmacy.read", "View the drug catalog and stock"},
@@ -266,6 +268,32 @@ func seedLab(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) error {
 	return nil
 }
 
+// seedBillingServices inserts a starter set of billable services (admins re-price
+// / extend). Idempotent by code. The consultation fee anchors the cashier flow.
+func seedBillingServices(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) error {
+	type svc struct {
+		Code, Name, Category, Price string
+	}
+	items := []svc{
+		{"CONSULT", "Consultation", "consultation", "100.00"},
+		{"DRESS", "Wound dressing", "procedure", "60.00"},
+		{"INJECT", "Injection", "procedure", "40.00"},
+		{"SUTURE", "Suturing", "procedure", "250.00"},
+		{"NEB", "Nebulization", "procedure", "80.00"},
+		{"BP", "Blood pressure check", "general", "20.00"},
+	}
+	for _, s := range items {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO service_items (tenant_id, code, name, category, price)
+			 SELECT $1,$2,$3,$4,$5::numeric
+			 WHERE NOT EXISTS (SELECT 1 FROM service_items WHERE tenant_id=$1 AND lower(code)=lower($2) AND deleted_at IS NULL)`,
+			tenantID, s.Code, s.Name, s.Category, s.Price); err != nil {
+			return fmt.Errorf("service %s: %w", s.Code, err)
+		}
+	}
+	return nil
+}
+
 func env(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -388,11 +416,11 @@ func main() {
 		// Default permission sets for the operational roles (Phase 3b-2), so each
 		// role can be invited and tested with a realistic scoped view.
 		roleGrants := map[string][]string{
-			"branch_manager": {"patient.create", "patient.read", "patient.update", "patient.search", "appointment.manage", "queue.manage", "triage.manage", "payment.collect", "user.read"},
+			"branch_manager": {"patient.create", "patient.read", "patient.update", "patient.search", "appointment.manage", "queue.manage", "triage.manage", "payment.collect", "payment.waive", "billing.manage", "user.read"},
 			"receptionist":   {"patient.create", "patient.read", "patient.update", "patient.search", "appointment.manage", "queue.manage", "payment.collect"},
 			"doctor":         {"patient.read", "patient.search", "encounter.manage", "prescription.create", "queue.manage", "appointment.manage", "lab.order"},
 			"nurse":          {"patient.read", "patient.search", "triage.manage", "queue.manage"},
-			"cashier":        {"payment.collect", "patient.read", "patient.search"},
+			"cashier":        {"payment.collect", "payment.waive", "patient.read", "patient.search"},
 			"pharmacist":      {"patient.read", "patient.search", "pharmacy.read", "pharmacy.dispense", "pharmacy.stock", "pharmacy.sell"},
 			"pharmacy_manager": {"patient.read", "patient.search", "pharmacy.read", "pharmacy.dispense", "pharmacy.stock", "pharmacy.sell", "pharmacy.manage"},
 			"lab_technician":   {"patient.read", "patient.search", "lab.process"},
@@ -477,6 +505,10 @@ func main() {
 		}
 		// Starter lab test catalog (lab managers extend it).
 		if e := seedLab(ctx, tx, tenantID); e != nil {
+			return e
+		}
+		// Starter billable services (admins extend / re-price).
+		if e := seedBillingServices(ctx, tx, tenantID); e != nil {
 			return e
 		}
 		return nil

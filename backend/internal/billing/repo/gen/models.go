@@ -117,6 +117,32 @@ type CardPayment struct {
 	DeletedAt     *time.Time `json:"deleted_at"`
 }
 
+type Charge struct {
+	ID            uuid.UUID  `json:"id"`
+	TenantID      uuid.UUID  `json:"tenant_id"`
+	PatientID     uuid.UUID  `json:"patient_id"`
+	EncounterID   *uuid.UUID `json:"encounter_id"`
+	ServiceItemID *uuid.UUID `json:"service_item_id"`
+	Source        string     `json:"source"`
+	Description   string     `json:"description"`
+	Amount        string     `json:"amount"`
+	Currency      string     `json:"currency"`
+	Status        string     `json:"status"`
+	PaymentMethod *string    `json:"payment_method"`
+	WaiveReason   *string    `json:"waive_reason"`
+	BranchID      *uuid.UUID `json:"branch_id"`
+	DepartmentID  *uuid.UUID `json:"department_id"`
+	ToTriage      bool       `json:"to_triage"`
+	ProviderID    *uuid.UUID `json:"provider_id"`
+	Enqueued      bool       `json:"enqueued"`
+	CreatedBy     *uuid.UUID `json:"created_by"`
+	SettledBy     *uuid.UUID `json:"settled_by"`
+	SettledAt     *time.Time `json:"settled_at"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	DeletedAt     *time.Time `json:"deleted_at"`
+}
+
 type Clinic struct {
 	ID               uuid.UUID  `json:"id"`
 	TenantID         uuid.UUID  `json:"tenant_id"`
@@ -134,6 +160,7 @@ type Clinic struct {
 	FreeWindowDays   int32      `json:"free_window_days"`
 	TriageRequired   bool       `json:"triage_required"`
 	DoctorAssignment string     `json:"doctor_assignment"`
+	PaymentMode      string     `json:"payment_mode"`
 }
 
 type ClinicalNote struct {
@@ -562,6 +589,21 @@ type RolePermission struct {
 	RoleID       uuid.UUID `json:"role_id"`
 	PermissionID uuid.UUID `json:"permission_id"`
 	CreatedAt    time.Time `json:"created_at"`
+}
+
+type ServiceItem struct {
+	ID        uuid.UUID  `json:"id"`
+	TenantID  uuid.UUID  `json:"tenant_id"`
+	Code      string     `json:"code"`
+	Name      string     `json:"name"`
+	Category  string     `json:"category"`
+	Price     string     `json:"price"`
+	Currency  string     `json:"currency"`
+	IsActive  bool       `json:"is_active"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	CreatedBy *uuid.UUID `json:"created_by"`
+	DeletedAt *time.Time `json:"deleted_at"`
 }
 
 type Session struct {

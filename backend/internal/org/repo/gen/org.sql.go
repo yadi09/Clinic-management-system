@@ -198,7 +198,7 @@ func (q *Queries) GetClinic(ctx context.Context, tenantID uuid.UUID) (GetClinicR
 }
 
 const getClinicSettings = `-- name: GetClinicSettings :one
-SELECT id, card_fee_enabled, card_fee_amount, card_currency, free_window_days, triage_required, doctor_assignment
+SELECT id, card_fee_enabled, card_fee_amount, card_currency, free_window_days, triage_required, doctor_assignment, payment_mode
 FROM clinics
 WHERE tenant_id = $1 AND deleted_at IS NULL
 ORDER BY created_at
@@ -213,6 +213,7 @@ type GetClinicSettingsRow struct {
 	FreeWindowDays   int32     `json:"free_window_days"`
 	TriageRequired   bool      `json:"triage_required"`
 	DoctorAssignment string    `json:"doctor_assignment"`
+	PaymentMode      string    `json:"payment_mode"`
 }
 
 func (q *Queries) GetClinicSettings(ctx context.Context, tenantID uuid.UUID) (GetClinicSettingsRow, error) {
@@ -226,6 +227,7 @@ func (q *Queries) GetClinicSettings(ctx context.Context, tenantID uuid.UUID) (Ge
 		&i.FreeWindowDays,
 		&i.TriageRequired,
 		&i.DoctorAssignment,
+		&i.PaymentMode,
 	)
 	return i, err
 }
@@ -475,8 +477,9 @@ UPDATE clinics SET
   free_window_days = $4,
   triage_required = $5,
   doctor_assignment = $6,
+  payment_mode = $7,
   updated_at = now()
-WHERE tenant_id = $7 AND id = $8 AND deleted_at IS NULL
+WHERE tenant_id = $8 AND id = $9 AND deleted_at IS NULL
 `
 
 type UpdateClinicSettingsParams struct {
@@ -486,6 +489,7 @@ type UpdateClinicSettingsParams struct {
 	FreeWindowDays   int32     `json:"free_window_days"`
 	TriageRequired   bool      `json:"triage_required"`
 	DoctorAssignment string    `json:"doctor_assignment"`
+	PaymentMode      string    `json:"payment_mode"`
 	TenantID         uuid.UUID `json:"tenant_id"`
 	ID               uuid.UUID `json:"id"`
 }
@@ -498,6 +502,7 @@ func (q *Queries) UpdateClinicSettings(ctx context.Context, arg UpdateClinicSett
 		arg.FreeWindowDays,
 		arg.TriageRequired,
 		arg.DoctorAssignment,
+		arg.PaymentMode,
 		arg.TenantID,
 		arg.ID,
 	)

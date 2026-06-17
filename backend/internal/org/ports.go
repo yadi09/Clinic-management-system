@@ -50,6 +50,7 @@ type Settings struct {
 	FreeWindowDays   int    `json:"free_window_days"`
 	TriageRequired   bool   `json:"triage_required"`
 	DoctorAssignment string `json:"doctor_assignment"`
+	PaymentMode      string `json:"payment_mode"` // reception | cashier
 }
 
 // SettingsInput updates the clinic flow settings.
@@ -60,6 +61,7 @@ type SettingsInput struct {
 	FreeWindowDays   int
 	TriageRequired   bool
 	DoctorAssignment string
+	PaymentMode      string
 }
 
 type ClinicInput struct{ Name, Timezone, Locale string }
