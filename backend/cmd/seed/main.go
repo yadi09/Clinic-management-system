@@ -45,6 +45,21 @@ var tenantRoles = []struct{ Code, Name string }{
 	{"patient_portal_user", "Patient Portal User"},
 }
 
+// demoStaff is one login per operational role, created when SEED_DEMO=1 so the
+// platform can be exercised end-to-end as each real user (shared password via
+// SEED_DEMO_PASSWORD). Names are illustrative (Ethiopian) for the demo tenant.
+var demoStaff = []struct{ Email, Name, Role string }{
+	{"admin@demo.clinic", "Selam Tadesse (Clinic Admin)", "clinic_admin"},
+	{"reception@demo.clinic", "Hanna Girma (Reception)", "receptionist"},
+	{"nurse@demo.clinic", "Kebede Worku (Nurse)", "nurse"},
+	{"doctor@demo.clinic", "Dr. Meron Haile", "doctor"},
+	{"labtech@demo.clinic", "Yonas Tesfaye (Lab Tech)", "lab_technician"},
+	{"labmgr@demo.clinic", "Tigist Bekele (Lab Manager)", "lab_manager"},
+	{"pharmacist@demo.clinic", "Dawit Solomon (Pharmacist)", "pharmacist"},
+	{"pharmacymgr@demo.clinic", "Sara Mengistu (Pharmacy Manager)", "pharmacy_manager"},
+	{"cashier@demo.clinic", "Bethel Assefa (Cashier)", "cashier"},
+}
+
 // Baseline permission catalog (grows per phase). Owner is granted all.
 var basePermissions = []struct{ Code, Desc string }{
 	{"clinic.manage", "Configure clinic, branches, departments"},
@@ -280,6 +295,16 @@ func main() {
 		log.Fatalf("hash password: %v", err)
 	}
 
+	// Optional: per-role demo logins (SEED_DEMO=1).
+	seedDemo := os.Getenv("SEED_DEMO") == "1"
+	demoPass := env("SEED_DEMO_PASSWORD", "Test1234!")
+	var demoHash string
+	if seedDemo {
+		if demoHash, err = auth.HashPassword(demoPass); err != nil {
+			log.Fatalf("hash demo password: %v", err)
+		}
+	}
+
 	// Phase 1: global + registry rows (no tenant RLS).
 	var planID, tenantID uuid.UUID
 	if err := db.WithTenantTx(ctx, uuid.Nil, func(tx pgx.Tx) error {
@@ -400,6 +425,31 @@ func main() {
 			tenantID, ownerUserID, ownerRoleID); err != nil {
 			return fmt.Errorf("owner role assignment: %w", err)
 		}
+		// Optional per-role demo staff (SEED_DEMO=1): one active login per role,
+		// sharing demoPass, each assigned its matching system role tenant-wide.
+		if seedDemo {
+			for _, s := range demoStaff {
+				rid, ok := roleIDs[s.Role]
+				if !ok {
+					continue
+				}
+				var uid uuid.UUID
+				if err := tx.QueryRow(ctx,
+					`INSERT INTO users (tenant_id, email, password_hash, full_name, status)
+					 VALUES ($1,$2,$3,$4,'active')
+					 ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, full_name = EXCLUDED.full_name, status = 'active'
+					 RETURNING id`, tenantID, s.Email, demoHash, s.Name).Scan(&uid); err != nil {
+					return fmt.Errorf("demo user %s: %w", s.Email, err)
+				}
+				if _, err := tx.Exec(ctx,
+					`INSERT INTO user_role_scopes (tenant_id, user_id, role_id) VALUES ($1,$2,$3)
+					 ON CONFLICT (user_id, role_id, branch_id, department_id) DO NOTHING`,
+					tenantID, uid, rid); err != nil {
+					return fmt.Errorf("demo role %s: %w", s.Email, err)
+				}
+			}
+		}
+
 		// Default clinic + main branch.
 		var clinicID uuid.UUID
 		e := tx.QueryRow(ctx, `SELECT id FROM clinics WHERE tenant_id = $1 AND deleted_at IS NULL LIMIT 1`, tenantID).Scan(&clinicID)
@@ -439,4 +489,10 @@ func main() {
 	fmt.Printf("  Email     : %s\n", ownerEmail)
 	fmt.Printf("  Password  : %s\n", ownerPass)
 	fmt.Printf("  Tenant ID : %s\n", tenantID)
+	if seedDemo {
+		fmt.Printf("  Demo staff: %d role logins (password %q)\n", len(demoStaff), demoPass)
+		for _, s := range demoStaff {
+			fmt.Printf("    - %-22s %s\n", s.Email, s.Role)
+		}
+	}
 }

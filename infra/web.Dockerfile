@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # Builds the React SPA and bakes it into a Caddy image that also reverse-proxies
 # the API. Build context = repo root. Single edge for the whole app (ADR-001).
 
