@@ -191,6 +191,82 @@ func (h *Handlers) FindSample(c *gin.Context) {
 	httpx.OK(c, gin.H{"id": id.Encode(id.PrefixLabItem, ref.ID), "status": ref.Status})
 }
 
+func (h *Handlers) UpdateTest(c *gin.Context) {
+	testID, ok := decode(c, id.PrefixLabTest, "id")
+	if !ok {
+		return
+	}
+	var req createTestRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("code and name are required"))
+		return
+	}
+	if err := h.svc.UpdateTest(c.Request.Context(), testID, req.Code, req.Name, req.Specimen); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+func (h *Handlers) SetTestActive(c *gin.Context) {
+	testID, ok := decode(c, id.PrefixLabTest, "id")
+	if !ok {
+		return
+	}
+	var req struct {
+		IsActive bool `json:"is_active"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	if err := h.svc.SetTestActive(c.Request.Context(), testID, req.IsActive); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+func (h *Handlers) DeleteTest(c *gin.Context) {
+	testID, ok := decode(c, id.PrefixLabTest, "id")
+	if !ok {
+		return
+	}
+	if err := h.svc.DeleteTest(c.Request.Context(), testID); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+func (h *Handlers) UpdateAnalyte(c *gin.Context) {
+	analyteID, ok := decode(c, id.PrefixAnalyte, "id")
+	if !ok {
+		return
+	}
+	var req addAnalyteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("name is required"))
+		return
+	}
+	if err := h.svc.UpdateAnalyte(c.Request.Context(), analyteID, lab.Analyte{
+		Name: req.Name, Unit: req.Unit, RefLow: req.RefLow, RefHigh: req.RefHigh, CriticalLow: req.CriticalLow, CriticalHigh: req.CriticalHigh,
+	}); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+func (h *Handlers) DeleteAnalyte(c *gin.Context) {
+	analyteID, ok := decode(c, id.PrefixAnalyte, "id")
+	if !ok {
+		return
+	}
+	if err := h.svc.DeleteAnalyte(c.Request.Context(), analyteID); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
 // ---- orders + doctor views ----
 
 func (h *Handlers) CreateOrder(c *gin.Context) {

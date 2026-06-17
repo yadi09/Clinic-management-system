@@ -96,6 +96,42 @@ func (s *Service) CreateTest(ctx context.Context, code, name, specimen string) (
 	return &out, nil
 }
 
+func (s *Service) UpdateTest(ctx context.Context, testID uuid.UUID, code, name, specimen string) error {
+	tenantID, _ := actorOf(ctx)
+	if strings.TrimSpace(code) == "" || strings.TrimSpace(name) == "" {
+		return apperr.Validation("code and name are required")
+	}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		return labdb.New(tx).UpdateLabTest(ctx, labdb.UpdateLabTestParams{TenantID: tenantID, ID: testID, Code: code, Name: name, Specimen: strPtr(specimen)})
+	})
+	if err != nil {
+		return mapWriteErr(err, "TEST_EXISTS", "a test with this code already exists")
+	}
+	return nil
+}
+
+func (s *Service) SetTestActive(ctx context.Context, testID uuid.UUID, active bool) error {
+	tenantID, _ := actorOf(ctx)
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		return labdb.New(tx).SetLabTestActive(ctx, labdb.SetLabTestActiveParams{TenantID: tenantID, ID: testID, IsActive: active})
+	})
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}
+
+func (s *Service) DeleteTest(ctx context.Context, testID uuid.UUID) error {
+	tenantID, _ := actorOf(ctx)
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		return labdb.New(tx).SoftDeleteLabTest(ctx, labdb.SoftDeleteLabTestParams{TenantID: tenantID, ID: testID})
+	})
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}
+
 func (s *Service) AddAnalyte(ctx context.Context, testID uuid.UUID, in lab.Analyte) error {
 	tenantID, _ := actorOf(ctx)
 	if strings.TrimSpace(in.Name) == "" {
@@ -107,6 +143,47 @@ func (s *Service) AddAnalyte(ctx context.Context, testID uuid.UUID, in lab.Analy
 			RefLow: strPtr(in.RefLow), RefHigh: strPtr(in.RefHigh), CriticalLow: strPtr(in.CriticalLow), CriticalHigh: strPtr(in.CriticalHigh),
 		})
 	})
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}
+
+func (s *Service) UpdateAnalyte(ctx context.Context, analyteID uuid.UUID, in lab.Analyte) error {
+	tenantID, _ := actorOf(ctx)
+	if strings.TrimSpace(in.Name) == "" {
+		return apperr.Validation("analyte name is required")
+	}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		return labdb.New(tx).UpdateAnalyte(ctx, labdb.UpdateAnalyteParams{
+			TenantID: tenantID, ID: analyteID, Name: in.Name, Unit: strPtr(in.Unit),
+			RefLow: strPtr(in.RefLow), RefHigh: strPtr(in.RefHigh), CriticalLow: strPtr(in.CriticalLow), CriticalHigh: strPtr(in.CriticalHigh),
+		})
+	})
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}
+
+// DeleteAnalyte removes an analyte only when it has no recorded results; otherwise
+// it's blocked (history must be preserved — edit it instead).
+func (s *Service) DeleteAnalyte(ctx context.Context, analyteID uuid.UUID) error {
+	tenantID, _ := actorOf(ctx)
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := labdb.New(tx)
+		n, e := q.CountAnalyteResults(ctx, labdb.CountAnalyteResultsParams{TenantID: tenantID, AnalyteID: analyteID})
+		if e != nil {
+			return e
+		}
+		if n > 0 {
+			return apperr.Conflict("ANALYTE_HAS_RESULTS", "this analyte has recorded results and can't be deleted — edit it instead")
+		}
+		return q.DeleteAnalyte(ctx, labdb.DeleteAnalyteParams{TenantID: tenantID, ID: analyteID})
+	})
+	if ae, ok := apperr.As(err); ok {
+		return ae
+	}
 	if err != nil {
 		return apperr.Internal(err)
 	}

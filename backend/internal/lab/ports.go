@@ -172,7 +172,12 @@ type Service interface {
 	ListTests(ctx context.Context, activeOnly bool) ([]LabTest, error)
 	ListAnalytes(ctx context.Context, testID uuid.UUID) ([]Analyte, error)
 	CreateTest(ctx context.Context, code, name, specimen string) (*LabTest, error)
+	UpdateTest(ctx context.Context, testID uuid.UUID, code, name, specimen string) error
+	SetTestActive(ctx context.Context, testID uuid.UUID, active bool) error
+	DeleteTest(ctx context.Context, testID uuid.UUID) error
 	AddAnalyte(ctx context.Context, testID uuid.UUID, in Analyte) error
+	UpdateAnalyte(ctx context.Context, analyteID uuid.UUID, in Analyte) error
+	DeleteAnalyte(ctx context.Context, analyteID uuid.UUID) error
 	ImportCatalog(ctx context.Context, rows []CatalogImportRow) (*CatalogImportResult, error)
 	FindSample(ctx context.Context, sampleNo int64) (*SampleRef, error)
 

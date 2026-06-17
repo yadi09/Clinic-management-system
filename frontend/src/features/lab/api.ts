@@ -32,6 +32,21 @@ export function createTest(body: { code: string; name: string; specimen?: string
 export function addAnalyte(testId: string, body: Omit<Analyte, "id">) {
   return apiFetch<void>(`/lab/tests/${testId}/analytes`, { method: "POST", body });
 }
+export function updateTest(id: string, body: { code: string; name: string; specimen?: string }) {
+  return apiFetch<void>(`/lab/tests/${id}`, { method: "PUT", body });
+}
+export function setTestActive(id: string, is_active: boolean) {
+  return apiFetch<void>(`/lab/tests/${id}/active`, { method: "PUT", body: { is_active } });
+}
+export function deleteTest(id: string) {
+  return apiFetch<void>(`/lab/tests/${id}`, { method: "DELETE" });
+}
+export function updateAnalyte(id: string, body: Omit<Analyte, "id">) {
+  return apiFetch<void>(`/lab/analytes/${id}`, { method: "PUT", body });
+}
+export function deleteAnalyte(id: string) {
+  return apiFetch<void>(`/lab/analytes/${id}`, { method: "DELETE" });
+}
 
 // ---- orders + doctor views ----
 

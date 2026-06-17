@@ -31,6 +31,22 @@ func (q *Queries) AccessionItem(ctx context.Context, arg AccessionItemParams) (u
 	return id, err
 }
 
+const countAnalyteResults = `-- name: CountAnalyteResults :one
+SELECT count(*)::int FROM lab_results WHERE tenant_id = $1 AND analyte_id = $2
+`
+
+type CountAnalyteResultsParams struct {
+	TenantID  uuid.UUID `json:"tenant_id"`
+	AnalyteID uuid.UUID `json:"analyte_id"`
+}
+
+func (q *Queries) CountAnalyteResults(ctx context.Context, arg CountAnalyteResultsParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countAnalyteResults, arg.TenantID, arg.AnalyteID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const countInboxCriticals = `-- name: CountInboxCriticals :one
 SELECT count(*)::int
 FROM lab_order_items i
@@ -209,6 +225,20 @@ func (q *Queries) CreateLabTest(ctx context.Context, arg CreateLabTestParams) (C
 		&i.IsActive,
 	)
 	return i, err
+}
+
+const deleteAnalyte = `-- name: DeleteAnalyte :exec
+DELETE FROM lab_analytes WHERE tenant_id = $1 AND id = $2
+`
+
+type DeleteAnalyteParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+func (q *Queries) DeleteAnalyte(ctx context.Context, arg DeleteAnalyteParams) error {
+	_, err := q.db.Exec(ctx, deleteAnalyte, arg.TenantID, arg.ID)
+	return err
 }
 
 const findOrderItemBySampleNo = `-- name: FindOrderItemBySampleNo :one
@@ -875,6 +905,39 @@ func (q *Queries) MarkItemNotified(ctx context.Context, arg MarkItemNotifiedPara
 	return id, err
 }
 
+const setLabTestActive = `-- name: SetLabTestActive :exec
+UPDATE lab_tests SET is_active = $1, updated_at = now()
+WHERE tenant_id = $2 AND id = $3 AND deleted_at IS NULL
+`
+
+type SetLabTestActiveParams struct {
+	IsActive bool      `json:"is_active"`
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+func (q *Queries) SetLabTestActive(ctx context.Context, arg SetLabTestActiveParams) error {
+	_, err := q.db.Exec(ctx, setLabTestActive, arg.IsActive, arg.TenantID, arg.ID)
+	return err
+}
+
+const softDeleteLabTest = `-- name: SoftDeleteLabTest :exec
+UPDATE lab_tests SET deleted_at = now(), is_active = false, updated_at = now()
+WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+`
+
+type SoftDeleteLabTestParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+// Soft-delete keeps history (orders referencing the test stay valid) and hides it
+// from the catalog + ordering.
+func (q *Queries) SoftDeleteLabTest(ctx context.Context, arg SoftDeleteLabTestParams) error {
+	_, err := q.db.Exec(ctx, softDeleteLabTest, arg.TenantID, arg.ID)
+	return err
+}
+
 const submitResults = `-- name: SubmitResults :one
 UPDATE lab_order_items SET status = 'resulted', resulted_at = now()
 WHERE tenant_id = $1 AND id = $2 AND status IN ('collected','in_process')
@@ -891,6 +954,61 @@ func (q *Queries) SubmitResults(ctx context.Context, arg SubmitResultsParams) (u
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const updateAnalyte = `-- name: UpdateAnalyte :exec
+UPDATE lab_analytes SET name = $1, unit = $2, ref_low = $3, ref_high = $4,
+  critical_low = $5, critical_high = $6
+WHERE tenant_id = $7 AND id = $8
+`
+
+type UpdateAnalyteParams struct {
+	Name         string    `json:"name"`
+	Unit         *string   `json:"unit"`
+	RefLow       *string   `json:"ref_low"`
+	RefHigh      *string   `json:"ref_high"`
+	CriticalLow  *string   `json:"critical_low"`
+	CriticalHigh *string   `json:"critical_high"`
+	TenantID     uuid.UUID `json:"tenant_id"`
+	ID           uuid.UUID `json:"id"`
+}
+
+func (q *Queries) UpdateAnalyte(ctx context.Context, arg UpdateAnalyteParams) error {
+	_, err := q.db.Exec(ctx, updateAnalyte,
+		arg.Name,
+		arg.Unit,
+		arg.RefLow,
+		arg.RefHigh,
+		arg.CriticalLow,
+		arg.CriticalHigh,
+		arg.TenantID,
+		arg.ID,
+	)
+	return err
+}
+
+const updateLabTest = `-- name: UpdateLabTest :exec
+UPDATE lab_tests SET code = $1, name = $2, specimen = $3, updated_at = now()
+WHERE tenant_id = $4 AND id = $5 AND deleted_at IS NULL
+`
+
+type UpdateLabTestParams struct {
+	Code     string    `json:"code"`
+	Name     string    `json:"name"`
+	Specimen *string   `json:"specimen"`
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+func (q *Queries) UpdateLabTest(ctx context.Context, arg UpdateLabTestParams) error {
+	_, err := q.db.Exec(ctx, updateLabTest,
+		arg.Code,
+		arg.Name,
+		arg.Specimen,
+		arg.TenantID,
+		arg.ID,
+	)
+	return err
 }
 
 const upsertResult = `-- name: UpsertResult :exec

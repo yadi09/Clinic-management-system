@@ -32,6 +32,31 @@ ORDER BY sort_order, name;
 INSERT INTO lab_analytes (tenant_id, test_id, name, unit, ref_low, ref_high, critical_low, critical_high, sort_order)
 VALUES (@tenant_id, @test_id, @name, @unit, @ref_low, @ref_high, @critical_low, @critical_high, @sort_order);
 
+-- name: UpdateLabTest :exec
+UPDATE lab_tests SET code = @code, name = @name, specimen = @specimen, updated_at = now()
+WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
+
+-- name: SetLabTestActive :exec
+UPDATE lab_tests SET is_active = @is_active, updated_at = now()
+WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
+
+-- name: SoftDeleteLabTest :exec
+-- Soft-delete keeps history (orders referencing the test stay valid) and hides it
+-- from the catalog + ordering.
+UPDATE lab_tests SET deleted_at = now(), is_active = false, updated_at = now()
+WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
+
+-- name: UpdateAnalyte :exec
+UPDATE lab_analytes SET name = @name, unit = @unit, ref_low = @ref_low, ref_high = @ref_high,
+  critical_low = @critical_low, critical_high = @critical_high
+WHERE tenant_id = @tenant_id AND id = @id;
+
+-- name: CountAnalyteResults :one
+SELECT count(*)::int FROM lab_results WHERE tenant_id = @tenant_id AND analyte_id = @analyte_id;
+
+-- name: DeleteAnalyte :exec
+DELETE FROM lab_analytes WHERE tenant_id = @tenant_id AND id = @id;
+
 -- ---- orders ----
 
 -- name: CreateLabOrder :one

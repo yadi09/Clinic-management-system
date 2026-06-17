@@ -17,7 +17,12 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	// Catalog management.
 	mgr := httpx.RequirePermission("lab.manage")
 	g.POST("/tests", mgr, h.CreateTest)
+	g.PUT("/tests/:id", mgr, h.UpdateTest)
+	g.PUT("/tests/:id/active", mgr, h.SetTestActive)
+	g.DELETE("/tests/:id", mgr, h.DeleteTest)
 	g.POST("/tests/:id/analytes", mgr, h.AddAnalyte)
+	g.PUT("/analytes/:id", mgr, h.UpdateAnalyte)
+	g.DELETE("/analytes/:id", mgr, h.DeleteAnalyte)
 	g.POST("/catalog/import", mgr, h.ImportCatalog)
 
 	// Orders + doctor views.
