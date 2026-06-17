@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, UserCog, Settings, CalendarDays, ListChecks, ClipboardCheck, Activity, Stethoscope, Pill, Boxes, BookOpen, ShoppingCart, Gauge, Tags, Truck, ClipboardList, BarChart3, FlaskConical, TestTubes, Inbox, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Users, UserCog, Settings, CalendarDays, ListChecks, ClipboardCheck, Activity, Stethoscope, Pill, Boxes, BookOpen, ShoppingCart, Gauge, Tags, Truck, ClipboardList, BarChart3, FlaskConical, TestTubes, Inbox, LifeBuoy, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   to: string;
@@ -56,5 +56,8 @@ export const navSections: NavSection[] = [
       { to: "/users", label: "Staff", icon: UserCog, perm: ["user.read"] },
       { to: "/settings", label: "Settings", icon: Settings, perm: ["clinic.manage"] },
     ],
+  },
+  {
+    items: [{ to: "/help", label: "Help center", icon: LifeBuoy }],
   },
 ];

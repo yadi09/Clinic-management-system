@@ -72,7 +72,15 @@ export function DispenseQueuePage() {
             ))}
           </tbody>
         </table>
-        {(q.data?.items?.length ?? 0) === 0 && <p className="p-8 text-center text-sm text-muted-foreground">Nothing to dispense.</p>}
+        {(q.data?.items?.length ?? 0) === 0 && (
+          <div className="p-10 text-center">
+            <p className="text-sm font-medium">Nothing to dispense right now</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              When a doctor signs a prescription, it appears here ready for you to dispense. Open a row to pick the
+              batch, counsel the patient, and hand it out.
+            </p>
+          </div>
+        )}
       </Card>
     </div>
   );

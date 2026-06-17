@@ -102,7 +102,11 @@ Status: `logged` → `planned` → `in-progress` → `done`.
   Amharic. **Evidence/priority:** owner *deferred testing the Pharmacist +
   Pharmacy-Manager roles entirely* because the pages weren't self-explanatory — so
   P1 is effectively a launch-blocker for staff onboarding, not a nice-to-have.
-  *Status: logged (high priority)*
+  *Status: **P1 done** (Batch B) — data-driven `help/content.ts`; per-page "How this
+  works" header dialog (purpose + sections + column meanings + tips); role-scoped
+  Help Center at /help + Help nav item; teaching empty states (dispense queue + lab
+  worklist); content authored for all nav-reachable pages. **P2** first-run tour and
+  **P3** GIFs + Amharic still deferred.*
 
 - **[PHARM-todo] Pharmacy · Pharmacist + Pharmacy Manager · (pending)** — Roles not
   yet evaluated; owner will test them after HELP-1 P1 makes the pages

@@ -132,9 +132,14 @@ export function LabWorklistPage() {
           </tbody>
         </table>
         {rows.length === 0 && (
-          <p className="flex items-center justify-center gap-2 p-10 text-sm text-muted-foreground">
-            <FlaskConical className="h-4 w-4" /> Nothing here.
-          </p>
+          <div className="p-10 text-center">
+            <FlaskConical className="mx-auto h-5 w-5 text-muted-foreground" />
+            <p className="mt-2 text-sm font-medium">No samples in this list</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              When a doctor orders a lab, it arrives under <span className="font-medium">To collect</span> — accession the
+              sample, enter results, then submit for validation.
+            </p>
+          </div>
         )}
       </Card>
     </div>

@@ -31,6 +31,7 @@ import { LabWorklistPage } from "@/features/lab/pages/LabWorklistPage";
 import { LabOrderItemPage } from "@/features/lab/pages/LabOrderItemPage";
 import { LabCatalogPage } from "@/features/lab/pages/LabCatalogPage";
 import { LabInboxPage } from "@/features/lab/pages/LabInboxPage";
+import { HelpCenterPage } from "@/features/help/HelpCenterPage";
 import { NotFoundPage } from "@/features/misc/NotFoundPage";
 
 export function AppRoutes() {
@@ -68,6 +69,7 @@ export function AppRoutes() {
           <Route path="/lab/inbox" element={<LabInboxPage />} />
           <Route path="/lab/items/:itemId" element={<LabOrderItemPage />} />
           <Route path="/lab/catalog" element={<LabCatalogPage />} />
+          <Route path="/help" element={<HelpCenterPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>

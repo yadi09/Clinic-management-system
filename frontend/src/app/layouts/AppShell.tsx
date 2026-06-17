@@ -5,6 +5,7 @@ import { Activity, Bell, Search, LogOut, ChevronsUpDown } from "lucide-react";
 import { useAuth } from "@/app/auth-context";
 import { navSections } from "@/app/nav";
 import { inboxCount } from "@/features/lab/api";
+import { PageHelp } from "@/features/help/PageHelp";
 import { CommandPalette } from "@/app/command-palette";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -63,6 +64,7 @@ export function AppShell() {
             <span>Search…</span>
             <kbd className="ml-auto rounded bg-white/15 px-1.5 py-0.5 text-[10px] font-semibold">⌘K</kbd>
           </button>
+          <PageHelp />
           <button className="relative rounded-md p-2 hover:bg-white/10" aria-label="Notifications">
             <Bell className="h-5 w-5" />
           </button>
