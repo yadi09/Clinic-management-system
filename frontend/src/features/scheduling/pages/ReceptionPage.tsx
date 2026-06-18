@@ -1,16 +1,22 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Stethoscope, UserCheck } from "lucide-react";
+import { HandCoins, Stethoscope, UserCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
+import { AppError } from "@/lib/api-client";
 import { listBranches, listDepartments, listUsers, getSettings } from "@/features/admin/api";
-import { listServices, raiseCharge, settleCharge } from "@/features/billing/api";
+import { listServices, raiseCharge, settleCharge, waiveCharge, waiverReasons } from "@/features/billing/api";
 import { walkIn } from "@/features/scheduling/api";
 import { PatientCombobox } from "@/features/scheduling/components/BookingDialog";
+
+const METHODS = ["cash", "card", "mobile", "transfer"];
+
+type SendOpts = { action: "cashier" | "collect" | "waive"; method?: string; reason?: string };
 
 export function ReceptionPage() {
   const qc = useQueryClient();
@@ -20,17 +26,20 @@ export function ReceptionPage() {
   const providers = useQuery({ queryKey: ["users"], queryFn: listUsers });
   const settings = useQuery({ queryKey: ["settings"], queryFn: getSettings, retry: false });
   const services = useQuery({ queryKey: ["services-active"], queryFn: () => listServices(true) });
+  const reasons = useQuery({ queryKey: ["waiver-reasons"], queryFn: waiverReasons });
 
   const [patient, setPatient] = useState<{ id: string; name: string } | null>(null);
   const [dept, setDept] = useState("");
   const [toTriage, setToTriage] = useState(false);
   const [provider, setProvider] = useState("");
   const [picked, setPicked] = useState<Record<string, boolean>>({});
+  const [method, setMethod] = useState("cash");
+  const [waiveOpen, setWaiveOpen] = useState(false);
+  const [waiveReason, setWaiveReason] = useState("");
 
   const branchId = branches.data?.[0]?.id;
   const cashierMode = settings.data?.payment_mode === "cashier";
 
-  // Pre-select the catalog's default services (e.g. a registration / consultation fee).
   useEffect(() => {
     if (services.data && Object.keys(picked).length === 0) {
       const init: Record<string, boolean> = {};
@@ -39,7 +48,6 @@ export function ReceptionPage() {
     }
   }, [services.data, picked]);
 
-  // Default the routing choice to the clinic's triage setting.
   useEffect(() => {
     setToTriage(!!settings.data?.triage_required);
   }, [settings.data?.triage_required]);
@@ -52,10 +60,11 @@ export function ReceptionPage() {
     setDept("");
     setProvider("");
     setPicked({});
+    setWaiveReason("");
   };
 
   const send = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (opts: SendOpts) => {
       const routing = {
         branch_id: branchId!,
         department_id: dept,
@@ -67,9 +76,9 @@ export function ReceptionPage() {
         await walkIn({ patient_id: patient!.id, ...routing });
         return;
       }
-      // Raise ALL charges first (so the visit total is complete before any settle),
-      // then in reception-collect mode settle them inline. The patient auto-advances
-      // server-side once nothing is owed.
+      // Raise ALL charges first (so the visit total is complete before any
+      // settle/waive), then act. The patient auto-advances server-side once
+      // nothing is owed.
       const ids: string[] = [];
       for (const s of chosen) {
         const r = await raiseCharge({
@@ -82,27 +91,31 @@ export function ReceptionPage() {
         });
         ids.push(r.id);
       }
-      if (!cashierMode) {
-        for (const cid of ids) await settleCharge(cid, "cash");
+      if (opts.action === "collect") {
+        for (const cid of ids) await settleCharge(cid, opts.method || "cash");
+      } else if (opts.action === "waive") {
+        for (const cid of ids) await waiveCharge(cid, opts.reason!);
       }
+      // action === "cashier" → leave the charges pending for the cashier.
     },
-    onSuccess: () => {
+    onSuccess: (_d, opts) => {
       const dest = toTriage ? "triage" : "the doctor's queue";
-      toast.success(
-        chosen.length === 0
-          ? `${patient!.name} sent to ${dest}`
-          : cashierMode
-            ? `${patient!.name} → cashier (ETB ${total.toFixed(2)} to collect)`
-            : `${patient!.name}: ETB ${total.toFixed(2)} collected · sent to ${dest}`,
-      );
+      let msg: string;
+      if (chosen.length === 0) msg = `${patient!.name} sent to ${dest}`;
+      else if (opts.action === "cashier") msg = `${patient!.name} → cashier (ETB ${total.toFixed(2)} to collect)`;
+      else if (opts.action === "waive") msg = `${patient!.name}: fee waived · sent to ${dest}`;
+      else msg = `${patient!.name}: ETB ${total.toFixed(2)} collected (${opts.method}) · sent to ${dest}`;
+      toast.success(msg);
+      setWaiveOpen(false);
       resetForm();
       qc.invalidateQueries({ queryKey: ["queue"] });
       qc.invalidateQueries({ queryKey: ["pending-charges"] });
     },
-    onError: () => toast.error("Could not register the visit"),
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not register the visit"),
   });
 
   const routeReady = !!patient && !!dept && !!branchId && (toTriage || !!provider);
+  const hasFee = chosen.length > 0;
 
   return (
     <div className="space-y-6">
@@ -119,7 +132,7 @@ export function ReceptionPage() {
           <CardHeader>
             <CardTitle>Patient & services</CardTitle>
             <CardDescription>
-              Find the patient, then pick what they're here for. {cashierMode ? "Payment is taken at the cashier." : "Payment is collected here."}
+              Find the patient, then pick what they're here for. {cashierMode ? "Payment is taken at the cashier." : "You collect the payment here."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -157,7 +170,7 @@ export function ReceptionPage() {
           </CardContent>
         </Card>
 
-        {/* Routing */}
+        {/* Routing + payment */}
         <Card>
           <CardHeader>
             <CardTitle>Route patient</CardTitle>
@@ -210,15 +223,69 @@ export function ReceptionPage() {
               </div>
             )}
 
-            <Button className="w-full" disabled={!routeReady} loading={send.isPending} onClick={() => send.mutate()}>
-              {chosen.length > 0 && cashierMode ? "Send to cashier" : `Send to ${toTriage ? "triage" : "doctor"}`}
-            </Button>
-            {cashierMode && chosen.length > 0 && (
-              <p className="text-center text-xs text-muted-foreground">Raises a pending payment; the patient advances once the cashier settles it.</p>
+            {/* --- payment / send --- */}
+            {cashierMode ? (
+              <>
+                <Button className="w-full" disabled={!routeReady} loading={send.isPending} onClick={() => send.mutate({ action: "cashier" })}>
+                  {hasFee ? "Send to cashier" : `Send to ${toTriage ? "triage" : "doctor"}`}
+                </Button>
+                {hasFee && (
+                  <p className="text-center text-xs text-muted-foreground">Raises a pending payment; the patient advances once the cashier settles it.</p>
+                )}
+              </>
+            ) : hasFee ? (
+              <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">Collect payment</Label>
+                  <span className="font-mono text-sm font-semibold">ETB {total.toFixed(2)}</span>
+                </div>
+                <div className="flex items-end gap-2">
+                  <div className="flex-1 space-y-1">
+                    <Label className="text-xs text-muted-foreground">Method</Label>
+                    <Select value={method} onValueChange={setMethod}>
+                      <SelectTrigger className="capitalize"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {METHODS.map((m) => <SelectItem key={m} value={m} className="capitalize">{m}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button variant="outline" disabled={!routeReady} onClick={() => setWaiveOpen(true)}>Waive…</Button>
+                </div>
+                <Button className="w-full" disabled={!routeReady} loading={send.isPending} onClick={() => send.mutate({ action: "collect", method })}>
+                  <HandCoins className="h-4 w-4" /> Collect ETB {total.toFixed(2)} &amp; send to {toTriage ? "triage" : "doctor"}
+                </Button>
+              </div>
+            ) : (
+              <Button className="w-full" disabled={!routeReady} loading={send.isPending} onClick={() => send.mutate({ action: "cashier" })}>
+                Send to {toTriage ? "triage" : "doctor"}
+              </Button>
             )}
           </CardContent>
         </Card>
       </div>
+
+      {/* Waive dialog (reception-collect mode) */}
+      <Dialog open={waiveOpen} onOpenChange={setWaiveOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Waive the fee</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Sending {patient?.name} through without charging ETB {total.toFixed(2)} — record why.</p>
+          <div className="space-y-1.5">
+            <Label>Reason (required)</Label>
+            <Select value={waiveReason} onValueChange={setWaiveReason}>
+              <SelectTrigger><SelectValue placeholder="Why is this waived?" /></SelectTrigger>
+              <SelectContent>
+                {(reasons.data ?? []).map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWaiveOpen(false)}>Cancel</Button>
+            <Button disabled={!waiveReason} loading={send.isPending} onClick={() => send.mutate({ action: "waive", reason: waiveReason })}>
+              Waive &amp; send
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
