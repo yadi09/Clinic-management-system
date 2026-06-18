@@ -58,13 +58,13 @@ button in the top bar, and a **Help center** at the bottom of the sidebar. 📝
 
 **Goal:** price the clinic's services and choose how payments are collected.
 
-1. **Settings → Patient flow.** Set the **card / consultation fee** and the
-   **follow-up free window**. Set **Payment collection → Separate cashier** — this
-   turns on the cashier flow used below. *(The other mode, "Reception collects",
-   keeps the old inline behaviour.)*
-2. **Billing → Service catalog.** Review the seeded services + prices (Consultation,
-   wound dressing, injection, suturing…). **Edit a price**, and **toggle one Off then
-   On** to see the availability switch.
+1. **Settings → Patient flow.** Set the **follow-up free window** and set
+   **Payment collection → Separate cashier** (turns on the cashier flow used below).
+   *Note: there's no fee amount here anymore — all prices live in the service catalog.*
+2. **Billing → Service catalog.** Review the seeded services + prices (Registration
+   fee, Consultation, dressing, injection…). Note the **Default** tag on **Registration
+   fee** + **Consultation** — those are what reception pre-selects. **Edit a price**,
+   toggle a **Default**, and toggle **Available** Off/On.
 3. (Glance at **Staff** — the 9 role accounts that come seeded.)
 
 ✅ Expect: cashier mode is on; services are priced. From now on, charges raised at
@@ -85,12 +85,13 @@ reception go to the cashier to collect.
 2. **Test the duplicate guard:** start registering Abebe again with the same phone →
    you should get a **side-by-side "New vs Existing"** comparison (matching fields
    highlighted). Choose **Back to edit**.
-3. Go to **Reception**. Pick Abebe, choose the **department** and **Triage first /
-   Straight to doctor** (assign **Dr. Meron** if straight to doctor), then **Send to
-   cashier**.
+3. Go to **Reception**. Pick Abebe, **choose the service(s)** he's here for
+   (**Registration fee + Consultation** are pre-selected; add/remove as needed),
+   choose the **department** and **Triage first / Straight to doctor** (assign
+   **Dr. Meron**), then **Send to cashier**.
 
-✅ Expect: Abebe has an MRN and a **pending consultation charge** at the cashier; he
-is *not* in the queue yet — he advances once the cashier takes payment.
+✅ Expect: Abebe has an MRN and **pending charges** (Registration + Consultation) at
+the cashier; he is *not* in the queue yet — he advances once the cashier takes payment.
 
 - 📝 Registration fields — right for an Ethiopian clinic? the duplicate comparison clear?
 - 📝 The reception → cashier hand-off — wording and flow.
@@ -101,12 +102,12 @@ is *not* in the queue yet — he advances once the cashier takes payment.
 
 **Goal:** collect the payment so the patient can proceed.
 
-1. Open **Cashier**. Abebe's **Consultation** charge is pending (grouped under his name with a total).
-2. Pick a **payment method** (cash / card / mobile / transfer) and **Take payment**.
+1. Open **Cashier**. Abebe's charges (**Registration + Consultation**) are pending, grouped under his name with a total.
+2. Pick a **payment method** (cash / card / mobile / transfer) and **Take payment** on each.
 3. *(Try **Waive** on a charge — it requires a **reason**, e.g. Staff / Charity / Exemption.)*
 
-✅ Expect: payment recorded; Abebe **auto-advances** into the queue (triage or the
-doctor) per reception's routing; the cashier list clears.
+✅ Expect: payments recorded; once **nothing is owed** Abebe **auto-advances** into the
+queue (triage or the doctor) per reception's routing; the cashier list clears.
 
 - 📝 The pending-payments worklist — clear? grouped right? methods enough?
 - 📝 Does "pay, then the patient proceeds automatically" match how your clinic runs?
