@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Stepper } from "@/components/ui/stepper";
 import {
@@ -90,7 +91,9 @@ export function PatientRegisterPage() {
           <CardTitle>{STEPS[step]}</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit((vals) => submit(vals, false))} className="space-y-5" noValidate>
+          {/* Never auto-submit: registration only fires from the explicit Review-step
+              button below, so Enter in a field can't skip the review. */}
+          <form onSubmit={(e) => e.preventDefault()} className="space-y-5" noValidate>
             {formError && (
               <Alert variant="destructive">
                 <AlertDescription>{formError}</AlertDescription>
@@ -190,7 +193,7 @@ export function PatientRegisterPage() {
                   Continue <ArrowRight />
                 </Button>
               ) : (
-                <Button type="submit" loading={submitting}>
+                <Button type="button" loading={submitting} onClick={handleSubmit((vals) => submit(vals, false))}>
                   <UserPlus /> Register patient
                 </Button>
               )}
@@ -200,25 +203,59 @@ export function PatientRegisterPage() {
       </Card>
 
       <Dialog open={!!duplicates} onOpenChange={(o) => !o && setDuplicates(null)}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Possible duplicate patients</DialogTitle>
-            <DialogDescription>A patient with matching details may already exist. Review before continuing.</DialogDescription>
+            <DialogTitle>Possible duplicate — is this the same patient?</DialogTitle>
+            <DialogDescription>
+              Someone with matching details already exists. Compare the person in front of you with the existing record.
+            </DialogDescription>
           </DialogHeader>
-          <ul className="space-y-2">
-            {duplicates?.map((d) => (
-              <li key={d.id} className="rounded-md border p-3 text-sm">
-                <div className="font-medium text-brand">{d.full_name}</div>
-                <div className="text-muted-foreground">
-                  MRN {d.mrn} · DOB {d.dob}
-                  {d.phone ? ` · ${d.phone}` : ""}
-                </div>
-              </li>
-            ))}
-          </ul>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            {/* The person being registered now */}
+            <div className="rounded-lg border-2 border-primary/50 bg-primary/5 p-3">
+              <Badge className="mb-2">New — registering now</Badge>
+              <DupRow label="Name" value={[v.first_name, v.middle_name, v.last_name].filter(Boolean).join(" ")} />
+              <DupRow label="Date of birth" value={v.dob} />
+              <DupRow label="Phone" value={v.phone} />
+              <DupRow label="Email" value={v.email} />
+            </div>
+
+            {/* Existing matching record(s) */}
+            <div className="space-y-3">
+              {duplicates?.map((d) => {
+                const samePhone = !!v.phone && v.phone === d.phone;
+                const sameDob = !!v.dob && v.dob === d.dob;
+                return (
+                  <div key={d.id} className="rounded-lg border p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <Badge variant="outline">Existing patient</Badge>
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-primary hover:underline"
+                        onClick={() => { setDuplicates(null); navigate(`/patients/${d.id}`); }}
+                      >
+                        Open record →
+                      </button>
+                    </div>
+                    <DupRow label="Name" value={d.full_name} />
+                    <DupRow label="MRN" value={d.mrn} mono />
+                    <DupRow label="Date of birth" value={d.dob} highlight={sameDob} />
+                    <DupRow label="Phone" value={d.phone} highlight={samePhone} />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Highlighted fields match the new entry. If it's the same person, open their record instead of creating a duplicate —
+            only register a new patient if these are genuinely different people.
+          </p>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setDuplicates(null)}>
-              Review
+              Back to edit
             </Button>
             <Button
               variant="destructive"
@@ -228,7 +265,7 @@ export function PatientRegisterPage() {
                 void submit(getValues(), true);
               }}
             >
-              Register anyway
+              Different person — register new
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -245,6 +282,17 @@ function Field({ label, required, error, children }: { label: string; required?:
       </Label>
       {children}
       {error && <p className="text-sm text-destructive">{error}</p>}
+    </div>
+  );
+}
+
+function DupRow({ label, value, mono, highlight }: { label: string; value?: string; mono?: boolean; highlight?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 py-0.5 text-sm">
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      <span className={`text-right font-medium ${mono ? "font-mono text-xs" : ""} ${highlight ? "rounded bg-amber-100 px-1.5 text-amber-800" : ""}`}>
+        {value || "—"}
+      </span>
     </div>
   );
 }

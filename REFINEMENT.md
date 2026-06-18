@@ -39,6 +39,22 @@ Status: `logged` → `planned` → `in-progress` → `done`.
   Microbiology) to the catalog + order dialog. *Status: needs-decision*
 
 ---
+## Patients / Registration
+
+- **[REG-1] Register patient · Reception · guard (bug)** — The multi-step form was a
+  single `<form onSubmit>`, so pressing **Enter** in a field registered the patient
+  immediately, bypassing the Review step. **Fixed:** form no longer submits
+  implicitly; registration fires only from the explicit "Register patient" button on
+  Review. *Status: **done** (commit pending).*
+
+- **[REG-2] Register patient · Reception · ux** — The duplicate dialog only listed
+  the existing match. **Fixed:** side-by-side comparison — "New — registering now"
+  (the entered details) vs each "Existing patient" (name/MRN/DOB/phone), with matching
+  fields highlighted and an "Open record" link; actions are "Back to edit" /
+  "Different person — register new". *Status: **done** (commit pending).*
+
+---
+
 ## Billing / Payments
 
 - **[CASH-1] Cashier role + payments flow · Cashier/Reception · workflow (large)** —
