@@ -206,6 +206,22 @@ func (h *Handlers) SetServiceActive(c *gin.Context) {
 	httpx.NoContent(c)
 }
 
+func (h *Handlers) SetServiceDefault(c *gin.Context) {
+	sid, ok := decodeBilling(c, id.PrefixServiceItem, "id")
+	if !ok {
+		return
+	}
+	var req struct {
+		IsDefault bool `json:"is_default"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	if err := h.svc.SetServiceDefault(c.Request.Context(), sid, req.IsDefault); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
 func (h *Handlers) DeleteService(c *gin.Context) {
 	sid, ok := decodeBilling(c, id.PrefixServiceItem, "id")
 	if !ok {

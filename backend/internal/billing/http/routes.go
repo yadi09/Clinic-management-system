@@ -21,6 +21,7 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	b.POST("/services", mgr, h.CreateService)
 	b.PUT("/services/:id", mgr, h.UpdateService)
 	b.PUT("/services/:id/active", mgr, h.SetServiceActive)
+	b.PUT("/services/:id/default", mgr, h.SetServiceDefault)
 	b.DELETE("/services/:id", mgr, h.DeleteService)
 
 	collect := httpx.RequirePermission("payment.collect")

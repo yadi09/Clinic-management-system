@@ -358,33 +358,10 @@ function FlowSettingsCard({ manage }: { manage: boolean }) {
         <CardDescription>How patients are charged and routed. Walk-ins always pay; a doctor-booked follow-up is free within its window.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+          Prices live in one place — <span className="font-medium text-foreground">Billing → Service catalog</span>. Set the registration / consultation fee there and tag it <span className="font-medium text-foreground">Default</span> so reception pre-selects it.
+        </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="space-y-1.5">
-            <Label>Card / consultation fee</Label>
-            <Select value={form.card_fee_enabled ? "on" : "off"} onValueChange={(v) => set("card_fee_enabled", v === "on")}>
-              <SelectTrigger disabled={disabled}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="on">Charged</SelectItem>
-                <SelectItem value="off">Not charged</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Fee amount</Label>
-            <Input
-              type="number"
-              inputMode="decimal"
-              value={form.card_fee_amount}
-              onChange={(e) => set("card_fee_amount", e.target.value)}
-              disabled={disabled || !form.card_fee_enabled}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Currency</Label>
-            <Input value={form.card_currency} onChange={(e) => set("card_currency", e.target.value)} disabled={disabled} />
-          </div>
           <div className="space-y-1.5">
             <Label>Follow-up free window (days)</Label>
             <Input

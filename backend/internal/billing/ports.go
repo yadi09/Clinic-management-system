@@ -49,13 +49,14 @@ type Payment struct {
 
 // ServiceItem is a billable service in the catalog (what's billable, how much).
 type ServiceItem struct {
-	ID       uuid.UUID `json:"-"`
-	Code     string    `json:"code"`
-	Name     string    `json:"name"`
-	Category string    `json:"category"`
-	Price    string    `json:"price"`
-	Currency string    `json:"currency"`
-	IsActive bool      `json:"is_active"`
+	ID        uuid.UUID `json:"-"`
+	Code      string    `json:"code"`
+	Name      string    `json:"name"`
+	Category  string    `json:"category"`
+	Price     string    `json:"price"`
+	Currency  string    `json:"currency"`
+	IsActive  bool      `json:"is_active"`
+	IsDefault bool      `json:"is_default"`
 }
 
 // ServiceItemInput is an admin write payload for the catalog.
@@ -132,6 +133,7 @@ type Service interface {
 	CreateService(ctx context.Context, in ServiceItemInput) (*ServiceItem, error)
 	UpdateService(ctx context.Context, id uuid.UUID, in ServiceItemInput) error
 	SetServiceActive(ctx context.Context, id uuid.UUID, active bool) error
+	SetServiceDefault(ctx context.Context, id uuid.UUID, isDefault bool) error
 	DeleteService(ctx context.Context, id uuid.UUID) error
 
 	// Charges + cashier.

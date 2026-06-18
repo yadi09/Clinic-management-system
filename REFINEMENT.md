@@ -109,6 +109,25 @@ Status: `logged` → `planned` → `in-progress` → `done`.
 
 ---
 
+- **[CASH-3] Billing config · Admin/Reception · workflow** — Prices must live in
+  **one place — the service catalog**, not split with a Settings "fee amount".
+  **Remove** the card-fee *amount* (and on/off) from Settings (keep only flow rules:
+  payment mode, triage, doctor assignment, free-follow-up window). **Tag services as
+  `is_default`** (e.g. a seeded **Registration fee**); admin toggles the tag.
+  **Reception picks the service(s)** the patient is here for — defaults pre-checked,
+  can add/remove (registration, consultation, procedure…) → raises a charge per
+  selected service (itemized); visit still gates + auto-advances on settle, guarded
+  so multiple line-items enqueue the patient only once. Same in both payment modes
+  (always priced from the catalog). *Status: **done** (migration 0015) — service_items
+  gain `is_default`; Settings no longer holds a fee amount (note points to the
+  catalog); Service-catalog page has a **Default** toggle; **Reception is now a
+  service picker** (defaults pre-checked) that raises a charge per chosen service;
+  the patient **auto-advances only once nothing is owed** (CountPendingChargesByPatient
+  + CountActiveQueueByPatient guards), in both payment modes. Seeded a **Registration
+  fee** (default) + Consultation (default). Smoke PASS.*
+
+---
+
 ## Cross-cutting / Platform
 
 - **[HELP-1] All pages · all roles · ux** — Per-role **Help Center + self-teaching

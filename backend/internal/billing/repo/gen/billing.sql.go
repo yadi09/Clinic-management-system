@@ -112,6 +112,43 @@ func (q *Queries) CashWaivedSince(ctx context.Context, arg CashWaivedSinceParams
 	return i, err
 }
 
+const countActiveQueueByPatient = `-- name: CountActiveQueueByPatient :one
+SELECT count(*)::int FROM queue_entries
+WHERE tenant_id = $1 AND patient_id = $2 AND deleted_at IS NULL
+  AND state NOT IN ('done','no_show')
+`
+
+type CountActiveQueueByPatientParams struct {
+	TenantID  uuid.UUID `json:"tenant_id"`
+	PatientID uuid.UUID `json:"patient_id"`
+}
+
+// Prevents enqueuing a patient who is already in the queue (idempotent advance).
+func (q *Queries) CountActiveQueueByPatient(ctx context.Context, arg CountActiveQueueByPatientParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countActiveQueueByPatient, arg.TenantID, arg.PatientID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countPendingChargesByPatient = `-- name: CountPendingChargesByPatient :one
+SELECT count(*)::int FROM charges
+WHERE tenant_id = $1 AND patient_id = $2 AND status = 'pending' AND deleted_at IS NULL
+`
+
+type CountPendingChargesByPatientParams struct {
+	TenantID  uuid.UUID `json:"tenant_id"`
+	PatientID uuid.UUID `json:"patient_id"`
+}
+
+// Used to gate the visit: only advance the patient once nothing is still owed.
+func (q *Queries) CountPendingChargesByPatient(ctx context.Context, arg CountPendingChargesByPatientParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countPendingChargesByPatient, arg.TenantID, arg.PatientID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createCardPayment = `-- name: CreateCardPayment :one
 INSERT INTO card_payments (tenant_id, branch_id, patient_id, appointment_id, amount, currency, waived, waive_reason, received_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -225,7 +262,7 @@ func (q *Queries) CreateCharge(ctx context.Context, arg CreateChargeParams) (Cre
 const createServiceItem = `-- name: CreateServiceItem :one
 INSERT INTO service_items (tenant_id, code, name, category, price, created_by)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, code, name, category, price, currency, is_active
+RETURNING id, code, name, category, price, currency, is_active, is_default
 `
 
 type CreateServiceItemParams struct {
@@ -238,13 +275,14 @@ type CreateServiceItemParams struct {
 }
 
 type CreateServiceItemRow struct {
-	ID       uuid.UUID `json:"id"`
-	Code     string    `json:"code"`
-	Name     string    `json:"name"`
-	Category string    `json:"category"`
-	Price    string    `json:"price"`
-	Currency string    `json:"currency"`
-	IsActive bool      `json:"is_active"`
+	ID        uuid.UUID `json:"id"`
+	Code      string    `json:"code"`
+	Name      string    `json:"name"`
+	Category  string    `json:"category"`
+	Price     string    `json:"price"`
+	Currency  string    `json:"currency"`
+	IsActive  bool      `json:"is_active"`
+	IsDefault bool      `json:"is_default"`
 }
 
 func (q *Queries) CreateServiceItem(ctx context.Context, arg CreateServiceItemParams) (CreateServiceItemRow, error) {
@@ -265,6 +303,7 @@ func (q *Queries) CreateServiceItem(ctx context.Context, arg CreateServiceItemPa
 		&i.Price,
 		&i.Currency,
 		&i.IsActive,
+		&i.IsDefault,
 	)
 	return i, err
 }
@@ -401,7 +440,7 @@ func (q *Queries) GetCardSettings(ctx context.Context, tenantID uuid.UUID) (GetC
 }
 
 const getServiceItem = `-- name: GetServiceItem :one
-SELECT id, code, name, category, price, currency, is_active FROM service_items
+SELECT id, code, name, category, price, currency, is_active, is_default FROM service_items
 WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
 `
 
@@ -411,13 +450,14 @@ type GetServiceItemParams struct {
 }
 
 type GetServiceItemRow struct {
-	ID       uuid.UUID `json:"id"`
-	Code     string    `json:"code"`
-	Name     string    `json:"name"`
-	Category string    `json:"category"`
-	Price    string    `json:"price"`
-	Currency string    `json:"currency"`
-	IsActive bool      `json:"is_active"`
+	ID        uuid.UUID `json:"id"`
+	Code      string    `json:"code"`
+	Name      string    `json:"name"`
+	Category  string    `json:"category"`
+	Price     string    `json:"price"`
+	Currency  string    `json:"currency"`
+	IsActive  bool      `json:"is_active"`
+	IsDefault bool      `json:"is_default"`
 }
 
 func (q *Queries) GetServiceItem(ctx context.Context, arg GetServiceItemParams) (GetServiceItemRow, error) {
@@ -431,6 +471,7 @@ func (q *Queries) GetServiceItem(ctx context.Context, arg GetServiceItemParams) 
 		&i.Price,
 		&i.Currency,
 		&i.IsActive,
+		&i.IsDefault,
 	)
 	return i, err
 }
@@ -597,10 +638,10 @@ func (q *Queries) ListPendingCharges(ctx context.Context, tenantID uuid.UUID) ([
 const listServiceItems = `-- name: ListServiceItems :many
 
 
-SELECT id, code, name, category, price, currency, is_active FROM service_items
+SELECT id, code, name, category, price, currency, is_active, is_default FROM service_items
 WHERE tenant_id = $1 AND deleted_at IS NULL
   AND ($2::bool IS NOT TRUE OR is_active)
-ORDER BY category, name
+ORDER BY is_default DESC, category, name
 `
 
 type ListServiceItemsParams struct {
@@ -609,13 +650,14 @@ type ListServiceItemsParams struct {
 }
 
 type ListServiceItemsRow struct {
-	ID       uuid.UUID `json:"id"`
-	Code     string    `json:"code"`
-	Name     string    `json:"name"`
-	Category string    `json:"category"`
-	Price    string    `json:"price"`
-	Currency string    `json:"currency"`
-	IsActive bool      `json:"is_active"`
+	ID        uuid.UUID `json:"id"`
+	Code      string    `json:"code"`
+	Name      string    `json:"name"`
+	Category  string    `json:"category"`
+	Price     string    `json:"price"`
+	Currency  string    `json:"currency"`
+	IsActive  bool      `json:"is_active"`
+	IsDefault bool      `json:"is_default"`
 }
 
 // ============================================================================
@@ -639,6 +681,7 @@ func (q *Queries) ListServiceItems(ctx context.Context, arg ListServiceItemsPara
 			&i.Price,
 			&i.Currency,
 			&i.IsActive,
+			&i.IsDefault,
 		); err != nil {
 			return nil, err
 		}
@@ -677,6 +720,22 @@ type SetServiceItemActiveParams struct {
 
 func (q *Queries) SetServiceItemActive(ctx context.Context, arg SetServiceItemActiveParams) error {
 	_, err := q.db.Exec(ctx, setServiceItemActive, arg.IsActive, arg.TenantID, arg.ID)
+	return err
+}
+
+const setServiceItemDefault = `-- name: SetServiceItemDefault :exec
+UPDATE service_items SET is_default = $1, updated_at = now()
+WHERE tenant_id = $2 AND id = $3 AND deleted_at IS NULL
+`
+
+type SetServiceItemDefaultParams struct {
+	IsDefault bool      `json:"is_default"`
+	TenantID  uuid.UUID `json:"tenant_id"`
+	ID        uuid.UUID `json:"id"`
+}
+
+func (q *Queries) SetServiceItemDefault(ctx context.Context, arg SetServiceItemDefaultParams) error {
+	_, err := q.db.Exec(ctx, setServiceItemDefault, arg.IsDefault, arg.TenantID, arg.ID)
 	return err
 }
 

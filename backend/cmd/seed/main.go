@@ -269,25 +269,28 @@ func seedLab(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) error {
 }
 
 // seedBillingServices inserts a starter set of billable services (admins re-price
-// / extend). Idempotent by code. The consultation fee anchors the cashier flow.
+// / extend / re-tag). Idempotent by code. Services tagged `is_default` are the ones
+// reception pre-selects (the registration / consultation fee that anchors a visit).
 func seedBillingServices(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) error {
 	type svc struct {
 		Code, Name, Category, Price string
+		Default                     bool
 	}
 	items := []svc{
-		{"CONSULT", "Consultation", "consultation", "100.00"},
-		{"DRESS", "Wound dressing", "procedure", "60.00"},
-		{"INJECT", "Injection", "procedure", "40.00"},
-		{"SUTURE", "Suturing", "procedure", "250.00"},
-		{"NEB", "Nebulization", "procedure", "80.00"},
-		{"BP", "Blood pressure check", "general", "20.00"},
+		{"REG", "Registration fee", "registration", "50.00", true},
+		{"CONSULT", "Consultation", "consultation", "100.00", true},
+		{"DRESS", "Wound dressing", "procedure", "60.00", false},
+		{"INJECT", "Injection", "procedure", "40.00", false},
+		{"SUTURE", "Suturing", "procedure", "250.00", false},
+		{"NEB", "Nebulization", "procedure", "80.00", false},
+		{"BP", "Blood pressure check", "general", "20.00", false},
 	}
 	for _, s := range items {
 		if _, err := tx.Exec(ctx,
-			`INSERT INTO service_items (tenant_id, code, name, category, price)
-			 SELECT $1,$2,$3,$4,$5::numeric
+			`INSERT INTO service_items (tenant_id, code, name, category, price, is_default)
+			 SELECT $1,$2,$3,$4,$5::numeric,$6
 			 WHERE NOT EXISTS (SELECT 1 FROM service_items WHERE tenant_id=$1 AND lower(code)=lower($2) AND deleted_at IS NULL)`,
-			tenantID, s.Code, s.Name, s.Category, s.Price); err != nil {
+			tenantID, s.Code, s.Name, s.Category, s.Price, s.Default); err != nil {
 			return fmt.Errorf("service %s: %w", s.Code, err)
 		}
 	}

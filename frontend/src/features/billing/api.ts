@@ -48,6 +48,7 @@ export interface ServiceItem {
   price: string;
   currency: string;
   is_active: boolean;
+  is_default: boolean;
 }
 export interface PendingCharge {
   id: string;
@@ -92,6 +93,9 @@ export function updateService(id: string, body: { code: string; name: string; ca
 }
 export function setServiceActive(id: string, is_active: boolean) {
   return apiFetch<void>(`/billing/services/${id}/active`, { method: "PUT", body: { is_active } });
+}
+export function setServiceDefault(id: string, is_default: boolean) {
+  return apiFetch<void>(`/billing/services/${id}/default`, { method: "PUT", body: { is_default } });
 }
 export function deleteService(id: string) {
   return apiFetch<void>(`/billing/services/${id}`, { method: "DELETE" });

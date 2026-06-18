@@ -43,19 +43,19 @@ LIMIT 20;
 -- ---- service catalog (what's billable, how much) ----
 
 -- name: ListServiceItems :many
-SELECT id, code, name, category, price, currency, is_active FROM service_items
+SELECT id, code, name, category, price, currency, is_active, is_default FROM service_items
 WHERE tenant_id = @tenant_id AND deleted_at IS NULL
   AND (sqlc.narg(active_only)::bool IS NOT TRUE OR is_active)
-ORDER BY category, name;
+ORDER BY is_default DESC, category, name;
 
 -- name: GetServiceItem :one
-SELECT id, code, name, category, price, currency, is_active FROM service_items
+SELECT id, code, name, category, price, currency, is_active, is_default FROM service_items
 WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
 
 -- name: CreateServiceItem :one
 INSERT INTO service_items (tenant_id, code, name, category, price, created_by)
 VALUES (@tenant_id, @code, @name, @category, @price, @created_by)
-RETURNING id, code, name, category, price, currency, is_active;
+RETURNING id, code, name, category, price, currency, is_active, is_default;
 
 -- name: UpdateServiceItem :exec
 UPDATE service_items SET code = @code, name = @name, category = @category, price = @price, updated_at = now()
@@ -63,6 +63,10 @@ WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
 
 -- name: SetServiceItemActive :exec
 UPDATE service_items SET is_active = @is_active, updated_at = now()
+WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
+
+-- name: SetServiceItemDefault :exec
+UPDATE service_items SET is_default = @is_default, updated_at = now()
 WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
 
 -- name: SoftDeleteServiceItem :exec
@@ -106,6 +110,17 @@ RETURNING id, source, patient_id, branch_id, department_id, to_triage, provider_
 
 -- name: MarkChargeEnqueued :exec
 UPDATE charges SET enqueued = true, updated_at = now() WHERE tenant_id = @tenant_id AND id = @id;
+
+-- name: CountPendingChargesByPatient :one
+-- Used to gate the visit: only advance the patient once nothing is still owed.
+SELECT count(*)::int FROM charges
+WHERE tenant_id = @tenant_id AND patient_id = @patient_id AND status = 'pending' AND deleted_at IS NULL;
+
+-- name: CountActiveQueueByPatient :one
+-- Prevents enqueuing a patient who is already in the queue (idempotent advance).
+SELECT count(*)::int FROM queue_entries
+WHERE tenant_id = @tenant_id AND patient_id = @patient_id AND deleted_at IS NULL
+  AND state NOT IN ('done','no_show');
 
 -- name: EnqueueFromCharge :exec
 -- Auto-advance after payment: enqueue the patient to the routing captured on the

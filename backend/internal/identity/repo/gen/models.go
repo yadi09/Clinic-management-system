@@ -605,6 +605,7 @@ type ServiceItem struct {
 	UpdatedAt time.Time      `json:"updated_at"`
 	CreatedBy *uuid.UUID     `json:"created_by"`
 	DeletedAt *time.Time     `json:"deleted_at"`
+	IsDefault bool           `json:"is_default"`
 }
 
 type Session struct {

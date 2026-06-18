@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
-import { createService, deleteService, listServices, setServiceActive, updateService, type ServiceItem } from "@/features/billing/api";
+import { createService, deleteService, listServices, setServiceActive, setServiceDefault, updateService, type ServiceItem } from "@/features/billing/api";
 
 export function ServiceCatalogPage() {
   const qc = useQueryClient();
@@ -20,6 +20,11 @@ export function ServiceCatalogPage() {
 
   const toggle = useMutation({
     mutationFn: (s: ServiceItem) => setServiceActive(s.id, !s.is_active),
+    onSuccess: refresh,
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not update"),
+  });
+  const toggleDefault = useMutation({
+    mutationFn: (s: ServiceItem) => setServiceDefault(s.id, !s.is_default),
     onSuccess: refresh,
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not update"),
   });
@@ -34,7 +39,7 @@ export function ServiceCatalogPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1>Service catalog</h1>
-          <p className="text-sm text-muted-foreground">What the clinic bills for, and how much. Prices feed the charges patients pay at the cashier.</p>
+          <p className="text-sm text-muted-foreground">What the clinic bills for, and how much. Prices feed the charges patients pay at the cashier. <span className="font-medium text-foreground">Default</span> services are pre-selected at reception (e.g. a registration fee).</p>
         </div>
         <Button onClick={() => setCreating(true)}><Plus className="h-4 w-4" /> New service</Button>
       </div>
@@ -48,6 +53,7 @@ export function ServiceCatalogPage() {
               <th className="font-medium">Category</th>
               <th className="font-medium">Price</th>
               <th className="font-medium">Available</th>
+              <th className="font-medium">Default</th>
               <th className="p-3 font-medium"></th>
             </tr>
           </thead>
@@ -64,6 +70,15 @@ export function ServiceCatalogPage() {
                     className={`rounded-full border px-2.5 py-1 text-xs font-medium ${s.is_active ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-muted-foreground"}`}
                   >
                     {s.is_active ? "Available" : "Off"}
+                  </button>
+                </td>
+                <td>
+                  <button
+                    onClick={() => toggleDefault.mutate(s)}
+                    className={`rounded-full border px-2.5 py-1 text-xs font-medium ${s.is_default ? "border-primary/30 bg-primary/10 text-primary" : "border-slate-200 bg-slate-50 text-muted-foreground"}`}
+                    title={s.is_default ? "Pre-selected at reception — click to unset" : "Not pre-selected — click to make a reception default"}
+                  >
+                    {s.is_default ? "Default" : "—"}
                   </button>
                 </td>
                 <td className="p-3">

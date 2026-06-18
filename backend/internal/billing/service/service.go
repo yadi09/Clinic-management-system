@@ -159,7 +159,7 @@ func (s *Service) ListServices(ctx context.Context, activeOnly bool) ([]billing.
 			return e
 		}
 		for _, r := range rows {
-			out = append(out, billing.ServiceItem{ID: r.ID, Code: r.Code, Name: r.Name, Category: r.Category, Price: r.Price, Currency: r.Currency, IsActive: r.IsActive})
+			out = append(out, billing.ServiceItem{ID: r.ID, Code: r.Code, Name: r.Name, Category: r.Category, Price: r.Price, Currency: r.Currency, IsActive: r.IsActive, IsDefault: r.IsDefault})
 		}
 		return nil
 	})
@@ -182,7 +182,7 @@ func (s *Service) CreateService(ctx context.Context, in billing.ServiceItemInput
 		if e != nil {
 			return e
 		}
-		out = billing.ServiceItem{ID: r.ID, Code: r.Code, Name: r.Name, Category: r.Category, Price: r.Price, Currency: r.Currency, IsActive: r.IsActive}
+		out = billing.ServiceItem{ID: r.ID, Code: r.Code, Name: r.Name, Category: r.Category, Price: r.Price, Currency: r.Currency, IsActive: r.IsActive, IsDefault: r.IsDefault}
 		return nil
 	})
 	if err != nil {
@@ -211,6 +211,13 @@ func (s *Service) SetServiceActive(ctx context.Context, id uuid.UUID, active boo
 	tenantID, _ := actorOf(ctx)
 	return apperrOrNil(s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		return billingdb.New(tx).SetServiceItemActive(ctx, billingdb.SetServiceItemActiveParams{TenantID: tenantID, ID: id, IsActive: active})
+	}))
+}
+
+func (s *Service) SetServiceDefault(ctx context.Context, id uuid.UUID, isDefault bool) error {
+	tenantID, _ := actorOf(ctx)
+	return apperrOrNil(s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		return billingdb.New(tx).SetServiceItemDefault(ctx, billingdb.SetServiceItemDefaultParams{TenantID: tenantID, ID: id, IsDefault: isDefault})
 	}))
 }
 
@@ -309,7 +316,7 @@ func (s *Service) SettleCharge(ctx context.Context, id uuid.UUID, method string)
 		if e != nil {
 			return e
 		}
-		if e := enqueueFromCharge(ctx, q, tenantID, actor, row.Source, row.Enqueued, row.BranchID, row.DepartmentID, row.ToTriage, row.ProviderID, row.PatientID, id); e != nil {
+		if e := advanceIfPaid(ctx, q, tenantID, actor, row.BranchID, row.DepartmentID, row.ToTriage, row.ProviderID, row.PatientID); e != nil {
 			return e
 		}
 		return s.publisher.Publish(ctx, tx, &tenantID, "charge", row.ID, "billing.charge.paid", map[string]any{"charge_id": row.ID})
@@ -336,7 +343,7 @@ func (s *Service) WaiveCharge(ctx context.Context, id uuid.UUID, reason string) 
 		if e != nil {
 			return e
 		}
-		if e := enqueueFromCharge(ctx, q, tenantID, actor, row.Source, row.Enqueued, row.BranchID, row.DepartmentID, row.ToTriage, row.ProviderID, row.PatientID, id); e != nil {
+		if e := advanceIfPaid(ctx, q, tenantID, actor, row.BranchID, row.DepartmentID, row.ToTriage, row.ProviderID, row.PatientID); e != nil {
 			return e
 		}
 		return s.publisher.Publish(ctx, tx, &tenantID, "charge", row.ID, "billing.charge.waived", map[string]any{"charge_id": row.ID, "reason": reason})
@@ -385,21 +392,36 @@ func (s *Service) CashSince(ctx context.Context, since time.Time) (*billing.Cash
 	return out, nil
 }
 
-// enqueueFromCharge advances a paid/waived routed consultation charge into the queue.
-func enqueueFromCharge(ctx context.Context, q *billingdb.Queries, tenantID uuid.UUID, actor *uuid.UUID, source string, enqueued bool, branchID, departmentID *uuid.UUID, toTriage bool, providerID *uuid.UUID, patientID, chargeID uuid.UUID) error {
-	if source != "consultation" || enqueued || branchID == nil || departmentID == nil {
-		return nil
+// advanceIfPaid enqueues the patient (auto-advance after payment) once a routed
+// visit charge is settled/waived AND nothing is still owed — so multiple line-items
+// (e.g. registration + consultation) advance the patient exactly once, after the
+// last payment. Routing is only set on reception's visit charges, so non-visit
+// charges (a standalone procedure with no routing) never enqueue.
+func advanceIfPaid(ctx context.Context, q *billingdb.Queries, tenantID uuid.UUID, actor *uuid.UUID, branchID, departmentID *uuid.UUID, toTriage bool, providerID *uuid.UUID, patientID uuid.UUID) error {
+	if branchID == nil || departmentID == nil {
+		return nil // not a routed visit charge
+	}
+	pending, e := q.CountPendingChargesByPatient(ctx, billingdb.CountPendingChargesByPatientParams{TenantID: tenantID, PatientID: patientID})
+	if e != nil {
+		return e
+	}
+	if pending > 0 {
+		return nil // patient still owes — don't advance yet
+	}
+	active, e := q.CountActiveQueueByPatient(ctx, billingdb.CountActiveQueueByPatientParams{TenantID: tenantID, PatientID: patientID})
+	if e != nil {
+		return e
+	}
+	if active > 0 {
+		return nil // already in the queue
 	}
 	stage := "with_doctor"
 	if toTriage {
 		stage = "triage"
 	}
-	if e := q.EnqueueFromCharge(ctx, billingdb.EnqueueFromChargeParams{
+	return q.EnqueueFromCharge(ctx, billingdb.EnqueueFromChargeParams{
 		TenantID: tenantID, BranchID: *branchID, DepartmentID: *departmentID, PatientID: patientID, Stage: stage, AssignedProviderID: providerID, CreatedBy: actor,
-	}); e != nil {
-		return e
-	}
-	return q.MarkChargeEnqueued(ctx, billingdb.MarkChargeEnqueuedParams{TenantID: tenantID, ID: chargeID})
+	})
 }
 
 func catOrDefault(c string) string {
