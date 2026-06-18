@@ -1,0 +1,1313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClinicOS — End-to-end Test Drive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1b2b2c;
+    --ink-soft:#4d5d5b;
+    --muted:#73827f;
+    --paper:#eef1ee;
+    --surface:#ffffff;
+    --surface-2:#f7f9f7;
+    --line:#d7ddd9;
+    --line-soft:#e6ebe7;
+    --primary:#137a6b;
+    --primary-ink:#0c5347;
+    --primary-soft:#e2efeb;
+    --ring-track:#dde3df;
+    --critical:#bd372c;
+    --critical-soft:#fbe8e5;
+    --caution:#a76a10;
+    --caution-soft:#f8efda;
+    --shadow:0 1px 2px rgba(20,40,38,.05), 0 6px 22px rgba(20,40,38,.05);
+    --shadow-lg:0 18px 50px rgba(20,40,38,.14);
+    --r:14px;
+    --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --serif:'IBM Plex Serif',Georgia,'Times New Roman',serif;
+    --mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    font-family:var(--sans);
+    color:var(--ink);
+    background:var(--paper);
+    background-image:radial-gradient(circle at 12% -8%, rgba(19,122,107,.07), transparent 42%);
+    background-attachment:fixed;
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--primary-ink)}
+
+  /* ---------- Top bar ---------- */
+  .topbar{
+    position:sticky;top:0;z-index:60;
+    display:flex;align-items:center;gap:16px;
+    padding:11px clamp(14px,3vw,28px);
+    background:rgba(255,255,255,.82);
+    backdrop-filter:saturate(140%) blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  .brand{display:flex;align-items:center;gap:11px;min-width:0}
+  .brand .pulse{flex:0 0 auto;width:30px;height:30px}
+  .brand .pulse svg{display:block;width:100%;height:100%}
+  .brand b{font-family:var(--serif);font-weight:600;font-size:16px;letter-spacing:.1px;white-space:nowrap}
+  .brand .tag{color:var(--muted);font-size:12px;white-space:nowrap}
+  @media(max-width:620px){.brand .tag{display:none}}
+
+  .topbar .meters{display:flex;gap:18px;margin-left:auto;align-items:center}
+  .meter{display:flex;flex-direction:column;gap:4px;min-width:120px}
+  .meter .row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+  .meter .row b{font-family:var(--mono);font-size:12px;color:var(--ink);letter-spacing:0;text-transform:none}
+  .bar{height:6px;border-radius:99px;background:var(--ring-track);overflow:hidden}
+  .bar i{display:block;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,var(--primary),#1aa28d);transition:width .35s ease}
+  .meter.feat .bar i{background:linear-gradient(90deg,#5e3a8c,#7b4ea3)}
+  @media(max-width:780px){.meter.feat{display:none}}
+  @media(max-width:520px){.meter{min-width:92px}}
+
+  .top-actions{display:flex;gap:8px;align-items:center}
+  .btn{
+    font-family:var(--sans);font-size:13px;font-weight:500;
+    border:1px solid var(--line);background:var(--surface);color:var(--ink);
+    padding:8px 13px;border-radius:9px;cursor:pointer;white-space:nowrap;
+    display:inline-flex;align-items:center;gap:7px;transition:.16s;
+  }
+  .btn:hover{border-color:#bcc6c1;background:var(--surface-2)}
+  .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+  .btn.primary:hover{background:#0f6a5d}
+  .btn svg{width:15px;height:15px}
+  .btn.ghost{background:transparent}
+  .menu-toggle{display:none}
+  @media(max-width:980px){
+    .menu-toggle{display:inline-flex}
+    .btn .lbl{display:none}
+    .btn{padding:8px 10px}
+  }
+
+  /* ---------- Shell ---------- */
+  .shell{display:grid;grid-template-columns:288px minmax(0,1fr);gap:0;align-items:start}
+  @media(max-width:980px){.shell{grid-template-columns:1fr}}
+
+  /* ---------- Sidebar / journey spine ---------- */
+  .rail{
+    position:sticky;top:53px;align-self:start;
+    height:calc(100vh - 53px);overflow-y:auto;overscroll-behavior:contain;
+    padding:22px 18px 40px;border-right:1px solid var(--line);
+    background:linear-gradient(180deg,rgba(255,255,255,.5),rgba(255,255,255,0) 220px);
+  }
+  .rail h2{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 14px 4px;font-weight:600}
+  .spine{position:relative;margin:0;padding:0;list-style:none}
+  .spine::before{content:"";position:absolute;left:18px;top:14px;bottom:14px;width:2px;background:var(--line);border-radius:2px}
+  .spine .seg{position:relative}
+  .node{
+    display:grid;grid-template-columns:38px 1fr;align-items:center;gap:10px;
+    padding:6px 8px;border-radius:10px;text-decoration:none;color:var(--ink);
+    transition:.15s;cursor:pointer;
+  }
+  .node:hover{background:var(--primary-soft)}
+  .node.active{background:var(--primary-soft)}
+  .node.active .node-label{color:var(--primary-ink);font-weight:600}
+  .ring{
+    position:relative;width:38px;height:38px;border-radius:50%;
+    background:conic-gradient(var(--primary) calc(var(--p,0)*1%), var(--ring-track) 0);
+    display:grid;place-items:center;flex:0 0 auto;
+  }
+  .ring::after{content:"";position:absolute;inset:4px;border-radius:50%;background:var(--surface)}
+  .ring .num{position:relative;z-index:1;font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink-soft)}
+  .node.done .ring{background:var(--primary)}
+  .node.done .ring::after{inset:3px;background:var(--primary)}
+  .node.done .ring .num{color:#fff}
+  .node.done .ring .num::before{content:"✓";font-family:var(--sans)}
+  .node.done .ring .num span{display:none}
+  .node-label{font-size:13.5px;line-height:1.25;color:var(--ink-soft);display:flex;flex-direction:column}
+  .node-label em{font-style:normal;font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:2px}
+  .node-role{font-size:11px;color:var(--muted)}
+  .seg.minor .ring{width:38px;height:38px}
+  .seg.minor .ring .num{font-size:14px}
+
+  .rail-foot{margin-top:22px;padding-top:18px;border-top:1px solid var(--line-soft);font-size:12px;color:var(--muted)}
+  .rail-foot .btn{width:100%;justify-content:center;margin-bottom:8px}
+
+  /* ---------- Mobile drawer ---------- */
+  @media(max-width:980px){
+    .rail{
+      position:fixed;top:0;left:0;bottom:0;width:min(320px,86vw);height:100vh;z-index:90;
+      transform:translateX(-104%);transition:transform .26s ease;
+      background:var(--surface);box-shadow:var(--shadow-lg);border-right:1px solid var(--line);
+      padding-top:18px;
+    }
+    body.rail-open .rail{transform:none}
+    .scrim{position:fixed;inset:0;background:rgba(15,30,28,.4);z-index:85;opacity:0;pointer-events:none;transition:.26s}
+    body.rail-open .scrim{opacity:1;pointer-events:auto}
+  }
+  .scrim{display:none}
+  @media(max-width:980px){.scrim{display:block}}
+
+  /* ---------- Main ---------- */
+  main{padding:clamp(20px,3.5vw,46px) clamp(16px,4vw,52px) 90px;max-width:1020px;width:100%}
+  section{scroll-margin-top:72px}
+
+  /* Masthead */
+  .masthead{margin-bottom:34px}
+  .eyebrow{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--primary);font-weight:600;margin-bottom:12px}
+  .masthead h1{font-family:var(--serif);font-weight:600;font-size:clamp(28px,5vw,44px);line-height:1.08;margin:0 0 4px;letter-spacing:-.01em}
+  .masthead h1 .sub{display:block;font-family:var(--sans);font-weight:400;font-size:clamp(14px,2.4vw,17px);color:var(--muted);margin-top:8px;letter-spacing:0}
+  .purpose{font-size:16.5px;color:var(--ink-soft);max-width:64ch;margin:20px 0 0}
+  .purpose strong{color:var(--ink)}
+  .seed-note{
+    margin-top:18px;display:flex;gap:12px;align-items:flex-start;
+    background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--primary);
+    border-radius:var(--r);padding:14px 16px;font-size:14px;color:var(--ink-soft);box-shadow:var(--shadow);max-width:64ch;
+  }
+  .seed-note svg{flex:0 0 auto;width:18px;height:18px;margin-top:1px;color:var(--primary)}
+
+  /* Generic card + headings */
+  .block{margin-top:38px}
+  .block-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+  .block-head .kicker{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.05em}
+  .block-head h2{font-family:var(--serif);font-weight:600;font-size:23px;margin:0;letter-spacing:-.01em}
+  .block-sub{color:var(--muted);font-size:14px;margin:0 0 16px}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+
+  /* How to run */
+  .howto{padding:18px 20px;display:grid;gap:16px}
+  .howto .env{display:flex;flex-wrap:wrap;gap:10px}
+  .chiprow{display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:7px 8px 7px 12px}
+  .chiprow .k{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .chiprow .v{font-family:var(--mono);font-size:13.5px;color:var(--ink);font-weight:500}
+  .chiprow a.v{text-decoration:none}
+  .chiprow a.v:hover{text-decoration:underline}
+  .howto ul{margin:2px 0 0;padding-left:20px;color:var(--ink-soft);font-size:14.5px}
+  .howto ul li{margin:6px 0}
+
+  .copy{
+    border:1px solid var(--line);background:var(--surface);border-radius:7px;cursor:pointer;
+    width:26px;height:26px;display:grid;place-items:center;color:var(--muted);transition:.14s;flex:0 0 auto;
+  }
+  .copy:hover{color:var(--primary);border-color:var(--primary);background:var(--primary-soft)}
+  .copy svg{width:14px;height:14px}
+  .copy.ok{color:var(--primary);border-color:var(--primary)}
+
+  /* Logins */
+  .logins{overflow:hidden}
+  .login-prompt{
+    display:flex;gap:10px;align-items:flex-start;padding:14px 18px;
+    background:var(--primary-soft);border-bottom:1px solid var(--line);font-size:13.5px;color:var(--primary-ink)
+  }
+  .login-prompt svg{flex:0 0 auto;width:16px;height:16px;margin-top:2px}
+  .login-row{
+    display:grid;grid-template-columns:200px 1fr auto;gap:14px;align-items:center;
+    padding:13px 18px;border-bottom:1px solid var(--line-soft);
+  }
+  .login-row:last-child{border-bottom:0}
+  .role-id{display:flex;align-items:center;gap:10px;min-width:0}
+  .role-dot{width:10px;height:10px;border-radius:50%;flex:0 0 auto;box-shadow:0 0 0 3px rgba(0,0,0,.04)}
+  .role-id .name{font-weight:600;font-size:14px;line-height:1.15}
+  .role-id .name em{display:block;font-style:normal;font-weight:400;font-size:12px;color:var(--muted)}
+  .creds{display:flex;flex-wrap:wrap;gap:8px}
+  .cred{display:flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:5px 6px 5px 10px}
+  .cred .lab{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .cred code{font-family:var(--mono);font-size:12.5px;color:var(--ink)}
+  .row-note{justify-self:end}
+  .notebtn{font-size:12px;color:var(--muted);background:none;border:1px dashed var(--line);border-radius:8px;padding:6px 10px;cursor:pointer;transition:.14s;white-space:nowrap}
+  .notebtn:hover{color:var(--primary);border-color:var(--primary)}
+  .notebtn.has{color:var(--primary-ink);border-style:solid;border-color:var(--primary);background:var(--primary-soft)}
+  .login-note-wrap{grid-column:1/-1;display:none;padding-top:4px}
+  .login-note-wrap.open{display:block}
+  @media(max-width:720px){
+    .login-row{grid-template-columns:1fr;gap:10px}
+    .row-note{justify-self:start}
+  }
+
+  /* Story */
+  .story{padding:20px;display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:start}
+  .case-tab{
+    background:var(--critical-soft);border:1px solid #f0c9c3;border-radius:12px;padding:14px 16px;min-width:148px;
+  }
+  .case-tab .who{font-family:var(--serif);font-weight:600;font-size:17px;line-height:1.1}
+  .case-tab .meta{font-family:var(--mono);font-size:12px;color:var(--critical);margin-top:6px}
+  .case-tab .cc{margin-top:10px;font-size:13px;color:var(--ink-soft)}
+  .case-tab .cc b{color:var(--critical)}
+  .story p{margin:0;font-size:15px;color:var(--ink-soft)}
+  .story p strong{color:var(--ink)}
+  @media(max-width:620px){.story{grid-template-columns:1fr}}
+
+  /* Act cards */
+  .act{margin-top:22px;scroll-margin-top:72px}
+  .act-card{overflow:hidden}
+  .act-head{display:flex;align-items:center;gap:14px;padding:16px 20px;border-bottom:1px solid var(--line-soft);background:linear-gradient(180deg,var(--surface),var(--surface-2))}
+  .act-no{
+    flex:0 0 auto;width:42px;height:42px;border-radius:11px;display:grid;place-items:center;
+    font-family:var(--mono);font-weight:600;font-size:17px;color:#fff;background:var(--primary);
+  }
+  .act-titles{flex:1;min-width:0}
+  .act-titles h3{font-family:var(--serif);font-weight:600;font-size:19px;margin:0;line-height:1.15}
+  .act-titles .goal{font-size:13.5px;color:var(--muted);margin-top:3px}
+  .act-titles .goal b{color:var(--ink-soft);font-weight:500}
+  .role-chip{
+    display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;
+    border-radius:99px;padding:6px 12px 6px 10px;flex:0 0 auto;
+    border:1px solid currentColor;background:#fff;
+  }
+  .role-chip .role-dot{box-shadow:none}
+  .role-chip em{font-style:normal;color:var(--muted);font-weight:400}
+  @media(max-width:600px){
+    .act-head{flex-wrap:wrap}
+    .role-chip{order:3;width:100%;justify-content:flex-start}
+  }
+  .act-prog{font-family:var(--mono);font-size:12px;color:var(--muted);flex:0 0 auto}
+
+  .steps{list-style:none;margin:0;padding:8px 8px 4px}
+  .step{display:flex;gap:12px;padding:11px 12px;border-radius:10px;align-items:flex-start;transition:.12s}
+  .step:hover{background:var(--surface-2)}
+  .step label{display:flex;gap:12px;align-items:flex-start;cursor:pointer;flex:1;min-width:0}
+  .step .cb{
+    appearance:none;-webkit-appearance:none;flex:0 0 auto;margin-top:1px;
+    width:21px;height:21px;border:1.8px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;
+    display:grid;place-items:center;transition:.14s;
+  }
+  .step .cb:checked{background:var(--primary);border-color:var(--primary)}
+  .step .cb:checked::after{content:"✓";color:#fff;font-size:13px;line-height:1}
+  .step .cb:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+  .step .sn{font-family:var(--mono);font-size:12px;color:var(--muted);flex:0 0 auto;margin-top:2px;width:16px}
+  .step .txt{font-size:14.5px;color:var(--ink);line-height:1.5}
+  .step.checked .txt{color:var(--muted)}
+  .step .txt strong{font-weight:600}
+  .step .txt em{font-style:italic;color:var(--ink-soft)}
+  .step .txt code{
+    font-family:var(--mono);font-size:12.5px;background:var(--surface-2);
+    border:1px solid var(--line-soft);border-radius:5px;padding:1px 5px;color:var(--primary-ink);
+  }
+  .step-flag{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;letter-spacing:.03em;border-radius:6px;padding:2px 7px;margin-left:2px;vertical-align:middle;white-space:nowrap}
+  .step-flag.critical{background:var(--critical-soft);color:var(--critical)}
+  .step-flag.caution{background:var(--caution-soft);color:var(--caution)}
+
+  .expect{margin:6px 12px 12px;display:flex;gap:11px;align-items:flex-start;background:var(--primary-soft);border-radius:10px;padding:12px 14px}
+  .expect .ic{flex:0 0 auto;width:20px;height:20px;border-radius:50%;background:var(--primary);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:700;margin-top:1px}
+  .expect .ic::after{content:"✓"}
+  .expect .ex-txt{font-size:13.5px;color:var(--primary-ink)}
+  .expect .ex-txt b{font-weight:600}
+  .expect .ex-txt strong{font-weight:600}
+  .expect .ex-txt em{font-style:italic}
+
+  .notes-zone{padding:6px 16px 18px}
+  .notes-zone .nz-head{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:8px 0 10px;display:flex;align-items:center;gap:8px}
+  .notes-zone .nz-head::before{content:"📝";font-size:13px}
+  .note{margin-bottom:12px}
+  .note label{display:block;font-size:13px;color:var(--ink-soft);margin-bottom:5px;line-height:1.4}
+  .note label code{font-family:var(--mono);font-size:12px;background:var(--surface-2);border:1px solid var(--line-soft);border-radius:4px;padding:0 4px}
+  textarea{
+    width:100%;font-family:var(--sans);font-size:14px;color:var(--ink);line-height:1.55;
+    border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--surface-2);
+    resize:none;overflow:hidden;min-height:42px;transition:.14s;
+  }
+  textarea::placeholder{color:#a9b4b0}
+  textarea:focus{outline:none;border-color:var(--primary);background:#fff;box-shadow:0 0 0 3px var(--primary-soft)}
+  textarea.filled{background:#fff;border-color:#bcd6cf}
+
+  /* Feature coverage */
+  .feat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:6px}
+  .feat-cat{padding:16px 18px}
+  .feat-cat h4{margin:0 0 4px;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .feat-cat h4 .ct{font-family:var(--mono);font-size:12px;color:var(--muted);font-weight:500}
+  .feat-cat .bar{margin:8px 0 12px}
+  .feat-item{display:flex;gap:10px;align-items:flex-start;padding:6px 4px;border-radius:7px;cursor:pointer}
+  .feat-item:hover{background:var(--surface-2)}
+  .feat-item input{
+    appearance:none;-webkit-appearance:none;flex:0 0 auto;margin-top:1px;
+    width:18px;height:18px;border:1.8px solid var(--line);border-radius:5px;background:#fff;cursor:pointer;display:grid;place-items:center;transition:.14s;
+  }
+  .feat-item input:checked{background:#7b4ea3;border-color:#7b4ea3}
+  .feat-item input:checked::after{content:"✓";color:#fff;font-size:11px}
+  .feat-item input:focus-visible{outline:2px solid #7b4ea3;outline-offset:2px}
+  .feat-item span{font-size:13.5px;color:var(--ink-soft)}
+  .feat-item.done span{color:var(--muted)}
+
+  /* Feedback table */
+  .fbtable{padding:6px 6px 14px;overflow-x:auto}
+  table.fb{width:100%;border-collapse:collapse;min-width:640px}
+  table.fb th{
+    text-align:left;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+    font-weight:600;padding:10px 12px;border-bottom:1px solid var(--line)
+  }
+  table.fb td{padding:6px 8px;vertical-align:top;border-bottom:1px solid var(--line-soft)}
+  table.fb td.num{font-family:var(--mono);color:var(--muted);text-align:center;width:40px;padding-top:14px}
+  table.fb textarea{min-height:38px;background:#fff;border-color:var(--line-soft)}
+  .fb-actions{display:flex;gap:10px;padding:12px 12px 2px}
+  .delrow{background:none;border:1px solid var(--line);border-radius:7px;color:var(--muted);cursor:pointer;width:30px;height:30px;display:grid;place-items:center;margin-top:6px}
+  .delrow:hover{color:var(--critical);border-color:var(--critical)}
+  td.act-col{width:40px}
+
+  /* closing */
+  .closing{margin-top:38px;padding:22px;background:linear-gradient(135deg,var(--primary-soft),#eef5f2);border:1px solid #c6ddd6;border-radius:var(--r);display:flex;gap:14px;align-items:flex-start}
+  .closing svg{flex:0 0 auto;width:22px;height:22px;color:var(--primary);margin-top:2px}
+  .closing p{margin:0;font-size:14.5px;color:var(--ink-soft)}
+  .closing p strong{color:var(--ink)}
+  .closing code{font-family:var(--mono);font-size:13px;background:#fff;border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+  .closing .btn{margin-top:12px}
+
+  /* toast */
+  .toast{
+    position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);
+    background:var(--ink);color:#fff;padding:11px 18px;border-radius:11px;font-size:13.5px;
+    box-shadow:var(--shadow-lg);opacity:0;pointer-events:none;transition:.25s;z-index:120;display:flex;gap:9px;align-items:center
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast svg{width:16px;height:16px;color:#5fd0bb}
+
+  .save-pill{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px}
+  .save-pill .dot{width:7px;height:7px;border-radius:50%;background:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+  @media(max-width:980px){.save-pill{display:none}}
+
+  *:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none!important;scroll-behavior:auto!important}
+  }
+
+  /* Print */
+  @media print{
+    .topbar,.rail,.scrim,.top-actions,.copy,.fb-actions,.delrow,.toast,.notebtn{display:none!important}
+    body{background:#fff}
+    .shell{grid-template-columns:1fr}
+    main{max-width:none;padding:0}
+    .card,.act-card{box-shadow:none;break-inside:avoid}
+    textarea{border:1px solid #ccc;background:#fff;min-height:auto}
+    .login-note-wrap{display:block!important}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <span class="pulse" aria-hidden="true">
+      <svg viewBox="0 0 40 40" fill="none">
+        <rect x="1" y="1" width="38" height="38" rx="10" fill="#e2efeb" stroke="#137a6b" stroke-width="1.4"/>
+        <path d="M5 21 H13 L16 12 L21 28 L24 18 L26 21 H35" stroke="#137a6b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+    </span>
+    <div style="min-width:0">
+      <b>ClinicOS · Test Drive</b>
+      <div class="tag">End-to-end real-world walkthrough</div>
+    </div>
+  </div>
+
+  <div class="meters">
+    <div class="meter">
+      <div class="row"><span>Walkthrough</span><b id="m-steps">0 / 0</b></div>
+      <div class="bar"><i id="m-steps-bar"></i></div>
+    </div>
+    <div class="meter feat">
+      <div class="row"><span>Feature coverage</span><b id="m-feat">0 / 0</b></div>
+      <div class="bar"><i id="m-feat-bar"></i></div>
+    </div>
+  </div>
+
+  <div class="top-actions">
+    <span class="save-pill"><span class="dot"></span>Auto-saved</span>
+    <button class="btn primary" id="export-btn" title="Download all notes & progress as Markdown">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <span class="lbl">Export notes</span>
+    </button>
+    <button class="btn ghost menu-toggle" id="menu-toggle" aria-label="Open journey menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+  </div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+
+<div class="shell">
+  <nav class="rail" id="rail" aria-label="Journey navigation">
+    <h2>The patient journey</h2>
+    <ul class="spine" id="spine"></ul>
+    <div class="rail-foot">
+      <button class="btn" id="reset-btn" style="color:var(--critical);border-color:#e7c4bf">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+        Reset all progress
+      </button>
+      <div style="margin-top:4px">Progress is saved in this browser. Use <b>Export notes</b> to hand your feedback back.</div>
+    </div>
+  </nav>
+
+  <main>
+    <!-- MASTHEAD -->
+    <section class="masthead" id="top">
+      <div class="eyebrow">Real-world walkthrough</div>
+      <h1>End-to-end Test Drive
+        <span class="sub">Play the platform as each real staff member, following one clinical story from front door to follow-up.</span>
+      </h1>
+      <p class="purpose">The goal is <strong>not</strong> to verify it works (it does) — it's for <strong>you</strong> to feel whether each role's experience matches how you want the clinic to run, and to capture every misalignment. Nothing is too small (wording, button order, what a role sees, the steps themselves).</p>
+      <div class="seed-note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <div>A clean demo tenant has been prepared: no patients, no visits — a blank clinic ready to open for the day. Catalogs (drugs, lab tests, diagnoses) and stock are seeded.</div>
+      </div>
+    </section>
+
+    <!-- HOW TO RUN -->
+    <section class="block" id="howto">
+      <div class="block-head"><span class="kicker">setup</span><h2>How to run</h2></div>
+      <div class="card howto">
+        <div class="env">
+          <div class="chiprow">
+            <span class="k">URL</span>
+            <a class="v" href="http://localhost:8088" target="_blank" rel="noopener">http://localhost:8088</a>
+            <button class="copy" data-copy="http://localhost:8088" title="Copy URL" aria-label="Copy URL">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+          </div>
+          <div class="chiprow">
+            <span class="k">Workspace</span>
+            <span class="v">demo</span>
+            <button class="copy" data-copy="demo" title="Copy workspace" aria-label="Copy workspace">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+          </div>
+        </div>
+        <ul>
+          <li>Open a separate browser <b>profile/incognito window per role</b> if you want to be several people at once (otherwise just log out and back in).</li>
+          <li>Capture feedback inline — write under the <b>📝</b> fields on each act, or keep a running list in the feedback table at the bottom.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- LOGINS -->
+    <section class="block" id="logins">
+      <div class="block-head"><span class="kicker">accounts</span><h2>Logins</h2><span class="act-prog">workspace <code style="font-family:var(--mono)">demo</code></span></div>
+      <p class="block-sub">As you sign in to each, first just <b>look at the sidebar</b>.</p>
+      <div class="card logins">
+        <div class="login-prompt">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <div>Does this role see the right things, and nothing it shouldn't? <b>📝 Use the “sidebar notes” on each row to capture mismatches.</b></div>
+        </div>
+        <div id="login-rows"></div>
+      </div>
+    </section>
+
+    <!-- THE STORY -->
+    <section class="block" id="story">
+      <div class="block-head"><span class="kicker">the case</span><h2>The story</h2></div>
+      <div class="card story">
+        <div class="case-tab">
+          <div class="who">Ato Abebe Bekele</div>
+          <div class="meta">54 · male · NEW PATIENT</div>
+          <div class="cc"><b>Chief complaint:</b> chest pain since this morning</div>
+        </div>
+        <p><strong>Ato Abebe Bekele</strong>, 54, walks in with chest pain since morning. He's a new patient. He'll be registered, <strong>pay at the cashier</strong>, be triaged, seen by the doctor, sent for an urgent <strong>Troponin</strong> (which comes back <strong>critical</strong>), then prescribed and sent home with a follow-up. Along the way a second patient (<strong>Marta</strong>, sore throat) and a counter customer exercise the lighter paths.</p>
+      </div>
+    </section>
+
+    <!-- ACTS MOUNT -->
+    <div id="acts"></div>
+
+    <!-- FEATURE COVERAGE -->
+    <section class="block" id="features">
+      <div class="block-head"><span class="kicker">checklist</span><h2>Feature coverage</h2><span class="act-prog" id="feat-count">0 / 0</span></div>
+      <p class="block-sub">Tick as you go — an independent map of everything the walkthrough should exercise.</p>
+      <div class="feat-grid" id="feat-grid"></div>
+    </section>
+
+    <!-- FEEDBACK TABLE -->
+    <section class="block" id="feedback">
+      <div class="block-head"><span class="kicker">capture</span><h2>Quick feedback capture</h2></div>
+      <p class="block-sub">Dump anything here — it gets triaged into <code style="font-family:var(--mono)">REFINEMENT.md</code>.</p>
+      <div class="card">
+        <div class="fbtable">
+          <table class="fb">
+            <thead><tr><th class="num">#</th><th>Area / role</th><th>What feels off</th><th>What you'd want instead</th><th class="act-col"></th></tr></thead>
+            <tbody id="fb-body"></tbody>
+          </table>
+        </div>
+        <div class="fb-actions">
+          <button class="btn" id="add-row">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add row
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- CLOSING -->
+    <div class="closing">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      <div>
+        <p>When you've gone through it, <strong>hand me your notes</strong> (in any form). I'll turn them into a triaged refinement backlog (<code>REFINEMENT.md</code>) and a batched plan for your approval.</p>
+        <button class="btn primary" id="export-btn-2">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export everything as Markdown
+        </button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="toast" id="toast"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span id="toast-msg">Saved</span></div>
+
+<script>
+/* ============================================================
+   ClinicOS Test Drive — data model (verbatim from the brief)
+   ============================================================ */
+
+const ROLES = [
+  { key:'owner',       role:'Owner',            note:'sees everything', email:'owner@demo.clinic',       pass:'ChangeMe123!', color:'#4b3f9e', person:null },
+  { key:'admin',       role:'Clinic admin',     note:null,             email:'admin@demo.clinic',        pass:'Test1234!',    color:'#546e7a', person:null },
+  { key:'reception',   role:'Receptionist',     note:null,             email:'reception@demo.clinic',    pass:'Test1234!',    color:'#0f8a7d', person:'Hanna' },
+  { key:'nurse',       role:'Nurse / triage',   note:null,             email:'nurse@demo.clinic',        pass:'Test1234!',    color:'#4a8c3f', person:'Kebede' },
+  { key:'doctor',      role:'Doctor',           note:null,             email:'doctor@demo.clinic',       pass:'Test1234!',    color:'#2b6cb0', person:'Dr. Meron' },
+  { key:'labtech',     role:'Lab technician',   note:null,             email:'labtech@demo.clinic',      pass:'Test1234!',    color:'#7b4ea3', person:'Yonas' },
+  { key:'labmgr',      role:'Lab manager',      note:null,             email:'labmgr@demo.clinic',       pass:'Test1234!',    color:'#5e3a8c', person:'Tigist' },
+  { key:'pharmacist',  role:'Pharmacist',       note:null,             email:'pharmacist@demo.clinic',   pass:'Test1234!',    color:'#a96a1f', person:'Dawit' },
+  { key:'pharmacymgr', role:'Pharmacy manager', note:null,             email:'pharmacymgr@demo.clinic',  pass:'Test1234!',    color:'#b1542e', person:'Sara' },
+  { key:'cashier',     role:'Cashier',          note:null,             email:'cashier@demo.clinic',      pass:'Test1234!',    color:'#b03a6a', person:'Bethel' },
+];
+const ROLE_BY_KEY = Object.fromEntries(ROLES.map(r => [r.key, r]));
+
+const ACTS = [
+  {
+    id:'act1', num:1, title:'Configure billing & flow', roleKey:'admin',
+    goal:'price the clinic\'s services and choose how payments are collected.',
+    steps:[
+      { t:'**Settings → Patient flow.** Set the **card / consultation fee** and the **follow-up free window**. Set **Payment collection → Separate cashier** — this turns on the cashier flow used below. *(The other mode, "Reception collects", keeps the old inline behaviour.)*', flag:'caution', flagLabel:'sets the mode' },
+      { t:'**Billing → Service catalog.** Review the seeded services + prices (Consultation, wound dressing, injection, suturing…). **Edit a price**, and **toggle one Off then On** to see the availability switch.' },
+      { t:'(Glance at **Staff** — the 9 role accounts that come seeded.)' },
+    ],
+    expect:'cashier mode is on; services are priced. From now on, charges raised at reception go to the cashier to collect.',
+    notes:[
+      'Service catalog — right services & ETB prices for your clinic? anything missing?',
+      'Payment collection — is "separate cashier" vs "reception collects" the right choice to offer?',
+    ],
+  },
+  {
+    id:'act2', num:2, title:'Front desk', roleKey:'reception',
+    goal:'register the new walk-in and send him to pay.',
+    steps:[
+      { t:'**Patients → Register** `Abebe Bekele`, male, ~54, with a phone number. **Add allergy `Penicillin`** (used later). On **Review**, confirm it registers **only when you click Register patient** (not when you press Enter).', flag:'caution', flagLabel:'explicit submit' },
+      { t:'**Test the duplicate guard:** start registering Abebe again with the same phone → you should get a **side-by-side "New vs Existing"** comparison (matching fields highlighted). Choose **Back to edit**.' },
+      { t:'Go to **Reception**. Pick Abebe, choose the **department** and **Triage first / Straight to doctor** (assign **Dr. Meron** if straight to doctor), then **Send to cashier**.' },
+    ],
+    expect:'Abebe has an MRN and a **pending consultation charge** waiting at the cashier; he is *not* in the queue yet — he advances once the cashier takes payment.',
+    notes:[
+      'Registration fields — right for an Ethiopian clinic? the duplicate comparison clear and useful?',
+      'The reception → cashier hand-off — wording and flow.',
+    ],
+  },
+  {
+    id:'act3', num:3, title:'Cashier', roleKey:'cashier',
+    goal:'collect the payment so the patient can proceed.',
+    steps:[
+      { t:'Open **Cashier**. Abebe\'s **Consultation** charge is pending (grouped under his name with a total).' },
+      { t:'Pick a **payment method** (cash / card / mobile / transfer) and **Take payment**.' },
+      { t:'*(Try **Waive** on a charge — it requires a **reason**, e.g. Staff / Charity / Exemption — for the day you have a non-paying patient.)*', flag:'caution', flagLabel:'documented waiver' },
+    ],
+    expect:'payment recorded; Abebe **auto-advances** into the queue (triage or the doctor) per reception\'s routing; the cashier list clears.',
+    notes:[
+      'The pending-payments worklist — clear? grouped right? are the payment methods enough?',
+      'Does "pay, then the patient proceeds automatically" match how your clinic actually runs?',
+      'Waivers — is the reason list right? who should be allowed to waive?',
+    ],
+  },
+  {
+    id:'act4', num:4, title:'Triage', roleKey:'nurse',
+    goal:'record vitals before the doctor sees him.',
+    steps:[
+      { t:'Open **Triage**, pick Abebe, and record vitals — make them concerning: **BP 165/100, HR 104, Temp 36.9, SpO₂ 96, weight 82**.' },
+      { t:'Confirm he stays in the queue for the doctor.' },
+    ],
+    expect:'vitals saved; the doctor will see them on the encounter.',
+    notes:[
+      'Vitals set — right measurements/units? anything you\'d add (pain score, etc.)?',
+      'Does the nurse see what they need and nothing they shouldn\'t?',
+    ],
+  },
+  {
+    id:'act5', num:5, title:'Consultation', roleKey:'doctor',
+    goal:'see the patient, order the urgent lab, park the visit while it runs.',
+    steps:[
+      { t:'Open **My day**. Look at the four tabs: **Waiting / In progress / Appointments / Done**. Abebe should be under **Waiting**.' },
+      { t:'**Open consult** on Abebe. Review the banner (allergy to Penicillin should be visible) and the triage vitals.' },
+      { t:'Write a short **SOAP** note. Add a **diagnosis** (search the catalog, e.g. *"Essential hypertension"* or a cardiac entry).' },
+      { t:'**Try to prescribe `Amoxicillin`** → expect it to be **blocked** (Penicillin allergy, class-aware). Then prescribe **`Azithromycin 500mg`**, once daily, 3 days.', flag:'caution', flagLabel:'allergy guard' },
+      { t:'In **Orders / Lab**, order **Troponin** (priority **STAT**) and **CBC**.' },
+      { t:'Click **Set aside (awaiting results)** (don\'t sign yet).' },
+      { t:'Go back to **My day → In progress**: Abebe should be there with the reason **"Awaiting lab (2)"**.' },
+    ],
+    expect:'allergy block fires on Amoxicillin; labs ordered; the patient is parked as *awaiting results* and shows on the board with the reason.',
+    notes:[
+      'The board (Waiting/In progress/Appointments/Done) — useful? what\'s missing?',
+      'The consult workspace layout, SOAP, diagnosis search, prescribing.',
+      'The "Set aside" idea and how the reason reads.',
+    ],
+  },
+  {
+    id:'act6', num:6, title:'Laboratory', roleKey:'labtech',
+    goal:'run the troponin.',
+    steps:[
+      { t:'Open **Lab worklist** → **To collect**. Find Abebe\'s **Troponin** (STAT, should be pinned to the top by priority).' },
+      { t:'Try the **Scan / sample #** box: type the troponin\'s sample number → it opens.' },
+      { t:'**Receive & accession** the sample.' },
+      { t:'Enter a **critical** value — **Troponin = 5.0** — watch the flag turn red, then **Submit for validation**.', flag:'critical', flagLabel:'critical value' },
+      { t:'(Optional) Do the same for **CBC** with normal values (e.g. all mid-range).' },
+    ],
+    expect:'the result auto-flags **Critical**; status moves to *resulted* (awaiting validation). The tech cannot validate (that\'s the manager\'s job).',
+    notes:[
+      'Worklist tabs and the scan box — does this match how a lab bench works?',
+      'Result entry — fast enough? reference ranges clear? flags obvious?',
+    ],
+  },
+  {
+    id:'act7', num:7, title:'Release the result & manage the catalog', roleKey:'labmgr',
+    goal:'validate and release the result; manage the test catalog.',
+    steps:[
+      { t:'**Lab worklist → Awaiting validation**. Open Abebe\'s troponin (red **Critical value** banner). **Validate & release**.', flag:'critical', flagLabel:'critical value' },
+      { t:'**Print report** — check the layout (patient header, value, flag, critical note).' },
+      { t:'**Test catalog:** **edit** a test (name/specimen), **toggle a test Available/Unavailable** (an *Unavailable* test disappears from the doctor\'s order list), and **edit an analyte\'s reference range**.', flag:'caution', flagLabel:'full CRUD' },
+      { t:'(Optional) **Import CSV** — paste a couple of rows to bulk-add tests/analytes.' },
+    ],
+    expect:'result released to the ordering doctor; you can fully manage the catalog (edit / availability / ranges), and an unavailable test can no longer be ordered.',
+    notes:[
+      'Validation step — is the two-person flow (tech → manager) right?',
+      'Catalog management — edit / availability / ranges: anything missing? is the printed report usable?',
+    ],
+  },
+  {
+    id:'act8', num:8, title:'Critical callback', roleKey:'doctor',
+    goal:'the doctor is alerted, acknowledges, and acts.',
+    steps:[
+      { t:'Look at the sidebar: **Results inbox** should show a **red badge**.', flag:'critical', flagLabel:'escalation' },
+      { t:'Open **Results inbox → Criticals**. Abebe\'s troponin is pinned. Open it, review, then **Mark notified**.' },
+      { t:'Return to **My day → In progress → Resume** Abebe\'s encounter. The **Orders / Lab** section shows the validated result (with a critical callout). Confirm the Azithromycin prescription is there.' },
+      { t:'**Book a follow-up** for next week.' },
+      { t:'**Sign & close** the encounter.' },
+      { t:'Check **My day → Done** — Abebe is there; the badge/inbox critical is cleared.' },
+    ],
+    expect:'the critical reaches the doctor, is acknowledged, and the visit closes cleanly into Done.',
+    notes:[
+      'The inbox + badge — does this reliably get a critical in front of the doctor?',
+      '"Mark notified" — does it capture what you need (who/when)? enough for safety?',
+      'Follow-up booking and the close-out.',
+    ],
+  },
+  {
+    id:'act9', num:9, title:'Pharmacy', roleKey:'pharmacist',
+    goal:'dispense the prescription; serve a counter customer.',
+    steps:[
+      { t:'**Dispense queue** — Abebe\'s signed prescription should be ready. Open it.' },
+      { t:'Note the **allergy banner** (Penicillin). Dispense **Azithromycin** — pick the FEFO batch, set quantity, add counselling notes, **Counsel & dispense**. *(Notice Amoxicillin/Tramadol batches are expired and would be skipped.)*', flag:'caution', flagLabel:'allergy + expiry' },
+      { t:'**OTC sale**: sell **Cetirizine 10mg** to a walk-in customer — search, add to cart, take payment.' },
+    ],
+    expect:'dispensing decrements stock and raises a charge; the OTC sale records a paid sale.',
+    notes:[
+      'Dispense flow — batch picking, allergy/expiry safety, counselling.',
+      'OTC sale — does the counter flow match your pharmacy?',
+    ],
+  },
+  {
+    id:'act10', num:10, title:'Pharmacy back-office', roleKey:'pharmacymgr',
+    goal:'the management surface.',
+    steps:[
+      { t:'**Pharmacy dashboard** — KPIs, the dispensing chart, alerts (low stock / expiry).' },
+      { t:'**Purchasing** — add a **supplier**, create a **purchase order** (e.g. restock Amoxicillin), mark it ordered, then **receive** it → stock should increase.' },
+      { t:'**Stock control** — start a **count**, enter a counted number that differs, **adjust**, **approve**.' },
+      { t:'**Reports** — open a couple, then **Export CSV**.' },
+      { t:'**Catalog admin** — edit a drug (price/reorder level).' },
+    ],
+    expect:null,
+    notes:[
+      'Does the back-office cover what a pharmacy manager actually does day to day?',
+      'Anything about suppliers, POs, counts, or reports that\'s off for your market?',
+    ],
+  },
+  {
+    id:'act11', num:11, title:'Finance', roleKey:'owner',
+    goal:'see the day\'s money.',
+    steps:[
+      { t:'Open **Billing → Finance**. Check **Collected / Waived / Outstanding** and the **by-service** breakdown.' },
+      { t:'Switch the range: **Today / Last 7 days / Last 30 days**.' },
+      { t:'Confirm Abebe\'s **Consultation** shows under *collected*; any charge you **waived** shows under *waived* (revenue forgone).' },
+    ],
+    expect:'the money taken, waived, and still owed is visible at a glance, broken down by service.',
+    notes:[
+      'Does this give an owner what they need day to day? what\'s missing (per-cashier totals, CSV export, custom dates)?',
+    ],
+  },
+  {
+    id:'act12', num:12, title:'A second, lighter visit', roleKey:null,
+    roleLabel:'Reception → Cashier → Doctor → Lab · your choice of role',
+    goal:'check the flow with a non-numeric, non-critical result and the cashier path again.',
+    lead:'Run **Marta Tadesse**, 28, sore throat: register → **send to cashier** → pay → triage → doctor orders a **Rapid strep test** → lab enters *"Positive"* (non-numeric) → doctor prescribes. Checks a non-numeric, non-critical result and the cashier path on a faster visit.',
+    steps:[
+      { t:'Register **Marta Tadesse**, 28, sore throat.' },
+      { t:'Reception → **Send to cashier**; the **Cashier** takes payment so she proceeds.' },
+      { t:'**Triage** — record vitals.' },
+      { t:'Doctor orders a **Rapid strep test**.' },
+      { t:'Lab enters result *"Positive"* (**non-numeric** — no flag).' },
+      { t:'Doctor **prescribes** and closes.' },
+    ],
+    expect:null,
+    notes:[
+      'Anything that felt different/awkward on a simpler visit?',
+    ],
+  },
+  {
+    id:'act13', num:13, title:'Admin, settings & help', roleKey:null,
+    roleLabel:'Owner or Clinic admin',
+    goal:'configuration, per-role access, and the in-app help.',
+    steps:[
+      { t:'**Staff** — review the staff and their roles; try inviting a user.' },
+      { t:'**Settings** — the **card fee**, **free-follow-up window**, **payment collection mode**, and the **diagnosis catalog** (categories + entries).' },
+      { t:'**Help** — open the **Help center** (bottom of the sidebar) for the role you\'re in, and click **"How this works"** in the top bar on any page.', flag:'caution', flagLabel:'self-teaching' },
+      { t:'Confirm the **follow-up is free**: a doctor-booked follow-up within the window isn\'t charged. *(Shorten the window in Settings to test it quickly.)*' },
+    ],
+    expect:null,
+    notes:[
+      'Settings — is everything a clinic needs to configure here? labels clear?',
+      'Help center / "How this works" — does it make each role self-explanatory?',
+      'Roles/permissions — does each role see the right things and nothing it shouldn\'t?',
+    ],
+  },
+];
+
+const FEATURES = [
+  { group:'Front office', items:['register patient','patient search','duplicate comparison (new vs existing)','explicit-submit (no auto-register)','allergies/conditions','walk-in','appointment booking','check-in','queue/assign'] },
+  { group:'Clinical',     items:['triage vitals','My-day board (4 tabs)','SOAP note','diagnosis catalog','prescribing','allergy guard','set-aside/awaiting-results','sign & close','history timeline'] },
+  { group:'Billing',      items:['service catalog (price + CRUD)','payment-mode toggle','reception → cashier hand-off','cashier worklist','take payment (methods)','waive with reason','auto-advance after payment','finance: collected/waived/outstanding','free follow-up'] },
+  { group:'Lab',          items:['order labs (active-only)','worklist','scan/sample lookup','accession','result entry + auto-flag','submit','validate/release','critical escalation','results inbox + badge','mark notified','print report','catalog edit + availability','CSV import'] },
+  { group:'Pharmacy',     items:['dispense (FEFO + allergy + expiry)','OTC sale','dashboard','purchasing/PO receive','stock count','reports + CSV','catalog admin','batches/expiry'] },
+  { group:'Admin & help', items:['staff/roles','settings (fee, window, payment mode)','diagnosis catalog','Help center + “How this works”','teaching empty states','per-role nav correctness'] },
+];
+
+/* ============================================================
+   State + persistence
+   ============================================================ */
+const KEY = 'clinicos-testdrive-v2';
+let MEM = {};
+let usingLocal = true;
+try {
+  const raw = localStorage.getItem(KEY);
+  MEM = raw ? JSON.parse(raw) : {};
+} catch (e) { usingLocal = false; MEM = {}; }
+MEM.steps  = MEM.steps  || {};
+MEM.notes  = MEM.notes  || {};
+MEM.feats  = MEM.feats  || {};
+MEM.roleNotes = MEM.roleNotes || {};
+MEM.table  = MEM.table  || [ {area:'',off:'',want:''}, {area:'',off:'',want:''}, {area:'',off:'',want:''} ];
+
+let saveTimer = null;
+function save(){
+  if(saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(()=>{
+    if(!usingLocal) return;
+    try { localStorage.setItem(KEY, JSON.stringify(MEM)); } catch(e){ usingLocal = false; }
+  }, 180);
+}
+
+/* ============================================================
+   Tiny markdown renderer for step / note text
+   ============================================================ */
+function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function mdInline(s){
+  let out = esc(s);
+  out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+  out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  return out;
+}
+
+/* ============================================================
+   Render: logins
+   ============================================================ */
+function roleDisplay(r){
+  let name = r.role;
+  if(r.note) name += ' (' + r.note + ')';
+  return name;
+}
+function renderLogins(){
+  const host = document.getElementById('login-rows');
+  host.innerHTML = '';
+  ROLES.forEach(r => {
+    const row = document.createElement('div');
+    row.className = 'login-row';
+    const nid = 'rolenote-' + r.key;
+    const noteVal = MEM.roleNotes[nid] || '';
+    row.innerHTML = `
+      <div class="role-id">
+        <span class="role-dot" style="background:${r.color}"></span>
+        <span class="name">${esc(roleDisplay(r))}${r.person ? `<em>${esc(r.person)}</em>` : ''}</span>
+      </div>
+      <div class="creds">
+        <span class="cred"><span class="lab">email</span><code>${esc(r.email)}</code>
+          <button class="copy" data-copy="${esc(r.email)}" title="Copy email" aria-label="Copy email"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+        </span>
+        <span class="cred"><span class="lab">password</span><code>${esc(r.pass)}</code>
+          <button class="copy" data-copy="${esc(r.pass)}" title="Copy password" aria-label="Copy password"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+        </span>
+      </div>
+      <div class="row-note">
+        <button class="notebtn ${noteVal?'has':''}" data-target="${nid}-wrap">${noteVal ? '📝 Sidebar notes ✓' : '+ Sidebar notes'}</button>
+      </div>
+      <div class="login-note-wrap ${noteVal?'open':''}" id="${nid}-wrap">
+        <textarea data-rolenote="${nid}" placeholder="Sidebar for ${esc(r.role)} — right things visible? anything missing or extra?">${esc(noteVal)}</textarea>
+      </div>`;
+    host.appendChild(row);
+  });
+}
+
+/* ============================================================
+   Render: acts
+   ============================================================ */
+function renderActs(){
+  const host = document.getElementById('acts');
+  host.innerHTML = '';
+  ACTS.forEach(act => {
+    const r = act.roleKey ? ROLE_BY_KEY[act.roleKey] : null;
+    const sec = document.createElement('section');
+    sec.className = 'act';
+    sec.id = act.id;
+
+    const chip = r
+      ? `<span class="role-chip" style="color:${r.color}"><span class="role-dot" style="background:${r.color}"></span>${esc(r.role)}${r.person?` <em>· ${esc(r.person)}</em>`:''}</span>`
+      : (act.roleLabel ? `<span class="role-chip" style="color:var(--muted)"><span class="role-dot" style="background:var(--muted)"></span>${esc(act.roleLabel)}</span>` : '');
+
+    const lead = act.lead ? `<div class="expect" style="background:var(--surface-2);margin:12px 16px 0">
+        <span class="ic" style="background:var(--ink-soft)">›</span>
+        <span class="ex-txt" style="color:var(--ink-soft)">${mdInline(act.lead)}</span></div>` : '';
+
+    const stepsHtml = act.steps.map((s, i) => {
+      const sid = `${act.id}-s${i+1}`;
+      const checked = !!MEM.steps[sid];
+      const flag = s.flag ? `<span class="step-flag ${s.flag}">${esc(s.flagLabel || s.flag)}</span>` : '';
+      return `<li class="step ${checked?'checked':''}">
+        <label>
+          <input type="checkbox" class="cb" data-step="${sid}" ${checked?'checked':''} aria-label="Step ${i+1}">
+          <span class="sn">${i+1}</span>
+          <span class="txt">${mdInline(s.t)} ${flag}</span>
+        </label>
+      </li>`;
+    }).join('');
+
+    const expectHtml = act.expect ? `<div class="expect">
+        <span class="ic"></span>
+        <span class="ex-txt"><b>Expect:</b> ${mdInline(act.expect)}</span>
+      </div>` : '';
+
+    const notesHtml = act.notes.map((n, i) => {
+      const nid = `${act.id}-n${i+1}`;
+      const val = MEM.notes[nid] || '';
+      return `<div class="note">
+        <label>${mdInline(n)}</label>
+        <textarea data-note="${nid}" placeholder="Your notes…">${esc(val)}</textarea>
+      </div>`;
+    }).join('');
+
+    sec.innerHTML = `
+      <div class="card act-card">
+        <div class="act-head">
+          <div class="act-no" data-actno="${act.id}" style="${r?`background:${r.color}`:''}">${act.num}</div>
+          <div class="act-titles">
+            <h3>Act ${act.num} — ${esc(act.title)}</h3>
+            <div class="goal"><b>Goal:</b> ${esc(act.goal)}</div>
+          </div>
+          ${chip}
+          <span class="act-prog" data-actprog="${act.id}"></span>
+        </div>
+        ${lead}
+        <ul class="steps">${stepsHtml}</ul>
+        ${expectHtml}
+        <div class="notes-zone">
+          <div class="nz-head">Capture feedback</div>
+          ${notesHtml}
+        </div>
+      </div>`;
+    host.appendChild(sec);
+  });
+}
+
+/* ============================================================
+   Render: feature coverage
+   ============================================================ */
+function slug(s){ return s.toLowerCase().replace(/[^a-z0-9]+/g,''); }
+function renderFeatures(){
+  const grid = document.getElementById('feat-grid');
+  grid.innerHTML = '';
+  FEATURES.forEach(cat => {
+    const gslug = slug(cat.group);
+    const div = document.createElement('div');
+    div.className = 'card feat-cat';
+    div.dataset.cat = gslug;
+    const items = cat.items.map((it, i) => {
+      const fid = `feat-${gslug}-${i}`;
+      const checked = !!MEM.feats[fid];
+      return `<label class="feat-item ${checked?'done':''}">
+        <input type="checkbox" data-feat="${fid}" ${checked?'checked':''}>
+        <span>${esc(it)}</span>
+      </label>`;
+    }).join('');
+    div.innerHTML = `
+      <h4>${esc(cat.group)} <span class="ct" data-catcount="${gslug}"></span></h4>
+      <div class="bar"><i data-catbar="${gslug}"></i></div>
+      ${items}`;
+    grid.appendChild(div);
+  });
+}
+
+/* ============================================================
+   Render: feedback table
+   ============================================================ */
+function renderTable(){
+  const body = document.getElementById('fb-body');
+  body.innerHTML = '';
+  MEM.table.forEach((row, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="num">${i+1}</td>
+      <td><textarea data-tbl="${i}-area" placeholder="role / screen">${esc(row.area||'')}</textarea></td>
+      <td><textarea data-tbl="${i}-off" placeholder="what feels off">${esc(row.off||'')}</textarea></td>
+      <td><textarea data-tbl="${i}-want" placeholder="what you'd want instead">${esc(row.want||'')}</textarea></td>
+      <td><button class="delrow" data-del="${i}" title="Delete row" aria-label="Delete row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></td>`;
+    body.appendChild(tr);
+  });
+  body.querySelectorAll('textarea').forEach(autosize);
+}
+
+/* ============================================================
+   Render: spine
+   ============================================================ */
+function renderSpine(){
+  const spine = document.getElementById('spine');
+  spine.innerHTML = '';
+  // Setup node
+  spine.appendChild(spineNode('howto', 0, '✦', 'Setup & logins', null, true));
+  ACTS.forEach(act => {
+    const r = act.roleKey ? ROLE_BY_KEY[act.roleKey] : null;
+    const li = spineNode(act.id, act.num, String(act.num), 'Act ' + act.num + ' · ' + act.title, r);
+    spine.appendChild(li);
+  });
+  spine.appendChild(spineNode('features', 0, '☑', 'Feature coverage', null, true));
+  spine.appendChild(spineNode('feedback', 0, '✎', 'Feedback capture', null, true));
+}
+function spineNode(target, num, glyph, label, role, minor){
+  const li = document.createElement('li');
+  li.className = 'seg' + (minor?' minor':'');
+  const a = document.createElement('a');
+  a.className = 'node';
+  a.href = '#' + target;
+  a.dataset.target = target;
+  a.innerHTML = `
+    <span class="ring" data-ring="${target}"><span class="num"><span>${glyph}</span></span></span>
+    <span class="node-label">${esc(label)}${role?` <em>${esc(role.person||role.role)}</em>`:'<em data-frac="'+target+'"></em>'}</span>`;
+  li.appendChild(a);
+  return li;
+}
+
+/* ============================================================
+   Progress computation
+   ============================================================ */
+function actStepIds(act){ return act.steps.map((_,i)=>`${act.id}-s${i+1}`); }
+
+function recompute(){
+  // walkthrough total
+  let total = 0, done = 0;
+  const perAct = {};
+  ACTS.forEach(act => {
+    const ids = actStepIds(act);
+    const d = ids.filter(id => MEM.steps[id]).length;
+    perAct[act.id] = { d, t: ids.length };
+    total += ids.length; done += d;
+  });
+  // top meter
+  const pct = total ? Math.round(done/total*100) : 0;
+  document.getElementById('m-steps').textContent = `${done} / ${total}`;
+  document.getElementById('m-steps-bar').style.width = pct + '%';
+
+  // per-act prog + spine rings
+  ACTS.forEach(act => {
+    const {d,t} = perAct[act.id];
+    const p = t ? Math.round(d/t*100) : 0;
+    const ap = document.querySelector(`[data-actprog="${act.id}"]`);
+    if(ap) ap.textContent = `${d}/${t}`;
+    const ring = document.querySelector(`[data-ring="${act.id}"]`);
+    if(ring){
+      ring.style.setProperty('--p', p);
+      const node = ring.closest('.node');
+      node.classList.toggle('done', d===t && t>0);
+    }
+    const frac = document.querySelector(`[data-frac="${act.id}"]`);
+    if(frac) frac.textContent = `${d}/${t}`;
+  });
+
+  // features
+  let ft=0, fd=0;
+  FEATURES.forEach(cat => {
+    const gslug = slug(cat.group);
+    let cd=0;
+    cat.items.forEach((_,i)=>{ const fid=`feat-${gslug}-${i}`; ft++; if(MEM.feats[fid]){fd++;cd++;} });
+    const cc = document.querySelector(`[data-catcount="${gslug}"]`);
+    if(cc) cc.textContent = `${cd}/${cat.items.length}`;
+    const cb = document.querySelector(`[data-catbar="${gslug}"]`);
+    if(cb) cb.style.width = (cat.items.length?Math.round(cd/cat.items.length*100):0)+'%';
+  });
+  const fpct = ft?Math.round(fd/ft*100):0;
+  document.getElementById('m-feat').textContent = `${fd} / ${ft}`;
+  document.getElementById('m-feat-bar').style.width = fpct + '%';
+  const fc = document.getElementById('feat-count');
+  if(fc) fc.textContent = `${fd} / ${ft}`;
+}
+
+/* ============================================================
+   Auto-resize textareas
+   ============================================================ */
+function autosize(ta){
+  ta.style.height = 'auto';
+  ta.style.height = (ta.scrollHeight + 2) + 'px';
+  ta.classList.toggle('filled', ta.value.trim().length > 0);
+}
+
+/* ============================================================
+   Wire up events (delegation)
+   ============================================================ */
+function wire(){
+  // checkboxes (steps + features)
+  document.body.addEventListener('change', e => {
+    const t = e.target;
+    if(t.dataset.step){
+      MEM.steps[t.dataset.step] = t.checked;
+      t.closest('.step').classList.toggle('checked', t.checked);
+      recompute(); save();
+    } else if(t.dataset.feat){
+      MEM.feats[t.dataset.feat] = t.checked;
+      t.closest('.feat-item').classList.toggle('done', t.checked);
+      recompute(); save();
+    }
+  });
+
+  // textareas (notes, role notes, table) + autosize
+  document.body.addEventListener('input', e => {
+    const t = e.target;
+    if(t.tagName !== 'TEXTAREA') return;
+    autosize(t);
+    if(t.dataset.note){ MEM.notes[t.dataset.note] = t.value; save(); }
+    else if(t.dataset.rolenote){
+      MEM.roleNotes[t.dataset.rolenote] = t.value; save();
+      const btn = document.querySelector(`[data-target="${t.dataset.rolenote}-wrap"]`);
+      if(btn){ const has=t.value.trim().length>0; btn.classList.toggle('has',has); btn.textContent = has ? '📝 Sidebar notes ✓' : '+ Sidebar notes'; }
+    }
+    else if(t.dataset.tbl){
+      const [idx, field] = t.dataset.tbl.split('-');
+      if(MEM.table[idx]){ MEM.table[idx][field] = t.value; save(); }
+    }
+  });
+
+  // copy buttons + note toggles + delete row
+  document.body.addEventListener('click', e => {
+    const copy = e.target.closest('.copy');
+    if(copy){
+      doCopy(copy.dataset.copy);
+      copy.classList.add('ok');
+      setTimeout(()=>copy.classList.remove('ok'), 1100);
+      return;
+    }
+    const nb = e.target.closest('.notebtn');
+    if(nb){
+      const w = document.getElementById(nb.dataset.target);
+      if(w){ w.classList.toggle('open'); if(w.classList.contains('open')){ const ta=w.querySelector('textarea'); autosize(ta); ta.focus(); } }
+      return;
+    }
+    const del = e.target.closest('.delrow');
+    if(del){
+      const i = +del.dataset.del;
+      MEM.table.splice(i,1);
+      if(MEM.table.length===0) MEM.table.push({area:'',off:'',want:''});
+      renderTable(); save();
+      return;
+    }
+  });
+
+  // add row
+  document.getElementById('add-row').addEventListener('click', ()=>{
+    MEM.table.push({area:'',off:'',want:''});
+    renderTable(); save();
+    const last = document.querySelector('#fb-body tr:last-child textarea');
+    if(last) last.focus();
+  });
+
+  // export
+  document.getElementById('export-btn').addEventListener('click', exportMd);
+  document.getElementById('export-btn-2').addEventListener('click', exportMd);
+
+  // reset
+  document.getElementById('reset-btn').addEventListener('click', ()=>{
+    if(confirm('Reset all progress, notes and feedback in this browser? This cannot be undone.')){
+      MEM = { steps:{}, notes:{}, feats:{}, roleNotes:{}, table:[{area:'',off:'',want:''},{area:'',off:'',want:''},{area:'',off:'',want:''}] };
+      save(); renderAll(); toast('Everything reset');
+    }
+  });
+
+  // mobile drawer
+  const open = ()=>document.body.classList.add('rail-open');
+  const close = ()=>document.body.classList.remove('rail-open');
+  document.getElementById('menu-toggle').addEventListener('click', open);
+  document.getElementById('scrim').addEventListener('click', close);
+  document.getElementById('rail').addEventListener('click', e => { if(e.target.closest('.node')) close(); });
+
+  // spine active-state on scroll
+  setupScrollSpy();
+}
+
+function doCopy(text){
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(()=>toast('Copied: ' + text)).catch(()=>fallbackCopy(text));
+  } else { fallbackCopy(text); }
+}
+function fallbackCopy(text){
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); toast('Copied: ' + text); }catch(e){ toast('Copy failed'); }
+  document.body.removeChild(ta);
+}
+
+/* ============================================================
+   Scroll spy for spine
+   ============================================================ */
+function setupScrollSpy(){
+  const ids = ['howto', ...ACTS.map(a=>a.id), 'features', 'feedback'];
+  const targets = ids.map(id => document.getElementById(id)).filter(Boolean);
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(en => {
+      if(en.isIntersecting){
+        document.querySelectorAll('.node').forEach(n => n.classList.toggle('active', n.dataset.target === en.target.id));
+      }
+    });
+  }, { rootMargin:'-20% 0px -70% 0px', threshold:0 });
+  targets.forEach(t => obs.observe(t));
+}
+
+/* ============================================================
+   Toast
+   ============================================================ */
+let toastTimer=null;
+function toast(msg){
+  const el = document.getElementById('toast');
+  document.getElementById('toast-msg').textContent = msg;
+  el.classList.add('show');
+  if(toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>el.classList.remove('show'), 1900);
+}
+
+/* ============================================================
+   Export to Markdown
+   ============================================================ */
+function exportMd(){
+  const now = new Date();
+  const stamp = now.toLocaleString();
+  let total=0, done=0;
+  ACTS.forEach(a => actStepIds(a).forEach(id => { total++; if(MEM.steps[id]) done++; }));
+  let ft=0, fd=0;
+  FEATURES.forEach(c => c.items.forEach((_,i)=>{ ft++; if(MEM.feats[`feat-${slug(c.group)}-${i}`]) fd++; }));
+
+  let md = `# ClinicOS Test Drive — Notes\n_Exported ${stamp}_\n\n`;
+  md += `- Walkthrough steps completed: **${done} / ${total}**\n`;
+  md += `- Feature coverage ticked: **${fd} / ${ft}**\n\n`;
+
+  // role sidebar notes
+  const roleNotes = ROLES.filter(r => (MEM.roleNotes['rolenote-'+r.key]||'').trim());
+  if(roleNotes.length){
+    md += `## Per-role sidebar checks\n`;
+    roleNotes.forEach(r => {
+      md += `- **${roleDisplay(r)}${r.person?` (${r.person})`:''}:** ${MEM.roleNotes['rolenote-'+r.key].trim()}\n`;
+    });
+    md += `\n`;
+  }
+
+  // acts
+  ACTS.forEach(act => {
+    const r = act.roleKey ? ROLE_BY_KEY[act.roleKey] : null;
+    const who = r ? `${r.role}${r.person?', '+r.person:''}` : (act.roleLabel||'');
+    const ids = actStepIds(act);
+    const d = ids.filter(id=>MEM.steps[id]).length;
+    md += `## Act ${act.num} — ${act.title}${who?` (${who})`:''}  [${d}/${ids.length}]\n`;
+    if(act.lead) md += `> ${act.lead.replace(/\n/g,' ')}\n\n`;
+    md += `**Goal:** ${act.goal}\n\n`;
+    act.steps.forEach((s,i)=>{
+      const sid = `${act.id}-s${i+1}`;
+      md += `- [${MEM.steps[sid]?'x':' '}] ${s.t}\n`;
+    });
+    if(act.expect) md += `\n_Expect: ${act.expect}_\n`;
+    md += `\n**Feedback:**\n`;
+    act.notes.forEach((n,i)=>{
+      const nid = `${act.id}-n${i+1}`;
+      const v = (MEM.notes[nid]||'').trim();
+      md += `- ${n}\n`;
+      if(v) md += `  - → ${v.replace(/\n/g,' ')}\n`;
+    });
+    md += `\n`;
+  });
+
+  // feature coverage
+  md += `## Feature coverage\n`;
+  FEATURES.forEach(cat => {
+    md += `### ${cat.group}\n`;
+    cat.items.forEach((it,i)=>{
+      md += `- [${MEM.feats[`feat-${slug(cat.group)}-${i}`]?'x':' '}] ${it}\n`;
+    });
+    md += `\n`;
+  });
+
+  // feedback table
+  const rows = MEM.table.filter(r => (r.area||r.off||r.want));
+  md += `## Quick feedback capture\n`;
+  if(rows.length){
+    md += `| # | Area / role | What feels off | What you'd want instead |\n|---|---|---|---|\n`;
+    rows.forEach((r,i)=>{
+      const c = s => (s||'').replace(/\n/g,' ').replace(/\|/g,'\\|');
+      md += `| ${i+1} | ${c(r.area)} | ${c(r.off)} | ${c(r.want)} |\n`;
+    });
+  } else {
+    md += `_(no rows filled in)_\n`;
+  }
+  md += `\n---\n_Generated from the ClinicOS End-to-end Test Drive companion._\n`;
+
+  // download
+  const blob = new Blob([md], {type:'text/markdown'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `clinicos-test-notes-${now.toISOString().slice(0,10)}.md`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+
+  // also copy to clipboard for convenience
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(md).then(()=>toast('Notes exported (downloaded + copied)')).catch(()=>toast('Notes exported — file downloaded'));
+  } else { toast('Notes exported — file downloaded'); }
+}
+
+/* ============================================================
+   Boot
+   ============================================================ */
+function renderAll(){
+  renderLogins();
+  renderActs();
+  renderFeatures();
+  renderTable();
+  renderSpine();
+  recompute();
+  document.querySelectorAll('textarea').forEach(autosize);
+}
+renderAll();
+wire();
+if(!usingLocal){
+  toast('Note: storage is blocked here — progress holds for this session only. Use Export to save.');
+}
+</script>
+</body>
+</html>
