@@ -498,6 +498,12 @@ func main() {
 			 ON CONFLICT (tenant_id, code) DO NOTHING`, tenantID, clinicID); e != nil {
 			return fmt.Errorf("branch: %w", e)
 		}
+		// Demo runs the "separate cashier" flow (reception holds the patient for
+		// payment; the cashier collects, then they advance). Real clinics pick this
+		// in Settings → Payment collection (the DB default is 'reception').
+		if _, e := tx.Exec(ctx, `UPDATE clinics SET payment_mode = 'cashier' WHERE tenant_id = $1`, tenantID); e != nil {
+			return fmt.Errorf("clinic payment_mode: %w", e)
+		}
 		// Starter diagnosis catalog (admins extend it in Settings).
 		if e := seedDiagnosisCatalog(ctx, tx, tenantID); e != nil {
 			return e

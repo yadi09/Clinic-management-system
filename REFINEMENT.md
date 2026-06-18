@@ -128,6 +128,18 @@ Status: `logged` → `planned` → `in-progress` → `done`.
 
 ---
 
+- **[CASH-4] Demo defaults to cashier mode · config** — During testing the demo
+  clinic was in **`reception` (inline-collect)** mode (the DB default), so reception
+  settled the charge silently and queued the patient with no visible cashier step —
+  read as "passed to triage without paying". Not a code bug (cashier mode correctly
+  *holds* the patient until paid — proven by the CASH-3 smoke), but the wrong default
+  for what we're testing. **Fixed:** demo seed now sets `payment_mode='cashier'`
+  (real clinics still pick it in Settings; DB default stays `reception`). *Follow-up
+  (later): reception-collect mode should show a visible "collect payment" confirmation
+  rather than silently auto-settling.* *Status: done.*
+
+---
+
 ## Cross-cutting / Platform
 
 - **[HELP-1] All pages · all roles · ux** — Per-role **Help Center + self-teaching
