@@ -574,16 +574,17 @@ const ROLE_BY_KEY = Object.fromEntries(ROLES.map(r => [r.key, r]));
 const ACTS = [
   {
     id:'act1', num:1, title:'Configure billing & flow', roleKey:'admin',
-    goal:'price the clinic\'s services and choose how payments are collected.',
+    goal:'price the clinic\'s services; see that payment collection now follows roles.',
     steps:[
-      { t:'**Settings → Patient flow.** Set the **follow-up free window** and set **Payment collection → Separate cashier** (turns on the cashier flow used below). *No fee amount here anymore — all prices live in the service catalog.*', flag:'caution', flagLabel:'sets the mode' },
-      { t:'**Billing → Service catalog.** Review the seeded services + prices (Registration fee, Consultation, dressing…). Note the **Default** tag on **Registration fee** + **Consultation** — those are what reception pre-selects. **Edit a price**, toggle a **Default**, and toggle **Available** Off/On.' },
-      { t:'(Glance at **Staff** — the 9 role accounts that come seeded.)' },
+      { t:'**Billing → Service catalog.** Review the seeded services + prices (Registration fee, Consultation, dressing…). Note the **Default** tag on **Registration fee** + **Consultation** — those are what reception pre-selects *and* what a walk-in / appointment check-in is auto-billed. **Edit a price**, toggle a **Default**, toggle **Available** Off/On.' },
+      { t:'**Lab → Catalog.** Note each test now has a **price** (CBC 120, Troponin 350…). These are billed when a doctor orders the test (pre-pay).' },
+      { t:'**Settings → Patient flow.** Note there is **no payment-mode toggle** anymore — instead a line explains: *payment collection follows roles.* A receptionist who also holds the **Cashier** role collects at the desk; without it, charges go to the cashier worklist.', flag:'caution', flagLabel:'role-driven now' },
+      { t:'(Glance at **Staff** — the 9 role accounts seeded. The demo receptionist has **no** cashier capability, so she hands off to the cashier below.)' },
     ],
-    expect:'cashier mode is on; services are priced. From now on, charges raised at reception go to the cashier to collect.',
+    expect:'services + lab tests are priced; who collects is decided by roles, not a clinic flag.',
     notes:[
-      'Service catalog — right services & ETB prices for your clinic? anything missing?',
-      'Payment collection — is "separate cashier" vs "reception collects" the right choice to offer?',
+      'Service catalog + lab prices — right services & ETB prices for your clinic? anything missing?',
+      'Role-based collection — does "give reception the Cashier role for a one-person desk" make sense vs a toggle?',
     ],
   },
   {
@@ -592,7 +593,7 @@ const ACTS = [
     steps:[
       { t:'**Patients → Register** `Abebe Bekele`, male, ~54, with a phone number. **Add allergy `Penicillin`** (used later). On **Review**, confirm it registers **only when you click Register patient** (not when you press Enter).', flag:'caution', flagLabel:'explicit submit' },
       { t:'**Test the duplicate guard:** start registering Abebe again with the same phone → you should get a **side-by-side "New vs Existing"** comparison (matching fields highlighted). Choose **Back to edit**.' },
-      { t:'Go to **Reception**. Pick Abebe, **choose the service(s)** he\'s here for (**Registration fee + Consultation** pre-selected; add/remove as needed), choose the **department** and **Triage first / Straight to doctor** (assign **Dr. Meron**), then **Send to cashier**.' },
+      { t:'Go to **Reception**. Pick Abebe, **choose the service(s)** he\'s here for (**Registration fee + Consultation** pre-selected; add/remove as needed), choose the **department** and **Triage first / Straight to doctor** (assign **Dr. Meron**). Because this receptionist can\'t take cash, the button reads **Send to cashier** (no inline "Collect" — that only appears for a user who also holds the Cashier role).', flag:'caution', flagLabel:'role-driven' },
     ],
     expect:'Abebe has an MRN and **pending charges** (Registration + Consultation) at the cashier; he is *not* in the queue yet — he advances once the cashier takes payment.',
     notes:[
@@ -602,17 +603,18 @@ const ACTS = [
   },
   {
     id:'act3', num:3, title:'Cashier', roleKey:'cashier',
-    goal:'collect the payment so the patient can proceed.',
+    goal:'collect the payment, issue a receipt, and close the drawer.',
     steps:[
       { t:'Open **Cashier**. Abebe\'s charges (**Registration + Consultation**) are pending, grouped under his name with a total.' },
-      { t:'Pick a **payment method** (cash / card / mobile / transfer) and **Take payment** on each.' },
-      { t:'*(Try **Waive** on a charge — it requires a **reason**, e.g. Staff / Charity / Exemption — for the day you have a non-paying patient.)*', flag:'caution', flagLabel:'documented waiver' },
+      { t:'Pick a **payment method** (cash / card / mobile / transfer) and **Take payment** on each. A **receipt number** is stamped — open Abebe\'s **patient profile → Billing** and **Print** a receipt.', flag:'caution', flagLabel:'receipts' },
+      { t:'*(Try **Waive** — needs a reason; and **Void** — cancels an unpaid charge that was a mistake / the patient left. Both leave the worklist.)*' },
+      { t:'**Close day:** click **Close day** → it shows your **expected drawer by method**; enter a **counted** amount (try one ETB short) → **Close & print Z-report**. Variance is recorded.', flag:'caution', flagLabel:'Z-report' },
     ],
-    expect:'payments recorded; once **nothing is owed** Abebe **auto-advances** into the queue (triage or the doctor) per reception\'s routing; the cashier list clears.',
+    expect:'payments recorded with receipts; once **nothing is owed** Abebe **auto-advances** into the queue per reception\'s routing; the day closes with a signed Z-report (expected vs counted).',
     notes:[
-      'The pending-payments worklist — clear? grouped right? are the payment methods enough?',
-      'Does "pay, then the patient proceeds automatically" match how your clinic actually runs?',
-      'Waivers — is the reason list right? who should be allowed to waive?',
+      'Receipts — is the printed slip right (header, lines, method, cashier)?',
+      'Day-close / Z-report — does expected-vs-counted match how you balance a till?',
+      'Waivers & voids — reason lists right? who should be allowed?',
     ],
   },
   {
@@ -649,17 +651,18 @@ const ACTS = [
   },
   {
     id:'act6', num:6, title:'Laboratory', roleKey:'labtech',
-    goal:'run the troponin.',
+    goal:'run the troponin — after the lab order is paid (pre-pay gate).',
     steps:[
-      { t:'Open **Lab worklist** → **To collect**. Find Abebe\'s **Troponin** (STAT, should be pinned to the top by priority).' },
-      { t:'Try the **Scan / sample #** box: type the troponin\'s sample number → it opens.' },
-      { t:'**Receive & accession** the sample.' },
+      { t:'Open **Lab worklist** → **To collect**. Find Abebe\'s **Troponin** (STAT, pinned to the top by priority).' },
+      { t:'**Try Receive & accession now → it\'s blocked** ("payment pending"). Ordering the lab raised a **lab charge** (Troponin + CBC) at the cashier — the sample can\'t be drawn until it\'s paid.', flag:'caution', flagLabel:'pre-pay gate' },
+      { t:'Have the **Cashier** (switch role) collect Abebe\'s **lab charge**, then come back. *(Or log in as someone holding the Cashier role.)*' },
+      { t:'Now **Receive & accession** the sample (try the **Scan / sample #** box too).' },
       { t:'Enter a **critical** value — **Troponin = 5.0** — watch the flag turn red, then **Submit for validation**.', flag:'critical', flagLabel:'critical value' },
-      { t:'(Optional) Do the same for **CBC** with normal values (e.g. all mid-range).' },
+      { t:'(Optional) Do the same for **CBC** with normal values.' },
     ],
-    expect:'the result auto-flags **Critical**; status moves to *resulted* (awaiting validation). The tech cannot validate (that\'s the manager\'s job).',
+    expect:'accession is **gated until the lab order is paid**; once paid, the result auto-flags **Critical** and moves to *resulted* (awaiting validation). The tech cannot validate (manager\'s job).',
     notes:[
-      'Worklist tabs and the scan box — does this match how a lab bench works?',
+      'Lab pre-pay gate — does "pay before the sample is drawn" match your clinic? (or should some labs run first, bill later?)',
       'Result entry — fast enough? reference ranges clear? flags obvious?',
     ],
   },
@@ -698,15 +701,16 @@ const ACTS = [
   },
   {
     id:'act9', num:9, title:'Pharmacy', roleKey:'pharmacist',
-    goal:'dispense the prescription; serve a counter customer.',
+    goal:'dispense the prescription (pay before hand-over); serve a counter customer.',
     steps:[
-      { t:'**Dispense queue** — Abebe\'s signed prescription should be ready. Open it.' },
-      { t:'Note the **allergy banner** (Penicillin). Dispense **Azithromycin** — pick the FEFO batch, set quantity, add counselling notes, **Counsel & dispense**. *(Notice Amoxicillin/Tramadol batches are expired and would be skipped.)*', flag:'caution', flagLabel:'allergy + expiry' },
+      { t:'**Dispense queue** — Abebe\'s signed prescription should be ready. Open it. Note the **allergy banner** (Penicillin).' },
+      { t:'Pick the FEFO batch + quantity for **Azithromycin**, add counselling notes, then **Send to cashier** — this **prices it and bills the patient** but **moves no stock yet**. The queue row shows **awaiting payment**.', flag:'caution', flagLabel:'two-phase, pre-pay' },
+      { t:'**Complete dispense is disabled** until paid. Have the **Cashier** collect the pharmacy charge, then **Complete dispense** — *now* stock decrements and the meds are handed over. *(Amoxicillin/Tramadol batches are expired and are refused.)*' },
       { t:'**OTC sale**: sell **Cetirizine 10mg** to a walk-in customer — search, add to cart, take payment.' },
     ],
-    expect:'dispensing decrements stock and raises a charge; the OTC sale records a paid sale.',
+    expect:'no medication leaves before payment: Send to cashier bills (no stock moved) → cashier collects → Complete dispense decrements stock. OTC records a paid sale.',
     notes:[
-      'Dispense flow — batch picking, allergy/expiry safety, counselling.',
+      'Two-phase dispense (bill → pay → hand over) — does it fit your pharmacy, or do you dispense then bill?',
       'OTC sale — does the counter flow match your pharmacy?',
     ],
   },
@@ -728,15 +732,18 @@ const ACTS = [
   },
   {
     id:'act11', num:11, title:'Finance', roleKey:'owner',
-    goal:'see the day\'s money.',
+    goal:'see the day\'s money — net of refunds, broken down, with the Z-reports.',
     steps:[
-      { t:'Open **Billing → Finance**. Check **Collected / Waived / Outstanding** and the **by-service** breakdown.' },
+      { t:'Open **Billing → Finance**. Check the KPIs — **Collected (net)**, **Refunded**, **Waived**, **Outstanding** — and the **by-service** breakdown.' },
+      { t:'See the three breakdowns: **By payment method**, **By cashier**, **By branch** (lab/pharmacy show as *Unassigned* for now). Confirm the **Lab (Troponin+CBC)** and **Pharmacy (Azithromycin)** revenue you collected earlier now appears here — *not free anymore*.', flag:'caution', flagLabel:'lab+pharmacy on the books' },
+      { t:'**Refund test:** open a patient with a paid charge → **Billing → Refund** (owner-only), pick a reason. Back in Finance, **Refunded** rises and **Collected (net)** drops by the same amount.' },
+      { t:'**Day closeouts (Z-reports):** the table lists each cashier\'s daily close with **expected / counted / variance** (shorts in red) — the one you closed in Act 3 is here.' },
       { t:'Switch the range: **Today / Last 7 days / Last 30 days**.' },
-      { t:'Confirm Abebe\'s **Consultation** shows under *collected*; any charge you **waived** shows under *waived* (revenue forgone).' },
     ],
-    expect:'the money taken, waived, and still owed is visible at a glance, broken down by service.',
+    expect:'every birr — consultation, lab, pharmacy — is on the books; refunds net against collected; per-method / per-cashier / per-branch totals and the signed Z-reports are all visible.',
     notes:[
-      'Does this give an owner what they need day to day? what\'s missing (per-cashier totals, CSV export, custom dates)?',
+      'Does this give an owner what they need? The money should now "add up" — does it?',
+      'Refunds, by-cashier, Z-reports — anything still missing for you to trust the till?',
     ],
   },
   {
@@ -748,7 +755,7 @@ const ACTS = [
       { t:'Register **Marta Tadesse**, 28, sore throat.' },
       { t:'Reception → **Send to cashier**; the **Cashier** takes payment so she proceeds.' },
       { t:'**Triage** — record vitals.' },
-      { t:'Doctor orders a **Rapid strep test**.' },
+      { t:'Doctor orders a **Rapid strep test** (also **pre-pay** — the cashier collects the lab charge before the sample is run).' },
       { t:'Lab enters result *"Positive"* (**non-numeric** — no flag).' },
       { t:'Doctor **prescribes** and closes.' },
     ],
@@ -762,15 +769,14 @@ const ACTS = [
     roleLabel:'Owner or Clinic admin',
     goal:'configuration, per-role access, and the in-app help.',
     steps:[
-      { t:'**Staff** — review the staff and their roles; try inviting a user.' },
-      { t:'**Settings** — the **card fee**, **free-follow-up window**, **payment collection mode**, and the **diagnosis catalog** (categories + entries).' },
+      { t:'**Staff → Edit roles** on the **receptionist**: add the **Cashier** role and save. Log in as her again → the **Reception** screen now offers **Collect ETB N & send** *inline* (and the **Cashier** page appears). Remove the role to restore the hand-off. *This is how a one-person desk works — no toggle.*', flag:'caution', flagLabel:'role-driven collection' },
+      { t:'**Settings → Patient flow** — the **free-follow-up window**, **triage step**, **doctor assignment**, and the **roles explainer** (no payment-mode toggle). Plus the **diagnosis catalog** (categories + entries).' },
       { t:'**Help** — open the **Help center** (bottom of the sidebar) for the role you\'re in, and click **"How this works"** in the top bar on any page.', flag:'caution', flagLabel:'self-teaching' },
-      { t:'Confirm the **follow-up is free**: a doctor-booked follow-up within the window isn\'t charged. *(Shorten the window in Settings to test it quickly.)*' },
     ],
-    expect:null,
+    expect:'granting the Cashier role flips reception to inline collection (and back); settings + diagnosis catalog are configurable; in-app help explains each role.',
     notes:[
-      'Settings — is everything a clinic needs to configure here? labels clear?',
-      'Help center / "How this works" — does it make each role self-explanatory?',
+      'Role-based collection — is "give reception the Cashier role" intuitive for a small clinic?',
+      'Settings / Help — anything a clinic needs that\'s missing? labels clear?',
       'Roles/permissions — does each role see the right things and nothing it shouldn\'t?',
     ],
   },
@@ -788,7 +794,7 @@ const FEATURES = [
 /* ============================================================
    State + persistence
    ============================================================ */
-const KEY = 'clinicos-testdrive-v2';
+const KEY = 'clinicos-testdrive-v3';
 let MEM = {};
 let usingLocal = true;
 try {
