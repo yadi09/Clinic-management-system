@@ -162,6 +162,10 @@ func (h *Handlers) CreateService(c *gin.Context) {
 		httpx.Fail(c, apperr.Validation("code and name are required"))
 		return
 	}
+	if req.Price < 0 {
+		httpx.Fail(c, apperr.Validation("price cannot be negative"))
+		return
+	}
 	s, err := h.svc.CreateService(c.Request.Context(), billing.ServiceItemInput{
 		Code: req.Code, Name: req.Name, Category: req.Category, Price: strconv.FormatFloat(req.Price, 'f', 2, 64),
 	})
@@ -180,6 +184,10 @@ func (h *Handlers) UpdateService(c *gin.Context) {
 	var req serviceReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.Fail(c, apperr.Validation("code and name are required"))
+		return
+	}
+	if req.Price < 0 {
+		httpx.Fail(c, apperr.Validation("price cannot be negative"))
 		return
 	}
 	if err := h.svc.UpdateService(c.Request.Context(), sid, billing.ServiceItemInput{
@@ -333,6 +341,10 @@ func (h *Handlers) RaiseCharge(c *gin.Context) {
 	pid, err := id.Decode(id.PrefixPatient, req.PatientID)
 	if err != nil {
 		httpx.Fail(c, apperr.Validation("invalid patient_id"))
+		return
+	}
+	if req.Amount < 0 {
+		httpx.Fail(c, apperr.Validation("amount cannot be negative"))
 		return
 	}
 	in := billing.ChargeInput{
