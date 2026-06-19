@@ -63,6 +63,11 @@ Status: `logged` → `planned` → `in-progress` → `done`.
   prefix/substring of the name matches (MRN/phone substring already worked). Verified
   Yad/yad/Yada/ter/Tere/"yadamzer ter" → hit; non-match → empty. *Status: done.*
 
+- **[REG-4] Patient picker · Reception/all · ux** — The picker showed "Type to
+  search…" and fetched nothing until ≥2 chars. **Fixed:** it now fetches on open
+  (empty query returns the first patients), so a **list shows by default** and
+  filters as you type; empty-state reads "Loading…" / "No patients found." *Status: done.*
+
 ---
 
 ## Billing / Payments

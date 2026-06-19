@@ -205,8 +205,8 @@ export function PatientCombobox({ value, onSelect }: { value: { id: string; name
   const debounced = useDebounce(q, 250);
   const results = useQuery({
     queryKey: ["patients", debounced, 1],
-    queryFn: () => searchPatients(debounced, 1, 8),
-    enabled: open && debounced.trim().length >= 2,
+    queryFn: () => searchPatients(debounced.trim(), 1, 8),
+    enabled: open, // empty query returns the first patients, so a list shows by default
   });
 
   return (
@@ -221,7 +221,7 @@ export function PatientCombobox({ value, onSelect }: { value: { id: string; name
         <Command shouldFilter={false}>
           <CommandInput placeholder="Search by name / MRN / phone…" value={q} onValueChange={setQ} />
           <CommandList>
-            <CommandEmpty>{debounced.length < 2 ? "Type to search…" : "No patients found."}</CommandEmpty>
+            <CommandEmpty>{results.isFetching ? "Loading…" : "No patients found."}</CommandEmpty>
             {(results.data?.items ?? []).map((p) => (
               <CommandItem
                 key={p.id}
