@@ -431,6 +431,44 @@ func (h *Handlers) WaiveCharge(c *gin.Context) {
 	httpx.NoContent(c)
 }
 
+func (h *Handlers) VoidCharge(c *gin.Context) {
+	cid, ok := decodeBilling(c, id.PrefixCharge, "id")
+	if !ok {
+		return
+	}
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("a reason is required"))
+		return
+	}
+	if err := h.svc.VoidCharge(c.Request.Context(), cid, req.Reason); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+func (h *Handlers) RefundCharge(c *gin.Context) {
+	cid, ok := decodeBilling(c, id.PrefixCharge, "id")
+	if !ok {
+		return
+	}
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("a reason is required"))
+		return
+	}
+	if err := h.svc.RefundCharge(c.Request.Context(), cid, req.Reason); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
 func (h *Handlers) WaiverReasons(c *gin.Context) {
 	httpx.OK(c, h.svc.WaiverReasons())
 }

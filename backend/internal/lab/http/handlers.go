@@ -65,6 +65,7 @@ type createTestRequest struct {
 	Code     string `json:"code" binding:"required"`
 	Name     string `json:"name" binding:"required"`
 	Specimen string `json:"specimen"`
+	Price    string `json:"price"`
 }
 type addAnalyteRequest struct {
 	Name         string `json:"name" binding:"required"`
@@ -113,7 +114,7 @@ func (h *Handlers) CreateTest(c *gin.Context) {
 		httpx.Fail(c, apperr.Validation("code and name are required"))
 		return
 	}
-	t, err := h.svc.CreateTest(c.Request.Context(), req.Code, req.Name, req.Specimen)
+	t, err := h.svc.CreateTest(c.Request.Context(), req.Code, req.Name, req.Specimen, req.Price)
 	if err != nil {
 		httpx.Fail(c, err)
 		return
@@ -201,7 +202,7 @@ func (h *Handlers) UpdateTest(c *gin.Context) {
 		httpx.Fail(c, apperr.Validation("code and name are required"))
 		return
 	}
-	if err := h.svc.UpdateTest(c.Request.Context(), testID, req.Code, req.Name, req.Specimen); err != nil {
+	if err := h.svc.UpdateTest(c.Request.Context(), testID, req.Code, req.Name, req.Specimen, req.Price); err != nil {
 		httpx.Fail(c, err)
 		return
 	}

@@ -187,9 +187,9 @@ func (q *Queries) CreateLabOrderItem(ctx context.Context, arg CreateLabOrderItem
 }
 
 const createLabTest = `-- name: CreateLabTest :one
-INSERT INTO lab_tests (tenant_id, code, name, specimen, created_by)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, code, name, specimen, is_active
+INSERT INTO lab_tests (tenant_id, code, name, specimen, price, created_by)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, code, name, specimen, is_active, price
 `
 
 type CreateLabTestParams struct {
@@ -197,6 +197,7 @@ type CreateLabTestParams struct {
 	Code      string     `json:"code"`
 	Name      string     `json:"name"`
 	Specimen  *string    `json:"specimen"`
+	Price     string     `json:"price"`
 	CreatedBy *uuid.UUID `json:"created_by"`
 }
 
@@ -206,6 +207,7 @@ type CreateLabTestRow struct {
 	Name     string    `json:"name"`
 	Specimen *string   `json:"specimen"`
 	IsActive bool      `json:"is_active"`
+	Price    string    `json:"price"`
 }
 
 func (q *Queries) CreateLabTest(ctx context.Context, arg CreateLabTestParams) (CreateLabTestRow, error) {
@@ -214,6 +216,7 @@ func (q *Queries) CreateLabTest(ctx context.Context, arg CreateLabTestParams) (C
 		arg.Code,
 		arg.Name,
 		arg.Specimen,
+		arg.Price,
 		arg.CreatedBy,
 	)
 	var i CreateLabTestRow
@@ -223,6 +226,7 @@ func (q *Queries) CreateLabTest(ctx context.Context, arg CreateLabTestParams) (C
 		&i.Name,
 		&i.Specimen,
 		&i.IsActive,
+		&i.Price,
 	)
 	return i, err
 }
@@ -264,8 +268,28 @@ func (q *Queries) FindOrderItemBySampleNo(ctx context.Context, arg FindOrderItem
 	return i, err
 }
 
+const getItemOrderCharge = `-- name: GetItemOrderCharge :one
+SELECT o.charge_id
+FROM lab_order_items i
+JOIN lab_orders o ON o.id = i.order_id AND o.tenant_id = i.tenant_id
+WHERE i.tenant_id = $1 AND i.id = $2
+`
+
+type GetItemOrderChargeParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+// The billing charge id for the order this item belongs to (accession gate).
+func (q *Queries) GetItemOrderCharge(ctx context.Context, arg GetItemOrderChargeParams) (*uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getItemOrderCharge, arg.TenantID, arg.ID)
+	var charge_id *uuid.UUID
+	err := row.Scan(&charge_id)
+	return charge_id, err
+}
+
 const getLabTest = `-- name: GetLabTest :one
-SELECT id, code, name, specimen, is_active FROM lab_tests
+SELECT id, code, name, specimen, is_active, price FROM lab_tests
 WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
 `
 
@@ -280,6 +304,7 @@ type GetLabTestRow struct {
 	Name     string    `json:"name"`
 	Specimen *string   `json:"specimen"`
 	IsActive bool      `json:"is_active"`
+	Price    string    `json:"price"`
 }
 
 func (q *Queries) GetLabTest(ctx context.Context, arg GetLabTestParams) (GetLabTestRow, error) {
@@ -291,12 +316,13 @@ func (q *Queries) GetLabTest(ctx context.Context, arg GetLabTestParams) (GetLabT
 		&i.Name,
 		&i.Specimen,
 		&i.IsActive,
+		&i.Price,
 	)
 	return i, err
 }
 
 const getLabTestByCode = `-- name: GetLabTestByCode :one
-SELECT id, code, name, specimen, is_active FROM lab_tests
+SELECT id, code, name, specimen, is_active, price FROM lab_tests
 WHERE tenant_id = $1 AND lower(code) = lower($2) AND deleted_at IS NULL
 `
 
@@ -311,6 +337,7 @@ type GetLabTestByCodeRow struct {
 	Name     string    `json:"name"`
 	Specimen *string   `json:"specimen"`
 	IsActive bool      `json:"is_active"`
+	Price    string    `json:"price"`
 }
 
 func (q *Queries) GetLabTestByCode(ctx context.Context, arg GetLabTestByCodeParams) (GetLabTestByCodeRow, error) {
@@ -322,6 +349,7 @@ func (q *Queries) GetLabTestByCode(ctx context.Context, arg GetLabTestByCodePara
 		&i.Name,
 		&i.Specimen,
 		&i.IsActive,
+		&i.Price,
 	)
 	return i, err
 }
@@ -449,7 +477,7 @@ func (q *Queries) ListAnalytesByTest(ctx context.Context, arg ListAnalytesByTest
 const listLabTests = `-- name: ListLabTests :many
 
 
-SELECT t.id, t.code, t.name, t.specimen, t.is_active,
+SELECT t.id, t.code, t.name, t.specimen, t.is_active, t.price,
   (SELECT count(*) FROM lab_analytes a WHERE a.test_id = t.id)::int AS analyte_count
 FROM lab_tests t
 WHERE t.tenant_id = $1 AND t.deleted_at IS NULL AND ($2::bool IS NOT TRUE OR t.is_active)
@@ -467,6 +495,7 @@ type ListLabTestsRow struct {
 	Name         string    `json:"name"`
 	Specimen     *string   `json:"specimen"`
 	IsActive     bool      `json:"is_active"`
+	Price        string    `json:"price"`
 	AnalyteCount int32     `json:"analyte_count"`
 }
 
@@ -487,6 +516,7 @@ func (q *Queries) ListLabTests(ctx context.Context, arg ListLabTestsParams) ([]L
 			&i.Name,
 			&i.Specimen,
 			&i.IsActive,
+			&i.Price,
 			&i.AnalyteCount,
 		); err != nil {
 			return nil, err
@@ -905,6 +935,23 @@ func (q *Queries) MarkItemNotified(ctx context.Context, arg MarkItemNotifiedPara
 	return id, err
 }
 
+const setLabOrderCharge = `-- name: SetLabOrderCharge :exec
+UPDATE lab_orders SET charge_id = $1, updated_at = now()
+WHERE tenant_id = $2 AND id = $3 AND deleted_at IS NULL
+`
+
+type SetLabOrderChargeParams struct {
+	ChargeID *uuid.UUID `json:"charge_id"`
+	TenantID uuid.UUID  `json:"tenant_id"`
+	ID       uuid.UUID  `json:"id"`
+}
+
+// Links the order to the billing charge that gates accession (pre-pay).
+func (q *Queries) SetLabOrderCharge(ctx context.Context, arg SetLabOrderChargeParams) error {
+	_, err := q.db.Exec(ctx, setLabOrderCharge, arg.ChargeID, arg.TenantID, arg.ID)
+	return err
+}
+
 const setLabTestActive = `-- name: SetLabTestActive :exec
 UPDATE lab_tests SET is_active = $1, updated_at = now()
 WHERE tenant_id = $2 AND id = $3 AND deleted_at IS NULL
@@ -988,14 +1035,15 @@ func (q *Queries) UpdateAnalyte(ctx context.Context, arg UpdateAnalyteParams) er
 }
 
 const updateLabTest = `-- name: UpdateLabTest :exec
-UPDATE lab_tests SET code = $1, name = $2, specimen = $3, updated_at = now()
-WHERE tenant_id = $4 AND id = $5 AND deleted_at IS NULL
+UPDATE lab_tests SET code = $1, name = $2, specimen = $3, price = $4, updated_at = now()
+WHERE tenant_id = $5 AND id = $6 AND deleted_at IS NULL
 `
 
 type UpdateLabTestParams struct {
 	Code     string    `json:"code"`
 	Name     string    `json:"name"`
 	Specimen *string   `json:"specimen"`
+	Price    string    `json:"price"`
 	TenantID uuid.UUID `json:"tenant_id"`
 	ID       uuid.UUID `json:"id"`
 }
@@ -1005,6 +1053,7 @@ func (q *Queries) UpdateLabTest(ctx context.Context, arg UpdateLabTestParams) er
 		arg.Code,
 		arg.Name,
 		arg.Specimen,
+		arg.Price,
 		arg.TenantID,
 		arg.ID,
 	)

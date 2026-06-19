@@ -133,6 +133,36 @@ RETURNING id, source, patient_id, branch_id, department_id, to_triage, provider_
 -- name: MarkChargeEnqueued :exec
 UPDATE charges SET enqueued = true, updated_at = now() WHERE tenant_id = @tenant_id AND id = @id;
 
+-- name: GetCharge :one
+SELECT id, patient_id, encounter_id, source, description, amount, currency, status, settled_at
+FROM charges
+WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
+
+-- name: ChargeStatus :one
+-- Used by lab/pharmacy pre-pay gates: has this charge been settled (paid/waived)?
+SELECT status FROM charges
+WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
+
+-- name: VoidCharge :one
+-- Atomic claim: only a still-pending charge can be voided (keying error / patient left).
+UPDATE charges SET status = 'void', void_reason = @void_reason, voided_by = @voided_by, voided_at = now(), updated_at = now()
+WHERE tenant_id = @tenant_id AND id = @id AND status = 'pending' AND deleted_at IS NULL
+RETURNING id, source, patient_id, amount;
+
+-- name: CountReversals :one
+-- Prevents double-refunding the same charge.
+SELECT count(*)::int FROM charges
+WHERE tenant_id = @tenant_id AND reverses_charge_id = @id AND deleted_at IS NULL;
+
+-- name: CreateReversalCharge :one
+-- A refund posts a linked negative entry dated now (so historical day/Z reports stay
+-- correct); the original settled charge is left intact for the audit trail.
+INSERT INTO charges (tenant_id, patient_id, encounter_id, source, description, amount, currency, status,
+  payment_method, settled_by, settled_at, reverses_charge_id, created_by)
+VALUES (@tenant_id, @patient_id, @encounter_id, 'refund', @description, @amount, @currency, 'paid',
+  @payment_method, @settled_by, now(), @reverses_charge_id, @created_by)
+RETURNING id, amount, created_at;
+
 -- name: CountPendingChargesByPatient :one
 -- Used to gate the visit: only advance the patient once nothing is still owed.
 SELECT count(*)::int FROM charges
@@ -165,6 +195,12 @@ SELECT COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
 FROM charges WHERE tenant_id = @tenant_id AND status = 'pending' AND deleted_at IS NULL;
 
 -- name: CashBySourceSince :many
+-- Gross collected by service line (refund reversing entries are reported separately).
 SELECT source, COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
-FROM charges WHERE tenant_id = @tenant_id AND status = 'paid' AND settled_at >= @since
+FROM charges WHERE tenant_id = @tenant_id AND status = 'paid' AND source <> 'refund' AND settled_at >= @since
 GROUP BY source ORDER BY total DESC;
+
+-- name: CashRefundedSince :one
+-- Refunds are stored as negative entries; report them as a positive total.
+SELECT COALESCE(-sum(amount), 0)::numeric AS total, count(*)::int AS n
+FROM charges WHERE tenant_id = @tenant_id AND source = 'refund' AND status = 'paid' AND settled_at >= @since;

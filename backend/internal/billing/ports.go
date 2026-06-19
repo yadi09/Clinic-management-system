@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // Assessment is the card-fee decision for a visit.
@@ -119,13 +120,15 @@ type CashLine struct {
 	Count  int    `json:"count"`
 }
 type CashSummary struct {
-	Collected        string     `json:"collected"`
+	Collected        string     `json:"collected"` // net of refunds
 	CollectedCount   int        `json:"collected_count"`
 	Waived           string     `json:"waived"`
 	WaivedCount      int        `json:"waived_count"`
 	Outstanding      string     `json:"outstanding"`
 	OutstandingCount int        `json:"outstanding_count"`
-	BySource         []CashLine `json:"by_source"`
+	Refunded         string     `json:"refunded"`
+	RefundedCount    int        `json:"refunded_count"`
+	BySource         []CashLine `json:"by_source"` // gross collected per line (excludes refunds)
 }
 
 // Service is the billing module API.
@@ -152,8 +155,20 @@ type Service interface {
 	PatientCharges(ctx context.Context, patientID uuid.UUID) ([]ChargeRow, error)
 	SettleCharge(ctx context.Context, id uuid.UUID, method string) error
 	WaiveCharge(ctx context.Context, id uuid.UUID, reason string) error
+	VoidCharge(ctx context.Context, id uuid.UUID, reason string) error
+	RefundCharge(ctx context.Context, id uuid.UUID, reason string) error
 	WaiverReasons() []string
 
 	// Owner finance view.
 	CashSince(ctx context.Context, since time.Time) (*CashSummary, error)
+}
+
+// Charger is the slice of billing that other modules (lab, pharmacy) use to bill
+// their own services inside the caller's transaction — so the clinical record and
+// its charge commit atomically. Mirrors the tx-passing of events.Publisher.
+type Charger interface {
+	RaiseChargeTx(ctx context.Context, tx pgx.Tx, in ChargeInput) (uuid.UUID, error)
+	// ChargeStatusTx reports a charge's status ('pending'|'paid'|'waived'|'void')
+	// for a pre-pay gate; returns NotFound if the charge is missing.
+	ChargeStatusTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (string, error)
 }

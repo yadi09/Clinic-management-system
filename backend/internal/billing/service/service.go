@@ -27,6 +27,7 @@ type Service struct {
 }
 
 var _ billing.Service = (*Service)(nil)
+var _ billing.Charger = (*Service)(nil)
 
 // NewService constructs a billing Service.
 func NewService(db *kerneldb.DB, publisher events.Publisher) *Service {
@@ -286,28 +287,13 @@ func (s *Service) ProvidersForServices(ctx context.Context, serviceIDs []uuid.UU
 
 var validSource = map[string]bool{"consultation": true, "service": true, "lab": true, "pharmacy": true, "other": true}
 
-// RaiseCharge creates a pending charge against a patient.
+// RaiseCharge creates a pending charge against a patient (own transaction).
 func (s *Service) RaiseCharge(ctx context.Context, in billing.ChargeInput) (uuid.UUID, error) {
-	tenantID, actor := actorOf(ctx)
-	if in.PatientID == uuid.Nil || strings.TrimSpace(in.Description) == "" {
-		return uuid.Nil, apperr.Validation("a patient and description are required")
-	}
-	src := in.Source
-	if !validSource[src] {
-		src = "service"
-	}
 	var id uuid.UUID
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		r, e := billingdb.New(tx).CreateCharge(ctx, billingdb.CreateChargeParams{
-			TenantID: tenantID, PatientID: in.PatientID, EncounterID: in.EncounterID, ServiceItemID: in.ServiceItemID,
-			Source: src, Description: in.Description, Amount: priceOrZero(in.Amount), Currency: "ETB",
-			BranchID: in.BranchID, DepartmentID: in.DepartmentID, ToTriage: in.ToTriage, ProviderID: in.ProviderID, CreatedBy: actor,
-		})
-		if e != nil {
-			return e
-		}
-		id = r.ID
-		return s.publisher.Publish(ctx, tx, &tenantID, "charge", r.ID, "billing.charge.raised", map[string]any{"charge_id": r.ID, "patient_id": in.PatientID, "amount": r.Amount})
+		var e error
+		id, e = s.RaiseChargeTx(ctx, tx, in)
+		return e
 	})
 	if ae, ok := apperr.As(err); ok {
 		return uuid.Nil, ae
@@ -316,6 +302,44 @@ func (s *Service) RaiseCharge(ctx context.Context, in billing.ChargeInput) (uuid
 		return uuid.Nil, apperr.Internal(err)
 	}
 	return id, nil
+}
+
+// RaiseChargeTx creates a pending charge inside the caller's transaction, so a
+// module (lab, pharmacy) can bill atomically alongside its own write.
+func (s *Service) RaiseChargeTx(ctx context.Context, tx pgx.Tx, in billing.ChargeInput) (uuid.UUID, error) {
+	tenantID, actor := actorOf(ctx)
+	if in.PatientID == uuid.Nil || strings.TrimSpace(in.Description) == "" {
+		return uuid.Nil, apperr.Validation("a patient and description are required")
+	}
+	src := in.Source
+	if !validSource[src] {
+		src = "service"
+	}
+	r, e := billingdb.New(tx).CreateCharge(ctx, billingdb.CreateChargeParams{
+		TenantID: tenantID, PatientID: in.PatientID, EncounterID: in.EncounterID, ServiceItemID: in.ServiceItemID,
+		Source: src, Description: in.Description, Amount: priceOrZero(in.Amount), Currency: "ETB",
+		BranchID: in.BranchID, DepartmentID: in.DepartmentID, ToTriage: in.ToTriage, ProviderID: in.ProviderID, CreatedBy: actor,
+	})
+	if e != nil {
+		return uuid.Nil, e
+	}
+	if e := s.publisher.Publish(ctx, tx, &tenantID, "charge", r.ID, "billing.charge.raised", map[string]any{"charge_id": r.ID, "patient_id": in.PatientID, "amount": r.Amount}); e != nil {
+		return uuid.Nil, e
+	}
+	return r.ID, nil
+}
+
+// ChargeStatusTx reports a charge's status for a pre-pay gate.
+func (s *Service) ChargeStatusTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (string, error) {
+	tenantID, _ := actorOf(ctx)
+	st, e := billingdb.New(tx).ChargeStatus(ctx, billingdb.ChargeStatusParams{TenantID: tenantID, ID: id})
+	if errors.Is(e, pgx.ErrNoRows) {
+		return "", apperr.NotFound("CHARGE_NOT_FOUND", "charge not found")
+	}
+	if e != nil {
+		return "", e
+	}
+	return st, nil
 }
 
 func (s *Service) PendingCharges(ctx context.Context) ([]billing.PendingCharge, error) {
@@ -413,6 +437,81 @@ func (s *Service) WaiveCharge(ctx context.Context, id uuid.UUID, reason string) 
 	return nil
 }
 
+// VoidCharge retires a still-pending charge (keying error / patient left). It is
+// distinct from a waiver (no service given, free) — a void simply cancels the bill.
+func (s *Service) VoidCharge(ctx context.Context, id uuid.UUID, reason string) error {
+	tenantID, actor := actorOf(ctx)
+	if strings.TrimSpace(reason) == "" {
+		return apperr.Validation("a reason is required to void a charge")
+	}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := billingdb.New(tx)
+		row, e := q.VoidCharge(ctx, billingdb.VoidChargeParams{VoidReason: strPtr(reason), VoidedBy: actor, TenantID: tenantID, ID: id})
+		if e != nil {
+			return e
+		}
+		return s.publisher.Publish(ctx, tx, &tenantID, "charge", row.ID, "billing.charge.voided", map[string]any{"charge_id": row.ID, "reason": reason})
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return apperr.Conflict("NOT_PENDING", "only a pending charge can be voided")
+	}
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}
+
+// RefundCharge reverses a settled (paid) charge by posting a linked negative entry
+// dated now — so day/Z reports stay correct and the refund is auditable. The
+// original paid charge is left intact. Refunding twice is rejected.
+func (s *Service) RefundCharge(ctx context.Context, id uuid.UUID, reason string) error {
+	tenantID, actor := actorOf(ctx)
+	if strings.TrimSpace(reason) == "" {
+		return apperr.Validation("a reason is required to refund a charge")
+	}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := billingdb.New(tx)
+		orig, e := q.GetCharge(ctx, billingdb.GetChargeParams{TenantID: tenantID, ID: id})
+		if errors.Is(e, pgx.ErrNoRows) {
+			return apperr.NotFound("CHARGE_NOT_FOUND", "charge not found")
+		}
+		if e != nil {
+			return e
+		}
+		if orig.Status != "paid" {
+			return apperr.Conflict("NOT_REFUNDABLE", "only a paid charge can be refunded")
+		}
+		if orig.Source == "refund" {
+			return apperr.Conflict("NOT_REFUNDABLE", "a refund entry cannot itself be refunded")
+		}
+		n, e := q.CountReversals(ctx, billingdb.CountReversalsParams{TenantID: tenantID, ID: &id})
+		if e != nil {
+			return e
+		}
+		if n > 0 {
+			return apperr.Conflict("ALREADY_REFUNDED", "this charge has already been refunded")
+		}
+		rev, e := q.CreateReversalCharge(ctx, billingdb.CreateReversalChargeParams{
+			TenantID: tenantID, PatientID: orig.PatientID, EncounterID: orig.EncounterID,
+			Description: "Refund: " + reason + " (re: " + orig.Description + ")",
+			Amount:      negate(orig.Amount), Currency: orig.Currency,
+			PaymentMethod: strPtr("refund"), SettledBy: actor, ReversesChargeID: &id, CreatedBy: actor,
+		})
+		if e != nil {
+			return e
+		}
+		return s.publisher.Publish(ctx, tx, &tenantID, "charge", rev.ID, "billing.charge.refunded",
+			map[string]any{"refund_charge_id": rev.ID, "original_charge_id": id, "amount": rev.Amount, "reason": reason})
+	})
+	if ae, ok := apperr.As(err); ok {
+		return ae
+	}
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}
+
 func (s *Service) CashSince(ctx context.Context, since time.Time) (*billing.CashSummary, error) {
 	tenantID, _ := actorOf(ctx)
 	out := &billing.CashSummary{BySource: []billing.CashLine{}}
@@ -433,6 +532,11 @@ func (s *Service) CashSince(ctx context.Context, since time.Time) (*billing.Cash
 			return e
 		}
 		out.Outstanding, out.OutstandingCount = os.Total, int(os.N)
+		rf, e := q.CashRefundedSince(ctx, billingdb.CashRefundedSinceParams{TenantID: tenantID, Since: &since})
+		if e != nil {
+			return e
+		}
+		out.Refunded, out.RefundedCount = rf.Total, int(rf.N)
 		by, e := q.CashBySourceSince(ctx, billingdb.CashBySourceSinceParams{TenantID: tenantID, Since: &since})
 		if e != nil {
 			return e
@@ -491,6 +595,19 @@ func priceOrZero(p string) string {
 		return "0"
 	}
 	return p
+}
+
+// negate flips the sign of a decimal-string amount (for refund reversing entries).
+func negate(p string) string {
+	p = strings.TrimSpace(p)
+	switch {
+	case p == "" || p == "0" || p == "0.00":
+		return "0"
+	case strings.HasPrefix(p, "-"):
+		return p[1:]
+	default:
+		return "-" + p
+	}
 }
 func mapWrite(err error, code, msg string) error {
 	if err == nil {

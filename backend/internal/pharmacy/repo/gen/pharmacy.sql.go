@@ -37,6 +37,22 @@ func (q *Queries) AdjustBatchQty(ctx context.Context, arg AdjustBatchQtyParams) 
 	return i, err
 }
 
+const cancelAwaitingSale = `-- name: CancelAwaitingSale :exec
+UPDATE pharmacy_sales SET status = 'cancelled', updated_at = now()
+WHERE tenant_id = $1 AND id = $2 AND status = 'awaiting_payment'
+`
+
+type CancelAwaitingSaleParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+// Drops a prepared-but-unpaid sale (e.g. patient declined at the cashier).
+func (q *Queries) CancelAwaitingSale(ctx context.Context, arg CancelAwaitingSaleParams) error {
+	_, err := q.db.Exec(ctx, cancelAwaitingSale, arg.TenantID, arg.ID)
+	return err
+}
+
 const countExpiredBatches = `-- name: CountExpiredBatches :one
 SELECT count(*)::int FROM drug_batches
 WHERE tenant_id = $1 AND deleted_at IS NULL AND qty_on_hand > 0
@@ -178,8 +194,8 @@ func (q *Queries) CreateOtcSale(ctx context.Context, arg CreateOtcSaleParams) (C
 
 const createSale = `-- name: CreateSale :one
 
-INSERT INTO pharmacy_sales (tenant_id, sale_type, patient_id, prescription_id, status, subtotal, total, currency, counselling_notes, paid_at, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+INSERT INTO pharmacy_sales (tenant_id, sale_type, patient_id, prescription_id, status, subtotal, total, currency, counselling_notes, charge_id, paid_at, created_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 RETURNING id, total, status, created_at
 `
 
@@ -193,6 +209,7 @@ type CreateSaleParams struct {
 	Total            string     `json:"total"`
 	Currency         string     `json:"currency"`
 	CounsellingNotes *string    `json:"counselling_notes"`
+	ChargeID         *uuid.UUID `json:"charge_id"`
 	PaidAt           *time.Time `json:"paid_at"`
 	CreatedBy        *uuid.UUID `json:"created_by"`
 }
@@ -216,6 +233,7 @@ func (q *Queries) CreateSale(ctx context.Context, arg CreateSaleParams) (CreateS
 		arg.Total,
 		arg.Currency,
 		arg.CounsellingNotes,
+		arg.ChargeID,
 		arg.PaidAt,
 		arg.CreatedBy,
 	)
@@ -394,6 +412,41 @@ func (q *Queries) FindDrugByName(ctx context.Context, arg FindDrugByNameParams) 
 		&i.DrugClass,
 		&i.IsControlled,
 		&i.UnitPrice,
+	)
+	return i, err
+}
+
+const getAwaitingSaleByPrescription = `-- name: GetAwaitingSaleByPrescription :one
+SELECT id, charge_id, total, currency, status
+FROM pharmacy_sales
+WHERE tenant_id = $1 AND prescription_id = $2
+  AND status = 'awaiting_payment' AND deleted_at IS NULL
+ORDER BY created_at DESC LIMIT 1
+`
+
+type GetAwaitingSaleByPrescriptionParams struct {
+	TenantID       uuid.UUID  `json:"tenant_id"`
+	PrescriptionID *uuid.UUID `json:"prescription_id"`
+}
+
+type GetAwaitingSaleByPrescriptionRow struct {
+	ID       uuid.UUID  `json:"id"`
+	ChargeID *uuid.UUID `json:"charge_id"`
+	Total    string     `json:"total"`
+	Currency string     `json:"currency"`
+	Status   string     `json:"status"`
+}
+
+// The prepared-but-unpaid sale for a prescription (drives the pre-pay gate + queue badge).
+func (q *Queries) GetAwaitingSaleByPrescription(ctx context.Context, arg GetAwaitingSaleByPrescriptionParams) (GetAwaitingSaleByPrescriptionRow, error) {
+	row := q.db.QueryRow(ctx, getAwaitingSaleByPrescription, arg.TenantID, arg.PrescriptionID)
+	var i GetAwaitingSaleByPrescriptionRow
+	err := row.Scan(
+		&i.ID,
+		&i.ChargeID,
+		&i.Total,
+		&i.Currency,
+		&i.Status,
 	)
 	return i, err
 }
@@ -639,7 +692,8 @@ SELECT p.id, p.rx_no, p.dispensed_at, p.patient_id,
        pt.first_name, pt.last_name, pt.mrn,
        u.full_name AS prescriber,
        (SELECT count(*) FROM prescription_items pi WHERE pi.prescription_id = p.id)::int AS item_count,
-       EXISTS (SELECT 1 FROM allergies a WHERE a.patient_id = p.patient_id AND a.tenant_id = p.tenant_id AND a.deleted_at IS NULL) AS has_allergy
+       EXISTS (SELECT 1 FROM allergies a WHERE a.patient_id = p.patient_id AND a.tenant_id = p.tenant_id AND a.deleted_at IS NULL) AS has_allergy,
+       EXISTS (SELECT 1 FROM pharmacy_sales s WHERE s.prescription_id = p.id AND s.tenant_id = p.tenant_id AND s.status = 'awaiting_payment' AND s.deleted_at IS NULL) AS awaiting_payment
 FROM prescriptions p
 JOIN encounters e ON e.id = p.encounter_id AND e.tenant_id = p.tenant_id
 JOIN patients pt ON pt.id = p.patient_id AND pt.tenant_id = p.tenant_id
@@ -656,16 +710,17 @@ type ListDispenseQueueParams struct {
 }
 
 type ListDispenseQueueRow struct {
-	ID          uuid.UUID  `json:"id"`
-	RxNo        int64      `json:"rx_no"`
-	DispensedAt *time.Time `json:"dispensed_at"`
-	PatientID   uuid.UUID  `json:"patient_id"`
-	FirstName   string     `json:"first_name"`
-	LastName    string     `json:"last_name"`
-	Mrn         string     `json:"mrn"`
-	Prescriber  *string    `json:"prescriber"`
-	ItemCount   int32      `json:"item_count"`
-	HasAllergy  bool       `json:"has_allergy"`
+	ID              uuid.UUID  `json:"id"`
+	RxNo            int64      `json:"rx_no"`
+	DispensedAt     *time.Time `json:"dispensed_at"`
+	PatientID       uuid.UUID  `json:"patient_id"`
+	FirstName       string     `json:"first_name"`
+	LastName        string     `json:"last_name"`
+	Mrn             string     `json:"mrn"`
+	Prescriber      *string    `json:"prescriber"`
+	ItemCount       int32      `json:"item_count"`
+	HasAllergy      bool       `json:"has_allergy"`
+	AwaitingPayment bool       `json:"awaiting_payment"`
 }
 
 // ---- Dispense queue / detail ----------------------------------------------
@@ -689,6 +744,7 @@ func (q *Queries) ListDispenseQueue(ctx context.Context, arg ListDispenseQueuePa
 			&i.Prescriber,
 			&i.ItemCount,
 			&i.HasAllergy,
+			&i.AwaitingPayment,
 		); err != nil {
 			return nil, err
 		}
@@ -840,6 +896,56 @@ func (q *Queries) ListPrescriptionItemsForDispense(ctx context.Context, arg List
 	return items, nil
 }
 
+const listSaleItems = `-- name: ListSaleItems :many
+SELECT id, drug_id, batch_id, description, qty, unit_price, line_total
+FROM pharmacy_sale_items
+WHERE tenant_id = $1 AND sale_id = $2
+ORDER BY id
+`
+
+type ListSaleItemsParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	SaleID   uuid.UUID `json:"sale_id"`
+}
+
+type ListSaleItemsRow struct {
+	ID          uuid.UUID  `json:"id"`
+	DrugID      *uuid.UUID `json:"drug_id"`
+	BatchID     *uuid.UUID `json:"batch_id"`
+	Description string     `json:"description"`
+	Qty         int32      `json:"qty"`
+	UnitPrice   string     `json:"unit_price"`
+	LineTotal   string     `json:"line_total"`
+}
+
+func (q *Queries) ListSaleItems(ctx context.Context, arg ListSaleItemsParams) ([]ListSaleItemsRow, error) {
+	rows, err := q.db.Query(ctx, listSaleItems, arg.TenantID, arg.SaleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSaleItemsRow{}
+	for rows.Next() {
+		var i ListSaleItemsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DrugID,
+			&i.BatchID,
+			&i.Description,
+			&i.Qty,
+			&i.UnitPrice,
+			&i.LineTotal,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markPrescriptionDispensed = `-- name: MarkPrescriptionDispensed :one
 UPDATE prescriptions SET dispensed_at = now(), updated_at = now()
 WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL AND dispensed_at IS NULL
@@ -858,6 +964,21 @@ func (q *Queries) MarkPrescriptionDispensed(ctx context.Context, arg MarkPrescri
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const markSaleDispensed = `-- name: MarkSaleDispensed :exec
+UPDATE pharmacy_sales SET status = 'dispensed', paid_at = now(), updated_at = now()
+WHERE tenant_id = $1 AND id = $2 AND status = 'awaiting_payment'
+`
+
+type MarkSaleDispensedParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+func (q *Queries) MarkSaleDispensed(ctx context.Context, arg MarkSaleDispensedParams) error {
+	_, err := q.db.Exec(ctx, markSaleDispensed, arg.TenantID, arg.ID)
+	return err
 }
 
 const searchDrugs = `-- name: SearchDrugs :many

@@ -31,7 +31,7 @@ func (q *Queries) AddServiceProvider(ctx context.Context, arg AddServiceProvider
 
 const cashBySourceSince = `-- name: CashBySourceSince :many
 SELECT source, COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
-FROM charges WHERE tenant_id = $1 AND status = 'paid' AND settled_at >= $2
+FROM charges WHERE tenant_id = $1 AND status = 'paid' AND source <> 'refund' AND settled_at >= $2
 GROUP BY source ORDER BY total DESC
 `
 
@@ -46,6 +46,7 @@ type CashBySourceSinceRow struct {
 	N      int32  `json:"n"`
 }
 
+// Gross collected by service line (refund reversing entries are reported separately).
 func (q *Queries) CashBySourceSince(ctx context.Context, arg CashBySourceSinceParams) ([]CashBySourceSinceRow, error) {
 	rows, err := q.db.Query(ctx, cashBySourceSince, arg.TenantID, arg.Since)
 	if err != nil {
@@ -107,6 +108,29 @@ func (q *Queries) CashOutstanding(ctx context.Context, tenantID uuid.UUID) (Cash
 	return i, err
 }
 
+const cashRefundedSince = `-- name: CashRefundedSince :one
+SELECT COALESCE(-sum(amount), 0)::numeric AS total, count(*)::int AS n
+FROM charges WHERE tenant_id = $1 AND source = 'refund' AND status = 'paid' AND settled_at >= $2
+`
+
+type CashRefundedSinceParams struct {
+	TenantID uuid.UUID  `json:"tenant_id"`
+	Since    *time.Time `json:"since"`
+}
+
+type CashRefundedSinceRow struct {
+	Total string `json:"total"`
+	N     int32  `json:"n"`
+}
+
+// Refunds are stored as negative entries; report them as a positive total.
+func (q *Queries) CashRefundedSince(ctx context.Context, arg CashRefundedSinceParams) (CashRefundedSinceRow, error) {
+	row := q.db.QueryRow(ctx, cashRefundedSince, arg.TenantID, arg.Since)
+	var i CashRefundedSinceRow
+	err := row.Scan(&i.Total, &i.N)
+	return i, err
+}
+
 const cashWaivedSince = `-- name: CashWaivedSince :one
 SELECT COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
 FROM charges WHERE tenant_id = $1 AND status = 'waived' AND settled_at >= $2
@@ -127,6 +151,24 @@ func (q *Queries) CashWaivedSince(ctx context.Context, arg CashWaivedSinceParams
 	var i CashWaivedSinceRow
 	err := row.Scan(&i.Total, &i.N)
 	return i, err
+}
+
+const chargeStatus = `-- name: ChargeStatus :one
+SELECT status FROM charges
+WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+`
+
+type ChargeStatusParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+// Used by lab/pharmacy pre-pay gates: has this charge been settled (paid/waived)?
+func (q *Queries) ChargeStatus(ctx context.Context, arg ChargeStatusParams) (string, error) {
+	row := q.db.QueryRow(ctx, chargeStatus, arg.TenantID, arg.ID)
+	var status string
+	err := row.Scan(&status)
+	return status, err
 }
 
 const clearServiceProviders = `-- name: ClearServiceProviders :exec
@@ -177,6 +219,24 @@ type CountPendingChargesByPatientParams struct {
 // Used to gate the visit: only advance the patient once nothing is still owed.
 func (q *Queries) CountPendingChargesByPatient(ctx context.Context, arg CountPendingChargesByPatientParams) (int32, error) {
 	row := q.db.QueryRow(ctx, countPendingChargesByPatient, arg.TenantID, arg.PatientID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countReversals = `-- name: CountReversals :one
+SELECT count(*)::int FROM charges
+WHERE tenant_id = $1 AND reverses_charge_id = $2 AND deleted_at IS NULL
+`
+
+type CountReversalsParams struct {
+	TenantID uuid.UUID  `json:"tenant_id"`
+	ID       *uuid.UUID `json:"id"`
+}
+
+// Prevents double-refunding the same charge.
+func (q *Queries) CountReversals(ctx context.Context, arg CountReversalsParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countReversals, arg.TenantID, arg.ID)
 	var column_1 int32
 	err := row.Scan(&column_1)
 	return column_1, err
@@ -289,6 +349,53 @@ func (q *Queries) CreateCharge(ctx context.Context, arg CreateChargeParams) (Cre
 		&i.Currency,
 		&i.CreatedAt,
 	)
+	return i, err
+}
+
+const createReversalCharge = `-- name: CreateReversalCharge :one
+INSERT INTO charges (tenant_id, patient_id, encounter_id, source, description, amount, currency, status,
+  payment_method, settled_by, settled_at, reverses_charge_id, created_by)
+VALUES ($1, $2, $3, 'refund', $4, $5, $6, 'paid',
+  $7, $8, now(), $9, $10)
+RETURNING id, amount, created_at
+`
+
+type CreateReversalChargeParams struct {
+	TenantID         uuid.UUID  `json:"tenant_id"`
+	PatientID        uuid.UUID  `json:"patient_id"`
+	EncounterID      *uuid.UUID `json:"encounter_id"`
+	Description      string     `json:"description"`
+	Amount           string     `json:"amount"`
+	Currency         string     `json:"currency"`
+	PaymentMethod    *string    `json:"payment_method"`
+	SettledBy        *uuid.UUID `json:"settled_by"`
+	ReversesChargeID *uuid.UUID `json:"reverses_charge_id"`
+	CreatedBy        *uuid.UUID `json:"created_by"`
+}
+
+type CreateReversalChargeRow struct {
+	ID        uuid.UUID `json:"id"`
+	Amount    string    `json:"amount"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// A refund posts a linked negative entry dated now (so historical day/Z reports stay
+// correct); the original settled charge is left intact for the audit trail.
+func (q *Queries) CreateReversalCharge(ctx context.Context, arg CreateReversalChargeParams) (CreateReversalChargeRow, error) {
+	row := q.db.QueryRow(ctx, createReversalCharge,
+		arg.TenantID,
+		arg.PatientID,
+		arg.EncounterID,
+		arg.Description,
+		arg.Amount,
+		arg.Currency,
+		arg.PaymentMethod,
+		arg.SettledBy,
+		arg.ReversesChargeID,
+		arg.CreatedBy,
+	)
+	var i CreateReversalChargeRow
+	err := row.Scan(&i.ID, &i.Amount, &i.CreatedAt)
 	return i, err
 }
 
@@ -468,6 +575,46 @@ func (q *Queries) GetCardSettings(ctx context.Context, tenantID uuid.UUID) (GetC
 		&i.CardFeeAmount,
 		&i.CardCurrency,
 		&i.FreeWindowDays,
+	)
+	return i, err
+}
+
+const getCharge = `-- name: GetCharge :one
+SELECT id, patient_id, encounter_id, source, description, amount, currency, status, settled_at
+FROM charges
+WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+`
+
+type GetChargeParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+type GetChargeRow struct {
+	ID          uuid.UUID  `json:"id"`
+	PatientID   uuid.UUID  `json:"patient_id"`
+	EncounterID *uuid.UUID `json:"encounter_id"`
+	Source      string     `json:"source"`
+	Description string     `json:"description"`
+	Amount      string     `json:"amount"`
+	Currency    string     `json:"currency"`
+	Status      string     `json:"status"`
+	SettledAt   *time.Time `json:"settled_at"`
+}
+
+func (q *Queries) GetCharge(ctx context.Context, arg GetChargeParams) (GetChargeRow, error) {
+	row := q.db.QueryRow(ctx, getCharge, arg.TenantID, arg.ID)
+	var i GetChargeRow
+	err := row.Scan(
+		&i.ID,
+		&i.PatientID,
+		&i.EncounterID,
+		&i.Source,
+		&i.Description,
+		&i.Amount,
+		&i.Currency,
+		&i.Status,
+		&i.SettledAt,
 	)
 	return i, err
 }
@@ -926,6 +1073,44 @@ func (q *Queries) UpdateServiceItem(ctx context.Context, arg UpdateServiceItemPa
 		arg.ID,
 	)
 	return err
+}
+
+const voidCharge = `-- name: VoidCharge :one
+UPDATE charges SET status = 'void', void_reason = $1, voided_by = $2, voided_at = now(), updated_at = now()
+WHERE tenant_id = $3 AND id = $4 AND status = 'pending' AND deleted_at IS NULL
+RETURNING id, source, patient_id, amount
+`
+
+type VoidChargeParams struct {
+	VoidReason *string    `json:"void_reason"`
+	VoidedBy   *uuid.UUID `json:"voided_by"`
+	TenantID   uuid.UUID  `json:"tenant_id"`
+	ID         uuid.UUID  `json:"id"`
+}
+
+type VoidChargeRow struct {
+	ID        uuid.UUID `json:"id"`
+	Source    string    `json:"source"`
+	PatientID uuid.UUID `json:"patient_id"`
+	Amount    string    `json:"amount"`
+}
+
+// Atomic claim: only a still-pending charge can be voided (keying error / patient left).
+func (q *Queries) VoidCharge(ctx context.Context, arg VoidChargeParams) (VoidChargeRow, error) {
+	row := q.db.QueryRow(ctx, voidCharge,
+		arg.VoidReason,
+		arg.VoidedBy,
+		arg.TenantID,
+		arg.ID,
+	)
+	var i VoidChargeRow
+	err := row.Scan(
+		&i.ID,
+		&i.Source,
+		&i.PatientID,
+		&i.Amount,
+	)
+	return i, err
 }
 
 const waiveCharge = `-- name: WaiveCharge :one

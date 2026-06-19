@@ -79,6 +79,8 @@ export interface CashSummary {
   waived_count: number;
   outstanding: string;
   outstanding_count: number;
+  refunded: string;
+  refunded_count: number;
   by_source: { source: string; total: string; count: number }[];
 }
 
@@ -142,6 +144,12 @@ export function settleCharge(id: string, method: string) {
 }
 export function waiveCharge(id: string, reason: string) {
   return apiFetch<void>(`/billing/charges/${id}/waive`, { method: "POST", body: { reason } });
+}
+export function voidCharge(id: string, reason: string) {
+  return apiFetch<void>(`/billing/charges/${id}/void`, { method: "POST", body: { reason } });
+}
+export function refundCharge(id: string, reason: string) {
+  return apiFetch<void>(`/billing/charges/${id}/refund`, { method: "POST", body: { reason } });
 }
 export function waiverReasons() {
   return apiFetch<string[]>("/billing/waiver-reasons");

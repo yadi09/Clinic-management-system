@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/reicb/clinicsaas/internal/billing"
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
 	"github.com/reicb/clinicsaas/internal/kernel/events"
@@ -26,13 +27,15 @@ import (
 type Service struct {
 	db        *kerneldb.DB
 	publisher events.Publisher
+	billing   billing.Charger
 }
 
 var _ pharmacy.Service = (*Service)(nil)
 
-// NewService constructs a pharmacy Service.
-func NewService(db *kerneldb.DB, publisher events.Publisher) *Service {
-	return &Service{db: db, publisher: publisher}
+// NewService constructs a pharmacy Service. The billing Charger bills dispenses and
+// gates hand-over on payment (pre-pay).
+func NewService(db *kerneldb.DB, publisher events.Publisher, charger billing.Charger) *Service {
+	return &Service{db: db, publisher: publisher, billing: charger}
 }
 
 // ListDrugs returns the drug catalog with on-hand stock, optionally filtered.
@@ -128,7 +131,8 @@ func (s *Service) DispenseQueue(ctx context.Context) (*pharmacy.DispenseQueue, e
 			}
 			out.Items = append(out.Items, pharmacy.DispenseQueueItem{
 				PrescriptionID: r.ID, RxNo: r.RxNo, PatientName: r.FirstName + " " + r.LastName, MRN: r.Mrn,
-				Prescriber: deref(r.Prescriber), ItemCount: int(r.ItemCount), Dispensed: r.DispensedAt != nil, Flags: flags,
+				Prescriber: deref(r.Prescriber), ItemCount: int(r.ItemCount), Dispensed: r.DispensedAt != nil,
+				AwaitingPayment: r.AwaitingPayment, Flags: flags,
 			})
 		}
 		return nil
@@ -186,6 +190,19 @@ func (s *Service) DispenseDetail(ctx context.Context, prescriptionID uuid.UUID) 
 			}
 			d.Items = append(d.Items, di)
 		}
+		// Pre-pay state: if this prescription has already been priced & sent to the
+		// cashier, surface the total and whether the cashier has collected.
+		if aw, e := q.GetAwaitingSaleByPrescription(ctx, pharmacydb.GetAwaitingSaleByPrescriptionParams{TenantID: tenantID, PrescriptionID: &prescriptionID}); e == nil {
+			d.Prepared = true
+			d.PreparedTotal = aw.Total
+			if aw.ChargeID != nil {
+				if st, e2 := s.billing.ChargeStatusTx(ctx, tx, *aw.ChargeID); e2 == nil {
+					d.ChargeSettled = st == "paid" || st == "waived"
+				}
+			}
+		} else if !errors.Is(e, pgx.ErrNoRows) {
+			return e
+		}
 		out = d
 		return nil
 	})
@@ -198,25 +215,28 @@ func (s *Service) DispenseDetail(ctx context.Context, prescriptionID uuid.UUID) 
 	return out, nil
 }
 
-// Dispense decrements FEFO batch stock, raises a pharmacy charge, and marks the
-// prescription dispensed — blocking any line whose drug matches a patient allergy.
-func (s *Service) Dispense(ctx context.Context, in pharmacy.DispenseInput) (*pharmacy.Sale, error) {
+// PrepareDispense (pre-pay phase 1) prices the prescription, raises a pending
+// pharmacy charge, and records an 'awaiting_payment' sale with the chosen lines —
+// WITHOUT moving any stock. The allergy/batch validity guards run here so problems
+// surface before the patient pays. Stock is decremented only at CompleteDispense.
+func (s *Service) PrepareDispense(ctx context.Context, in pharmacy.DispenseInput) (*pharmacy.PreparedDispense, error) {
 	tenantID, actor := actorOf(ctx)
 	if len(in.Lines) == 0 {
 		return nil, apperr.Validation("nothing to dispense")
 	}
-	var out pharmacy.Sale
+	var out pharmacy.PreparedDispense
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := pharmacydb.New(tx)
 		h, e := q.GetPrescriptionHeader(ctx, pharmacydb.GetPrescriptionHeaderParams{TenantID: tenantID, ID: in.PrescriptionID})
 		if e != nil {
 			return e
 		}
-		// Atomically claim the prescription first: if another transaction already
-		// dispensed it, this matches no row and we abort (rolling back any work).
-		if _, e := q.MarkPrescriptionDispensed(ctx, pharmacydb.MarkPrescriptionDispensedParams{TenantID: tenantID, ID: in.PrescriptionID}); errors.Is(e, pgx.ErrNoRows) {
+		if h.DispensedAt != nil {
 			return apperr.Conflict("ALREADY_DISPENSED", "this prescription has already been dispensed")
-		} else if e != nil {
+		}
+		if _, e := q.GetAwaitingSaleByPrescription(ctx, pharmacydb.GetAwaitingSaleByPrescriptionParams{TenantID: tenantID, PrescriptionID: &in.PrescriptionID}); e == nil {
+			return apperr.Conflict("ALREADY_PREPARED", "this prescription has already been sent to the cashier")
+		} else if !errors.Is(e, pgx.ErrNoRows) {
 			return e
 		}
 		allergies, e := q.ListPatientAllergiesForDispense(ctx, pharmacydb.ListPatientAllergiesForDispenseParams{TenantID: tenantID, PatientID: h.PatientID})
@@ -246,45 +266,26 @@ func (s *Service) Dispense(ctx context.Context, in pharmacy.DispenseInput) (*pha
 			if m := allergyMatchesDrug(allergies, drug.Name, deref(drug.DrugClass)); m != "" {
 				return apperr.Conflict("ALLERGY_CONFLICT", "blocked: patient is allergic to "+m+" ("+drug.Name+")")
 			}
-			// Validate the batch belongs to this drug and is dispensable.
-			batch, e := q.GetBatch(ctx, pharmacydb.GetBatchParams{TenantID: tenantID, ID: ln.BatchID})
-			if errors.Is(e, pgx.ErrNoRows) {
-				return apperr.Validation("unknown batch")
-			}
-			if e != nil {
-				return e
-			}
-			if batch.DrugID != ln.DrugID {
-				return apperr.Validation("the selected batch does not belong to " + drug.Name)
-			}
-			if batch.Quarantined {
-				return apperr.Conflict("BATCH_UNAVAILABLE", "the selected batch of "+drug.Name+" is quarantined")
-			}
-			if batch.ExpiryDate != nil && batch.ExpiryDate.Before(today) {
-				return apperr.Conflict("BATCH_UNAVAILABLE", "the selected batch of "+drug.Name+" is expired")
-			}
-			if _, e := q.DecrementBatch(ctx, pharmacydb.DecrementBatchParams{Qty: int32(ln.Qty), TenantID: tenantID, ID: ln.BatchID}); errors.Is(e, pgx.ErrNoRows) {
-				return apperr.Conflict("INSUFFICIENT_STOCK", "not enough stock in the selected batch for "+drug.Name)
-			} else if e != nil {
+			if e := s.checkBatch(ctx, q, tenantID, ln.BatchID, ln.DrugID, drug.Name, today); e != nil {
 				return e
 			}
 			price := parseMoney(drug.UnitPrice)
 			subtotal += price * float64(ln.Qty)
-			bid := ln.BatchID
-			if e := q.InsertStockMovement(ctx, pharmacydb.InsertStockMovementParams{
-				TenantID: tenantID, DrugID: ln.DrugID, BatchID: &bid, Delta: int32(-ln.Qty), Reason: "dispense",
-				RefType: strPtr("prescription"), RefID: &in.PrescriptionID, CreatedBy: actor,
-			}); e != nil {
-				return e
-			}
 			lines = append(lines, line{drugID: ln.DrugID, batchID: ln.BatchID, qty: ln.Qty, price: price, desc: drug.Name})
 		}
 		total := money(subtotal)
+		// Bill it: a pending pharmacy charge the cashier will collect (pre-pay gate).
+		chargeID, e := s.billing.RaiseChargeTx(ctx, tx, billing.ChargeInput{
+			PatientID: h.PatientID, Source: "pharmacy", Description: "Pharmacy: Rx #" + strconv.FormatInt(h.RxNo, 10) + " (" + strconv.Itoa(len(lines)) + " items)", Amount: total,
+		})
+		if e != nil {
+			return e
+		}
 		pid := h.PatientID
 		rxID := in.PrescriptionID
 		sale, e := q.CreateSale(ctx, pharmacydb.CreateSaleParams{
-			TenantID: tenantID, SaleType: "dispense", PatientID: &pid, PrescriptionID: &rxID, Status: "charged",
-			Subtotal: total, Total: total, Currency: "ETB", CounsellingNotes: strPtr(in.CounsellingNotes), CreatedBy: actor,
+			TenantID: tenantID, SaleType: "dispense", PatientID: &pid, PrescriptionID: &rxID, Status: "awaiting_payment",
+			Subtotal: total, Total: total, Currency: "ETB", CounsellingNotes: strPtr(in.CounsellingNotes), ChargeID: &chargeID, CreatedBy: actor,
 		})
 		if e != nil {
 			return e
@@ -298,9 +299,9 @@ func (s *Service) Dispense(ctx context.Context, in pharmacy.DispenseInput) (*pha
 				return e
 			}
 		}
-		out = pharmacy.Sale{ID: sale.ID, Total: sale.Total, Status: sale.Status}
-		return s.publisher.Publish(ctx, tx, &tenantID, "pharmacy_sale", sale.ID, "pharmacy.dispensed",
-			map[string]any{"prescription_id": in.PrescriptionID, "patient_id": h.PatientID, "total": sale.Total})
+		out = pharmacy.PreparedDispense{SaleID: sale.ID, ChargeID: chargeID, Total: total}
+		return s.publisher.Publish(ctx, tx, &tenantID, "pharmacy_sale", sale.ID, "pharmacy.dispense.prepared",
+			map[string]any{"prescription_id": in.PrescriptionID, "patient_id": h.PatientID, "charge_id": chargeID, "total": total})
 	})
 	if ae, ok := apperr.As(err); ok {
 		return nil, ae
@@ -312,6 +313,118 @@ func (s *Service) Dispense(ctx context.Context, in pharmacy.DispenseInput) (*pha
 		return nil, apperr.Internal(err)
 	}
 	return &out, nil
+}
+
+// CompleteDispense (pre-pay phase 2) hands the medication over: it requires the
+// pharmacy charge to be settled (paid/waived), then atomically claims the
+// prescription, decrements FEFO batch stock, and finalises the sale.
+func (s *Service) CompleteDispense(ctx context.Context, prescriptionID uuid.UUID) (*pharmacy.Sale, error) {
+	tenantID, actor := actorOf(ctx)
+	var out pharmacy.Sale
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := pharmacydb.New(tx)
+		h, e := q.GetPrescriptionHeader(ctx, pharmacydb.GetPrescriptionHeaderParams{TenantID: tenantID, ID: prescriptionID})
+		if e != nil {
+			return e
+		}
+		aw, e := q.GetAwaitingSaleByPrescription(ctx, pharmacydb.GetAwaitingSaleByPrescriptionParams{TenantID: tenantID, PrescriptionID: &prescriptionID})
+		if errors.Is(e, pgx.ErrNoRows) {
+			return apperr.Conflict("NOT_PREPARED", "send this prescription to the cashier before handing it over")
+		}
+		if e != nil {
+			return e
+		}
+		// Pre-pay gate: the cashier must have collected (or waived) first.
+		if aw.ChargeID != nil {
+			st, e := s.billing.ChargeStatusTx(ctx, tx, *aw.ChargeID)
+			if e != nil {
+				return e
+			}
+			if st != "paid" && st != "waived" {
+				return apperr.Conflict("PAYMENT_PENDING", "payment has not been collected yet — the cashier must settle this first")
+			}
+		}
+		// Atomically claim the prescription (double-dispense guard).
+		if _, e := q.MarkPrescriptionDispensed(ctx, pharmacydb.MarkPrescriptionDispensedParams{TenantID: tenantID, ID: prescriptionID}); errors.Is(e, pgx.ErrNoRows) {
+			return apperr.Conflict("ALREADY_DISPENSED", "this prescription has already been dispensed")
+		} else if e != nil {
+			return e
+		}
+		allergies, e := q.ListPatientAllergiesForDispense(ctx, pharmacydb.ListPatientAllergiesForDispenseParams{TenantID: tenantID, PatientID: h.PatientID})
+		if e != nil {
+			return e
+		}
+		items, e := q.ListSaleItems(ctx, pharmacydb.ListSaleItemsParams{TenantID: tenantID, SaleID: aw.ID})
+		if e != nil {
+			return e
+		}
+		today := startOfDayUTC()
+		for _, it := range items {
+			if it.DrugID == nil || it.BatchID == nil {
+				return apperr.Validation("prepared line is missing its drug/batch")
+			}
+			drug, e := q.GetDrug(ctx, pharmacydb.GetDrugParams{TenantID: tenantID, ID: *it.DrugID})
+			if e != nil {
+				return e
+			}
+			if m := allergyMatchesDrug(allergies, drug.Name, deref(drug.DrugClass)); m != "" {
+				return apperr.Conflict("ALLERGY_CONFLICT", "blocked: patient is allergic to "+m+" ("+drug.Name+")")
+			}
+			if e := s.checkBatch(ctx, q, tenantID, *it.BatchID, *it.DrugID, drug.Name, today); e != nil {
+				return e
+			}
+			if _, e := q.DecrementBatch(ctx, pharmacydb.DecrementBatchParams{Qty: it.Qty, TenantID: tenantID, ID: *it.BatchID}); errors.Is(e, pgx.ErrNoRows) {
+				return apperr.Conflict("INSUFFICIENT_STOCK", "not enough stock in the selected batch for "+drug.Name)
+			} else if e != nil {
+				return e
+			}
+			bid := *it.BatchID
+			rxID := prescriptionID
+			if e := q.InsertStockMovement(ctx, pharmacydb.InsertStockMovementParams{
+				TenantID: tenantID, DrugID: *it.DrugID, BatchID: &bid, Delta: -it.Qty, Reason: "dispense",
+				RefType: strPtr("prescription"), RefID: &rxID, CreatedBy: actor,
+			}); e != nil {
+				return e
+			}
+		}
+		if e := q.MarkSaleDispensed(ctx, pharmacydb.MarkSaleDispensedParams{TenantID: tenantID, ID: aw.ID}); e != nil {
+			return e
+		}
+		out = pharmacy.Sale{ID: aw.ID, Total: aw.Total, Status: "dispensed"}
+		return s.publisher.Publish(ctx, tx, &tenantID, "pharmacy_sale", aw.ID, "pharmacy.dispensed",
+			map[string]any{"prescription_id": prescriptionID, "patient_id": h.PatientID, "total": aw.Total})
+	})
+	if ae, ok := apperr.As(err); ok {
+		return nil, ae
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, apperr.NotFound("PRESCRIPTION_NOT_FOUND", "prescription not found")
+	}
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return &out, nil
+}
+
+// checkBatch validates a batch is the drug's and is dispensable (not quarantined/expired).
+func (s *Service) checkBatch(ctx context.Context, q *pharmacydb.Queries, tenantID, batchID, drugID uuid.UUID, drugName string, today time.Time) error {
+	batch, e := q.GetBatch(ctx, pharmacydb.GetBatchParams{TenantID: tenantID, ID: batchID})
+	if errors.Is(e, pgx.ErrNoRows) {
+		return apperr.Validation("unknown batch")
+	}
+	if e != nil {
+		return e
+	}
+	if batch.DrugID != drugID {
+		return apperr.Validation("the selected batch does not belong to " + drugName)
+	}
+	if batch.Quarantined {
+		return apperr.Conflict("BATCH_UNAVAILABLE", "the selected batch of "+drugName+" is quarantined")
+	}
+	if batch.ExpiryDate != nil && batch.ExpiryDate.Before(today) {
+		return apperr.Conflict("BATCH_UNAVAILABLE", "the selected batch of "+drugName+" is expired")
+	}
+	return nil
 }
 
 // AdjustStock adjusts an existing batch (BatchID set) or adds a new batch, and

@@ -45,14 +45,15 @@ type KPIs struct {
 
 // DispenseQueueItem is a signed prescription waiting to be dispensed.
 type DispenseQueueItem struct {
-	PrescriptionID uuid.UUID `json:"-"`
-	RxNo           int64     `json:"rx_no"`
-	PatientName    string    `json:"patient_name"`
-	MRN            string    `json:"mrn"`
-	Prescriber     string    `json:"prescriber,omitempty"`
-	ItemCount      int       `json:"item_count"`
-	Dispensed      bool      `json:"dispensed"`
-	Flags          []string  `json:"flags"`
+	PrescriptionID  uuid.UUID `json:"-"`
+	RxNo            int64     `json:"rx_no"`
+	PatientName     string    `json:"patient_name"`
+	MRN             string    `json:"mrn"`
+	Prescriber      string    `json:"prescriber,omitempty"`
+	ItemCount       int       `json:"item_count"`
+	Dispensed       bool      `json:"dispensed"`
+	AwaitingPayment bool      `json:"awaiting_payment"` // priced & sent to cashier, not yet paid/handed over
+	Flags           []string  `json:"flags"`
 }
 
 // DispenseQueue is the queue header (KPIs) + rows.
@@ -82,6 +83,10 @@ type DispenseDetail struct {
 	Dispensed      bool           `json:"dispensed"`
 	Allergies      []string       `json:"allergies"`
 	Items          []DispenseItem `json:"items"`
+	// Pre-pay state: once priced & billed, the meds wait for the cashier.
+	Prepared      bool   `json:"prepared"`
+	PreparedTotal string `json:"prepared_total,omitempty"`
+	ChargeSettled bool   `json:"charge_settled"` // cashier has collected → ready to hand over
 }
 
 // DispenseLine is a confirmed line to dispense (drug + batch + qty).
@@ -103,6 +108,14 @@ type Sale struct {
 	ID     uuid.UUID `json:"-"`
 	Total  string    `json:"total"`
 	Status string    `json:"status"`
+}
+
+// PreparedDispense is the result of pricing a prescription and sending it to the
+// cashier (pre-pay): the meds are reserved but no stock has moved yet.
+type PreparedDispense struct {
+	SaleID   uuid.UUID `json:"-"`
+	ChargeID uuid.UUID `json:"-"`
+	Total    string    `json:"total"`
 }
 
 // StockAdjustInput adjusts a batch (BatchID set) or creates a new batch (nil).
@@ -165,7 +178,10 @@ type Service interface {
 	ListBatches(ctx context.Context) ([]Batch, error)
 	DispenseQueue(ctx context.Context) (*DispenseQueue, error)
 	DispenseDetail(ctx context.Context, prescriptionID uuid.UUID) (*DispenseDetail, error)
-	Dispense(ctx context.Context, in DispenseInput) (*Sale, error)
+	// Pre-pay dispense is two-phase: PrepareDispense prices & bills (no stock moves);
+	// after the cashier collects, CompleteDispense decrements stock and hands over.
+	PrepareDispense(ctx context.Context, in DispenseInput) (*PreparedDispense, error)
+	CompleteDispense(ctx context.Context, prescriptionID uuid.UUID) (*Sale, error)
 	AdjustStock(ctx context.Context, in StockAdjustInput) error
 	SetQuarantine(ctx context.Context, batchID uuid.UUID, quarantined bool) error
 

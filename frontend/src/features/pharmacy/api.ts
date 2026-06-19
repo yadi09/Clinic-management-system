@@ -35,6 +35,7 @@ export interface DispenseQueueItem {
   prescriber?: string;
   item_count: number;
   dispensed: boolean;
+  awaiting_payment: boolean;
   flags: string[];
 }
 export interface DispenseQueue {
@@ -58,6 +59,9 @@ export interface DispenseDetail {
   dispensed: boolean;
   allergies: string[];
   items: DispenseItem[];
+  prepared: boolean;
+  prepared_total?: string;
+  charge_settled: boolean;
 }
 
 export function listDrugs(params: { class?: string; controlled?: string } = {}) {
@@ -76,8 +80,11 @@ export function dispenseQueue() {
 export function dispenseDetail(rxId: string) {
   return apiFetch<DispenseDetail>(`/pharmacy/dispense/${rxId}`);
 }
-export function dispense(rxId: string, body: { counselling_notes?: string; lines: { drug_id: string; batch_id: string; qty: number }[] }) {
-  return apiFetch<{ id: string; total: string; status: string }>(`/pharmacy/dispense/${rxId}`, { method: "POST", body });
+export function prepareDispense(rxId: string, body: { counselling_notes?: string; lines: { drug_id: string; batch_id: string; qty: number }[] }) {
+  return apiFetch<{ sale_id: string; charge_id: string; total: string }>(`/pharmacy/dispense/${rxId}/prepare`, { method: "POST", body });
+}
+export function completeDispense(rxId: string) {
+  return apiFetch<{ id: string; total: string; status: string }>(`/pharmacy/dispense/${rxId}/complete`, { method: "POST" });
 }
 export function adjustStock(body: { drug_id: string; batch_id?: string; batch_no?: string; expiry?: string; delta: number; reason?: string; note?: string }) {
   return apiFetch<void>("/pharmacy/stock/adjust", { method: "POST", body });

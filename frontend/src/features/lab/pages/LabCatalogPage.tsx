@@ -100,6 +100,7 @@ function TestRow({ test, expanded, onToggle }: { test: LabTest; expanded: boolea
           <span className="truncate font-medium">{test.name}</span>
           <span className="hidden text-xs text-muted-foreground sm:inline">
             · {test.specimen ? `${test.specimen} · ` : ""}{test.analyte_count} analyte{test.analyte_count === 1 ? "" : "s"}
+            {" · "}{Number(test.price) > 0 ? `ETB ${test.price}` : "no price"}
           </span>
         </button>
         <div className="flex shrink-0 items-center gap-1.5">
@@ -198,9 +199,9 @@ function AnalytePanel({ test }: { test: LabTest }) {
 // TestDialog creates a new test (no `test`) or edits an existing one.
 function TestDialog({ test, open, onOpenChange, onDone }: { test?: LabTest; open: boolean; onOpenChange: (v: boolean) => void; onDone: () => void }) {
   const editing = !!test;
-  const [form, setForm] = useState({ code: "", name: "", specimen: "" });
+  const [form, setForm] = useState({ code: "", name: "", specimen: "", price: "" });
   useEffect(() => {
-    if (open) setForm(test ? { code: test.code, name: test.name, specimen: test.specimen ?? "" } : { code: "", name: "", specimen: "" });
+    if (open) setForm(test ? { code: test.code, name: test.name, specimen: test.specimen ?? "", price: test.price ?? "" } : { code: "", name: "", specimen: "", price: "" });
   }, [open, test]);
   const mut = useMutation({
     mutationFn: async () => { if (editing && test) await updateTest(test.id, form); else await createTest(form); },
@@ -215,6 +216,7 @@ function TestDialog({ test, open, onOpenChange, onDone }: { test?: LabTest; open
           <div className="space-y-1.5"><Label>Code</Label><Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="CBC" /></div>
           <div className="space-y-1.5"><Label>Specimen</Label><Input value={form.specimen} onChange={(e) => setForm({ ...form, specimen: e.target.value })} placeholder="Whole blood" /></div>
           <div className="col-span-2 space-y-1.5"><Label>Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Complete Blood Count" /></div>
+          <div className="space-y-1.5"><Label>Price (ETB)</Label><Input type="number" min="0" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="0.00" /><p className="text-xs text-muted-foreground">Charged when a doctor orders this test.</p></div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

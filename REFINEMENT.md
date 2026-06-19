@@ -199,4 +199,69 @@ Status: `logged` → `planned` → `in-progress` → `done`.
 
 ---
 
+## Audit remediation (2026-06-19 end-to-end audit)
+
+Full backlog of all 126 confirmed findings lives in **AUDIT-BACKLOG.md** (8 critical · 54
+high · 54 medium · 10 low). Report: https://claude.ai/code/artifact/8581c29b-bd26-4531-89f6-d43d4691be8d
+Owner picked **Billing Integrity** as the first remediation phase. Tracking below.
+
+### Phase: Billing Integrity — "make the money add up, reversibly, with a paper trail"
+
+Addresses the 3 financial criticals + the billing-gate-leak highs. 41 audit items tagged
+`[BILLING-PHASE]`. Built in 3 approved batches:
+
+- **[BILL-A] Capture & reverse** *(criticals #1, #2)* — _Status: **done** (smoke 29/29, awaiting sign-off)_
+  - Lab revenue: `lab_tests.price` (catalog-managed, editable in the catalog UI); placing
+    an order raises one `source='lab'` charge (sum of test prices) → cashier + Finance.
+    **Pre-pay gate:** `Accession` is blocked (409 PAYMENT_PENDING) until that charge is
+    paid/waived. Unpriced order (total 0) = free & ungated.
+  - Pharmacy revenue: dispense is now **two-phase** — *Prepare* prices the prescription,
+    raises a `source='pharmacy'` charge, records an `awaiting_payment` sale (no stock moved);
+    cashier collects; *Complete* re-checks the gate, decrements FEFO stock, hands over.
+    Pre-pay gate blocks Complete (409) until paid. Allergy/batch guards run in both phases.
+  - **Void** a *pending* charge (cashier, `payment.waive`, reason, audited → status `void`,
+    leaves the worklist; re-void rejected). Covers "patient left"/"keying error".
+  - **Refund** a *settled* charge (manager-gated `billing.manage`, reason-required, audited)
+    posts a **linked negative reversing entry dated now** (original stays intact, history
+    correct across periods); double-refund rejected; Finance shows **Refunded** + nets Collected.
+  - Cross-module wiring: `billing.Charger` port (`RaiseChargeTx`/`ChargeStatusTx`) injected
+    into lab + pharmacy so the charge commits in the caller's tx (importlint clean).
+  - Migration 0017. Smoke (`/tmp/clinic-docs/bill_a_smoke.py`): void, refund, lab gate,
+    pharmacy two-phase gate — **29/29 pass** against the live Docker stack.
+- **[BILL-B] Cash control** *(critical #3)* — _Status: planned_
+  - Sequential receipt number on settlement + printable itemized receipt/invoice
+    (clinic header, lines, total, method, cashier, timestamp).
+  - Finance breakdowns: by-method, by-cashier, by-branch.
+  - End-of-day / shift closeout (Z-report): counted vs expected cash, variance, sign-off, printable.
+- **[BILL-C] Close the gate leaks** *(highs)* — _Status: planned_
+  - Appointment check-in and queue-board walk-ins route through the same billing gate as
+    reception in cashier mode (raise configured charge / require waiver) so nothing enters
+    the queue free.
+
+### Phase: Role-based payment collection (CASH-6) — replaces the payment_mode toggle
+
+_Status: **done** (smoke 10/10 + BILL-A regression 29/29, awaiting sign-off)._ Owner's idea:
+make "who collects" a **staffing fact (roles)** instead of a clinic flag. The old
+`payment_mode` toggle was cosmetic (it only flipped reception's UI; RBAC already gated the
+endpoints) and could drift from permissions. Replaced with a permission split:
+- **`payment.charge`** — raise a charge / register a payable visit (reception has it).
+- **`payment.collect`** — settle / collect cash / cashier worklist (cashier has it).
+- Reception screen branches on `can('payment.collect')`: has it → inline *Collect/Waive*;
+  lacks it → *Send to cashier* (pending). A one-person desk gets **both** roles.
+- Default `receptionist` ships **without** `payment.collect` (separation of duties); small
+  clinics grant the **Cashier** role. Seed now **reconciles** role grants (deletes stale
+  ones) so removals take effect on reseed.
+- `payment_mode` removed everywhere (Settings selector → explainer; org settings backend;
+  migration 0018 drops the column).
+- **Edit-roles** dialog wired in Users (`assignRoles`, gated `role.assign`) — also clears
+  audit HIGH "assignRoles is dead code". Note: new perms apply on next login/refresh.
+- Re-gated billing routes: raise=`payment.charge`, settle/worklist=`payment.collect`,
+  void/waive=`payment.waive`, refund=`billing.manage`, patient-charges/waiver-reasons via
+  `RequireAnyPermission`.
+
+Deferred to a later phase (out of Billing-Integrity scope): insurance/credit "bill-later"
+payer flow; pharmacy-inventory integrity (partial dispense, partial PO receive, blind stock
+count, write-offs, controlled register); prescription qty + catalog-linked drug; clinical-safety
+and accountability clusters (separate phases).
+
 <!-- New items append under the matching area heading. -->

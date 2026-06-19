@@ -10,7 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
-import { pendingCharges, settleCharge, waiveCharge, waiverReasons, type PendingCharge } from "@/features/billing/api";
+import { pendingCharges, settleCharge, voidCharge, waiveCharge, waiverReasons, type PendingCharge } from "@/features/billing/api";
+
+const VOID_REASONS = ["Keying error", "Duplicate charge", "Patient left without service", "Wrong patient"];
 
 const METHODS = ["cash", "card", "mobile", "transfer"];
 
@@ -20,6 +22,7 @@ export function CashierPage() {
   const reasons = useQuery({ queryKey: ["waiver-reasons"], queryFn: waiverReasons });
   const [method, setMethod] = useState("cash");
   const [waiving, setWaiving] = useState<PendingCharge | null>(null);
+  const [voiding, setVoiding] = useState<PendingCharge | null>(null);
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["pending-charges"] });
@@ -92,6 +95,7 @@ export function CashierPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-sm font-semibold">{c.currency} {c.amount}</span>
+                      <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setVoiding(c)}>Void</Button>
                       <Button size="sm" variant="outline" onClick={() => setWaiving(c)}>Waive</Button>
                       <Button size="sm" loading={settle.isPending} onClick={() => settle.mutate(c.id)}>
                         <HandCoins className="h-3.5 w-3.5" /> Take payment
@@ -106,7 +110,49 @@ export function CashierPage() {
       )}
 
       <WaiveDialog charge={waiving} reasons={reasons.data ?? []} onClose={() => setWaiving(null)} onDone={() => { setWaiving(null); refresh(); }} />
+      <VoidDialog charge={voiding} onClose={() => setVoiding(null)} onDone={() => { setVoiding(null); refresh(); }} />
     </div>
+  );
+}
+
+function VoidDialog({ charge, onClose, onDone }: { charge: PendingCharge | null; onClose: () => void; onDone: () => void }) {
+  const [reason, setReason] = useState("");
+  const [note, setNote] = useState("");
+  const mut = useMutation({
+    mutationFn: () => voidCharge(charge!.id, reason === "Other" && note.trim() ? `Other: ${note.trim()}` : reason),
+    onSuccess: () => { toast.success("Charge voided"); setReason(""); setNote(""); onDone(); },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not void"),
+  });
+  return (
+    <Dialog open={!!charge} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Void charge</DialogTitle></DialogHeader>
+        <p className="text-sm text-muted-foreground">Cancels an unpaid charge (a mistake, or the patient left). No payment is taken and it leaves the worklist. Unlike a waiver, no service was given.</p>
+        {charge && (
+          <p className="text-sm"><BadgeDollarSign className="mr-1 inline h-4 w-4" />{charge.description} · {charge.currency} {charge.amount} · {charge.patient_name}</p>
+        )}
+        <div className="space-y-1.5">
+          <Label>Reason (required)</Label>
+          <Select value={reason} onValueChange={setReason}>
+            <SelectTrigger><SelectValue placeholder="Why void this charge?" /></SelectTrigger>
+            <SelectContent>
+              {VOID_REASONS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+              <SelectItem value="Other">Other</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {reason === "Other" && (
+          <div className="space-y-1.5">
+            <Label>Note</Label>
+            <input className="w-full rounded-md border px-3 py-2 text-sm" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Explain" />
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="destructive" disabled={!reason} loading={mut.isPending} onClick={() => mut.mutate()}>Void charge</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

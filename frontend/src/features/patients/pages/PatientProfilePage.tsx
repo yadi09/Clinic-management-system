@@ -21,6 +21,8 @@ import {
   removeAllergy,
   removeCondition,
 } from "@/features/patients/api";
+import { patientCharges, refundCharge, type ChargeRow } from "@/features/billing/api";
+import { AppError } from "@/lib/api-client";
 
 function age(dob: string) {
   const d = new Date(dob);
@@ -148,9 +150,72 @@ export function PatientProfilePage() {
               <RowItem key={at.id} main={at.filename} sub={at.type} />
             ))}
           </SectionCard>
+
+          {(can("payment.collect") || can("billing.manage")) && (
+            <BillingSection patientId={id} canRefund={can("billing.manage")} />
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+const REFUND_REASONS = ["Service not provided", "Overcharged", "Duplicate payment", "Patient cancelled", "Billing error"];
+
+function BillingSection({ patientId, canRefund }: { patientId: string; canRefund: boolean }) {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["patient-charges", patientId], queryFn: () => patientCharges(patientId) });
+  const [refunding, setRefunding] = useState<ChargeRow | null>(null);
+  const [reason, setReason] = useState("");
+  const mut = useMutation({
+    mutationFn: () => refundCharge(refunding!.id, reason),
+    onSuccess: () => {
+      toast.success("Refund recorded");
+      setRefunding(null); setReason("");
+      qc.invalidateQueries({ queryKey: ["patient-charges", patientId] });
+      qc.invalidateQueries({ queryKey: ["cash"] });
+    },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not refund"),
+  });
+  const rows = q.data ?? [];
+  return (
+    <SectionCard title="Billing" empty={rows.length === 0 ? "No charges yet." : undefined}>
+      {rows.map((c) => {
+        const negative = parseFloat(c.amount) < 0;
+        const refundable = canRefund && c.status === "paid" && c.source !== "refund" && !negative;
+        return (
+          <div key={c.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+            <div className="min-w-0">
+              <span className="font-medium">{c.description}</span>
+              <Badge variant="outline" className="ml-2 capitalize">{c.source}</Badge>
+            </div>
+            <div className="flex items-center gap-3">
+              <Badge variant={c.status === "paid" ? "success" : c.status === "pending" ? "warning" : "outline"} className="capitalize">{c.status}</Badge>
+              <span className={`font-mono ${negative ? "text-rose-600" : ""}`}>{c.currency} {c.amount}</span>
+              {refundable && <Button size="sm" variant="ghost" className="text-rose-600" onClick={() => setRefunding(c)}>Refund</Button>}
+            </div>
+          </div>
+        );
+      })}
+      <Dialog open={!!refunding} onOpenChange={(o) => { if (!o) { setRefunding(null); setReason(""); } }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Refund charge</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Posts a reversing entry dated now; the original payment stays on record. This nets against collected totals in Finance.</p>
+          {refunding && <p className="text-sm">{refunding.description} · {refunding.currency} {refunding.amount}</p>}
+          <div className="space-y-1.5">
+            <Label>Reason (required)</Label>
+            <Select value={reason} onValueChange={setReason}>
+              <SelectTrigger><SelectValue placeholder="Why refund?" /></SelectTrigger>
+              <SelectContent>{REFUND_REASONS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setRefunding(null); setReason(""); }}>Cancel</Button>
+            <Button variant="destructive" disabled={!reason} loading={mut.isPending} onClick={() => mut.mutate()}>Refund</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </SectionCard>
   );
 }
 

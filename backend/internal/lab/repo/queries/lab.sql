@@ -3,24 +3,24 @@
 -- ---- catalog ----
 
 -- name: ListLabTests :many
-SELECT t.id, t.code, t.name, t.specimen, t.is_active,
+SELECT t.id, t.code, t.name, t.specimen, t.is_active, t.price,
   (SELECT count(*) FROM lab_analytes a WHERE a.test_id = t.id)::int AS analyte_count
 FROM lab_tests t
 WHERE t.tenant_id = @tenant_id AND t.deleted_at IS NULL AND (sqlc.narg(active_only)::bool IS NOT TRUE OR t.is_active)
 ORDER BY t.name;
 
 -- name: GetLabTest :one
-SELECT id, code, name, specimen, is_active FROM lab_tests
+SELECT id, code, name, specimen, is_active, price FROM lab_tests
 WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
 
 -- name: GetLabTestByCode :one
-SELECT id, code, name, specimen, is_active FROM lab_tests
+SELECT id, code, name, specimen, is_active, price FROM lab_tests
 WHERE tenant_id = @tenant_id AND lower(code) = lower(@code) AND deleted_at IS NULL;
 
 -- name: CreateLabTest :one
-INSERT INTO lab_tests (tenant_id, code, name, specimen, created_by)
-VALUES (@tenant_id, @code, @name, @specimen, @created_by)
-RETURNING id, code, name, specimen, is_active;
+INSERT INTO lab_tests (tenant_id, code, name, specimen, price, created_by)
+VALUES (@tenant_id, @code, @name, @specimen, @price, @created_by)
+RETURNING id, code, name, specimen, is_active, price;
 
 -- name: ListAnalytesByTest :many
 SELECT id, name, unit, ref_low, ref_high, critical_low, critical_high
@@ -33,7 +33,7 @@ INSERT INTO lab_analytes (tenant_id, test_id, name, unit, ref_low, ref_high, cri
 VALUES (@tenant_id, @test_id, @name, @unit, @ref_low, @ref_high, @critical_low, @critical_high, @sort_order);
 
 -- name: UpdateLabTest :exec
-UPDATE lab_tests SET code = @code, name = @name, specimen = @specimen, updated_at = now()
+UPDATE lab_tests SET code = @code, name = @name, specimen = @specimen, price = @price, updated_at = now()
 WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
 
 -- name: SetLabTestActive :exec
@@ -68,6 +68,18 @@ RETURNING id, order_no;
 INSERT INTO lab_order_items (tenant_id, order_id, test_id, specimen)
 VALUES (@tenant_id, @order_id, @test_id, @specimen)
 RETURNING id, sample_no;
+
+-- name: SetLabOrderCharge :exec
+-- Links the order to the billing charge that gates accession (pre-pay).
+UPDATE lab_orders SET charge_id = @charge_id, updated_at = now()
+WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
+
+-- name: GetItemOrderCharge :one
+-- The billing charge id for the order this item belongs to (accession gate).
+SELECT o.charge_id
+FROM lab_order_items i
+JOIN lab_orders o ON o.id = i.order_id AND o.tenant_id = i.tenant_id
+WHERE i.tenant_id = @tenant_id AND i.id = @id;
 
 -- name: ListOrdersByEncounter :many
 SELECT id, order_no, priority, clinical_note, created_at

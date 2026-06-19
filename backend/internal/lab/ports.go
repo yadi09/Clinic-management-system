@@ -16,6 +16,7 @@ type LabTest struct {
 	Code         string    `json:"code"`
 	Name         string    `json:"name"`
 	Specimen     string    `json:"specimen,omitempty"`
+	Price        string    `json:"price"`
 	IsActive     bool      `json:"is_active"`
 	AnalyteCount int       `json:"analyte_count"`
 }
@@ -171,8 +172,8 @@ type PendingSummary struct {
 type Service interface {
 	ListTests(ctx context.Context, activeOnly bool) ([]LabTest, error)
 	ListAnalytes(ctx context.Context, testID uuid.UUID) ([]Analyte, error)
-	CreateTest(ctx context.Context, code, name, specimen string) (*LabTest, error)
-	UpdateTest(ctx context.Context, testID uuid.UUID, code, name, specimen string) error
+	CreateTest(ctx context.Context, code, name, specimen, price string) (*LabTest, error)
+	UpdateTest(ctx context.Context, testID uuid.UUID, code, name, specimen, price string) error
 	SetTestActive(ctx context.Context, testID uuid.UUID, active bool) error
 	DeleteTest(ctx context.Context, testID uuid.UUID) error
 	AddAnalyte(ctx context.Context, testID uuid.UUID, in Analyte) error

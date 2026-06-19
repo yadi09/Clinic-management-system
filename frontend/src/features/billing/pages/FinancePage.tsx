@@ -39,7 +39,7 @@ export function FinancePage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1>Finance</h1>
-          <p className="text-sm text-muted-foreground">Cash collected, waived, and outstanding.</p>
+          <p className="text-sm text-muted-foreground">Cash collected (net of refunds), waived, refunded, and outstanding.</p>
         </div>
         <div className="flex gap-1 rounded-md border p-0.5">
           {RANGES.map((r) => (
@@ -54,8 +54,9 @@ export function FinancePage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <Kpi label="Collected" value={`${cur} ${c?.collected ?? "—"}`} sub={`${c?.collected_count ?? 0} payment(s)`} tone="text-emerald-600" />
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Kpi label="Collected (net)" value={`${cur} ${c?.collected ?? "—"}`} sub={`${c?.collected_count ?? 0} payment(s), net of refunds`} tone="text-emerald-600" />
+        <Kpi label="Refunded" value={`${cur} ${c?.refunded ?? "—"}`} sub={`${c?.refunded_count ?? 0} refund(s)`} tone="text-rose-600" />
         <Kpi label="Waived (forgone)" value={`${cur} ${c?.waived ?? "—"}`} sub={`${c?.waived_count ?? 0} waiver(s)`} tone="text-amber-600" />
         <Kpi label="Outstanding" value={`${cur} ${c?.outstanding ?? "—"}`} sub={`${c?.outstanding_count ?? 0} unpaid now`} tone="text-rose-600" />
       </div>

@@ -118,29 +118,33 @@ type CardPayment struct {
 }
 
 type Charge struct {
-	ID            uuid.UUID  `json:"id"`
-	TenantID      uuid.UUID  `json:"tenant_id"`
-	PatientID     uuid.UUID  `json:"patient_id"`
-	EncounterID   *uuid.UUID `json:"encounter_id"`
-	ServiceItemID *uuid.UUID `json:"service_item_id"`
-	Source        string     `json:"source"`
-	Description   string     `json:"description"`
-	Amount        string     `json:"amount"`
-	Currency      string     `json:"currency"`
-	Status        string     `json:"status"`
-	PaymentMethod *string    `json:"payment_method"`
-	WaiveReason   *string    `json:"waive_reason"`
-	BranchID      *uuid.UUID `json:"branch_id"`
-	DepartmentID  *uuid.UUID `json:"department_id"`
-	ToTriage      bool       `json:"to_triage"`
-	ProviderID    *uuid.UUID `json:"provider_id"`
-	Enqueued      bool       `json:"enqueued"`
-	CreatedBy     *uuid.UUID `json:"created_by"`
-	SettledBy     *uuid.UUID `json:"settled_by"`
-	SettledAt     *time.Time `json:"settled_at"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	DeletedAt     *time.Time `json:"deleted_at"`
+	ID               uuid.UUID  `json:"id"`
+	TenantID         uuid.UUID  `json:"tenant_id"`
+	PatientID        uuid.UUID  `json:"patient_id"`
+	EncounterID      *uuid.UUID `json:"encounter_id"`
+	ServiceItemID    *uuid.UUID `json:"service_item_id"`
+	Source           string     `json:"source"`
+	Description      string     `json:"description"`
+	Amount           string     `json:"amount"`
+	Currency         string     `json:"currency"`
+	Status           string     `json:"status"`
+	PaymentMethod    *string    `json:"payment_method"`
+	WaiveReason      *string    `json:"waive_reason"`
+	BranchID         *uuid.UUID `json:"branch_id"`
+	DepartmentID     *uuid.UUID `json:"department_id"`
+	ToTriage         bool       `json:"to_triage"`
+	ProviderID       *uuid.UUID `json:"provider_id"`
+	Enqueued         bool       `json:"enqueued"`
+	CreatedBy        *uuid.UUID `json:"created_by"`
+	SettledBy        *uuid.UUID `json:"settled_by"`
+	SettledAt        *time.Time `json:"settled_at"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	DeletedAt        *time.Time `json:"deleted_at"`
+	VoidReason       *string    `json:"void_reason"`
+	VoidedBy         *uuid.UUID `json:"voided_by"`
+	VoidedAt         *time.Time `json:"voided_at"`
+	ReversesChargeID *uuid.UUID `json:"reverses_charge_id"`
 }
 
 type Clinic struct {
@@ -160,7 +164,6 @@ type Clinic struct {
 	FreeWindowDays   int32      `json:"free_window_days"`
 	TriageRequired   bool       `json:"triage_required"`
 	DoctorAssignment string     `json:"doctor_assignment"`
-	PaymentMode      string     `json:"payment_mode"`
 }
 
 type ClinicalNote struct {
@@ -360,6 +363,7 @@ type LabOrder struct {
 	UpdatedAt    time.Time  `json:"updated_at"`
 	CreatedBy    *uuid.UUID `json:"created_by"`
 	DeletedAt    *time.Time `json:"deleted_at"`
+	ChargeID     *uuid.UUID `json:"charge_id"`
 }
 
 type LabOrderItem struct {
@@ -403,6 +407,7 @@ type LabTest struct {
 	UpdatedAt time.Time  `json:"updated_at"`
 	CreatedBy *uuid.UUID `json:"created_by"`
 	DeletedAt *time.Time `json:"deleted_at"`
+	Price     string     `json:"price"`
 }
 
 type MrnCounter struct {
@@ -459,6 +464,7 @@ type PharmacySale struct {
 	Discount         string     `json:"discount"`
 	Tax              string     `json:"tax"`
 	PaymentMethod    *string    `json:"payment_method"`
+	ChargeID         *uuid.UUID `json:"charge_id"`
 }
 
 type PharmacySaleItem struct {

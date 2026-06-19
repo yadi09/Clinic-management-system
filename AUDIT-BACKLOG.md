@@ -1,0 +1,525 @@
+# ClinicOS — Audit Backlog (end-to-end readiness audit, 2026-06-19)
+
+Source: 160-agent UltraCode workflow, every finding adversarially verified.
+**126 confirmed real** — 8 critical · 54 high · 54 medium · 10 low.
+Verdict: **NOT READY** as a clinic's system of record (clinical spine works; money / accountability / safety-enforcement gaps).
+Interactive report (private): https://claude.ai/code/artifact/8581c29b-bd26-4531-89f6-d43d4691be8d
+
+Items tagged `[BILLING-PHASE]` are in scope for the **Billing Integrity** remediation phase (in progress).
+Tracking of which are fixed lives in REFINEMENT.md.
+
+## 🔴 Critical
+
+- **A critical lab value reaches only the ordering doctor's inbox — no real-time alert, no escalation, no fallback if that doctor is off-shift**
+  - _Lens:_ clinical · _Type:_ clinical-safety
+  - _Impact:_ A life-threatening result (critical K+, troponin, glucose) can go unseen for hours or a full day — the single most dangerous patient-safety gap.
+  - _Fix:_ Add a worker consumer for lab.result.critical that pushes an active notification and starts an escalation timer; if notified_at is still null after N minutes, escalate to a covering clinician/department head. Surface unacknowledged criticals on a shared board, not just the orderer's private inbox.
+- **Doctor can sign & close an encounter with unacknowledged criticals or pending labs still outstanding**
+  - _Lens:_ clinical · _Type:_ clinical-safety
+  - _Impact:_ The result-acknowledgement loop is breakable from the clinician side; a critical can be locked out of the very encounter it belongs to, erasing the documentation trail.
+  - _Fix:_ In SignAndClose, query pending labs (CountPendingLabsByEncounter exists) and unacknowledged criticals; block with a clear conflict or require an explicit, audited override.
+- **A critical lab result returning after sign-and-close is a clinical dead-end — no path to act**
+  - _Lens:_ doctor · _Type:_ clinical-safety
+  - _Impact:_ Critical-value escalation — the highest-stakes safety flow in the system — terminates at an acknowledgement with no documented clinical response and no way back into the chart. A real clinic would consider this a medico-legal failure.
+  - _Fix:_ On the lab item page, when the result has an encounter_id (the field already exists in InboxItem), show the patient banner with a 'Open patient chart / encounter' link, capture a free-text 'action taken on notification', and provide an addendum or amend path (a signed note can carry a post-sign addendum without unlocking the original).
+- **Partial dispense is impossible — the whole prescription locks as 'dispensed' even when only some lines are filled**
+  - _Lens:_ inventory · _Type:_ inventory
+  - _Impact:_ Lost medication continuity and a falsified dispensing record. The clinic's own data says the patient got all 3 drugs; the pharmacist has no worklist of pending items; consumption/controlled-drug reports under-record reality.
+  - _Fix:_ Track per-prescription-item dispensed state. Only mark the header fully dispensed when all items are filled; otherwise keep it in the queue as 'partial'. Block (or explicitly confirm + flag) dispensing fewer lines than prescribed.
+- **Receiving a PO ignores the quantity actually delivered — always books the full ordered qty**
+  - _Lens:_ inventory · _Type:_ inventory
+  - _Impact:_ On-hand drifts from physical reality on every imperfect delivery — the single most common real-world receiving case. Reorder alerts, valuation, FEFO and dispense availability are all computed off a phantom quantity. Stock-outs happen while the system shows stock; audits won't reconcile.
+  - _Fix:_ Add a per-line received Qty to ReceiveItem and the dialog; book the batch and movement at the received qty. Track po_items.received as remaining/partial and allow multiple receipts until the PO is fully received, rather than one all-or-nothing claim.
+- **Qualitative / microbiology results can't be entered or flagged — only numbers work**
+  - _Lens:_ labtech · _Type:_ missing-feature
+  - _Impact:_ The majority of a typical Ethiopian clinic lab's volume is qualitative/microbiology. A reactive HIV or positive malaria result is auto-badged 'Normal' and never escalates as critical — a clinical-safety and credibility failure that would make the lab distrust and abandon auto-flagging entirely.
+  - _Fix:_ Add an analyte result_type (numeric | qualitative | text) with a configurable allowed-values set and which values are abnormal/critical (e.g. Positive=critical for HIV). Render a select for qualitative analytes; flag from the value set, not parseFloat.
+- **Lab tests have no price and are never billed — an entire service line generates zero revenue** `[BILLING-PHASE]`
+  - _Lens:_ owner · _Type:_ missing-feature
+  - _Impact:_ Lab is often a clinic's second-biggest earner. With no pricing and no charge, every lab test is given away free and is invisible to Finance. The owner cannot price, bill, or report lab revenue at all.
+  - _Fix:_ Add price to lab_tests (catalog-managed), and raise a charge at order/accession time routed to the cashier; include source='lab' in Finance.
+- **Approving a stock count does NOT reconcile un-adjusted variances — the book stays wrong**
+  - _Lens:_ pharmacymgr · _Type:_ inventory
+  - _Impact:_ Counts give a false sense of control. A manager believes 'I approved the count, stock is now accurate' when it is not. Discrepancies accumulate invisibly and the valuation/dispensing numbers drift further from reality every cycle.
+  - _Fix:_ On approval, iterate count items and apply each variance (create the count stock movement + adjust batch) for any not-yet-adjusted line, or block approval until all non-zero variances are adjusted/explained.
+
+## 🟠 High
+
+- **Admin cannot change a staff member's roles after inviting them — role assignment is dead code** `[BILLING-PHASE]`
+  - _Lens:_ admin · _Type:_ missing-feature
+  - _Impact:_ The single most frequent admin task is impossible without a developer hitting the API directly. Either the clinic re-invites people under new emails (duplicate accounts, broken audit trail) or just over-grants roles at invite time, defeating RBAC. The /users help text at content.ts:249 even promises admins can 'set their roles' — a broken promise.
+  - _Fix:_ Wire assignRoles() into UsersPage with a role multi-select (reuse the InviteDialog role chips) gated on role.assign; pre-fill current roles, PUT on save.
+- **Inviting staff requires hand-copying a link per person — no email delivery, no resend, no revoke; 72h expiry kills mistakes**
+  - _Lens:_ admin · _Type:_ workflow
+  - _Impact:_ Onboarding is manual and brittle: every invite is a copy-paste, every typo or lapsed link is unrecoverable, and the Staff list slowly fills with dead 'invited' rows that can't be cleaned up. A non-technical admin has no escape hatch.
+  - _Fix:_ Ship real email (SMTP) for invites; add Resend invite and Revoke invite actions on 'invited' rows; allow editing a pending user's email or deleting the invite.
+- **MFA is required at login but no one can enroll it — 'MFA unenrollable'**
+  - _Lens:_ admin · _Type:_ security
+  - _Impact:_ A clinic that thinks it has MFA protecting PHI actually cannot turn it on; if a tenant is flagged mfa-required at the DB level, every such user is locked out with no recovery. Matches the previously-noted 'MFA unenrollable' audit item.
+  - _Fix:_ Add MFA enrollment (TOTP secret + otpauth QR + verify-to-activate + backup codes) on an account page, and an admin policy toggle; or explicitly disable MFA until enrollment ships so login never demands a code no one can produce.
+- **No password reset / forgot-password anywhere — a locked-out staff member is a permanent dead-end**
+  - _Lens:_ admin · _Type:_ missing-feature
+  - _Impact:_ First forgotten password = the account is bricked until a developer touches the DB. Staff cannot rotate their own passwords (security/offboarding hygiene). For a clinic this is a guaranteed week-one support fire.
+  - _Fix:_ Add a password-reset flow (admin-initiated 'send reset link' reusing the invite-token mechanism + a self-service change-password on an account page). At minimum, an admin 'reset password' that re-issues an accept-invite-style set-password link.
+- **Role catalog is hardcoded and most listed roles are non-functional shells — no custom roles or per-clinic role tuning** `[BILLING-PHASE]`
+  - _Lens:_ admin · _Type:_ rbac
+  - _Impact:_ An admin who invites an Accountant or HR Manager creates a blank-access account and gets a confused support call. There's no way to model the clinic's real org or apply least-privilege; clinic_admin = owner means a compromised/rogue admin has total control including billing config.
+  - _Fix:_ Either trim the role list to the ones that actually work, or grant sensible default permissions to every shipped role; add custom-role + permission-editing UI; and scope clinic_admin below tenant_owner (e.g. no plan/tenant-destructive actions).
+- **Appointments cannot be confirmed or reminded — notifications only log, never send**
+  - _Lens:_ business · _Type:_ missing-feature
+  - _Impact:_ No reminders means high no-show rates and wasted provider capacity — the exact problem scheduling software is bought to solve. The product appears to support notifications but delivers none.
+  - _Fix:_ Wire a real (local Ethiopian) SMS gateway behind the existing Provider interface, add appointment confirm + reminder actions, and a next-day reminder job.
+- **No end-of-day / shift closeout or cash-drawer reconciliation, and Finance ignores payment method** `[BILLING-PHASE]`
+  - _Lens:_ business · _Type:_ financial
+  - _Impact:_ Without a method breakdown and closeout, a clinic cannot balance its drawer or detect shrinkage/theft — a daily requirement whose absence makes the system unusable as the cash system of record.
+  - _Fix:_ Add by-method and by-cashier breakdowns to CashSummary plus a shift/day closeout flow (counted vs expected cash, variance, sign-off) producing a printable Z-report.
+- **No printed/printable receipt or invoice is ever produced for a payment** `[BILLING-PHASE]`
+  - _Lens:_ business · _Type:_ missing-feature
+  - _Impact:_ A cash desk cannot operate without receipts: no proof of payment for disputes/reimbursement and likely a local receipting/tax violation. Staff will keep a side paper ledger and lose trust in the system.
+  - _Fix:_ Add a sequential receipt number to settled charges and a printable receipt/invoice (clinic header, itemized lines, total, method, cashier, timestamp) on settlement.
+- **No refund or charge-reversal exists — a mistaken or overpaid charge is permanent** `[BILLING-PHASE]`
+  - _Lens:_ business · _Type:_ financial
+  - _Impact:_ Cashiers will make mistakes; with no reversal path the books drift from reality and disputes can't be resolved cleanly, eroding trust.
+  - _Fix:_ Add a manager-gated, reason-required, audited refund/reversal action that nets against collected totals in Finance and is reflected on the receipt/history.
+- **Finance/reconciliation has no by-method and no per-cashier breakdown — settled_by is captured but never reported** `[BILLING-PHASE]`
+  - _Lens:_ cashier · _Type:_ financial
+  - _Impact:_ Cash cannot be reconciled by method (you can't tell how much cash should be in the drawer vs. on card), and an over/short or a suspect cashier cannot be traced. For a money-handling system this is a core accountability gap.
+  - _Fix:_ Add CashByMethodSince and CashByCashierSince queries (GROUP BY payment_method / settled_by) and surface them in Finance and the cashier's own EOD view.
+- **No void / refund / reversal — a mistaken or disputed payment is permanent** `[BILLING-PHASE]`
+  - _Lens:_ cashier · _Type:_ financial
+  - _Impact:_ Real cashiering involves mistakes and refunds daily. With no reversal path, errors are baked into the books forever and refunds must happen off-system (cash out of the drawer with no record) — the exact behavior an audited till is meant to prevent.
+  - _Fix:_ Implement void/refund: a status transition paid→void (or a reversing entry) with reason + settled_by + audit event, reflected in cash summaries; expose it on the patient charge history and the cashier page.
+- **Allergy data — the basis of every guard — cannot be captured at registration, at triage, or by the prescribing doctor inline**
+  - _Lens:_ clinical · _Type:_ clinical-safety
+  - _Impact:_ The allergy guard is only as good as its data, and the workflow systematically fails to capture it where it matters. An empty list reads as 'no known allergies' and the guards pass everything through.
+  - _Fix:_ Add allergy/NKDA capture at registration or triage and an inline add-allergy affordance in the encounter workspace for the prescriber; make NKDA an explicit recorded state; require severity rather than defaulting silently.
+- **Doctor's free-text prescribing uses a weaker allergy match than the pharmacy dispense guard (no drug-class check)**
+  - _Lens:_ clinical · _Type:_ clinical-safety
+  - _Impact:_ The clinician making the prescribing decision gets the weakest, exact-name-only guard. Class-based allergies (beta-lactams, sulfonamides, NSAIDs) are silently missed at prescribe time and rely entirely on the pharmacist.
+  - _Fix:_ Resolve the prescription drug picker to a catalog drug (name+class) and run allergyMatchesDrug at prescribe time so the doctor gets the same class-aware block the pharmacist does.
+- **Non-numeric critical results (qualitative tests) are silently flagged 'normal' — a positive result never becomes critical**
+  - _Lens:_ clinical · _Type:_ clinical-safety
+  - _Impact:_ Entire classes of critical results — infectious-disease positives, microbiology growth — bypass critical escalation and present as normal. In Ethiopia (malaria/TB/HIV burden) this is a high-frequency, high-consequence blind spot.
+  - _Fix:_ Let analytes define qualitative abnormal/critical value sets (or a result type); flagFor should consult them for non-numeric values and validation should escalate qualitative criticals like numeric ones.
+- **Vitals are accepted with no plausibility/range validation — transposed or mistyped values save silently**
+  - _Lens:_ clinical · _Type:_ data-integrity
+  - _Impact:_ Garbage or unit-confused vitals enter the record and drive decisions; a transposed BP or decimal-shifted temp can mask or fabricate an emergency.
+  - _Fix:_ Add per-field range validation front and back, with units shown and an explicit confirm for implausible values; reject systolic<=diastolic.
+- **Sign-and-close is two separate requests; if the second fails the patient stays in the queue with a locked encounter, and nothing reconciles it server-side** `[BILLING-PHASE]`
+  - _Lens:_ concurrency · _Type:_ data-integrity
+  - _Impact:_ Closed visits keep occupying the doctor/department queue, inflating the worklist with ghost patients; staff must manually hunt and clear them, and a doctor may re-open a patient whose encounter is already signed and locked, causing confusion about whether the visit happened. Queue counts and wait-time metrics become untrustworthy.
+  - _Fix:_ Make SignAndClose transition the queue entry to 'done' inside the same transaction as closing the encounter (it already has enc.QueueEntryID), OR register an idempotent clinical.encounter.closed handler on the outbox relay that sets the queue entry done. Remove the client-side two-step and the swallowed catch.
+- **Doctor cannot record a newly-discovered allergy during the consult — the one safety guard is unreachable where it matters**
+  - _Lens:_ doctor · _Type:_ clinical-safety
+  - _Impact:_ The allergy-guarded prescribing the product advertises only catches allergies someone else pre-recorded. The clinician most likely to discover an allergy can't capture it, so the guard silently fails to grow — a direct patient-safety hole.
+  - _Fix:_ Grant the doctor role patient.update (or a narrower allergy.write), and add an inline 'Add allergy' control in the encounter banner that calls POST /patients/:id/allergies and refreshes the workspace so the prescribing guard sees it immediately.
+- **Prescriptions carry no quantity and no catalog-linked drug — the doctor→pharmacy handoff is guesswork**
+  - _Lens:_ doctor · _Type:_ workflow
+  - _Impact:_ FEFO/expiry guards and stock deduction can't be driven from the order; the pharmacist re-keys quantities and matches drugs by hand, introducing dispensing errors and breaking the inventory chain the system is built around.
+  - _Fix:_ Add a drug picker that resolves against the pharmacy catalog (drug_id) plus an explicit quantity-to-dispense field on the prescription line; have the dispense queue consume drug_id + quantity directly.
+- **Set-aside patients double-appear: same patient shows in both 'Waiting' and 'In progress' with an active 'Open consult'**
+  - _Lens:_ doctor · _Type:_ workflow
+  - _Impact:_ The board mis-states the day's workload, and a doctor (or covering colleague) can click 'Open consult' on a patient who is mid-labs, creating confusion about who actually still needs to be seen. In a busy clinic this erodes trust in the board immediately.
+  - _Fix:_ On set-aside, transition the queue entry to a distinct state (e.g. 'awaiting_results' / hold) so it drops out of the Waiting list, or exclude in_consult+awaiting_results encounters from the Waiting tab.
+- **No void / refund / cancel for any charge — money entered in error is permanent** `[BILLING-PHASE]`
+  - _Lens:_ financial · _Type:_ financial
+  - _Impact:_ Every reception/cashier mistake and every legitimate refund permanently corrupts the Collected total and patient ledger. Staff will lose trust in Finance and resort to manual side-records — exactly what the system was meant to replace.
+  - _Fix:_ Add VoidCharge (pending->void, reason, audited) and a refund/reversal flow for settled charges (negative/linked reversal row), exclude voids/refunds from Collected, and surface both in the cashier and Finance.
+- **Pharmacy revenue is off-ledger: dispensed drugs are never collected and never appear in Finance or the cashier**
+  - _Lens:_ financial · _Type:_ financial
+  - _Impact:_ Largest revenue line in many Ethiopian clinics (drugs) is uncollected and invisible. Guaranteed revenue leakage plus an unreconcilable Finance view — a clinic owner cannot trust the totals.
+  - _Fix:_ On Dispense/SellOTC, raise a charge (source='pharmacy') into the charges spine instead of (or in addition to) the isolated pharmacy_sales row, so it flows through the cashier and Finance; or have CashSince/by-source union pharmacy_sales and add a settle path for dispense sales.
+- **No prescribed quantity — dispense quantity is unbounded free-entry, decoupled from what the doctor ordered**
+  - _Lens:_ inventory · _Type:_ data-integrity
+  - _Impact:_ Clinically unsafe (wrong amount dispensed, no cross-check) and a stock-integrity hole — consumption and controlled-substance registers reflect arbitrary typed numbers, not prescribed therapy. Diversion of controlled drugs is invisible.
+  - _Fix:_ Add a prescribed quantity to prescription_items (entered by the doctor or derived from dose×freq×duration), surface it as the dispense default, and validate dispensed qty against it (warn/justify on mismatch, hard-gate for controlled drugs).
+- **Critical-result escalation goes only to the ordering doctor's inbox — if that doctor is off-shift, a panic value has no clinic-wide safety net**
+  - _Lens:_ journey · _Type:_ clinical-safety
+  - _Impact:_ Critical-value communication is the single most safety-sensitive handoff in a lab workflow, and here it has a single point of failure (one named doctor). Cross-cover, shift changes, and locums — all normal in Ethiopian clinics — mean panic values can sit unacknowledged with nobody else able to even see them. This is the kind of gap that causes patient harm and that an inspector would flag.
+  - _Fix:_ Add a clinic-wide unacknowledged-criticals view visible to any doctor and to a lab/duty manager (not just the orderer), plus time-based re-escalation (e.g. still unacknowledged after N minutes -> surface to manager). Tie 'mark notified' to who was told and the patient/encounter, not just a timestamp.
+- **No way to cancel or void a raised charge — abandoned/no-pay patients clog the cashier worklist and finance 'outstanding' permanently** `[BILLING-PHASE]`
+  - _Lens:_ journey · _Type:_ financial
+  - _Impact:_ Every patient who registers but doesn't pay leaves a permanent 'pending' line on the cashier worklist (PendingCharges) and in the Finance 'outstanding' total (CashSince). Within weeks the cashier's list is full of dead entries they must mentally skip, and the clinic's outstanding-revenue number is meaningless. Staff will start mis-using 'Waive' (with a fake reason) just to clear the board, corrupting the waiver report that CASH-2 was built to make trustworthy.
+  - _Fix:_ Add a CancelCharge (status='cancelled', attributed + timestamped, distinct from waive) endpoint and a cashier/reception action 'Patient left — cancel charge'. Exclude cancelled from outstanding. Optionally auto-expire same-day unpaid registration charges at end of day.
+- **Walk-ins added from the Queue board bypass billing entirely — the payment gate only exists at the reception desk** `[BILLING-PHASE]`
+  - _Lens:_ journey · _Type:_ financial
+  - _Impact:_ In a clinic that has explicitly chosen 'cashier collects first', staff have a one-click way to put unpaid patients in front of the doctor — and appointment check-in does the same. The whole point of cashier mode (no service before payment) is silently defeatable, so revenue leaks and the clinic can't trust that 'in the queue' implies 'paid'.
+  - _Fix:_ Route all enqueue doors (walk-in, appointment check-in) through the same billing gate as reception when payment_mode='cashier': raise the configured charge and hold in pending until settled, or require an explicit waiver. Don't let scheduling enqueue independently of billing in cashier mode.
+- **Critical results only escalate AFTER validation — if the validator is unavailable, a life-threatening value sits silently in 'Awaiting validation'**
+  - _Lens:_ labmgr · _Type:_ clinical-safety
+  - _Impact:_ In a single-shift or understaffed clinic (common in Ethiopia), a critical result can go unseen for hours because the human gate is the only trigger. This is a direct patient-safety risk and contradicts the purpose of critical-value flagging.
+  - _Fix:_ Raise a provisional critical alert when a critical value is saved (pre-validation), and/or add a TAT alarm that surfaces overdue 'resulted'/STAT samples on the worklist and on the manager dashboard.
+- **No way to amend or correct a result after it has been validated/released**
+  - _Lens:_ labmgr · _Type:_ clinical-safety
+  - _Impact:_ Corrected reports are a routine part of lab operations and a regulatory requirement. With no amendment path, the clinic's only options are leaving a known-wrong result in the patient record or deleting/re-ordering — both unacceptable for patient safety and traceability.
+  - _Fix:_ Add an 'Amend validated result' flow gated on lab.validate that writes a new version while retaining the original (versioned lab_results or an amendment audit row), re-runs flagging, and re-publishes lab.result.validated so the doctor is re-notified.
+- **The lab manager has no reporting / oversight surface at all**
+  - _Lens:_ labmgr · _Type:_ missing-feature
+  - _Impact:_ The manager cannot actually manage. There's no visibility into backlog, overdue STATs, or whether critical values were ever communicated. A clinic cannot run QA or report to regulators from this system; the role is reduced to being a second pair of hands at the bench.
+  - _Fix:_ Add a /lab/dashboard (lab.validate/lab.manage) with pending/overdue counts, TAT by priority, a critical-results log (validated → notified, with timing), and per-actor throughput, sourcing from existing timestamps (created_at, resulted_at, validated_at, notified_at).
+- **Two-person rule is not enforced — a tech (or the lab manager) can validate and release results they entered themselves**
+  - _Lens:_ labmgr · _Type:_ clinical-safety
+  - _Impact:_ The headline integrity control of any clinical lab is absent. A wrong result can be self-released with no independent check; in an audit or a patient-harm investigation the clinic cannot demonstrate separation of duties. This is the kind of gap that makes a quality officer reject the system.
+  - _Fix:_ Add a resulted_by/submitted_by UUID on lab_order_items, set it in SubmitResults, and in ValidateItem reject (409) when validated_by == resulted_by unless an explicit 'single-staff lab' override flag is set per tenant. Show both names on the released report.
+- **No amend/correct path after validation — a wrong released result is permanent** `[BILLING-PHASE]`
+  - _Lens:_ labtech · _Type:_ data-integrity
+  - _Impact:_ An erroneous released result stands forever and the doctor may act on it. Forcing a full re-order loses the audit link and double-charges/re-draws the patient. Labs will not trust a system where a known-wrong result can't be corrected.
+  - _Fix:_ Add a manager-gated amend flow: unlock to 'resulted' (or an 'amended' status) with a required reason, preserve the prior value in history, and re-escalate to the doctor's inbox as a corrected result.
+- **No record of who entered or collected each result — zero result attribution**
+  - _Lens:_ labtech · _Type:_ data-integrity
+  - _Impact:_ No traceability of who performed the test or entered the value — a hard requirement for any lab QA/accreditation and for resolving disputes over a result. The 'who collected' field is effectively always blank.
+  - _Fix:_ Add entered_by/entered_at to lab_results, set from the authenticated principal in SaveResults; set collected_by from the actor (uuid FK to users), not a request-supplied string.
+- **No sample-rejection path — can't reject hemolyzed / clotted / QNS / mislabeled specimens**
+  - _Lens:_ labtech · _Type:_ workflow
+  - _Impact:_ Bad specimens either get resulted (producing wrong results on a clotted sample) or clog the worklist indefinitely with no way to signal the doctor that a redraw is needed. The doctor's encounter stays 'awaiting_results' forever with no closure.
+  - _Fix:_ Add a 'Reject sample' action (status -> rejected/cancelled) with a required reason (hemolyzed/clotted/QNS/mislabeled/wrong tube), notify the ordering encounter, and surface it in the doctor's results inbox so a redraw can be ordered.
+- **No range/plausibility validation on vitals — impossible values and fully empty sets save silently**
+  - _Lens:_ nurse · _Type:_ data-integrity
+  - _Impact:_ Garbage vitals propagate to the doctor's chart and the permanent record; a transcription slip can drive a wrong clinical decision, and empty 'recorded' sets create false confidence that triage was done.
+  - _Fix:_ Add range validation + a soft 'value looks unusual, confirm?' prompt in the dialog, require at least one measurement before save, and add DB CHECK constraints as a backstop.
+- **Nurse cannot set or change patient acuity/priority anywhere in triage — the core triage function is missing from the UI**
+  - _Lens:_ nurse · _Type:_ missing-feature
+  - _Impact:_ The system cannot do triage in the clinical sense. Sick patients wait behind well ones; in a busy Ethiopian OPD this causes deterioration and is the single biggest reason a triage nurse would distrust and abandon the tool.
+  - _Fix:_ Add an acuity selector to the Vitals dialog and a priority badge + quick re-prioritize control to the triage queue cards, calling the existing POST /queue/:id/priority. Sort and color the queue by acuity.
+- **Nurse records vitals 'blind' — no allergies, age/sex, chief complaint, or prior vitals shown on the triage screen**
+  - _Lens:_ nurse · _Type:_ clinical-safety
+  - _Impact:_ Vitals interpretation requires context; without it the nurse can't recognize an age-inappropriate value or a danger sign, and can't see deterioration on re-triage. Increases missed-danger-sign risk and forces the nurse to leave the screen to look the patient up.
+  - _Fix:_ Enrich the queue entry / vitals dialog with age, sex, allergy chips, chief complaint, and the last recorded vitals (the doctor's banner already does allergies — reuse it). Add a reason field to walk-in.
+- **The doctor handoff carries no vitals, no acuity, and no 'triaged' indicator — vitals are invisible until the encounter is opened**
+  - _Lens:_ nurse · _Type:_ workflow
+  - _Impact:_ Triage work is hidden from the person who needs it most. The doctor can't prioritize the sickest waiting patient and can't tell if triage was done — defeating the purpose of having a nurse triage at all.
+  - _Fix:_ Add an abnormal/acuity flag and a vitals summary (or 'vitals: not taken') to the worklist Waiting cards; include latest vitals in the worklist query.
+- **Finance has no branch dimension — a multi-branch owner cannot see or separate per-branch numbers** `[BILLING-PHASE]`
+  - _Lens:_ owner · _Type:_ multi-tenant
+  - _Impact:_ A multi-branch owner — the exact buyer this 'multi-branch' SaaS targets — cannot reconcile or compare branches, defeating a core reason to adopt a centralized system.
+  - _Fix:_ Add optional branch_id filter and a by-branch grouping to CashSince and a branch selector on FinancePage.
+- **No insurance/credit (bill-later) flow — only 'pay now' or 'waive (lost revenue)'** `[BILLING-PHASE]`
+  - _Lens:_ owner · _Type:_ workflow
+  - _Impact:_ Insurance and credit are mainstream in Ethiopian clinic operations. Treating insured visits as waivers makes revenue look forgone and provides no way to track or collect from insurers — the owner loses visibility of real receivables and understates revenue.
+  - _Fix:_ Add a 'bill to payer/credit' disposition with a payer entity and a receivable status, with its own outstanding-by-payer report, separate from waivers.
+- **No refund, void, or correction path for a settled charge — a mis-keyed payment is permanent**
+  - _Lens:_ owner · _Type:_ financial
+  - _Impact:_ Cash handling errors are uncorrectable inside the system, forcing manual side-ledgers and destroying trust in the numbers. No real clinic cashier operation can run without a controlled refund/void path.
+  - _Fix:_ Add void/refund charge operations (reason + permission + audit event), reflected as offsetting lines in CashSince.
+- **Controlled substances get no dispensing control beyond a flag — no qty limit, no second verification, no patient/dispenser on the register**
+  - _Lens:_ pharmacist · _Type:_ clinical-safety
+  - _Impact:_ A controlled-substance register that cannot say who got the drug or who handed it out is not a compliant register, and the dispense flow provides none of the safeguards Ethiopian (and general) pharmacy practice requires for scheduled drugs. Audit and diversion risk.
+  - _Fix:_ Add a controlled-drug dispense path: capture authorising prescriber/reference, optional witness, enforce qty rules; join patient and dispenser (created_by) into the controlled register report and show them.
+- **Dispense is all-or-nothing and irreversible — no partial fill, back-order, or re-dispense**
+  - _Lens:_ pharmacist · _Type:_ workflow
+  - _Impact:_ Real clinics partially dispense constantly (stock-outs, patient can only afford part, controlled-qty limits). Here a partial dispense permanently orphans the unfilled lines — the patient can never come back for them, and there is no record that they are owed. This alone makes the module unfit for a busy counter.
+  - _Fix:_ Track dispensed state and quantity at the item level; only mark the header fully dispensed when all items are filled; keep partially-filled prescriptions in the queue with a 'remaining items' view.
+- **Doctor types drug name as free text, so dispensing fails to match in-stock drugs (exact-name match)**
+  - _Lens:_ pharmacist · _Type:_ workflow
+  - _Impact:_ Stocked medicines routinely read as out-of-stock, so patients are turned away to buy outside, the clinic loses the pharmacy revenue, and no charge is ever raised. The allergy/FEFO/charge logic is all keyed off a match that frequently won't happen in real prescribing.
+  - _Fix:_ Make the doctor's drug field a catalog picker (free-text allowed only for items not in catalog), or store a drug_id link on the prescription item. At minimum, fuzzy-match (ILIKE/trigram) in DispenseDetail and let the pharmacist confirm the matched catalog drug.
+- **Prescriptions carry no quantity — the pharmacist must guess how much to dispense**
+  - _Lens:_ pharmacist · _Type:_ missing-feature
+  - _Impact:_ Dispensing quantity is invented at the counter on every prescription. Under-dispensing breaks the treatment course; over-dispensing wastes stock and overcharges. Stock-on-hand and the patient charge are both wrong whenever the pharmacist miscomputes. This is the core data the whole dispense exists to act on, and it isn't captured.
+  - _Fix:_ Add quantity_prescribed (and optionally quantity_dispensed) to prescription_items; add a Qty field to the doctor's medication dialog; prefill the dispense qty from it instead of defaulting to 1.
+- **Controlled-drugs register has no patient and no dispenser — not a usable narcotics ledger**
+  - _Lens:_ pharmacymgr · _Type:_ data-integrity
+  - _Impact:_ The clinic cannot meet controlled-substance record-keeping expectations from this system; the manager must keep a parallel paper book, undermining the whole point of digitising the pharmacy.
+  - _Fix:_ Join created_by → users and ref to patient/prescription; add patient, dispensed-by, batch, and a running balance column; consider a date range filter.
+- **Expired and quarantined stock cannot be written off, and it stays in inventory valuation forever**
+  - _Lens:_ pharmacymgr · _Type:_ financial
+  - _Impact:_ Inventory value and the manager dashboard are systematically overstated by expired/dead stock, distorting financial reporting and reorder decisions. Wastage is invisible as a tracked loss, and disposal of controlled/expired drugs has no audit trail — a regulatory problem in Ethiopia.
+  - _Fix:_ Add a dispose/write-off action that posts a 'wastage' movement and zeroes the batch; exclude expired/quarantined from ValueOnHand and valuation (or report them separately); make the Wastage report reflect actual write-offs.
+- **Receiving a PO always books the full ORDERED quantity — you cannot record a short/partial/over delivery**
+  - _Lens:_ pharmacymgr · _Type:_ inventory
+  - _Impact:_ Every short or over delivery silently corrupts on-hand stock and inventory valuation. Pharmacists will be told to dispense drugs that aren't there; the manager's stock-on-hand value is wrong from day one. This is the single most damaging inventory defect in the module.
+  - _Fix:_ Add received_qty per line to the receive request and to po_items (qty_received). Book the batch at the received quantity, support partial receipt (status stays 'ordered'/'partially_received' until fully received), and surface variance against ordered.
+- **Stock count pre-fills 'counted' equal to system on-hand for every drug — defeats blind counting and auto-passes untouched counts**
+  - _Lens:_ pharmacymgr · _Type:_ data-integrity
+  - _Impact:_ Counts can be 'completed' without any real counting and still look clean, so shrinkage, theft, and expiry losses are masked. Combined with the approval gap above, the count feature provides assurance it does not actually deliver.
+  - _Fix:_ Snapshot counted as NULL/0 (blind), show on_hand only after entry or behind a reveal, and flag lines never touched as 'not counted' rather than zero-variance matches.
+- **No way to correct a registration mistake — patient edit has a permission and an endpoint but no UI**
+  - _Lens:_ reception · _Type:_ missing-feature
+  - _Impact:_ Typos in names/phones can't be fixed at the desk, so wrong names print on queue boards and reach the doctor, and an un-correctable bad phone breaks recall. Staff lose trust ('the system won't let me fix obvious mistakes').
+  - _Fix:_ Add an 'Edit details' action on PatientProfilePage (gated on can('patient.update')) that opens a form bound to updatePatient — reuse the registration field set.
+- **Reception-collect 'Waive' button is shown to a role that lacks the waive permission — guaranteed 403 dead-end** `[BILLING-PHASE]`
+  - _Lens:_ reception · _Type:_ rbac
+  - _Impact:_ A legitimate exemption can't be processed at the desk, the patient is stuck, and reception sees an unexplained failure on a button the app offered them. Either a real workflow gap (no front-desk exemptions) or a broken control.
+  - _Fix:_ Decide the policy: if reception may waive, add payment.waive to the receptionist role; otherwise gate the Waive button on can('payment.waive') and show 'route to a manager/cashier to waive'.
+- **Scheduled appointments check in for free — the entire cashier/billing flow is bypassed** `[BILLING-PHASE]`
+  - _Lens:_ reception · _Type:_ financial
+  - _Impact:_ Every scheduled patient consults for free in a clinic that bills walk-ins. Direct, silent revenue leakage and a glaring inconsistency staff will exploit ('just book them an appointment to skip the fee').
+  - _Fix:_ Route appointment check-in through the billing charge/advance path: present the service picker (defaults pre-checked) at check-in and raise charges via raiseCharge, so advanceIfPaid gates the queue entry exactly like a walk-in. Or, on check-in, redirect into the Reception flow pre-filled with the appointment's patient/department/provider.
+- **Audit trail never records who performed the action (actor_id is always NULL)** `[BILLING-PHASE]`
+  - _Lens:_ security · _Type:_ data-integrity
+  - _Impact:_ The audit log records WHAT changed but never WHO — useless for accountability, breach investigation, or regulatory audit. A clinic cannot trace misuse of patient data or disputed clinical actions to a person. This undermines the whole compliance story.
+  - _Fix:_ Add an actor_id (and ideally IP/request_id) to the domain Event and the outbox payload, propagate the principal's UserID at Publish time, and populate Entry.ActorID in the EventHandler. Also audit PHI reads (patient profile, encounter, lab results) — currently no read access is logged at all.
+- **Deactivating or re-roling a user does not revoke their session; refresh never rechecks account status (up to 30-day access after offboarding)** `[BILLING-PHASE]`
+  - _Lens:_ security · _Type:_ rbac
+  - _Impact:_ Broken offboarding for a PHI system: a terminated or demoted staff member retains read/write access to patient records, prescribing, and billing for up to 30 days (renewable). Admins reasonably believe 'deactivate' cut them off; it did not.
+  - _Fix:_ On UpdateUserStatus(non-active) and AssignRoles, call RevokeAllUserSessions for that user. In Refresh, load the full user and reject if status != active. Consider re-checking status/role version on each access (short access TTL already helps but does nothing if refresh keeps minting).
+- **Patient PHI attachments are served as unauthenticated, enumerable public Cloudinary URLs**
+  - _Lens:_ security · _Type:_ security
+  - _Impact:_ Direct PHI exposure: lab scans, IDs, and medical documents are reachable without logging in and without tenant boundaries at the object layer. This is a reportable breach class for a health system and would block adoption / fail any privacy review.
+  - _Fix:_ Mark patient uploads as Cloudinary `authenticated`/`private` delivery type and add a `SignDownload(key, ttl)` to the Provider; serve attachment URLs as short-lived signed URLs minted per-request after a permission+tenant check (or proxy the bytes through an authenticated API route). Never hand out permanent res.cloudinary.com/upload URLs for PHI.
+- **RecordAttachment trusts an arbitrary client-supplied storage_key (cross-tenant object linking / IDOR)**
+  - _Lens:_ security · _Type:_ multi-tenant
+  - _Impact:_ Defeats tenant isolation for attachments and lets a user fabricate provenance (record any object as a given patient's file). Combined with finding #1's public delivery, it is a concrete cross-tenant PHI read path.
+  - _Fix:_ In RecordAttachment, reject any storage_key that does not have the prefix `{tenantID}/patients/{patientID}/` (the exact folder used in SignAttachmentUpload). Ideally return the authoritative key from the sign step and ignore a client-supplied one entirely.
+
+## 🟡 Medium
+
+- **Settings still exposes a card-fee toggle/amount that CASH-3 said was removed — split pricing source confuses the admin** `[BILLING-PHASE]`
+  - _Lens:_ admin · _Type:_ workflow
+  - _Impact:_ A stale, writable fee field lingers under the hood — a future UI or API caller can set a card fee that competes with the catalog price (the exact split CASH-3 set out to eliminate), and it's a trap for the next developer. Not user-visible today, but it undermines the 'single price source' guarantee.
+  - _Fix:_ Drop card_fee_* from the settings DTO, frontend type, save payload, and backend settingsReq/SaveSettings; keep only flow rules (free window, triage, doctor assignment, payment mode).
+- **Staff lifecycle UI is incomplete: 'deactivated' and 'invited' users have no actions; only Suspend/Reactivate exist**
+  - _Lens:_ admin · _Type:_ ux
+  - _Impact:_ Offboarding (deactivate) — a core admin and compliance task — isn't reachable from the UI; pending invites and deactivated users are stuck states. Admin is forced to use only Suspend as a blunt instrument.
+  - _Fix:_ Add Deactivate (active/suspended→deactivated), Reactivate from deactivated, and invite actions (resend/revoke) so every lifecycle state has the appropriate control.
+- **audit.read permission and audit events exist but there is no audit-log viewer for the admin** `[BILLING-PHASE]`
+  - _Lens:_ admin · _Type:_ missing-feature
+  - _Impact:_ Accountability features (waiver reasons, status changes, role assignments) are recorded but invisible to the admin who is supposed to oversee them — there is no way to answer 'who waived this 200 ETB charge?' from the app, which a clinic owner will ask.
+  - _Fix:_ Build a read-only Audit log page (filter by actor/date/event type) gated on audit.read, surfacing the events already emitted by billing/identity; add it to the admin nav.
+- **English-only, Gregorian-only — no localization or Ethiopian calendar for front-line staff** `[BILLING-PHASE]`
+  - _Lens:_ business · _Type:_ ux
+  - _Impact:_ Non-English-fluent staff are slowed and error-prone; Gregorian-only dates clash with how patients state DOBs/appointment dates, causing booking and DOB-entry mistakes, and signal the product wasn't built for the local market.
+  - _Fix:_ Add an i18n layer with Amharic translations driven by the org locale, plus an Ethiopian-calendar date display/picker (Gregorian toggle) for DOB and appointment dates.
+- **No insurance / corporate / credit billing — only a 'waive' that forgoes the money** `[BILLING-PHASE]`
+  - _Lens:_ business · _Type:_ business
+  - _Impact:_ Clinics serving insured or corporate patients cannot bill them — real revenue would have to be marked 'forgone', destroying the books and excluding a large, lucrative patient segment.
+  - _Fix:_ Introduce payers/corporate accounts and an on-account/insurance disposition distinct from waive, with claim/invoice generation and an A/R report.
+- **Cashier cannot see their own totals or do end-of-day reconciliation** `[BILLING-PHASE]`
+  - _Lens:_ cashier · _Type:_ rbac
+  - _Impact:_ The person who actually handles the money is the one person who cannot see the money totals or reconcile a drawer. End-of-day reconciliation — the cashier's core duty — is impossible from their own login.
+  - _Fix:_ Give the cashier a scoped 'my collections today' view (their settled_by total + by-method breakdown) under payment.collect, separate from the owner finance dashboard.
+- **No tendered-amount / change calculation — cashier does mental math for every cash sale** `[BILLING-PHASE]`
+  - _Lens:_ cashier · _Type:_ missing-feature
+  - _Impact:_ Every cash transaction (the dominant method in Ethiopian clinics) forces manual arithmetic and gives no record of change given — a common source of till discrepancies and disputes.
+  - _Fix:_ Add a cash-tendered input on settle, compute and display change, and persist tendered_amount so the till can be reconciled against cash on hand.
+- **One global payment method for the whole page — wrong method silently recorded, no split/mixed payment** `[BILLING-PHASE]`
+  - _Lens:_ cashier · _Type:_ workflow
+  - _Impact:_ Method is mis-recorded by a stale dropdown, corrupting reconciliation; one-click settle with no confirm makes mis-clicks (wrong patient/charge) easy and irreversible (see void gap). Mixed payments — common for larger bills — are unsupported.
+  - _Fix:_ Move method selection into a per-charge confirm dialog that echoes patient + amount, and support splitting one bill across multiple methods/tenders.
+- **Zero-amount charge can be 'settled' as a paid 0 ETB payment; no amount guard** `[BILLING-PHASE]`
+  - _Lens:_ cashier · _Type:_ data-integrity
+  - _Impact:_ Free/mis-priced items leak into 'collected' as zero-value paid transactions, distorting payment counts and reconciliation, and masking catalog pricing mistakes (a service that should cost money silently collects nothing).
+  - _Fix:_ Reject or specially handle 0 ETB payable charges (require amount>0 to settle, or force the waiver path), and warn at catalog/charge time when a billable service has price 0.
+- **Abnormal-but-not-critical results have no active surfacing and the inbox prunes validated results after 14 days**
+  - _Lens:_ clinical · _Type:_ clinical-safety
+  - _Impact:_ Clinically significant trends (renal function, infection markers) can be missed because nothing prompts review and the result quietly leaves the worklist; the system actively tracks only the critical tier.
+  - _Fix:_ Track per-result reviewed/unreviewed state independent of the 14-day window; badge unreviewed abnormals; do not age unreviewed results out of the inbox.
+- **Critical-value acknowledgement is a single self-service click with no record of how/whom/what was communicated**
+  - _Lens:_ clinical · _Type:_ clinical-safety
+  - _Impact:_ The 'every critical reaches a human, with audit' requirement is only nominally met; the loop can be closed with no actual notification, undermining safety and audit defensibility.
+  - _Fix:_ Capture recipient, channel, and an optional read-back note on acknowledgement; consider requiring the lab (not just the orderer) to log the callback; persist a critical-callback record, not just a timestamp.
+- **CheckIn and EnqueueWalkIn have no idempotency guard — re-checking-in or double walk-in creates duplicate queue entries**
+  - _Lens:_ concurrency · _Type:_ concurrency
+  - _Impact:_ Duplicate patients in the queue from ordinary double-clicks or two-staff races; nurse/doctor see the same person listed twice and may record vitals/encounters against different queue entries, fragmenting the visit record.
+  - _Fix:_ Before CreateQueueEntry in CheckIn/EnqueueWalkIn, reuse the CountActiveQueueByPatient check (or the partial-unique index from the prior finding) and short-circuit if the patient is already active in the queue; guard SetAppointmentStatus on the prior status so a re-check-in is a clean conflict.
+- **Doctor double-submitting a lab order creates duplicate orders/specimens — no dedup on (encounter, test)** `[BILLING-PHASE]`
+  - _Lens:_ concurrency · _Type:_ data-integrity
+  - _Impact:_ Duplicate specimens get drawn from the patient and run, wasting reagents and the patient's blood, and producing two result sets that confuse validation and the doctor's inbox. Eventually each will also generate a separate lab charge (Billing-2), double-billing the patient.
+  - _Fix:_ Either dedup on (encounter_id, test_id) for not-yet-resulted items, or accept a client idempotency key on the order. At minimum warn the doctor when the same test is already ordered+open on this encounter.
+- **Queue state transitions (called/in_consult/done) have no from-state guard — concurrent or stale transitions silently overwrite each other**
+  - _Lens:_ concurrency · _Type:_ concurrency
+  - _Impact:_ A stale board can resurrect a finished patient or mark an in-progress consult as no-show, corrupting the day's flow and the wait-time/throughput metrics derived from called_at/started_at/ended_at timestamps.
+  - _Fix:_ Define the legal transitions and add `AND state = <expected>` (or `AND state IN (...)`) to TransitionQueueEntry, returning the row; map ErrNoRows to a 409 INVALID_STATE — mirroring the lab pattern that already works well.
+- **Reception raising N charges then settling them is a non-atomic, non-idempotent multi-request loop — partial failure leaves orphaned pending charges** `[BILLING-PHASE]`
+  - _Lens:_ concurrency · _Type:_ concurrency
+  - _Impact:_ Patients get double-billed or partially billed; the cashier worklist shows duplicate or stray pending charges; revenue figures in Finance are wrong; and a half-raised visit is a dead-end that reception must clean up by hand. In a busy clinic with poor connectivity this is a routine occurrence, not an edge case.
+  - _Fix:_ Add a single backend endpoint that takes the full set of selected services + routing and raises all charges (and optionally settles them) in ONE transaction; accept a client-generated idempotency key (or dedup on (patient, service_item_id, day)) so a retry is a no-op. The frontend sends one request instead of a loop.
+- **Allergy guard is substring-only with no drug-class intelligence and no override trail**
+  - _Lens:_ doctor · _Type:_ clinical-safety
+  - _Impact:_ Gives false reassurance: the most common real cross-reactivity (penicillin class) is missed, while there's no audited override for legitimate clinical decisions. A clinician will either trust it too much or route around it.
+  - _Fix:_ Acknowledge as a known limitation in-UI for now; near-term add a basic ingredient/class map for high-risk families (penicillins, sulfonamides, NSAIDs) and an explicit 'override with reason' that records who/why on the prescription item.
+- **An encounter can be signed and locked completely empty — no note, no diagnosis required**
+  - _Lens:_ doctor · _Type:_ data-integrity
+  - _Impact:_ Permanent, legally-significant medical records can be empty, and an accidental early sign is unrecoverable. Poor for clinical documentation and audit.
+  - _Fix:_ Block sign (or hard-confirm with an explicit override reason) when there is no assessment/plan text and no diagnosis; consider requiring at least a primary diagnosis for a consultation-type encounter.
+- **No way to cancel a lab order, and the diagnosis catalog ships with only a tiny seeded set**
+  - _Lens:_ doctor · _Type:_ missing-feature
+  - _Impact:_ A mis-ordered test stays on the patient's record and clogs the lab worklist; a thin diagnosis catalog means doctors can't find common codes and fall back to free-text assessment, undermining the ICD-10 value proposition for an Ethiopian clinic.
+  - _Fix:_ Add a cancel action on un-accessioned lab order items (a cancelled state already exists in lab item status), and load a real ICD-10 catalog (bulk import) so diagnosis search is useful out of the box.
+- **The doctor's landing dashboard is admin boilerplate with no clinical content — wrong front door**
+  - _Lens:_ doctor · _Type:_ ux
+  - _Impact:_ The doctor's first screen is noise; they must know to navigate to 'My day' and 'Results inbox' themselves. It reads as unfinished and undercuts confidence on day one.
+  - _Fix:_ Render a role-aware dashboard: for a doctor, show waiting count + in-progress + unacknowledged criticals (data already available via listWorklist, myBoard, inboxCount) with deep links, and drop the admin quick-actions/'next phases' copy.
+- **FEFO is labelled but not enforced on dispense — pharmacist can pick any batch, including a later-expiry one over an expiring lot** `[BILLING-PHASE]`
+  - _Lens:_ inventory · _Type:_ inventory
+  - _Impact:_ Avoidable expiry wastage — the exact thing FEFO exists to prevent — while the UI claims FEFO is happening. Wastage cost lands on a margin-thin Ethiopian clinic.
+  - _Fix:_ Either enforce FEFO server-side on dispense (consume earliest-expiry lot, splitting across lots as needed) like OTC does, or keep manual selection but reject/warn when the chosen lot is not the earliest in-date one.
+- **Inventory valuation and on-hand count expired and quarantined stock as good money**
+  - _Lens:_ inventory · _Type:_ financial
+  - _Impact:_ Overstated inventory value misleads owners/auditors; expired/quarantined units counted as on-hand mask genuine stock-outs and delay reorders, causing real shortages while the system says stock is fine.
+  - _Fix:_ Exclude expired (expiry_date < today) and quarantined batches from on-hand, valuation, and low-stock/reorder computations; report them only as wastage/write-off. Apply the same filter the dispense/OTC paths already use for availability.
+- **No unique constraint on (drug, batch_no) and no merge — receiving/adjusting the same batch number creates duplicate lots that fragment FEFO**
+  - _Lens:_ inventory · _Type:_ data-integrity
+  - _Impact:_ Fragmented lots clutter FEFO/dispense selection and stock counts, make batch recall and reconciliation error-prone, and let a partial dispense leave tiny orphan fragments — staff lose trust in the batch list.
+  - _Fix:_ Add a unique key on (tenant_id, drug_id, batch_no) (or drug_id+batch_no+expiry) and have receive/adjust upsert into the existing lot (accumulate qty) instead of inserting a duplicate.
+- **Receiving accepts missing or already-expired expiry dates with no validation — near-expiry/expired alerts then never fire for those lots**
+  - _Lens:_ inventory · _Type:_ inventory
+  - _Impact:_ A lot received with no expiry silently never triggers a near-expiry or expired alert and is never surfaced as wastage — it can quietly expire on the shelf and still be dispensed (dispense only blocks when expiry_date is set and past, service.go:263). Undermines the entire expiry-safety story.
+  - _Fix:_ Require a valid future expiry on receive and on new-batch adjust; reject blank/past dates. Treat NULL-expiry legacy lots as needs-review rather than excluding them from alerts.
+- **Stock count adjusts only the single largest batch — multi-batch drugs reconcile incorrectly and lose batch/expiry attribution**
+  - _Lens:_ inventory · _Type:_ inventory
+  - _Impact:_ After any real count with a discrepancy, per-batch quantities and expiry exposure become fiction even though the drug total looks right — FEFO, wastage, and near-expiry reporting all degrade. Defeats the purpose of batch tracking.
+  - _Fix:_ Make stock counts batch-level (snapshot per batch, count per batch, adjust per batch). If drug-level counts are kept, attribute negative variance FEFO-first / to identifiable lots and require a reason, not 'largest batch wins'.
+- **Closing the loop on sign-and-close is a best-effort client call that swallows failures — a closed encounter can leave the patient stuck in the queue forever** `[BILLING-PHASE]`
+  - _Lens:_ journey · _Type:_ data-integrity
+  - _Impact:_ Patients who have been fully seen and discharged remain on the live queue indefinitely, inflating waiting counts and confusing whoever manages the board; the only fix is a manual 'No-show'/'Complete' click by someone who notices, and there is no 'done but not closed' vs 'closed but not done' detector. Two writes that must be atomic are split across a client.
+  - _Fix:_ Make SignAndClose transition the queue entry to done in the same DB transaction (the encounter already carries queue_entry_id, used in the event payload). Remove the client-side transitionQueue call so the two states can never diverge.
+- **No referral / transfer path — a patient who needs another department or an external facility is a dead-end in the journey**
+  - _Lens:_ journey · _Type:_ missing-feature
+  - _Impact:_ Referral is a core part of how Ethiopian clinics operate within a tiered health system (clinic -> health center -> hospital). With no path, the doctor must close the encounter and have the patient physically re-register and re-pay at reception to reach another department, and there is no referral document to hand the patient — so the journey simply ends instead of continuing.
+  - _Fix:_ Add an internal re-route (doctor sends queue entry to another department's queue, optionally to triage) and an external referral record + printable referral letter that closes the encounter with reason='referred'. Surface referred-out as a distinct encounter outcome in history and finance.
+- **Set-aside parks the encounter but leaves the patient stuck 'In consult' on the queue board — two boards disagree on where the patient is** `[BILLING-PHASE]`
+  - _Lens:_ journey · _Type:_ workflow
+  - _Impact:_ The live department board — the one reception/charge nurse and other doctors watch to gauge load and call the next patient — shows phantom 'in consult' patients who left for the lab. Wait-time and room-occupancy signals are wrong, and there is no board state that means 'out at lab, will return', so staff cannot tell a truly-occupied room from a parked one.
+  - _Fix:_ On set-aside, transition the queue entry to a dedicated state (e.g. add 'awaiting_results' / 'out_for_labs' to the queue_entries CHECK and the QueuePage columns) inside the same transaction as the encounter update, and transition it back to waiting/in_consult when the doctor resumes. Keep the queue board and doctor board reading from one source of truth.
+- **The clinic 'triage_required' setting is dead — it is never enforced, and a doctor can be assigned with no vitals recorded**
+  - _Lens:_ journey · _Type:_ workflow
+  - _Impact:_ A documented, configurable clinical-policy control silently does nothing — the admin believes triage is enforced when it isn't. Doctors can routinely see patients with no recorded vitals, which undermines the clinical record and the very triage-priority workflow the queue's priority field was built for.
+  - _Fix:_ Honour triage_required: when set, reception cannot route directly to a doctor (force stage=triage), and the nurse's 'Assign doctor' is disabled until vitals are saved. At minimum surface a 'no vitals recorded' warning on the doctor's Open-consult.
+- **CSV import has no validation, no preview of what will change, no error reporting, and silently ignores malformed range columns**
+  - _Lens:_ labmgr · _Type:_ data-integrity
+  - _Impact:_ A clinic bulk-loading its catalog can unknowingly import bad reference/critical ranges that silently disable auto-flagging for those analytes — the exact safety mechanism the lab depends on — with no warning. This is the same 'silently mis-flags every future result' risk that LAB-1 set out to fix, reintroduced via import.
+  - _Fix:_ Add a dry-run preview (new/reused/dup/invalid per row), validate that numeric range columns parse as numbers (reject or warn), use a real CSV parser that handles quoted commas, and return a structured per-row result instead of a single count toast.
+- **No way to reject / return results to the technician — validation is approve-only**
+  - _Lens:_ labmgr · _Type:_ workflow
+  - _Impact:_ A reviewer who spots a bad value is forced to either release a result they know is wrong or abandon the workflow. There's no clean way to get a recheck, so techs and managers will work around the system (verbal corrections, paper), defeating the validation gate.
+  - _Fix:_ Add a 'Return for recheck' action: a service method that moves the item back to in_process and records the reason + actor, with an event so the tech sees it on the worklist.
+- **Reference/critical ranges are a single global set per analyte — no sex/age-specific ranges (clinically wrong for common tests)**
+  - _Lens:_ labmgr · _Type:_ clinical-safety
+  - _Impact:_ Auto-flagging will be systematically wrong for sex/age-dependent analytes (hemoglobin, hematocrit, creatinine, many hormones) — either false criticals causing needless escalation or, worse, missed lows/highs in women and children. The manager's tuning of ranges can never be made correct for a mixed patient population.
+  - _Fix:_ Allow multiple reference-range rows per analyte keyed by sex and age band; resolve the applicable range from the patient's demographics at flag time. At minimum, surface the limitation so managers know a single range applies to everyone.
+- **The released lab report and worklist never show WHO validated the result**
+  - _Lens:_ labmgr · _Type:_ data-integrity
+  - _Impact:_ A clinical report with no signatory undermines accountability and fails the basic expectation of a verifiable lab report. Combined with the missing two-person rule, there is no visible chain of custody on results.
+  - _Fix:_ Select validated_by full_name in GetOrderItem, add it to OrderItemDetail, and print 'Validated by <name> on <time>' on the report; show it on the validated detail view.
+- **Recording vitals and routing to a doctor are two disconnected manual steps — patient can be lost or sent without vitals**
+  - _Lens:_ nurse · _Type:_ workflow
+  - _Impact:_ Patients get stranded in triage or pushed to the doctor untriaged. In a queue of 40, a stranded patient may wait hours. Broken handoff is exactly what makes staff stop trusting the queue and revert to shouting names.
+  - _Fix:_ Combine into a 'Record vitals & send to doctor' flow, or auto-advance the queue stage on vitals save; warn when assigning a doctor before any vitals exist.
+- **Triage is optional and bypassable even when patients clearly need it; with triage_required off, reception sends straight to the doctor**
+  - _Lens:_ nurse · _Type:_ workflow
+  - _Impact:_ In clinics that rely on triage screening (e.g. blood pressure/temperature capture for every visit), patients routinely reach the doctor untriaged, and there's no enforcement to catch it — undermining the whole triage step the nurse is responsible for.
+  - _Fix:_ Make triage requirement enforceable per department and block opening a consult (or warn) when required vitals are missing.
+- **Triage queue uses 30s polling (not the live SSE stream) and is hardwired to the first branch**
+  - _Lens:_ nurse · _Type:_ ux
+  - _Impact:_ Up to 30s blind to new urgent arrivals on the one board where speed matters most; in multi-branch clinics vitals are attributed to the wrong branch, corrupting per-branch reporting and the visit record.
+  - _Fix:_ Wire the triage queue to the existing SSE stream and select the user's actual branch (or expose a branch picker) instead of branches[0].
+- **Vitals set omits measurements essential to Ethiopian primary-care triage (BMI, MUAC, blood glucose, pain, LMP)**
+  - _Lens:_ nurse · _Type:_ missing-feature
+  - _Impact:_ The nurse must shove glucose/MUAC/pain into a free-text note where it can't be charted or trended, or keep paper alongside the system. Missing nutrition/glucose screening fields are a real gap for Ethiopian clinics and a reason to keep paper triage forms.
+  - _Fix:_ Add pain score, random blood glucose, MUAC, LMP fields and auto-compute/display BMI from weight+height; consider configurable triage fields per clinic.
+- **No audit-log / activity view for the owner despite events being recorded** `[BILLING-PHASE]`
+  - _Lens:_ owner · _Type:_ data-integrity
+  - _Impact:_ No accountability or fraud detection. Waivers (revenue forgone) and settlements can't be reviewed, so the owner cannot trust staff behavior or investigate discrepancies — a core control gap for handling cash.
+  - _Fix:_ Expose a read-only audit/activity view (events + settled_by/waive_reason) scoped to billing.manage, with a waiver report (who/why/amount forgone).
+- **A 'free' follow-up gets charged again at reception (free-window rule not applied to the charge flow)** `[BILLING-PHASE]`
+  - _Lens:_ patient · _Type:_ financial
+  - _Impact:_ Patients are charged for a visit they were promised free. Either reception must remember to manually Waive (undocumented why it's free) or the patient pays twice — a direct trust and money grievance, and inconsistent across receptionists.
+  - _Fix:_ Have RaiseCharge (or reception) consult the same follow-up-coverage check used by CardFeeDecision and auto-waive consultation/registration charges as a system 'covered follow-up' when the patient attends a doctor-booked follow-up within the window; pre-uncheck those services in the reception picker.
+- **No queue number / ticket — patients are called by full name and can't tell their turn**
+  - _Lens:_ patient · _Type:_ ux
+  - _Impact:_ Patients have no idea of their position or wait, miss being called, and have their names and MRN announced publicly — a privacy/dignity problem. No-shows rise because 'called' produces no signal the patient can see.
+  - _Fix:_ Assign a per-day queue/ticket number at enqueue, show it on a patient-facing 'now serving / next' display, and identify patients by number on the public board.
+- **Out-of-stock medicine: the pharmacist is told 'print & buy outside' but the patient has no prescription to take**
+  - _Lens:_ patient · _Type:_ missing-feature
+  - _Impact:_ When the clinic can't dispense, the patient is sent to buy outside but has no proper script to present — they either get turned away at the outside pharmacy or rely on staff hand-copying, risking errors on dose/quantity.
+  - _Fix:_ Provide a patient-facing printed prescription (from the signed encounter) usable at any pharmacy, and have the 'buy outside' path produce exactly that document.
+- **Patient leaves with nothing in hand — no receipt, prescription slip, lab report, or visit summary**
+  - _Lens:_ patient · _Type:_ missing-feature
+  - _Impact:_ Patients cannot prove payment, cannot fill a prescription elsewhere when the clinic pharmacy is out of stock (the app even tells the pharmacist 'print & buy outside' at DispensePage.tsx:123 but gives the patient no script), and leave with no written diagnosis or instructions. This is below the paper-trail standard Ethiopian patients already expect and erodes trust.
+  - _Fix:_ Add patient-facing printables: a cashier payment receipt (clinic name, items, amount, method, date), a prescription/visit-summary printout from the signed encounter, and a lab results sheet. Reuse the existing window.print() pattern with a print-styled template.
+- **Payment gates being seen — but the patient is never told why they're stuck or what to pay** `[BILLING-PHASE]`
+  - _Lens:_ patient · _Type:_ workflow
+  - _Impact:_ Patients wait in the wrong place not knowing they must pay first; floor staff watching the Queue board can't see who is held at the cashier, so handoffs stall and patients are 'lost' between desks.
+  - _Fix:_ Surface a 'waiting to pay' lane on the Queue board (or a held indicator with the amount) and give the patient a printed slip / verbal amount at reception telling them to pay at the cashier before being seen.
+- **Allergy guard misses common substances and offers no override/escalation path**
+  - _Lens:_ pharmacist · _Type:_ clinical-safety
+  - _Impact:_ Two-sided risk: short/brand-named allergens are not caught (false sense of safety), while genuine override situations force the pharmacist to abandon the system entirely (dispense off-record). Either way the allergy guard is not trustworthy day-to-day.
+  - _Fix:_ Strengthen matching (lower token threshold with a curated substance/brand map; consider ingredient mapping), and add an audited override with required reason (optionally gated by a permission) instead of a hard block.
+- **FEFO is advisory only — UI lets the pharmacist pick any batch and shows expiry to the month** `[BILLING-PHASE]`
+  - _Lens:_ pharmacist · _Type:_ inventory
+  - _Impact:_ Avoidable expiry wastage and inconsistent stock rotation; the FEFO claim in the queue/help is undermined by a UI that neither enforces nor warns. Near-expiry batches can sit while later ones are dispensed.
+  - _Fix:_ Show full expiry date and a near-expiry pill in the batch picker; warn (or require a reason) when the pharmacist selects a non-FEFO batch; consider auto-selecting and locking FEFO unless overridden.
+- **OTC counter sale has no allergy guard, no stock visibility, and can't attach to a real patient** `[BILLING-PHASE]`
+  - _Lens:_ pharmacist · _Type:_ clinical-safety
+  - _Impact:_ Selling drugs to a known patient over the counter with zero allergy checking is a safety gap, and the lack of stock visibility wastes counsel/cart time. OTC is a major revenue stream for Ethiopian clinic pharmacies and this flow is too thin to run it safely.
+  - _Fix:_ Add a patient picker to OTC (optional walk-in), run allergyMatchesDrug when a patient is selected, and surface on-hand quantity in the drug search results/cart.
+- **No reorder workflow: low-stock KPI is a dead number with no drill-down and no PO suggestion**
+  - _Lens:_ pharmacymgr · _Type:_ workflow
+  - _Impact:_ Replenishment is manual and error-prone; stock-outs of essential drugs are likely because the system surfaces the problem but provides no efficient action. This is core to a pharmacy manager's daily job.
+  - _Fix:_ Make the low-stock KPI link to a filtered list (on_hand <= reorder_level) with supplier grouping and a 'generate draft PO' action seeding suggested quantities.
+- **Purchase orders cannot be edited, and 'received' is a permanent dead-end (no goods-received correction, no invoice match)**
+  - _Lens:_ pharmacymgr · _Type:_ workflow
+  - _Impact:_ Normal purchasing mistakes (wrong qty, wrong price, wrong PO received) force the manager into untracked manual stock adjustments, breaking the audit trail between what was ordered, received, and paid — exactly the financial integrity a manager is accountable for.
+  - _Fix:_ Allow editing draft PO lines, add a guarded receipt reversal/correction, and add basic invoice/GRN matching (ordered vs received vs invoiced).
+- **Stock-count adjustment dumps the entire variance onto the single largest batch, corrupting batch-level stock and FEFO**
+  - _Lens:_ pharmacymgr · _Type:_ inventory
+  - _Impact:_ After a count, batch-level on-hand and expiry dates no longer reflect reality, degrading FEFO dispensing and the near-expiry/wastage figures the manager relies on. A no-expiry 'COUNT-ADJ' batch never triggers expiry alerts.
+  - _Fix:_ Make stock counts batch-level (count per batch) or let the manager choose which batch the variance hits; never create expiry-less adjustment batches without flagging them.
+- **A patient can be double-queued — walk-in/check-in enqueue has no dedup guard**
+  - _Lens:_ reception · _Type:_ data-integrity
+  - _Impact:_ Duplicate queue entries confuse the board, inflate wait counts, and cause no-show / double-call errors. The protection that exists for the paid path silently doesn't apply to free walk-ins or the Queue page.
+  - _Fix:_ Add the CountActiveQueueByPatient check to EnqueueWalkIn and CheckIn (and ideally a partial unique index on active states per patient/day), returning a clear 'already in queue' error the UI can surface.
+- **DOB is mandatory with no age-only option — doesn't match how Ethiopian patients present**
+  - _Lens:_ reception · _Type:_ workflow
+  - _Impact:_ Fabricated birth dates pollute the record and any age-based clinical logic; staff waste time on a field the patient can't answer, slowing the desk.
+  - _Fix:_ Add an 'Age (years)' input that derives an estimated DOB plus an 'estimated' flag, or make DOB optional with age as an alternative; store estimated_dob boolean.
+- **Duplicate detection misses misspelled names — it requires an exact name+DOB match**
+  - _Lens:_ reception · _Type:_ data-integrity
+  - _Impact:_ Duplicate patient records accumulate — fragmented histories, allergies/conditions split across records (a real clinical-safety risk), and inflated patient counts. Reception can't catch what the system can't surface.
+  - _Fix:_ Add a fuzzy candidate branch to FindDuplicateCandidates (trigram similarity on concat name with a threshold, optionally combined with phone or birth-year), reusing the search module's similarity approach.
+- **No future-DOB validation — a typo like 2099 registers a patient born in the future**
+  - _Lens:_ reception · _Type:_ data-integrity
+  - _Impact:_ Bad birth dates silently enter the record, breaking age display, age-dosing safety logic downstream, and reporting — and the error is invisible until a clinician notices.
+  - _Fix:_ Validate dob <= today (and e.g. >= 1900) in both patientSchema and the patient service; surface a field error.
+- **No-show and queue calls are one-way with no undo/recall — a misclick strands the patient**
+  - _Lens:_ reception · _Type:_ workflow
+  - _Impact:_ Routine front-desk reality (patients leaving and returning, misclicks under pressure) becomes an unrecoverable error; reception either leaves a wrong board or re-registers the patient, creating a duplicate queue entry.
+  - _Fix:_ Add a 'Recall / Back to waiting' action on called/no-show/done cards (transition to 'waiting'), gated on queue.manage — the backend already supports it.
+- **Branch/department scope (RBAC) is modeled but never enforced — no intra-tenant isolation for multi-branch clinics**
+  - _Lens:_ security · _Type:_ rbac
+  - _Impact:_ A multi-branch tenant has no branch-level access control: any staffer with patient.read sees every branch's patients, and a user can assert any branch_id on writes. The product implies branch-scoped staff (the data model and Scope type) but does not deliver it — a real chain would either over-expose data or not adopt.
+  - _Fix:_ Embed scopes in the access token, populate Principal.Scopes, add scope checks (and filter list/search queries by allowed branches), and validate any client-supplied branch_id against the principal's scope. If branch isolation is out of MVP scope, document it explicitly and remove the misleading Scope/user_role_scopes affordances.
+
+## ⚪ Low
+
+- **At-least-once outbox delivery writes audit logs with no idempotency key — redelivery can duplicate audit rows** `[BILLING-PHASE]`
+  - _Lens:_ concurrency · _Type:_ data-integrity
+  - _Impact:_ Duplicate audit entries inflate the audit trail and can mislead a later investigation (e.g. a waiver looking like it happened twice). Low severity given the narrow window, but it undercuts the audit log's role as the system of record.
+  - _Fix:_ Add the outbox event id to audit_logs with a unique constraint and INSERT ... ON CONFLICT DO NOTHING, making the handler truly idempotent as the contract requires; do the same for any future side-effecting handlers.
+- **Check-then-create encounter relies on a unique index but maps the inevitable conflict to a generic 500 instead of resolving it**
+  - _Lens:_ concurrency · _Type:_ concurrency
+  - _Impact:_ Data is safe (no duplicate encounter), but the losing user gets an opaque 'internal error' on a perfectly normal nurse+doctor-at-once moment and has to retry, eroding trust. Mild compared to the others because there's no corruption.
+  - _Fix:_ On CreateEncounter, detect the unique-violation (23505 / 'duplicate key') and re-run GetEncounterByQueueEntry to return the now-existing encounter, so both racers succeed.
+- **Finance 'Collected' and 'Waived' totals ignore soft-deletes — latent overstatement of revenue** `[BILLING-PHASE]`
+  - _Lens:_ financial · _Type:_ data-integrity
+  - _Impact:_ Inconsistent reconciliation; once corrections are implemented via soft-delete, reversed money still shows as collected. A correctness landmine for the very void/refund fix recommended above.
+  - _Fix:_ Add AND deleted_at IS NULL to CashCollectedSince, CashWaivedSince, and CashBySourceSince so all aggregates agree.
+- **Triage and direct-to-doctor patients are indistinguishable on the Queue board — no stage indicator, so 'who owns this patient now' is ambiguous**
+  - _Lens:_ journey · _Type:_ ux
+  - _Impact:_ Nobody can tell from the board whether a waiting patient is waiting for a nurse or for a specific doctor, or which doctor. Patients waiting for an absent/busy doctor are invisible among triage patients, leading to long unexplained waits and 'who was supposed to take them?' confusion — the classic lost-patient failure mode the queue is meant to prevent.
+  - _Fix:_ Show a stage chip (Triage / Dr. <name>) and the assigned provider on each queue card, and/or split the board by stage or add a stage filter (the backend already accepts a stage filter on ListQueue). Make the 'next owner' of every waiting patient explicit.
+- **Lab worklist relies on 20s polling with no new-order or STAT alert — tech can miss an urgent sample**
+  - _Lens:_ labtech · _Type:_ ux
+  - _Impact:_ A STAT sample can sit unnoticed up to 20s+ until the tech happens to look at the To-collect tab — and with no audible/visual alert, an unattended worklist means urgent samples wait. Defeats the purpose of STAT.
+  - _Fix:_ Surface a nav badge + toast/sound when a new STAT/urgent order arrives (consume lab.order.created), and pin/auto-sort new STAT items to the top of the active tab.
+- **Submit goes straight collected -> resulted; the 'in_process' state is dead and there's no draft-vs-final distinction enforced**
+  - _Lens:_ labtech · _Type:_ workflow
+  - _Impact:_ Incomplete panels can be submitted and released silently (missing analytes simply don't appear), and the 'in_process' state advertised in the schema does nothing. Minor, but it lets partial panels masquerade as complete.
+  - _Fix:_ Warn (or block) on submit when analytes are blank ('3 of 5 analytes empty — submit anyway?'), and either implement an explicit in_process state or drop it from the constraint.
+- **Worklist has no per-test status — multi-test orders give the tech no way to release partial/ready results**
+  - _Lens:_ labtech · _Type:_ workflow
+  - _Impact:_ On a busy bench with multi-test STAT orders, the tech can't see what belongs together or what's breaching turnaround. Partial results are possible but the workflow doesn't guide it, and there's no overdue alarm — STAT samples can quietly age.
+  - _Fix:_ Group worklist items by order/patient, add a turnaround target per priority with overdue highlighting, and make partial release explicit ('release ready tests now').
+- **No-show is one click with no reason and no patient-facing consequence or recovery** `[BILLING-PHASE]`
+  - _Lens:_ patient · _Type:_ workflow
+  - _Impact:_ Patients who briefly step away (often to the cashier the system itself sent them to) get dropped and must restart, and the clinic has no recorded reason — penalizing the patient for the workflow's own handoff gaps.
+  - _Fix:_ Add a confirm + optional reason on no-show, keep no-shows visible/recoverable on the board for the day with a one-click 're-queue', and don't bury them in 'Done'.
+- **Cloudinary delivery URL hardcodes /image/upload/ even for raw (non-image) files**
+  - _Lens:_ security · _Type:_ data-integrity
+  - _Impact:_ Non-image PHI attachments (PDFs/documents) produce broken view/download links — a correctness bug staff would hit as 'the file won't open'. Folds naturally into fixing finding #1 (signed delivery must also carry the right resource type).
+  - _Fix:_ Persist the resource_type alongside the key (or derive it) and build the delivery URL with the correct segment (image/raw/video). Resolve together with the signed-delivery change in finding #1.
+- **GET /org/settings and /org/clinic readable by every authenticated role** `[BILLING-PHASE]`
+  - _Lens:_ security · _Type:_ rbac
+  - _Impact:_ Lower severity than the PHI issues, but it leaks clinic operational policy and configuration to roles that have no business seeing it, and is inconsistent with the otherwise tight per-permission gating. Information disclosure / least-privilege violation.
+  - _Fix:_ Gate org config reads behind a dedicated permission (e.g. clinic.read) granted to admin/owner/manager roles, rather than leaving them open to any authenticated principal. Confirm the settings payload contains no secrets before deciding the blast radius.

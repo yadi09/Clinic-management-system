@@ -25,15 +25,20 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	b.GET("/services/:id/providers", mgr, h.GetServiceProviders)
 	b.PUT("/services/:id/providers", mgr, h.SetServiceProviders)
 	b.DELETE("/services/:id", mgr, h.DeleteService)
-	b.GET("/providers", httpx.RequirePermission("payment.collect"), h.ProvidersForServices) // reception's filtered list
+	b.GET("/providers", httpx.RequirePermission("payment.charge"), h.ProvidersForServices) // reception's filtered list
 
+	// Payment is split by capability: payment.charge raises a charge (reception),
+	// payment.collect settles it (cashier). A user with both collects inline.
+	charge := httpx.RequirePermission("payment.charge")
 	collect := httpx.RequirePermission("payment.collect")
-	b.POST("/charges", collect, h.RaiseCharge)
-	b.GET("/charges/pending", collect, h.PendingCharges)
-	b.GET("/charges", collect, h.PatientCharges) // ?patient=
+	b.POST("/charges", charge, h.RaiseCharge)
+	b.GET("/charges/pending", collect, h.PendingCharges) // the cashier worklist
+	b.GET("/charges", httpx.RequireAnyPermission("payment.charge", "payment.collect", "billing.manage"), h.PatientCharges) // ?patient=
 	b.POST("/charges/:id/settle", collect, h.SettleCharge)
 	b.POST("/charges/:id/waive", httpx.RequirePermission("payment.waive"), h.WaiveCharge)
-	b.GET("/waiver-reasons", collect, h.WaiverReasons)
+	b.POST("/charges/:id/void", httpx.RequirePermission("payment.waive"), h.VoidCharge)   // retire a pending charge (mistake / patient left)
+	b.POST("/charges/:id/refund", mgr, h.RefundCharge)                                    // reverse a settled charge (manager-gated)
+	b.GET("/waiver-reasons", httpx.RequireAnyPermission("payment.collect", "payment.waive"), h.WaiverReasons)
 
 	b.GET("/cash", mgr, h.Cash) // owner/manager finance view
 }

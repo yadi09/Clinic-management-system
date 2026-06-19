@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/reicb/clinicsaas/internal/billing"
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
 	"github.com/reicb/clinicsaas/internal/kernel/events"
@@ -22,13 +23,15 @@ import (
 type Service struct {
 	db        *kerneldb.DB
 	publisher events.Publisher
+	billing   billing.Charger
 }
 
 var _ lab.Service = (*Service)(nil)
 
-// NewService constructs a lab Service.
-func NewService(db *kerneldb.DB, publisher events.Publisher) *Service {
-	return &Service{db: db, publisher: publisher}
+// NewService constructs a lab Service. The billing Charger bills lab orders and
+// gates sample accession on payment (pre-pay).
+func NewService(db *kerneldb.DB, publisher events.Publisher, charger billing.Charger) *Service {
+	return &Service{db: db, publisher: publisher, billing: charger}
 }
 
 // ---- catalog ----
@@ -47,7 +50,7 @@ func (s *Service) ListTests(ctx context.Context, activeOnly bool) ([]lab.LabTest
 			return e
 		}
 		for _, r := range rows {
-			out = append(out, lab.LabTest{ID: r.ID, Code: r.Code, Name: r.Name, Specimen: deref(r.Specimen), IsActive: r.IsActive, AnalyteCount: int(r.AnalyteCount)})
+			out = append(out, lab.LabTest{ID: r.ID, Code: r.Code, Name: r.Name, Specimen: deref(r.Specimen), Price: r.Price, IsActive: r.IsActive, AnalyteCount: int(r.AnalyteCount)})
 		}
 		return nil
 	})
@@ -76,18 +79,18 @@ func (s *Service) ListAnalytes(ctx context.Context, testID uuid.UUID) ([]lab.Ana
 	return out, nil
 }
 
-func (s *Service) CreateTest(ctx context.Context, code, name, specimen string) (*lab.LabTest, error) {
+func (s *Service) CreateTest(ctx context.Context, code, name, specimen, price string) (*lab.LabTest, error) {
 	tenantID, actor := actorOf(ctx)
 	if strings.TrimSpace(code) == "" || strings.TrimSpace(name) == "" {
 		return nil, apperr.Validation("code and name are required")
 	}
 	var out lab.LabTest
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		r, e := labdb.New(tx).CreateLabTest(ctx, labdb.CreateLabTestParams{TenantID: tenantID, Code: code, Name: name, Specimen: strPtr(specimen), CreatedBy: actor})
+		r, e := labdb.New(tx).CreateLabTest(ctx, labdb.CreateLabTestParams{TenantID: tenantID, Code: code, Name: name, Specimen: strPtr(specimen), Price: priceOrZero(price), CreatedBy: actor})
 		if e != nil {
 			return e
 		}
-		out = lab.LabTest{ID: r.ID, Code: r.Code, Name: r.Name, Specimen: deref(r.Specimen), IsActive: r.IsActive}
+		out = lab.LabTest{ID: r.ID, Code: r.Code, Name: r.Name, Specimen: deref(r.Specimen), Price: r.Price, IsActive: r.IsActive}
 		return nil
 	})
 	if err != nil {
@@ -96,13 +99,13 @@ func (s *Service) CreateTest(ctx context.Context, code, name, specimen string) (
 	return &out, nil
 }
 
-func (s *Service) UpdateTest(ctx context.Context, testID uuid.UUID, code, name, specimen string) error {
+func (s *Service) UpdateTest(ctx context.Context, testID uuid.UUID, code, name, specimen, price string) error {
 	tenantID, _ := actorOf(ctx)
 	if strings.TrimSpace(code) == "" || strings.TrimSpace(name) == "" {
 		return apperr.Validation("code and name are required")
 	}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		return labdb.New(tx).UpdateLabTest(ctx, labdb.UpdateLabTestParams{TenantID: tenantID, ID: testID, Code: code, Name: name, Specimen: strPtr(specimen)})
+		return labdb.New(tx).UpdateLabTest(ctx, labdb.UpdateLabTestParams{TenantID: tenantID, ID: testID, Code: code, Name: name, Specimen: strPtr(specimen), Price: priceOrZero(price)})
 	})
 	if err != nil {
 		return mapWriteErr(err, "TEST_EXISTS", "a test with this code already exists")
@@ -213,7 +216,7 @@ func (s *Service) ImportCatalog(ctx context.Context, rows []lab.CatalogImportRow
 				case e == nil:
 					tid = ex.ID
 				case errors.Is(e, pgx.ErrNoRows):
-					created, e2 := q.CreateLabTest(ctx, labdb.CreateLabTestParams{TenantID: tenantID, Code: code, Name: name, Specimen: strPtr(r.Specimen), CreatedBy: actor})
+					created, e2 := q.CreateLabTest(ctx, labdb.CreateLabTestParams{TenantID: tenantID, Code: code, Name: name, Specimen: strPtr(r.Specimen), Price: "0", CreatedBy: actor})
 					if e2 != nil {
 						return e2
 					}
@@ -302,6 +305,8 @@ func (s *Service) CreateOrder(ctx context.Context, in lab.OrderInput) (*lab.Orde
 			return e
 		}
 		out = lab.Order{ID: o.ID, OrderNo: o.OrderNo, Priority: priority, ClinicalNote: in.ClinicalNote, Items: []lab.OrderItemBrief{}}
+		var total float64
+		var names []string
 		for _, tid := range in.TestIDs {
 			t, e := q.GetLabTest(ctx, labdb.GetLabTestParams{TenantID: tenantID, ID: tid})
 			if errors.Is(e, pgx.ErrNoRows) {
@@ -315,6 +320,25 @@ func (s *Service) CreateOrder(ctx context.Context, in lab.OrderInput) (*lab.Orde
 				return e
 			}
 			out.Items = append(out.Items, lab.OrderItemBrief{ID: item.ID, SampleNo: item.SampleNo, Status: "ordered", TestName: t.Name})
+			total += parseMoney(t.Price)
+			names = append(names, t.Name)
+		}
+		// Bill the order (pre-pay): a priced order raises one lab charge that gates
+		// accession. A wholly unpriced order (total 0) is free and ungated.
+		if total > 0 {
+			desc := "Lab: " + strings.Join(names, ", ")
+			if len(names) > 3 {
+				desc = "Lab: " + strings.Join(names[:3], ", ") + " +" + strconv.Itoa(len(names)-3) + " more"
+			}
+			chargeID, e := s.billing.RaiseChargeTx(ctx, tx, billing.ChargeInput{
+				PatientID: in.PatientID, EncounterID: in.EncounterID, Source: "lab", Description: desc, Amount: money(total),
+			})
+			if e != nil {
+				return e
+			}
+			if e := q.SetLabOrderCharge(ctx, labdb.SetLabOrderChargeParams{TenantID: tenantID, ID: o.ID, ChargeID: &chargeID}); e != nil {
+				return e
+			}
 		}
 		return s.publisher.Publish(ctx, tx, &tenantID, "lab_order", o.ID, "lab.order.created", map[string]any{"order_no": o.OrderNo, "patient_id": in.PatientID})
 	})
@@ -464,11 +488,32 @@ func (s *Service) OrderItem(ctx context.Context, itemID uuid.UUID) (*lab.OrderIt
 func (s *Service) Accession(ctx context.Context, itemID uuid.UUID, collectedBy string) error {
 	tenantID, _ := actorOf(ctx)
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		_, e := labdb.New(tx).AccessionItem(ctx, labdb.AccessionItemParams{CollectedBy: strPtr(collectedBy), TenantID: tenantID, ID: itemID})
+		q := labdb.New(tx)
+		// Pre-pay gate: a priced order must be paid (or waived) before the sample is drawn.
+		chargeID, e := q.GetItemOrderCharge(ctx, labdb.GetItemOrderChargeParams{TenantID: tenantID, ID: itemID})
+		if errors.Is(e, pgx.ErrNoRows) {
+			return apperr.NotFound("ITEM_NOT_FOUND", "sample not found")
+		}
+		if e != nil {
+			return e
+		}
+		if chargeID != nil {
+			st, e := s.billing.ChargeStatusTx(ctx, tx, *chargeID)
+			if e != nil {
+				return e
+			}
+			if st != "paid" && st != "waived" {
+				return apperr.Conflict("PAYMENT_PENDING", "this lab order is not paid — collect payment at the cashier before drawing the sample")
+			}
+		}
+		_, e = q.AccessionItem(ctx, labdb.AccessionItemParams{CollectedBy: strPtr(collectedBy), TenantID: tenantID, ID: itemID})
 		return e
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return apperr.Conflict("INVALID_STATE", "sample is not in the ordered state")
+	}
+	if ae, ok := apperr.As(err); ok {
+		return ae
 	}
 	if err != nil {
 		return apperr.Internal(err)
@@ -708,3 +753,17 @@ func mapWriteErr(err error, code, msg string) error {
 	}
 	return apperr.Internal(err)
 }
+
+func priceOrZero(p string) string {
+	if strings.TrimSpace(p) == "" {
+		return "0"
+	}
+	return p
+}
+
+func parseMoney(s string) float64 {
+	f, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	return f
+}
+
+func money(f float64) string { return strconv.FormatFloat(f, 'f', 2, 64) }

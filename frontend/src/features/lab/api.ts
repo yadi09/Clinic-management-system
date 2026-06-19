@@ -7,6 +7,7 @@ export interface LabTest {
   code: string;
   name: string;
   specimen?: string;
+  price: string;
   is_active: boolean;
   analyte_count: number;
 }
@@ -26,13 +27,13 @@ export function listTests(activeOnly = false) {
 export function listAnalytes(testId: string) {
   return apiFetch<Analyte[]>(`/lab/tests/${testId}/analytes`);
 }
-export function createTest(body: { code: string; name: string; specimen?: string }) {
+export function createTest(body: { code: string; name: string; specimen?: string; price?: string }) {
   return apiFetch<LabTest>("/lab/tests", { method: "POST", body });
 }
 export function addAnalyte(testId: string, body: Omit<Analyte, "id">) {
   return apiFetch<void>(`/lab/tests/${testId}/analytes`, { method: "POST", body });
 }
-export function updateTest(id: string, body: { code: string; name: string; specimen?: string }) {
+export function updateTest(id: string, body: { code: string; name: string; specimen?: string; price?: string }) {
   return apiFetch<void>(`/lab/tests/${id}`, { method: "PUT", body });
 }
 export function setTestActive(id: string, is_active: boolean) {

@@ -83,7 +83,8 @@ SELECT p.id, p.rx_no, p.dispensed_at, p.patient_id,
        pt.first_name, pt.last_name, pt.mrn,
        u.full_name AS prescriber,
        (SELECT count(*) FROM prescription_items pi WHERE pi.prescription_id = p.id)::int AS item_count,
-       EXISTS (SELECT 1 FROM allergies a WHERE a.patient_id = p.patient_id AND a.tenant_id = p.tenant_id AND a.deleted_at IS NULL) AS has_allergy
+       EXISTS (SELECT 1 FROM allergies a WHERE a.patient_id = p.patient_id AND a.tenant_id = p.tenant_id AND a.deleted_at IS NULL) AS has_allergy,
+       EXISTS (SELECT 1 FROM pharmacy_sales s WHERE s.prescription_id = p.id AND s.tenant_id = p.tenant_id AND s.status = 'awaiting_payment' AND s.deleted_at IS NULL) AS awaiting_payment
 FROM prescriptions p
 JOIN encounters e ON e.id = p.encounter_id AND e.tenant_id = p.tenant_id
 JOIN patients pt ON pt.id = p.patient_id AND pt.tenant_id = p.tenant_id
@@ -123,13 +124,36 @@ RETURNING id;
 -- ---- Sales / charges -------------------------------------------------------
 
 -- name: CreateSale :one
-INSERT INTO pharmacy_sales (tenant_id, sale_type, patient_id, prescription_id, status, subtotal, total, currency, counselling_notes, paid_at, created_by)
-VALUES (@tenant_id, @sale_type, @patient_id, @prescription_id, @status, @subtotal, @total, @currency, @counselling_notes, @paid_at, @created_by)
+INSERT INTO pharmacy_sales (tenant_id, sale_type, patient_id, prescription_id, status, subtotal, total, currency, counselling_notes, charge_id, paid_at, created_by)
+VALUES (@tenant_id, @sale_type, @patient_id, @prescription_id, @status, @subtotal, @total, @currency, @counselling_notes, @charge_id, @paid_at, @created_by)
 RETURNING id, total, status, created_at;
 
 -- name: CreateSaleItem :exec
 INSERT INTO pharmacy_sale_items (tenant_id, sale_id, drug_id, batch_id, description, qty, unit_price, line_total)
 VALUES (@tenant_id, @sale_id, @drug_id, @batch_id, @description, @qty, @unit_price, @line_total);
+
+-- name: GetAwaitingSaleByPrescription :one
+-- The prepared-but-unpaid sale for a prescription (drives the pre-pay gate + queue badge).
+SELECT id, charge_id, total, currency, status
+FROM pharmacy_sales
+WHERE tenant_id = @tenant_id AND prescription_id = @prescription_id
+  AND status = 'awaiting_payment' AND deleted_at IS NULL
+ORDER BY created_at DESC LIMIT 1;
+
+-- name: ListSaleItems :many
+SELECT id, drug_id, batch_id, description, qty, unit_price, line_total
+FROM pharmacy_sale_items
+WHERE tenant_id = @tenant_id AND sale_id = @sale_id
+ORDER BY id;
+
+-- name: MarkSaleDispensed :exec
+UPDATE pharmacy_sales SET status = 'dispensed', paid_at = now(), updated_at = now()
+WHERE tenant_id = @tenant_id AND id = @id AND status = 'awaiting_payment';
+
+-- name: CancelAwaitingSale :exec
+-- Drops a prepared-but-unpaid sale (e.g. patient declined at the cashier).
+UPDATE pharmacy_sales SET status = 'cancelled', updated_at = now()
+WHERE tenant_id = @tenant_id AND id = @id AND status = 'awaiting_payment';
 
 -- ---- Catalog admin (Phase 4b-1) -------------------------------------------
 

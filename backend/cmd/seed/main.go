@@ -74,7 +74,8 @@ var basePermissions = []struct{ Code, Desc string }{
 	{"appointment.manage", "Book/reschedule/cancel appointments"},
 	{"queue.manage", "Manage department queues and routing"},
 	{"triage.manage", "Record triage vitals"},
-	{"payment.collect", "Collect the card / consultation fee and settle charges"},
+	{"payment.charge", "Raise a charge / register a payable visit (without collecting cash)"},
+	{"payment.collect", "Collect payment and settle charges (cashier)"},
 	{"payment.waive", "Waive a charge / fee with a documented reason"},
 	{"billing.manage", "Manage the service catalog and view the finance dashboard"},
 	{"encounter.manage", "Conduct consultations and EMR"},
@@ -217,10 +218,11 @@ func seedLab(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) error {
 	}
 	type tst struct {
 		Code, Name, Specimen string
+		Price                float64
 		Analytes             []an
 	}
 	tests := []tst{
-		{"CBC", "Complete blood count", "Blood", []an{
+		{"CBC", "Complete blood count", "Blood", 120, []an{
 			{"WBC", "10^9/L", f(4.0), f(11.0), f(2.0), f(30.0)},
 			{"RBC", "10^12/L", f(4.2), f(5.4), nil, nil},
 			{"Hemoglobin", "g/dL", f(12.0), f(16.0), nil, nil},
@@ -229,17 +231,17 @@ func seedLab(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) error {
 			{"Neutrophils", "%", f(40), f(75), nil, nil},
 			{"Lymphocytes", "%", f(20), f(40), nil, nil},
 		}},
-		{"CRP", "C-reactive protein", "Blood", []an{{"CRP", "mg/L", f(0), f(5), nil, nil}}},
-		{"HBA1C", "HbA1c", "Blood", []an{{"HbA1c", "%", f(4), f(5.6), nil, f(10)}}},
-		{"TROP", "Troponin", "Blood", []an{{"Troponin", "ng/mL", f(0), f(0.04), nil, f(0.4)}}},
-		{"LIPID", "Lipid panel", "Blood", []an{
+		{"CRP", "C-reactive protein", "Blood", 90, []an{{"CRP", "mg/L", f(0), f(5), nil, nil}}},
+		{"HBA1C", "HbA1c", "Blood", 250, []an{{"HbA1c", "%", f(4), f(5.6), nil, f(10)}}},
+		{"TROP", "Troponin", "Blood", 350, []an{{"Troponin", "ng/mL", f(0), f(0.04), nil, f(0.4)}}},
+		{"LIPID", "Lipid panel", "Blood", 200, []an{
 			{"Total cholesterol", "mg/dL", f(0), f(200), nil, nil},
 			{"LDL", "mg/dL", f(0), f(130), nil, nil},
 			{"HDL", "mg/dL", f(40), f(200), nil, nil},
 			{"Triglycerides", "mg/dL", f(0), f(150), nil, nil},
 		}},
-		{"UA", "Urinalysis", "Urine", []an{{"Urine glucose", "mg/dL", f(0), f(15), nil, nil}}},
-		{"STREP", "Rapid strep test", "Throat swab", []an{{"Result", "", nil, nil, nil, nil}}},
+		{"UA", "Urinalysis", "Urine", 60, []an{{"Urine glucose", "mg/dL", f(0), f(15), nil, nil}}},
+		{"STREP", "Rapid strep test", "Throat swab", 80, []an{{"Result", "", nil, nil, nil, nil}}},
 	}
 	for _, t := range tests {
 		var tid uuid.UUID
@@ -248,12 +250,17 @@ func seedLab(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) error {
 			tenantID, t.Code).Scan(&tid)
 		if errors.Is(err, pgx.ErrNoRows) {
 			if err = tx.QueryRow(ctx,
-				`INSERT INTO lab_tests (tenant_id, code, name, specimen) VALUES ($1,$2,$3,$4) RETURNING id`,
-				tenantID, t.Code, t.Name, t.Specimen).Scan(&tid); err != nil {
+				`INSERT INTO lab_tests (tenant_id, code, name, specimen, price) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+				tenantID, t.Code, t.Name, t.Specimen, t.Price).Scan(&tid); err != nil {
 				return fmt.Errorf("lab test %s: %w", t.Code, err)
 			}
 		} else if err != nil {
 			return fmt.Errorf("lab test %s: %w", t.Code, err)
+		} else {
+			// keep prices in sync on reseed
+			if _, err = tx.Exec(ctx, `UPDATE lab_tests SET price=$3 WHERE tenant_id=$1 AND id=$2`, tenantID, tid, t.Price); err != nil {
+				return fmt.Errorf("lab test price %s: %w", t.Code, err)
+			}
 		}
 		for i, a := range t.Analytes {
 			if _, err := tx.Exec(ctx,
@@ -458,11 +465,11 @@ func main() {
 		// Default permission sets for the operational roles (Phase 3b-2), so each
 		// role can be invited and tested with a realistic scoped view.
 		roleGrants := map[string][]string{
-			"branch_manager": {"patient.create", "patient.read", "patient.update", "patient.search", "appointment.manage", "queue.manage", "triage.manage", "payment.collect", "payment.waive", "billing.manage", "user.read"},
-			"receptionist":   {"patient.create", "patient.read", "patient.update", "patient.search", "appointment.manage", "queue.manage", "payment.collect"},
+			"branch_manager": {"patient.create", "patient.read", "patient.update", "patient.search", "appointment.manage", "queue.manage", "triage.manage", "payment.charge", "payment.collect", "payment.waive", "billing.manage", "user.read"},
+			"receptionist":   {"patient.create", "patient.read", "patient.update", "patient.search", "appointment.manage", "queue.manage", "payment.charge"},
 			"doctor":         {"patient.read", "patient.search", "encounter.manage", "prescription.create", "queue.manage", "appointment.manage", "lab.order"},
 			"nurse":          {"patient.read", "patient.search", "triage.manage", "queue.manage"},
-			"cashier":        {"payment.collect", "payment.waive", "patient.read", "patient.search"},
+			"cashier":        {"payment.charge", "payment.collect", "payment.waive", "patient.read", "patient.search"},
 			"pharmacist":      {"patient.read", "patient.search", "pharmacy.read", "pharmacy.dispense", "pharmacy.stock", "pharmacy.sell"},
 			"pharmacy_manager": {"patient.read", "patient.search", "pharmacy.read", "pharmacy.dispense", "pharmacy.stock", "pharmacy.sell", "pharmacy.manage"},
 			"lab_technician":   {"patient.read", "patient.search", "lab.process"},
@@ -472,6 +479,16 @@ func main() {
 			rid, ok := roleIDs[code]
 			if !ok {
 				continue
+			}
+			// Reconcile to exactly the canonical set: drop any grant no longer in the
+			// list so a re-seed picks up *removed* permissions (e.g. receptionist
+			// losing payment.collect when payments moved to role-based collection).
+			if _, err := tx.Exec(ctx,
+				`DELETE FROM role_permissions
+				 WHERE tenant_id = $1 AND role_id = $2
+				   AND permission_id NOT IN (SELECT id FROM permissions WHERE code = ANY($3::text[]))`,
+				tenantID, rid, perms); err != nil {
+				return fmt.Errorf("reconcile %s permissions: %w", code, err)
 			}
 			if _, err := tx.Exec(ctx,
 				`INSERT INTO role_permissions (tenant_id, role_id, permission_id)
@@ -537,12 +554,9 @@ func main() {
 			 ON CONFLICT (tenant_id, code) DO NOTHING`, tenantID, clinicID); e != nil {
 			return fmt.Errorf("branch: %w", e)
 		}
-		// Demo runs the "separate cashier" flow (reception holds the patient for
-		// payment; the cashier collects, then they advance). Real clinics pick this
-		// in Settings → Payment collection (the DB default is 'reception').
-		if _, e := tx.Exec(ctx, `UPDATE clinics SET payment_mode = 'cashier' WHERE tenant_id = $1`, tenantID); e != nil {
-			return fmt.Errorf("clinic payment_mode: %w", e)
-		}
+		// Payment collection now follows roles, not a clinic flag: the demo
+		// receptionist holds payment.charge only (raises charges → the cashier
+		// collects). A one-person desk gets the Cashier role too (collects inline).
 		// Starter diagnosis catalog (admins extend it in Settings).
 		if e := seedDiagnosisCatalog(ctx, tx, tenantID); e != nil {
 			return e

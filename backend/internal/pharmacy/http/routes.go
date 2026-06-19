@@ -19,7 +19,9 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	g.GET("/dispense/:id", read, h.DispenseDetail)
 	g.GET("/dashboard", read, h.Dashboard)
 
-	g.POST("/dispense/:id", httpx.RequirePermission("pharmacy.dispense"), h.Dispense)
+	dispense := httpx.RequirePermission("pharmacy.dispense")
+	g.POST("/dispense/:id/prepare", dispense, h.PrepareDispense)   // price & send to cashier (pre-pay)
+	g.POST("/dispense/:id/complete", dispense, h.CompleteDispense) // hand over once paid
 	g.POST("/otc", httpx.RequirePermission("pharmacy.sell"), h.SellOTC)
 
 	stock := httpx.RequirePermission("pharmacy.stock")

@@ -90,10 +90,12 @@ func main() {
 	patientSvc := patientservice.NewService(db, store, publisher)
 	patientHandlers := patienthttp.NewHandlers(patientSvc)
 	schedulingHandlers := schedulinghttp.NewHandlers(schedulingservice.NewService(db, publisher), db)
-	billingHandlers := billinghttp.NewHandlers(billingservice.NewService(db, publisher))
+	billingSvc := billingservice.NewService(db, publisher)
+	billingHandlers := billinghttp.NewHandlers(billingSvc)
 	clinicalHandlers := clinicalhttp.NewHandlers(clinicalservice.NewService(db, publisher))
-	pharmacyHandlers := pharmacyhttp.NewHandlers(pharmacyservice.NewService(db, publisher))
-	labHandlers := labhttp.NewHandlers(labservice.NewService(db, publisher))
+	// Lab & pharmacy bill through billing (Charger) so revenue reaches the cashier.
+	pharmacyHandlers := pharmacyhttp.NewHandlers(pharmacyservice.NewService(db, publisher, billingSvc))
+	labHandlers := labhttp.NewHandlers(labservice.NewService(db, publisher, billingSvc))
 
 	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, pharmacyHandlers, labHandlers)
 

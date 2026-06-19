@@ -66,7 +66,9 @@ export function DispenseQueuePage() {
                   ))}
                 </td>
                 <td className="p-3">
-                  <Badge variant={it.dispensed ? "success" : "outline"}>{it.dispensed ? "dispensed" : "ready"}</Badge>
+                  <Badge variant={it.dispensed ? "success" : it.awaiting_payment ? "warning" : "outline"}>
+                    {it.dispensed ? "dispensed" : it.awaiting_payment ? "awaiting payment" : "ready"}
+                  </Badge>
                 </td>
               </tr>
             ))}

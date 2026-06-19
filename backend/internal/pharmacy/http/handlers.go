@@ -54,14 +54,17 @@ type dispenseItemDTO struct {
 }
 
 type dispenseDetailDTO struct {
-	ID          string            `json:"id"`
-	RxNo        int64             `json:"rx_no"`
-	PatientName string            `json:"patient_name"`
-	MRN         string            `json:"mrn"`
-	Prescriber  string            `json:"prescriber,omitempty"`
-	Dispensed   bool              `json:"dispensed"`
-	Allergies   []string          `json:"allergies"`
-	Items       []dispenseItemDTO `json:"items"`
+	ID            string            `json:"id"`
+	RxNo          int64             `json:"rx_no"`
+	PatientName   string            `json:"patient_name"`
+	MRN           string            `json:"mrn"`
+	Prescriber    string            `json:"prescriber,omitempty"`
+	Dispensed     bool              `json:"dispensed"`
+	Allergies     []string          `json:"allergies"`
+	Items         []dispenseItemDTO `json:"items"`
+	Prepared      bool              `json:"prepared"`
+	PreparedTotal string            `json:"prepared_total,omitempty"`
+	ChargeSettled bool              `json:"charge_settled"`
 }
 
 type saleDTO struct {
@@ -235,6 +238,7 @@ func (h *Handlers) DispenseDetail(c *gin.Context) {
 	out := dispenseDetailDTO{
 		ID: id.Encode(id.PrefixPrescription, d.PrescriptionID), RxNo: d.RxNo, PatientName: d.PatientName, MRN: d.MRN,
 		Prescriber: d.Prescriber, Dispensed: d.Dispensed, Allergies: d.Allergies, Items: make([]dispenseItemDTO, 0, len(d.Items)),
+		Prepared: d.Prepared, PreparedTotal: d.PreparedTotal, ChargeSettled: d.ChargeSettled,
 	}
 	for _, it := range d.Items {
 		di := dispenseItemDTO{
@@ -363,8 +367,9 @@ func (h *Handlers) Dashboard(c *gin.Context) {
 	httpx.OK(c, d)
 }
 
-// Dispense handles POST /pharmacy/dispense/:id.
-func (h *Handlers) Dispense(c *gin.Context) {
+// PrepareDispense handles POST /pharmacy/dispense/:id/prepare — price the
+// prescription and send it to the cashier (no stock moves yet).
+func (h *Handlers) PrepareDispense(c *gin.Context) {
 	rxID, err := id.Decode(id.PrefixPrescription, c.Param("id"))
 	if err != nil {
 		httpx.Fail(c, apperr.Validation("invalid prescription id"))
@@ -389,7 +394,23 @@ func (h *Handlers) Dispense(c *gin.Context) {
 		}
 		in.Lines = append(in.Lines, pharmacy.DispenseLine{DrugID: drugID, BatchID: batchID, Qty: l.Qty})
 	}
-	sale, err := h.svc.Dispense(c.Request.Context(), in)
+	p, err := h.svc.PrepareDispense(c.Request.Context(), in)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.Created(c, gin.H{"sale_id": id.Encode(id.PrefixSale, p.SaleID), "charge_id": id.Encode(id.PrefixCharge, p.ChargeID), "total": p.Total})
+}
+
+// CompleteDispense handles POST /pharmacy/dispense/:id/complete — hand over the
+// medication once the cashier has collected payment.
+func (h *Handlers) CompleteDispense(c *gin.Context) {
+	rxID, err := id.Decode(id.PrefixPrescription, c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("invalid prescription id"))
+		return
+	}
+	sale, err := h.svc.CompleteDispense(c.Request.Context(), rxID)
 	if err != nil {
 		httpx.Fail(c, err)
 		return
