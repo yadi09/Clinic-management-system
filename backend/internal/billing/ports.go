@@ -106,6 +106,12 @@ type ChargeRow struct {
 	CreatedAt     time.Time  `json:"created_at"`
 }
 
+// Provider is a staff member who performs a service.
+type Provider struct {
+	ID       uuid.UUID `json:"-"`
+	FullName string    `json:"full_name"`
+}
+
 // CashLine / CashSummary power the owner's finance view.
 type CashLine struct {
 	Source string `json:"source"`
@@ -135,6 +141,10 @@ type Service interface {
 	SetServiceActive(ctx context.Context, id uuid.UUID, active bool) error
 	SetServiceDefault(ctx context.Context, id uuid.UUID, isDefault bool) error
 	DeleteService(ctx context.Context, id uuid.UUID) error
+	// Service providers — which staff perform a service.
+	SetServiceProviders(ctx context.Context, serviceID uuid.UUID, userIDs []uuid.UUID) error
+	ServiceProviderIDs(ctx context.Context, serviceID uuid.UUID) ([]uuid.UUID, error)
+	ProvidersForServices(ctx context.Context, serviceIDs []uuid.UUID) ([]Provider, error)
 
 	// Charges + cashier.
 	RaiseCharge(ctx context.Context, in ChargeInput) (uuid.UUID, error)

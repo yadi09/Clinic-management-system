@@ -101,6 +101,22 @@ export function deleteService(id: string) {
   return apiFetch<void>(`/billing/services/${id}`, { method: "DELETE" });
 }
 
+export interface Provider {
+  id: string;
+  full_name: string;
+}
+export async function getServiceProviders(id: string): Promise<string[]> {
+  const r = await apiFetch<{ user_ids: string[] }>(`/billing/services/${id}/providers`);
+  return r.user_ids ?? [];
+}
+export function setServiceProviders(id: string, user_ids: string[]) {
+  return apiFetch<void>(`/billing/services/${id}/providers`, { method: "PUT", body: { user_ids } });
+}
+/** Staff who provide ANY of the given services — reception's filtered assign list. */
+export function providersForServices(serviceIds: string[]) {
+  return apiFetch<Provider[]>(`/billing/providers?services=${serviceIds.join(",")}`);
+}
+
 export function raiseCharge(body: {
   patient_id: string;
   encounter_id?: string;

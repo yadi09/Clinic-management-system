@@ -228,6 +228,62 @@ func (s *Service) DeleteService(ctx context.Context, id uuid.UUID) error {
 	}))
 }
 
+// SetServiceProviders replaces the staff assigned to a service.
+func (s *Service) SetServiceProviders(ctx context.Context, serviceID uuid.UUID, userIDs []uuid.UUID) error {
+	tenantID, _ := actorOf(ctx)
+	return apperrOrNil(s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := billingdb.New(tx)
+		if e := q.ClearServiceProviders(ctx, billingdb.ClearServiceProvidersParams{TenantID: tenantID, ServiceItemID: serviceID}); e != nil {
+			return e
+		}
+		for _, uid := range userIDs {
+			if e := q.AddServiceProvider(ctx, billingdb.AddServiceProviderParams{TenantID: tenantID, ServiceItemID: serviceID, UserID: uid}); e != nil {
+				return e
+			}
+		}
+		return nil
+	}))
+}
+
+func (s *Service) ServiceProviderIDs(ctx context.Context, serviceID uuid.UUID) ([]uuid.UUID, error) {
+	tenantID, _ := actorOf(ctx)
+	out := []uuid.UUID{}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		ids, e := billingdb.New(tx).ListServiceProviderIDs(ctx, billingdb.ListServiceProviderIDsParams{TenantID: tenantID, ServiceItemID: serviceID})
+		if e != nil {
+			return e
+		}
+		out = ids
+		return nil
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+func (s *Service) ProvidersForServices(ctx context.Context, serviceIDs []uuid.UUID) ([]billing.Provider, error) {
+	tenantID, _ := actorOf(ctx)
+	out := []billing.Provider{}
+	if len(serviceIDs) == 0 {
+		return out, nil
+	}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		rows, e := billingdb.New(tx).ListProvidersForServices(ctx, billingdb.ListProvidersForServicesParams{TenantID: tenantID, ServiceIds: serviceIDs})
+		if e != nil {
+			return e
+		}
+		for _, r := range rows {
+			out = append(out, billing.Provider{ID: r.ID, FullName: r.FullName})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
 var validSource = map[string]bool{"consultation": true, "service": true, "lab": true, "pharmacy": true, "other": true}
 
 // RaiseCharge creates a pending charge against a patient.

@@ -297,6 +297,45 @@ func seedBillingServices(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) err
 	return nil
 }
 
+// seedServiceProviders assigns the demo staff who perform each service, so
+// reception's "assign" dropdown is filtered to real providers. Idempotent.
+func seedServiceProviders(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) error {
+	assign := map[string][]string{
+		"CONSULT": {"doctor@demo.clinic"},
+		"SUTURE":  {"doctor@demo.clinic"},
+		"NEB":     {"doctor@demo.clinic", "nurse@demo.clinic"},
+		"DRESS":   {"nurse@demo.clinic"},
+		"INJECT":  {"nurse@demo.clinic"},
+		"BP":      {"nurse@demo.clinic"},
+	}
+	for code, emails := range assign {
+		var sid uuid.UUID
+		e := tx.QueryRow(ctx, `SELECT id FROM service_items WHERE tenant_id=$1 AND lower(code)=lower($2) AND deleted_at IS NULL`, tenantID, code).Scan(&sid)
+		if errors.Is(e, pgx.ErrNoRows) {
+			continue
+		}
+		if e != nil {
+			return fmt.Errorf("service %s: %w", code, e)
+		}
+		for _, email := range emails {
+			var uid uuid.UUID
+			e := tx.QueryRow(ctx, `SELECT id FROM users WHERE tenant_id=$1 AND email=$2`, tenantID, email).Scan(&uid)
+			if errors.Is(e, pgx.ErrNoRows) {
+				continue
+			}
+			if e != nil {
+				return fmt.Errorf("user %s: %w", email, e)
+			}
+			if _, e := tx.Exec(ctx,
+				`INSERT INTO service_providers (tenant_id, service_item_id, user_id) VALUES ($1,$2,$3)
+				 ON CONFLICT (service_item_id, user_id) DO NOTHING`, tenantID, sid, uid); e != nil {
+				return fmt.Errorf("provider %s/%s: %w", code, email, e)
+			}
+		}
+	}
+	return nil
+}
+
 func env(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -519,6 +558,12 @@ func main() {
 		// Starter billable services (admins extend / re-price).
 		if e := seedBillingServices(ctx, tx, tenantID); e != nil {
 			return e
+		}
+		// Demo: assign the staff who perform each service (needs the demo logins).
+		if seedDemo {
+			if e := seedServiceProviders(ctx, tx, tenantID); e != nil {
+				return e
+			}
 		}
 		return nil
 	}); err != nil {

@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
-import { createService, deleteService, listServices, setServiceActive, setServiceDefault, updateService, type ServiceItem } from "@/features/billing/api";
+import { createService, deleteService, getServiceProviders, listServices, setServiceActive, setServiceDefault, setServiceProviders, updateService, type ServiceItem } from "@/features/billing/api";
+import { listUsers } from "@/features/admin/api";
 
 export function ServiceCatalogPage() {
   const qc = useQueryClient();
@@ -103,17 +104,29 @@ export function ServiceCatalogPage() {
 function ServiceDialog({ svc, open, onOpenChange, onDone }: { svc?: ServiceItem; open: boolean; onOpenChange: (v: boolean) => void; onDone: () => void }) {
   const editing = !!svc;
   const [form, setForm] = useState({ code: "", name: "", category: "general", price: "" });
+  const [staff, setStaff] = useState<Record<string, boolean>>({});
+  const users = useQuery({ queryKey: ["users"], queryFn: listUsers, enabled: open });
+
   useEffect(() => {
-    if (open) setForm(svc ? { code: svc.code, name: svc.name, category: svc.category, price: svc.price } : { code: "", name: "", category: "general", price: "" });
+    if (!open) return;
+    setForm(svc ? { code: svc.code, name: svc.name, category: svc.category, price: svc.price } : { code: "", name: "", category: "general", price: "" });
+    if (svc) {
+      getServiceProviders(svc.id).then((ids) => setStaff(Object.fromEntries(ids.map((i) => [i, true])))).catch(() => setStaff({}));
+    } else {
+      setStaff({});
+    }
   }, [open, svc]);
+
   const mut = useMutation({
     mutationFn: async () => {
       const body = { code: form.code, name: form.name, category: form.category, price: parseFloat(form.price) || 0 };
-      if (editing && svc) await updateService(svc.id, body); else await createService(body);
+      const id = editing && svc ? (await updateService(svc.id, body), svc.id) : (await createService(body)).id;
+      await setServiceProviders(id, Object.keys(staff).filter((k) => staff[k]));
     },
     onSuccess: () => { onOpenChange(false); onDone(); },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not save the service"),
   });
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -123,6 +136,20 @@ function ServiceDialog({ svc, open, onOpenChange, onDone }: { svc?: ServiceItem;
           <div className="space-y-1.5"><Label>Category</Label><Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="consultation" /></div>
           <div className="col-span-2 space-y-1.5"><Label>Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Consultation" /></div>
           <div className="space-y-1.5"><Label>Price (ETB)</Label><Input type="number" min="0" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="100" /></div>
+        </div>
+        <div className="space-y-1.5">
+          <Label>Staff who provide this</Label>
+          <p className="text-xs text-muted-foreground">Reception can only assign the patient to staff listed here for the chosen service(s).</p>
+          <div className="max-h-44 space-y-1 overflow-auto rounded-md border p-1">
+            {(users.data ?? []).filter((u) => u.status === "active").map((u) => (
+              <label key={u.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
+                <input type="checkbox" checked={!!staff[u.id]} onChange={(e) => setStaff({ ...staff, [u.id]: e.target.checked })} />
+                <span className="flex-1">{u.full_name}</span>
+                <span className="text-xs capitalize text-muted-foreground">{(u.roles?.[0] ?? "").replace(/_/g, " ")}</span>
+              </label>
+            ))}
+            {(users.data?.length ?? 0) === 0 && <p className="px-2 py-3 text-xs text-muted-foreground">No staff yet.</p>}
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

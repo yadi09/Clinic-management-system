@@ -12,6 +12,23 @@ import (
 	"github.com/google/uuid"
 )
 
+const addServiceProvider = `-- name: AddServiceProvider :exec
+INSERT INTO service_providers (tenant_id, service_item_id, user_id)
+VALUES ($1, $2, $3)
+ON CONFLICT (service_item_id, user_id) DO NOTHING
+`
+
+type AddServiceProviderParams struct {
+	TenantID      uuid.UUID `json:"tenant_id"`
+	ServiceItemID uuid.UUID `json:"service_item_id"`
+	UserID        uuid.UUID `json:"user_id"`
+}
+
+func (q *Queries) AddServiceProvider(ctx context.Context, arg AddServiceProviderParams) error {
+	_, err := q.db.Exec(ctx, addServiceProvider, arg.TenantID, arg.ServiceItemID, arg.UserID)
+	return err
+}
+
 const cashBySourceSince = `-- name: CashBySourceSince :many
 SELECT source, COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
 FROM charges WHERE tenant_id = $1 AND status = 'paid' AND settled_at >= $2
@@ -110,6 +127,22 @@ func (q *Queries) CashWaivedSince(ctx context.Context, arg CashWaivedSinceParams
 	var i CashWaivedSinceRow
 	err := row.Scan(&i.Total, &i.N)
 	return i, err
+}
+
+const clearServiceProviders = `-- name: ClearServiceProviders :exec
+
+DELETE FROM service_providers WHERE tenant_id = $1 AND service_item_id = $2
+`
+
+type ClearServiceProvidersParams struct {
+	TenantID      uuid.UUID `json:"tenant_id"`
+	ServiceItemID uuid.UUID `json:"service_item_id"`
+}
+
+// ---- service providers (which staff perform a service) ----
+func (q *Queries) ClearServiceProviders(ctx context.Context, arg ClearServiceProvidersParams) error {
+	_, err := q.db.Exec(ctx, clearServiceProviders, arg.TenantID, arg.ServiceItemID)
+	return err
 }
 
 const countActiveQueueByPatient = `-- name: CountActiveQueueByPatient :one
@@ -635,6 +668,45 @@ func (q *Queries) ListPendingCharges(ctx context.Context, tenantID uuid.UUID) ([
 	return items, nil
 }
 
+const listProvidersForServices = `-- name: ListProvidersForServices :many
+SELECT DISTINCT u.id, u.full_name
+FROM service_providers sp
+JOIN users u ON u.id = sp.user_id AND u.tenant_id = sp.tenant_id
+WHERE sp.tenant_id = $1 AND sp.service_item_id = ANY($2::uuid[]) AND u.status = 'active'
+ORDER BY u.full_name
+`
+
+type ListProvidersForServicesParams struct {
+	TenantID   uuid.UUID   `json:"tenant_id"`
+	ServiceIds []uuid.UUID `json:"service_ids"`
+}
+
+type ListProvidersForServicesRow struct {
+	ID       uuid.UUID `json:"id"`
+	FullName string    `json:"full_name"`
+}
+
+// Distinct active staff who provide ANY of the given services (reception's filtered dropdown).
+func (q *Queries) ListProvidersForServices(ctx context.Context, arg ListProvidersForServicesParams) ([]ListProvidersForServicesRow, error) {
+	rows, err := q.db.Query(ctx, listProvidersForServices, arg.TenantID, arg.ServiceIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListProvidersForServicesRow{}
+	for rows.Next() {
+		var i ListProvidersForServicesRow
+		if err := rows.Scan(&i.ID, &i.FullName); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listServiceItems = `-- name: ListServiceItems :many
 
 
@@ -686,6 +758,36 @@ func (q *Queries) ListServiceItems(ctx context.Context, arg ListServiceItemsPara
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listServiceProviderIDs = `-- name: ListServiceProviderIDs :many
+SELECT user_id FROM service_providers
+WHERE tenant_id = $1 AND service_item_id = $2
+`
+
+type ListServiceProviderIDsParams struct {
+	TenantID      uuid.UUID `json:"tenant_id"`
+	ServiceItemID uuid.UUID `json:"service_item_id"`
+}
+
+func (q *Queries) ListServiceProviderIDs(ctx context.Context, arg ListServiceProviderIDsParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listServiceProviderIDs, arg.TenantID, arg.ServiceItemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var user_id uuid.UUID
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

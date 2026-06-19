@@ -607,6 +607,13 @@ type ServiceItem struct {
 	IsDefault bool       `json:"is_default"`
 }
 
+type ServiceProvider struct {
+	TenantID      uuid.UUID `json:"tenant_id"`
+	ServiceItemID uuid.UUID `json:"service_item_id"`
+	UserID        uuid.UUID `json:"user_id"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
 type Session struct {
 	ID               uuid.UUID  `json:"id"`
 	TenantID         uuid.UUID  `json:"tenant_id"`

@@ -22,7 +22,10 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	b.PUT("/services/:id", mgr, h.UpdateService)
 	b.PUT("/services/:id/active", mgr, h.SetServiceActive)
 	b.PUT("/services/:id/default", mgr, h.SetServiceDefault)
+	b.GET("/services/:id/providers", mgr, h.GetServiceProviders)
+	b.PUT("/services/:id/providers", mgr, h.SetServiceProviders)
 	b.DELETE("/services/:id", mgr, h.DeleteService)
+	b.GET("/providers", httpx.RequirePermission("payment.collect"), h.ProvidersForServices) // reception's filtered list
 
 	collect := httpx.RequirePermission("payment.collect")
 	b.POST("/charges", collect, h.RaiseCharge)

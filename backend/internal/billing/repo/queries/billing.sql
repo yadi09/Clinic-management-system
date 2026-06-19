@@ -69,6 +69,28 @@ WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
 UPDATE service_items SET is_default = @is_default, updated_at = now()
 WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
 
+-- ---- service providers (which staff perform a service) ----
+
+-- name: ClearServiceProviders :exec
+DELETE FROM service_providers WHERE tenant_id = @tenant_id AND service_item_id = @service_item_id;
+
+-- name: AddServiceProvider :exec
+INSERT INTO service_providers (tenant_id, service_item_id, user_id)
+VALUES (@tenant_id, @service_item_id, @user_id)
+ON CONFLICT (service_item_id, user_id) DO NOTHING;
+
+-- name: ListServiceProviderIDs :many
+SELECT user_id FROM service_providers
+WHERE tenant_id = @tenant_id AND service_item_id = @service_item_id;
+
+-- name: ListProvidersForServices :many
+-- Distinct active staff who provide ANY of the given services (reception's filtered dropdown).
+SELECT DISTINCT u.id, u.full_name
+FROM service_providers sp
+JOIN users u ON u.id = sp.user_id AND u.tenant_id = sp.tenant_id
+WHERE sp.tenant_id = @tenant_id AND sp.service_item_id = ANY(@service_ids::uuid[]) AND u.status = 'active'
+ORDER BY u.full_name;
+
 -- name: SoftDeleteServiceItem :exec
 UPDATE service_items SET deleted_at = now(), is_active = false, updated_at = now()
 WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;

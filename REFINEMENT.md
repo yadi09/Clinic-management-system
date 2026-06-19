@@ -156,6 +156,18 @@ Status: `logged` → `planned` → `in-progress` → `done`.
 
 ---
 
+- **[CASH-5] Service → staff providers · Admin/Reception · workflow** — Reception's
+  "assign" dropdown listed **every** user (reception, cashier, lab, pharmacy…).
+  **Fixed:** services now own their **providers** — migration 0016 `service_providers`
+  (service ↔ user); the Service-catalog dialog has a **"Staff who provide this"**
+  multi-select; reception's dropdown is filtered to the providers of the **selected
+  service(s)** (union; empty → hint to assign in the catalog). Seeded Dr. Meron →
+  Consultation/Suturing/Nebulization, nurse → dressing/injection/BP/Nebulization.
+  Smoke PASS (CONSULT → doctor only, DRESS → nurse only, REG → none, unions correct;
+  11 users → 1–2 shown). *Status: done.*
+
+---
+
 ## Cross-cutting / Platform
 
 - **[HELP-1] All pages · all roles · ux** — Per-role **Help Center + self-teaching

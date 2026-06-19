@@ -4,6 +4,7 @@ package http
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -220,6 +221,82 @@ func (h *Handlers) SetServiceDefault(c *gin.Context) {
 		return
 	}
 	httpx.NoContent(c)
+}
+
+// GET /billing/services/:id/providers — the staff assigned to a service (catalog editor).
+func (h *Handlers) GetServiceProviders(c *gin.Context) {
+	sid, ok := decodeBilling(c, id.PrefixServiceItem, "id")
+	if !ok {
+		return
+	}
+	ids, err := h.svc.ServiceProviderIDs(c.Request.Context(), sid)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out := make([]string, 0, len(ids))
+	for _, u := range ids {
+		out = append(out, id.Encode(id.PrefixUser, u))
+	}
+	httpx.OK(c, gin.H{"user_ids": out})
+}
+
+// PUT /billing/services/:id/providers — replace the staff assigned to a service.
+func (h *Handlers) SetServiceProviders(c *gin.Context) {
+	sid, ok := decodeBilling(c, id.PrefixServiceItem, "id")
+	if !ok {
+		return
+	}
+	var req struct {
+		UserIDs []string `json:"user_ids"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	users := make([]uuid.UUID, 0, len(req.UserIDs))
+	for _, raw := range req.UserIDs {
+		u, err := id.Decode(id.PrefixUser, raw)
+		if err != nil {
+			httpx.Fail(c, apperr.Validation("invalid user id"))
+			return
+		}
+		users = append(users, u)
+	}
+	if err := h.svc.SetServiceProviders(c.Request.Context(), sid, users); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+// GET /billing/providers?services=svc_a,svc_b — staff who provide the given services
+// (reception's filtered assign dropdown).
+func (h *Handlers) ProvidersForServices(c *gin.Context) {
+	var ids []uuid.UUID
+	for _, raw := range strings.Split(c.Query("services"), ",") {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		sid, err := id.Decode(id.PrefixServiceItem, raw)
+		if err != nil {
+			httpx.Fail(c, apperr.Validation("invalid service id"))
+			return
+		}
+		ids = append(ids, sid)
+	}
+	provs, err := h.svc.ProvidersForServices(c.Request.Context(), ids)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	type provDTO struct {
+		ID string `json:"id"`
+		billing.Provider
+	}
+	out := make([]provDTO, 0, len(provs))
+	for _, p := range provs {
+		out = append(out, provDTO{ID: id.Encode(id.PrefixUser, p.ID), Provider: p})
+	}
+	httpx.OK(c, out)
 }
 
 func (h *Handlers) DeleteService(c *gin.Context) {

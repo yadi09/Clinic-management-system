@@ -9,8 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
-import { listBranches, listDepartments, listUsers, getSettings } from "@/features/admin/api";
-import { listServices, raiseCharge, settleCharge, waiveCharge, waiverReasons } from "@/features/billing/api";
+import { listBranches, listDepartments, getSettings } from "@/features/admin/api";
+import { listServices, providersForServices, raiseCharge, settleCharge, waiveCharge, waiverReasons } from "@/features/billing/api";
 import { walkIn } from "@/features/scheduling/api";
 import { PatientCombobox } from "@/features/scheduling/components/BookingDialog";
 
@@ -23,7 +23,6 @@ export function ReceptionPage() {
 
   const branches = useQuery({ queryKey: ["branches"], queryFn: listBranches });
   const departments = useQuery({ queryKey: ["departments"], queryFn: listDepartments });
-  const providers = useQuery({ queryKey: ["users"], queryFn: listUsers });
   const settings = useQuery({ queryKey: ["settings"], queryFn: getSettings, retry: false });
   const services = useQuery({ queryKey: ["services-active"], queryFn: () => listServices(true) });
   const reasons = useQuery({ queryKey: ["waiver-reasons"], queryFn: waiverReasons });
@@ -54,6 +53,20 @@ export function ReceptionPage() {
 
   const chosen = (services.data ?? []).filter((s) => picked[s.id]);
   const total = chosen.reduce((sum, s) => sum + (parseFloat(s.price) || 0), 0);
+  const chosenIds = chosen.map((s) => s.id);
+
+  // The assign dropdown lists only staff who provide the selected service(s).
+  const provQ = useQuery({
+    queryKey: ["service-providers", [...chosenIds].sort().join(",")],
+    queryFn: () => providersForServices(chosenIds),
+    enabled: !toTriage && chosenIds.length > 0,
+  });
+  const providerList = provQ.data ?? [];
+
+  // Drop a stale provider selection when it's no longer offered for the chosen services.
+  useEffect(() => {
+    if (provider && !providerList.some((p) => p.id === provider)) setProvider("");
+  }, [providerList, provider]);
 
   const resetForm = () => {
     setPatient(null);
@@ -207,19 +220,22 @@ export function ReceptionPage() {
 
             {!toTriage && (
               <div className="space-y-1.5">
-                <Label>Doctor</Label>
-                <Select value={provider} onValueChange={setProvider}>
+                <Label>Provider</Label>
+                <Select value={provider} onValueChange={setProvider} disabled={providerList.length === 0}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Assign a doctor" />
+                    <SelectValue placeholder={chosenIds.length === 0 ? "Pick a service first" : "Assign a provider"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {(providers.data ?? []).filter((u) => u.status === "active").map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {u.full_name}
+                    {providerList.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.full_name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {!toTriage && chosenIds.length > 0 && providerList.length === 0 && !provQ.isFetching && (
+                  <p className="text-xs text-warning">No staff are assigned to the selected service(s). Assign providers in Billing → Service catalog, or send to triage.</p>
+                )}
               </div>
             )}
 
