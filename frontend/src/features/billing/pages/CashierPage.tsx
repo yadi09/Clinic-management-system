@@ -10,7 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
-import { pendingCharges, settleCharge, voidCharge, waiveCharge, waiverReasons, type PendingCharge } from "@/features/billing/api";
+import { useAuth } from "@/app/auth-context";
+import { getClinic } from "@/features/admin/api";
+import { closeDay, dayClose, pendingCharges, settleCharge, voidCharge, waiveCharge, waiverReasons, type PendingCharge } from "@/features/billing/api";
+import { printZReport } from "@/features/billing/print";
+import { Input } from "@/components/ui/input";
 
 const VOID_REASONS = ["Keying error", "Duplicate charge", "Patient left without service", "Wrong patient"];
 
@@ -23,6 +27,7 @@ export function CashierPage() {
   const [method, setMethod] = useState("cash");
   const [waiving, setWaiving] = useState<PendingCharge | null>(null);
   const [voiding, setVoiding] = useState<PendingCharge | null>(null);
+  const [closing, setClosing] = useState(false);
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["pending-charges"] });
@@ -66,6 +71,7 @@ export function CashierPage() {
               </SelectContent>
             </Select>
           </div>
+          <Button variant="outline" onClick={() => setClosing(true)}>Close day</Button>
         </div>
       </div>
 
@@ -111,7 +117,59 @@ export function CashierPage() {
 
       <WaiveDialog charge={waiving} reasons={reasons.data ?? []} onClose={() => setWaiving(null)} onDone={() => { setWaiving(null); refresh(); }} />
       <VoidDialog charge={voiding} onClose={() => setVoiding(null)} onDone={() => { setVoiding(null); refresh(); }} />
+      <DayCloseDialog open={closing} onClose={() => setClosing(false)} />
     </div>
+  );
+}
+
+function DayCloseDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { user } = useAuth();
+  const exp = useQuery({ queryKey: ["day-close"], queryFn: () => dayClose(), enabled: open });
+  const clinic = useQuery({ queryKey: ["clinic"], queryFn: getClinic, retry: false, enabled: open });
+  const [counted, setCounted] = useState("");
+  const cashierName = user?.full_name || "Cashier";
+  const e = exp.data;
+  const mut = useMutation({
+    mutationFn: () => closeDay({ business_date: e?.business_date, counted: Number(counted) || 0, note: "" }),
+    onSuccess: (rec) => {
+      toast.success(`Day closed — variance ETB ${rec.variance}`);
+      printZReport({
+        clinic: clinic.data?.name || "Clinic", cashier: cashierName, businessDate: rec.business_date,
+        byMethod: e?.by_method ?? [], expected: rec.expected_total, counted: rec.counted_total, variance: rec.variance, note: rec.note,
+      });
+      onClose();
+    },
+    onError: (err) => toast.error(err instanceof AppError ? err.message : "Could not close the day"),
+  });
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Close day — {e?.business_date ?? "today"}</DialogTitle></DialogHeader>
+        {e?.closed && <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">Already closed once today — saving again updates the closeout.</p>}
+        <div>
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Expected (what you collected)</p>
+          <div className="rounded-md border divide-y text-sm">
+            {(e?.by_method ?? []).map((m) => (
+              <div key={m.label} className="flex justify-between px-3 py-1.5"><span className="capitalize">{m.label} ({m.count})</span><span className="font-mono">ETB {m.total}</span></div>
+            ))}
+            <div className="flex justify-between px-3 py-1.5 font-semibold"><span>Expected total</span><span className="font-mono">ETB {e?.expected_total ?? "0"}</span></div>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label>Counted cash in drawer (ETB)</Label>
+          <Input type="number" min="0" step="0.01" value={counted} onChange={(ev) => setCounted(ev.target.value)} placeholder="0.00" />
+          {counted !== "" && e && (
+            <p className={`text-xs ${Number(counted) - Number(e.expected_total) === 0 ? "text-emerald-600" : "text-rose-600"}`}>
+              Variance: ETB {(Number(counted) - Number(e.expected_total)).toFixed(2)}
+            </p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={counted === ""} loading={mut.isPending} onClick={() => mut.mutate()}>Close &amp; print Z-report</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

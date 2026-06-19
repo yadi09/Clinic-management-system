@@ -105,6 +105,7 @@ type ChargeRow struct {
 	WaiveReason   string     `json:"waive_reason,omitempty"`
 	SettledAt     *time.Time `json:"settled_at,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
+	ReceiptNo     *int64     `json:"receipt_no,omitempty"`
 }
 
 // Provider is a staff member who performs a service.
@@ -119,16 +120,55 @@ type CashLine struct {
 	Total  string `json:"total"`
 	Count  int    `json:"count"`
 }
+
+// CashGroup is a generic labelled total (by method, by cashier).
+type CashGroup struct {
+	Label string `json:"label"`
+	Total string `json:"total"`
+	Count int    `json:"count"`
+}
+
 type CashSummary struct {
-	Collected        string     `json:"collected"` // net of refunds
-	CollectedCount   int        `json:"collected_count"`
-	Waived           string     `json:"waived"`
-	WaivedCount      int        `json:"waived_count"`
-	Outstanding      string     `json:"outstanding"`
-	OutstandingCount int        `json:"outstanding_count"`
-	Refunded         string     `json:"refunded"`
-	RefundedCount    int        `json:"refunded_count"`
-	BySource         []CashLine `json:"by_source"` // gross collected per line (excludes refunds)
+	Collected        string      `json:"collected"` // net of refunds
+	CollectedCount   int         `json:"collected_count"`
+	Waived           string      `json:"waived"`
+	WaivedCount      int         `json:"waived_count"`
+	Outstanding      string      `json:"outstanding"`
+	OutstandingCount int         `json:"outstanding_count"`
+	Refunded         string      `json:"refunded"`
+	RefundedCount    int         `json:"refunded_count"`
+	BySource         []CashLine  `json:"by_source"`  // gross collected per line (excludes refunds)
+	ByMethod         []CashGroup `json:"by_method"`  // collected per payment method
+	ByCashier        []CashGroup `json:"by_cashier"` // collected per cashier
+}
+
+// ExpectedDay is a cashier's drawer for one business day (the Z-report basis).
+type ExpectedDay struct {
+	BusinessDate   string          `json:"business_date"`
+	ByMethod       []CashGroup     `json:"by_method"`
+	ExpectedTotal  string          `json:"expected_total"`
+	Closed         bool            `json:"closed"`
+	Reconciliation *Reconciliation `json:"reconciliation,omitempty"`
+}
+
+// CloseDayInput records a counted drawer against the expected total.
+type CloseDayInput struct {
+	BusinessDate string // YYYY-MM-DD
+	Counted      string
+	Note         string
+}
+
+// Reconciliation is a stored end-of-day cash closeout.
+type Reconciliation struct {
+	ID            uuid.UUID `json:"-"`
+	CashierID     uuid.UUID `json:"-"`
+	Cashier       string    `json:"cashier"`
+	BusinessDate  string    `json:"business_date"`
+	ExpectedTotal string    `json:"expected_total"`
+	CountedTotal  string    `json:"counted_total"`
+	Variance      string    `json:"variance"`
+	Note          string    `json:"note,omitempty"`
+	ClosedAt      time.Time `json:"closed_at"`
 }
 
 // Service is the billing module API.
@@ -161,6 +201,11 @@ type Service interface {
 
 	// Owner finance view.
 	CashSince(ctx context.Context, since time.Time) (*CashSummary, error)
+
+	// Cash control (BILL-B): end-of-day drawer reconciliation (Z-report).
+	ExpectedForDay(ctx context.Context, date string) (*ExpectedDay, error)
+	CloseDay(ctx context.Context, in CloseDayInput) (*Reconciliation, error)
+	Reconciliations(ctx context.Context, all bool) ([]Reconciliation, error)
 }
 
 // Charger is the slice of billing that other modules (lab, pharmacy) use to bill

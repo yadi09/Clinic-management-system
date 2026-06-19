@@ -41,4 +41,9 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	b.GET("/waiver-reasons", httpx.RequireAnyPermission("payment.collect", "payment.waive"), h.WaiverReasons)
 
 	b.GET("/cash", mgr, h.Cash) // owner/manager finance view
+
+	// Cash control (BILL-B): a cashier closes their own drawer; finance sees all.
+	b.GET("/day-close", collect, h.DayClose)
+	b.POST("/day-close", collect, h.CloseDay)
+	b.GET("/reconciliations", httpx.RequireAnyPermission("payment.collect", "billing.manage"), h.Reconciliations)
 }

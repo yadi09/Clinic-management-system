@@ -71,6 +71,12 @@ export interface ChargeRow {
   waive_reason?: string;
   settled_at?: string;
   created_at: string;
+  receipt_no?: number;
+}
+export interface CashGroup {
+  label: string;
+  total: string;
+  count: number;
 }
 export interface CashSummary {
   collected: string;
@@ -82,6 +88,24 @@ export interface CashSummary {
   refunded: string;
   refunded_count: number;
   by_source: { source: string; total: string; count: number }[];
+  by_method: CashGroup[];
+  by_cashier: CashGroup[];
+}
+export interface Reconciliation {
+  cashier?: string;
+  business_date: string;
+  expected_total: string;
+  counted_total: string;
+  variance: string;
+  note?: string;
+  closed_at: string;
+}
+export interface ExpectedDay {
+  business_date: string;
+  by_method: CashGroup[];
+  expected_total: string;
+  closed: boolean;
+  reconciliation?: Reconciliation;
 }
 
 export function listServices(activeOnly = false) {
@@ -156,4 +180,13 @@ export function waiverReasons() {
 }
 export function cashSummary(sinceISO?: string) {
   return apiFetch<CashSummary>(`/billing/cash${sinceISO ? `?since=${encodeURIComponent(sinceISO)}` : ""}`);
+}
+export function dayClose(date?: string) {
+  return apiFetch<ExpectedDay>(`/billing/day-close${date ? `?date=${date}` : ""}`);
+}
+export function closeDay(body: { business_date?: string; counted: number; note?: string }) {
+  return apiFetch<Reconciliation>("/billing/day-close", { method: "POST", body });
+}
+export function reconciliations(all = false) {
+  return apiFetch<Reconciliation[]>(`/billing/reconciliations${all ? "?all=1" : ""}`);
 }

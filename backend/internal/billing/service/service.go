@@ -5,7 +5,9 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -375,7 +377,7 @@ func (s *Service) PatientCharges(ctx context.Context, patientID uuid.UUID) ([]bi
 		for _, r := range rows {
 			out = append(out, billing.ChargeRow{
 				ID: r.ID, Source: r.Source, Description: r.Description, Amount: r.Amount, Currency: r.Currency, Status: r.Status,
-				PaymentMethod: deref(r.PaymentMethod), WaiveReason: deref(r.WaiveReason), SettledAt: r.SettledAt, CreatedAt: r.CreatedAt,
+				PaymentMethod: deref(r.PaymentMethod), WaiveReason: deref(r.WaiveReason), SettledAt: r.SettledAt, CreatedAt: r.CreatedAt, ReceiptNo: r.ReceiptNo,
 			})
 		}
 		return nil
@@ -394,6 +396,9 @@ func (s *Service) SettleCharge(ctx context.Context, id uuid.UUID, method string)
 		q := billingdb.New(tx)
 		row, e := q.SettleCharge(ctx, billingdb.SettleChargeParams{PaymentMethod: strPtr(method), SettledBy: actor, TenantID: tenantID, ID: id})
 		if e != nil {
+			return e
+		}
+		if e := stampReceipt(ctx, q, tenantID, row.ID); e != nil {
 			return e
 		}
 		if e := advanceIfPaid(ctx, q, tenantID, actor, row.BranchID, row.DepartmentID, row.ToTriage, row.ProviderID, row.PatientID); e != nil {
@@ -500,6 +505,9 @@ func (s *Service) RefundCharge(ctx context.Context, id uuid.UUID, reason string)
 		if e != nil {
 			return e
 		}
+		if e := stampReceipt(ctx, q, tenantID, rev.ID); e != nil {
+			return e
+		}
 		return s.publisher.Publish(ctx, tx, &tenantID, "charge", rev.ID, "billing.charge.refunded",
 			map[string]any{"refund_charge_id": rev.ID, "original_charge_id": id, "amount": rev.Amount, "reason": reason})
 	})
@@ -544,6 +552,20 @@ func (s *Service) CashSince(ctx context.Context, since time.Time) (*billing.Cash
 		for _, r := range by {
 			out.BySource = append(out.BySource, billing.CashLine{Source: r.Source, Total: r.Total, Count: int(r.N)})
 		}
+		bm, e := q.CashByMethodSince(ctx, billingdb.CashByMethodSinceParams{TenantID: tenantID, Since: &since})
+		if e != nil {
+			return e
+		}
+		for _, r := range bm {
+			out.ByMethod = append(out.ByMethod, billing.CashGroup{Label: r.Method, Total: r.Total, Count: int(r.N)})
+		}
+		bc, e := q.CashByCashierSince(ctx, billingdb.CashByCashierSinceParams{TenantID: tenantID, Since: &since})
+		if e != nil {
+			return e
+		}
+		for _, r := range bc {
+			out.ByCashier = append(out.ByCashier, billing.CashGroup{Label: r.Cashier, Total: r.Total, Count: int(r.N)})
+		}
 		return nil
 	})
 	if err != nil {
@@ -551,6 +573,157 @@ func (s *Service) CashSince(ctx context.Context, since time.Time) (*billing.Cash
 	}
 	return out, nil
 }
+
+// stampReceipt assigns the next per-tenant receipt number to a charge that just
+// took money (a settlement or a refund slip).
+func stampReceipt(ctx context.Context, q *billingdb.Queries, tenantID, chargeID uuid.UUID) error {
+	no, e := q.NextReceiptNo(ctx, tenantID)
+	if e != nil {
+		return e
+	}
+	return q.SetChargeReceipt(ctx, billingdb.SetChargeReceiptParams{ReceiptNo: &no, TenantID: tenantID, ID: chargeID})
+}
+
+// ExpectedForDay returns the acting cashier's collected drawer for a business day
+// (by method + total), and any existing closeout for that day.
+func (s *Service) ExpectedForDay(ctx context.Context, date string) (*billing.ExpectedDay, error) {
+	tenantID, actor := actorOf(ctx)
+	if actor == nil {
+		return nil, apperr.Validation("a cashier is required")
+	}
+	day, err := parseDay(date)
+	if err != nil {
+		return nil, err
+	}
+	out := &billing.ExpectedDay{BusinessDate: day.Format("2006-01-02"), ByMethod: []billing.CashGroup{}, ExpectedTotal: "0"}
+	err = s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := billingdb.New(tx)
+		dayEnd := day.Add(24 * time.Hour)
+		rows, e := q.ExpectedForCashierDay(ctx, billingdb.ExpectedForCashierDayParams{TenantID: tenantID, CashierID: actor, DayStart: &day, DayEnd: &dayEnd})
+		if e != nil {
+			return e
+		}
+		var total float64
+		for _, r := range rows {
+			out.ByMethod = append(out.ByMethod, billing.CashGroup{Label: r.Method, Total: r.Total, Count: int(r.N)})
+			total += parseMoneyB(r.Total)
+		}
+		out.ExpectedTotal = money2(total)
+		rec, e := q.GetReconciliation(ctx, billingdb.GetReconciliationParams{TenantID: tenantID, CashierID: *actor, BusinessDate: day})
+		if e == nil {
+			out.Closed = true
+			out.Reconciliation = &billing.Reconciliation{
+				ID: rec.ID, CashierID: rec.CashierID, BusinessDate: rec.BusinessDate.Format("2006-01-02"),
+				ExpectedTotal: rec.ExpectedTotal, CountedTotal: rec.CountedTotal, Variance: rec.Variance, Note: deref(rec.Note), ClosedAt: rec.ClosedAt,
+			}
+		} else if !errors.Is(e, pgx.ErrNoRows) {
+			return e
+		}
+		return nil
+	})
+	if err != nil {
+		if ae, ok := apperr.As(err); ok {
+			return nil, ae
+		}
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+// CloseDay records a counted drawer against the expected total for the acting
+// cashier and returns the Z-report (idempotent per cashier per day).
+func (s *Service) CloseDay(ctx context.Context, in billing.CloseDayInput) (*billing.Reconciliation, error) {
+	tenantID, actor := actorOf(ctx)
+	if actor == nil {
+		return nil, apperr.Validation("a cashier is required")
+	}
+	day, err := parseDay(in.BusinessDate)
+	if err != nil {
+		return nil, err
+	}
+	counted := parseMoneyB(in.Counted)
+	var out billing.Reconciliation
+	err = s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := billingdb.New(tx)
+		dayEnd := day.Add(24 * time.Hour)
+		rows, e := q.ExpectedForCashierDay(ctx, billingdb.ExpectedForCashierDayParams{TenantID: tenantID, CashierID: actor, DayStart: &day, DayEnd: &dayEnd})
+		if e != nil {
+			return e
+		}
+		var expected float64
+		methods := map[string]string{}
+		for _, r := range rows {
+			expected += parseMoneyB(r.Total)
+			methods[r.Method] = r.Total
+		}
+		byMethodJSON, _ := json.Marshal(methods)
+		variance := counted - expected
+		rec, e := q.InsertReconciliation(ctx, billingdb.InsertReconciliationParams{
+			TenantID: tenantID, CashierID: *actor, BusinessDate: day,
+			ExpectedTotal: money2(expected), CountedTotal: money2(counted), Variance: money2(variance),
+			ByMethod: string(byMethodJSON), Note: strPtr(in.Note), ClosedBy: actor,
+		})
+		if e != nil {
+			return e
+		}
+		out = billing.Reconciliation{
+			ID: rec.ID, CashierID: *actor, BusinessDate: day.Format("2006-01-02"),
+			ExpectedTotal: money2(expected), CountedTotal: money2(counted), Variance: money2(variance), Note: in.Note, ClosedAt: rec.ClosedAt,
+		}
+		return s.publisher.Publish(ctx, tx, &tenantID, "cash_reconciliation", rec.ID, "billing.day.closed",
+			map[string]any{"cashier_id": *actor, "business_date": out.BusinessDate, "variance": out.Variance})
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return &out, nil
+}
+
+// Reconciliations lists closeouts — the acting cashier's own, or all (finance view).
+func (s *Service) Reconciliations(ctx context.Context, all bool) ([]billing.Reconciliation, error) {
+	tenantID, actor := actorOf(ctx)
+	out := []billing.Reconciliation{}
+	var filter *uuid.UUID
+	if !all {
+		filter = actor
+	}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		rows, e := billingdb.New(tx).ListReconciliations(ctx, billingdb.ListReconciliationsParams{TenantID: tenantID, CashierID: filter})
+		if e != nil {
+			return e
+		}
+		for _, r := range rows {
+			out = append(out, billing.Reconciliation{
+				ID: r.ID, CashierID: r.CashierID, Cashier: r.Cashier, BusinessDate: r.BusinessDate.Format("2006-01-02"),
+				ExpectedTotal: r.ExpectedTotal, CountedTotal: r.CountedTotal, Variance: r.Variance, Note: deref(r.Note), ClosedAt: r.ClosedAt,
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+// parseDay parses a YYYY-MM-DD business date (UTC midnight); empty = today UTC.
+func parseDay(s string) (time.Time, error) {
+	if strings.TrimSpace(s) == "" {
+		return startOfDayUTC(), nil
+	}
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		return time.Time{}, apperr.Validation("date must be YYYY-MM-DD")
+	}
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC), nil
+}
+
+func parseMoneyB(s string) float64 {
+	f, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	return f
+}
+
+func money2(f float64) string { return strconv.FormatFloat(f, 'f', 2, 64) }
 
 // advanceIfPaid enqueues the patient (auto-advance after payment) once a routed
 // visit charge is settled/waived AND nothing is still owed — so multiple line-items

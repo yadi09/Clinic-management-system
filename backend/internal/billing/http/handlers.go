@@ -488,6 +488,47 @@ func (h *Handlers) Cash(c *gin.Context) {
 	httpx.OK(c, out)
 }
 
+// DayClose handles GET /billing/day-close?date= — the cashier's expected drawer + any closeout.
+func (h *Handlers) DayClose(c *gin.Context) {
+	out, err := h.svc.ExpectedForDay(c.Request.Context(), c.Query("date"))
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// CloseDay handles POST /billing/day-close — record the counted drawer (Z-report).
+func (h *Handlers) CloseDay(c *gin.Context) {
+	var req struct {
+		BusinessDate string  `json:"business_date"`
+		Counted      float64 `json:"counted"`
+		Note         string  `json:"note"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("a counted amount is required"))
+		return
+	}
+	out, err := h.svc.CloseDay(c.Request.Context(), billing.CloseDayInput{
+		BusinessDate: req.BusinessDate, Counted: strconv.FormatFloat(req.Counted, 'f', 2, 64), Note: req.Note,
+	})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// Reconciliations handles GET /billing/reconciliations?all=1 — closeouts (own, or all for finance).
+func (h *Handlers) Reconciliations(c *gin.Context) {
+	out, err := h.svc.Reconciliations(c.Request.Context(), c.Query("all") == "1")
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
 func decodeBilling(c *gin.Context, prefix, param string) (uuid.UUID, bool) {
 	u, err := id.Decode(prefix, c.Param(param))
 	if err != nil {

@@ -84,6 +84,12 @@ type BillingAccount struct {
 	UpdatedAt          time.Time `json:"updated_at"`
 }
 
+type BillingCounter struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	Name     string    `json:"name"`
+	Value    int64     `json:"value"`
+}
+
 type Branch struct {
 	ID           uuid.UUID  `json:"id"`
 	TenantID     uuid.UUID  `json:"tenant_id"`
@@ -117,6 +123,21 @@ type CardPayment struct {
 	DeletedAt     *time.Time `json:"deleted_at"`
 }
 
+type CashReconciliation struct {
+	ID            uuid.UUID  `json:"id"`
+	TenantID      uuid.UUID  `json:"tenant_id"`
+	CashierID     uuid.UUID  `json:"cashier_id"`
+	BusinessDate  time.Time  `json:"business_date"`
+	ExpectedTotal string     `json:"expected_total"`
+	CountedTotal  string     `json:"counted_total"`
+	Variance      string     `json:"variance"`
+	ByMethod      string     `json:"by_method"`
+	Note          *string    `json:"note"`
+	ClosedBy      *uuid.UUID `json:"closed_by"`
+	ClosedAt      time.Time  `json:"closed_at"`
+	CreatedAt     time.Time  `json:"created_at"`
+}
+
 type Charge struct {
 	ID               uuid.UUID  `json:"id"`
 	TenantID         uuid.UUID  `json:"tenant_id"`
@@ -145,6 +166,7 @@ type Charge struct {
 	VoidedBy         *uuid.UUID `json:"voided_by"`
 	VoidedAt         *time.Time `json:"voided_at"`
 	ReversesChargeID *uuid.UUID `json:"reverses_charge_id"`
+	ReceiptNo        *int64     `json:"receipt_no"`
 }
 
 type Clinic struct {

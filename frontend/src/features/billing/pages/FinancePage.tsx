@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { Card } from "@/components/ui/card";
-import { cashSummary } from "@/features/billing/api";
+import { cashSummary, reconciliations } from "@/features/billing/api";
 
 function startOf(range: "today" | "7d" | "30d") {
   const d = new Date();
@@ -31,6 +31,7 @@ function Kpi({ label, value, sub, tone }: { label: string; value: string; sub: s
 export function FinancePage() {
   const [range, setRange] = useState<(typeof RANGES)[number]["key"]>("today");
   const q = useQuery({ queryKey: ["cash", range], queryFn: () => cashSummary(startOf(range)), refetchInterval: 30000 });
+  const recon = useQuery({ queryKey: ["reconciliations-all"], queryFn: () => reconciliations(true) });
   const c = q.data;
   const cur = "ETB";
 
@@ -79,6 +80,56 @@ export function FinancePage() {
         </table>
         {(c?.by_source?.length ?? 0) === 0 && <p className="p-8 text-center text-sm text-muted-foreground">No collections in this period.</p>}
       </Card>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <GroupCard title="By payment method" rows={c?.by_method ?? []} cur={cur} />
+        <GroupCard title="By cashier" rows={c?.by_cashier ?? []} cur={cur} />
+      </div>
+
+      <Card className="overflow-hidden">
+        <div className="border-b px-4 py-2.5 text-sm font-medium">Day closeouts (Z-reports)</div>
+        <table className="w-full text-sm">
+          <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr><th className="p-3 font-medium">Date</th><th className="font-medium">Cashier</th><th className="r font-medium">Expected</th><th className="font-medium">Counted</th><th className="p-3 text-right font-medium">Variance</th></tr>
+          </thead>
+          <tbody>
+            {(recon.data ?? []).map((r) => {
+              const v = parseFloat(r.variance);
+              return (
+                <tr key={`${r.cashier}-${r.business_date}`} className="border-b last:border-0">
+                  <td className="p-3 font-mono text-xs">{r.business_date}</td>
+                  <td>{r.cashier}</td>
+                  <td className="font-mono">{cur} {r.expected_total}</td>
+                  <td className="font-mono">{cur} {r.counted_total}</td>
+                  <td className={`p-3 text-right font-mono ${v === 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                    {v > 0 ? "+" : ""}{cur} {r.variance}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {(recon.data?.length ?? 0) === 0 && <p className="p-8 text-center text-sm text-muted-foreground">No day closeouts yet. Cashiers close their drawer from the Cashier page.</p>}
+      </Card>
     </div>
+  );
+}
+
+function GroupCard({ title, rows, cur }: { title: string; rows: { label: string; total: string; count: number }[]; cur: string }) {
+  return (
+    <Card className="overflow-hidden">
+      <div className="border-b px-4 py-2.5 text-sm font-medium">{title}</div>
+      <table className="w-full text-sm">
+        <tbody>
+          {rows.map((l) => (
+            <tr key={l.label} className="border-b last:border-0">
+              <td className="p-3 capitalize">{l.label} <span className="text-xs text-muted-foreground">({l.count})</span></td>
+              <td className="p-3 text-right font-mono">{cur} {l.total}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rows.length === 0 && <p className="p-6 text-center text-sm text-muted-foreground">Nothing yet.</p>}
+    </Card>
   );
 }

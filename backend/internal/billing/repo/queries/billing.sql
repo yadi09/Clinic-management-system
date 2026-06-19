@@ -114,7 +114,7 @@ ORDER BY c.created_at
 LIMIT 200;
 
 -- name: ListChargesByPatient :many
-SELECT id, source, description, amount, currency, status, payment_method, waive_reason, settled_at, created_at
+SELECT id, source, description, amount, currency, status, payment_method, waive_reason, settled_at, created_at, receipt_no
 FROM charges
 WHERE tenant_id = @tenant_id AND patient_id = @patient_id AND deleted_at IS NULL
 ORDER BY created_at DESC LIMIT 50;
@@ -124,6 +124,16 @@ ORDER BY created_at DESC LIMIT 50;
 UPDATE charges SET status = 'paid', payment_method = @payment_method, settled_by = @settled_by, settled_at = now(), updated_at = now()
 WHERE tenant_id = @tenant_id AND id = @id AND status = 'pending' AND deleted_at IS NULL
 RETURNING id, source, patient_id, branch_id, department_id, to_triage, provider_id, enqueued;
+
+-- name: NextReceiptNo :one
+-- Per-tenant monotonic receipt number (atomic increment).
+INSERT INTO billing_counters (tenant_id, name, value) VALUES (@tenant_id, 'receipt', 1)
+ON CONFLICT (tenant_id, name) DO UPDATE SET value = billing_counters.value + 1
+RETURNING value;
+
+-- name: SetChargeReceipt :exec
+UPDATE charges SET receipt_no = @receipt_no, updated_at = now()
+WHERE tenant_id = @tenant_id AND id = @id;
 
 -- name: WaiveCharge :one
 UPDATE charges SET status = 'waived', waive_reason = @waive_reason, settled_by = @settled_by, settled_at = now(), updated_at = now()
@@ -204,3 +214,49 @@ GROUP BY source ORDER BY total DESC;
 -- Refunds are stored as negative entries; report them as a positive total.
 SELECT COALESCE(-sum(amount), 0)::numeric AS total, count(*)::int AS n
 FROM charges WHERE tenant_id = @tenant_id AND source = 'refund' AND status = 'paid' AND settled_at >= @since;
+
+-- name: CashByMethodSince :many
+-- Collected grouped by payment method (cash / card / mobile / transfer / refund).
+SELECT COALESCE(payment_method, 'unknown') AS method, COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
+FROM charges WHERE tenant_id = @tenant_id AND status = 'paid' AND settled_at >= @since
+GROUP BY payment_method ORDER BY total DESC;
+
+-- name: CashByCashierSince :many
+-- Collected grouped by the cashier who settled it (excludes refund reversing entries).
+SELECT c.settled_by, COALESCE(u.full_name, 'Unknown') AS cashier, COALESCE(sum(c.amount), 0)::numeric AS total, count(*)::int AS n
+FROM charges c
+LEFT JOIN users u ON u.id = c.settled_by AND u.tenant_id = c.tenant_id
+WHERE c.tenant_id = @tenant_id AND c.status = 'paid' AND c.source <> 'refund' AND c.settled_at >= @since
+GROUP BY c.settled_by, u.full_name ORDER BY total DESC;
+
+-- ---- end-of-day cash reconciliation (Z-report) ----
+
+-- name: ExpectedForCashierDay :many
+-- What a cashier collected on a business day, grouped by method (the "expected" drawer).
+SELECT COALESCE(payment_method, 'unknown') AS method, COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
+FROM charges
+WHERE tenant_id = @tenant_id AND settled_by = @cashier_id AND status = 'paid' AND source <> 'refund'
+  AND settled_at >= @day_start AND settled_at < @day_end
+GROUP BY payment_method ORDER BY method;
+
+-- name: GetReconciliation :one
+SELECT id, cashier_id, business_date, expected_total, counted_total, variance, by_method, note, closed_at
+FROM cash_reconciliations
+WHERE tenant_id = @tenant_id AND cashier_id = @cashier_id AND business_date = @business_date;
+
+-- name: InsertReconciliation :one
+INSERT INTO cash_reconciliations (tenant_id, cashier_id, business_date, expected_total, counted_total, variance, by_method, note, closed_by)
+VALUES (@tenant_id, @cashier_id, @business_date, @expected_total, @counted_total, @variance, @by_method, @note, @closed_by)
+ON CONFLICT (tenant_id, cashier_id, business_date)
+DO UPDATE SET expected_total = EXCLUDED.expected_total, counted_total = EXCLUDED.counted_total,
+  variance = EXCLUDED.variance, by_method = EXCLUDED.by_method, note = EXCLUDED.note,
+  closed_by = EXCLUDED.closed_by, closed_at = now()
+RETURNING id, closed_at;
+
+-- name: ListReconciliations :many
+SELECT r.id, r.cashier_id, COALESCE(u.full_name, 'Unknown') AS cashier, r.business_date,
+  r.expected_total, r.counted_total, r.variance, r.note, r.closed_at
+FROM cash_reconciliations r
+LEFT JOIN users u ON u.id = r.cashier_id AND u.tenant_id = r.tenant_id
+WHERE r.tenant_id = @tenant_id AND (sqlc.narg(cashier_id)::uuid IS NULL OR r.cashier_id = sqlc.narg(cashier_id))
+ORDER BY r.business_date DESC, r.closed_at DESC LIMIT 100;

@@ -228,11 +228,16 @@ Addresses the 3 financial criticals + the billing-gate-leak highs. 41 audit item
     into lab + pharmacy so the charge commits in the caller's tx (importlint clean).
   - Migration 0017. Smoke (`/tmp/clinic-docs/bill_a_smoke.py`): void, refund, lab gate,
     pharmacy two-phase gate — **29/29 pass** against the live Docker stack.
-- **[BILL-B] Cash control** *(critical #3)* — _Status: planned_
-  - Sequential receipt number on settlement + printable itemized receipt/invoice
-    (clinic header, lines, total, method, cashier, timestamp).
-  - Finance breakdowns: by-method, by-cashier, by-branch.
-  - End-of-day / shift closeout (Z-report): counted vs expected cash, variance, sign-off, printable.
+- **[BILL-B] Cash control** *(critical #3)* — _Status: **done** (smoke 13/13 + regressions 29/10, awaiting sign-off)_
+  - Sequential **receipt number** (per-tenant counter, `RCP-000123`) stamped on every
+    settlement and on refund slips; printable itemized receipt (clinic header, line,
+    total, method, cashier, timestamp) + reprint from the patient Billing section.
+  - Finance **by-method** + **by-cashier** breakdowns (`settled_by` surfaced).
+  - **End-of-day Z-report** (daily close per cashier): expected drawer by method vs
+    counted cash → variance + printable Z-report; idempotent per cashier per day;
+    `payment.collect`-gated (reception can't close); owner sees all closeouts in Finance.
+  - Migration 0019 (`billing_counters`, `charges.receipt_no`, `cash_reconciliations`).
+  - **Deferred:** by-branch (needs a branch attributed to lab/pharmacy charges first).
 - **[BILL-C] Close the gate leaks** *(highs)* — _Status: planned_
   - Appointment check-in and queue-board walk-ins route through the same billing gate as
     reception in cashier mode (raise configured charge / require waiver) so nothing enters

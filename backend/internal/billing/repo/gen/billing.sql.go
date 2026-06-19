@@ -29,6 +29,90 @@ func (q *Queries) AddServiceProvider(ctx context.Context, arg AddServiceProvider
 	return err
 }
 
+const cashByCashierSince = `-- name: CashByCashierSince :many
+SELECT c.settled_by, COALESCE(u.full_name, 'Unknown') AS cashier, COALESCE(sum(c.amount), 0)::numeric AS total, count(*)::int AS n
+FROM charges c
+LEFT JOIN users u ON u.id = c.settled_by AND u.tenant_id = c.tenant_id
+WHERE c.tenant_id = $1 AND c.status = 'paid' AND c.source <> 'refund' AND c.settled_at >= $2
+GROUP BY c.settled_by, u.full_name ORDER BY total DESC
+`
+
+type CashByCashierSinceParams struct {
+	TenantID uuid.UUID  `json:"tenant_id"`
+	Since    *time.Time `json:"since"`
+}
+
+type CashByCashierSinceRow struct {
+	SettledBy *uuid.UUID `json:"settled_by"`
+	Cashier   string     `json:"cashier"`
+	Total     string     `json:"total"`
+	N         int32      `json:"n"`
+}
+
+// Collected grouped by the cashier who settled it (excludes refund reversing entries).
+func (q *Queries) CashByCashierSince(ctx context.Context, arg CashByCashierSinceParams) ([]CashByCashierSinceRow, error) {
+	rows, err := q.db.Query(ctx, cashByCashierSince, arg.TenantID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CashByCashierSinceRow{}
+	for rows.Next() {
+		var i CashByCashierSinceRow
+		if err := rows.Scan(
+			&i.SettledBy,
+			&i.Cashier,
+			&i.Total,
+			&i.N,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const cashByMethodSince = `-- name: CashByMethodSince :many
+SELECT COALESCE(payment_method, 'unknown') AS method, COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
+FROM charges WHERE tenant_id = $1 AND status = 'paid' AND settled_at >= $2
+GROUP BY payment_method ORDER BY total DESC
+`
+
+type CashByMethodSinceParams struct {
+	TenantID uuid.UUID  `json:"tenant_id"`
+	Since    *time.Time `json:"since"`
+}
+
+type CashByMethodSinceRow struct {
+	Method string `json:"method"`
+	Total  string `json:"total"`
+	N      int32  `json:"n"`
+}
+
+// Collected grouped by payment method (cash / card / mobile / transfer / refund).
+func (q *Queries) CashByMethodSince(ctx context.Context, arg CashByMethodSinceParams) ([]CashByMethodSinceRow, error) {
+	rows, err := q.db.Query(ctx, cashByMethodSince, arg.TenantID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CashByMethodSinceRow{}
+	for rows.Next() {
+		var i CashByMethodSinceRow
+		if err := rows.Scan(&i.Method, &i.Total, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const cashBySourceSince = `-- name: CashBySourceSince :many
 SELECT source, COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
 FROM charges WHERE tenant_id = $1 AND status = 'paid' AND source <> 'refund' AND settled_at >= $2
@@ -478,6 +562,55 @@ func (q *Queries) EnqueueFromCharge(ctx context.Context, arg EnqueueFromChargePa
 	return err
 }
 
+const expectedForCashierDay = `-- name: ExpectedForCashierDay :many
+
+SELECT COALESCE(payment_method, 'unknown') AS method, COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
+FROM charges
+WHERE tenant_id = $1 AND settled_by = $2 AND status = 'paid' AND source <> 'refund'
+  AND settled_at >= $3 AND settled_at < $4
+GROUP BY payment_method ORDER BY method
+`
+
+type ExpectedForCashierDayParams struct {
+	TenantID  uuid.UUID  `json:"tenant_id"`
+	CashierID *uuid.UUID `json:"cashier_id"`
+	DayStart  *time.Time `json:"day_start"`
+	DayEnd    *time.Time `json:"day_end"`
+}
+
+type ExpectedForCashierDayRow struct {
+	Method string `json:"method"`
+	Total  string `json:"total"`
+	N      int32  `json:"n"`
+}
+
+// ---- end-of-day cash reconciliation (Z-report) ----
+// What a cashier collected on a business day, grouped by method (the "expected" drawer).
+func (q *Queries) ExpectedForCashierDay(ctx context.Context, arg ExpectedForCashierDayParams) ([]ExpectedForCashierDayRow, error) {
+	rows, err := q.db.Query(ctx, expectedForCashierDay,
+		arg.TenantID,
+		arg.CashierID,
+		arg.DayStart,
+		arg.DayEnd,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ExpectedForCashierDayRow{}
+	for rows.Next() {
+		var i ExpectedForCashierDayRow
+		if err := rows.Scan(&i.Method, &i.Total, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAppointmentCoverage = `-- name: GetAppointmentCoverage :one
 SELECT id, patient_id, is_followup, free_until, status
 FROM appointments
@@ -619,6 +752,47 @@ func (q *Queries) GetCharge(ctx context.Context, arg GetChargeParams) (GetCharge
 	return i, err
 }
 
+const getReconciliation = `-- name: GetReconciliation :one
+SELECT id, cashier_id, business_date, expected_total, counted_total, variance, by_method, note, closed_at
+FROM cash_reconciliations
+WHERE tenant_id = $1 AND cashier_id = $2 AND business_date = $3
+`
+
+type GetReconciliationParams struct {
+	TenantID     uuid.UUID `json:"tenant_id"`
+	CashierID    uuid.UUID `json:"cashier_id"`
+	BusinessDate time.Time `json:"business_date"`
+}
+
+type GetReconciliationRow struct {
+	ID            uuid.UUID `json:"id"`
+	CashierID     uuid.UUID `json:"cashier_id"`
+	BusinessDate  time.Time `json:"business_date"`
+	ExpectedTotal string    `json:"expected_total"`
+	CountedTotal  string    `json:"counted_total"`
+	Variance      string    `json:"variance"`
+	ByMethod      string    `json:"by_method"`
+	Note          *string   `json:"note"`
+	ClosedAt      time.Time `json:"closed_at"`
+}
+
+func (q *Queries) GetReconciliation(ctx context.Context, arg GetReconciliationParams) (GetReconciliationRow, error) {
+	row := q.db.QueryRow(ctx, getReconciliation, arg.TenantID, arg.CashierID, arg.BusinessDate)
+	var i GetReconciliationRow
+	err := row.Scan(
+		&i.ID,
+		&i.CashierID,
+		&i.BusinessDate,
+		&i.ExpectedTotal,
+		&i.CountedTotal,
+		&i.Variance,
+		&i.ByMethod,
+		&i.Note,
+		&i.ClosedAt,
+	)
+	return i, err
+}
+
 const getServiceItem = `-- name: GetServiceItem :one
 SELECT id, code, name, category, price, currency, is_active, is_default FROM service_items
 WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
@@ -653,6 +827,50 @@ func (q *Queries) GetServiceItem(ctx context.Context, arg GetServiceItemParams) 
 		&i.IsActive,
 		&i.IsDefault,
 	)
+	return i, err
+}
+
+const insertReconciliation = `-- name: InsertReconciliation :one
+INSERT INTO cash_reconciliations (tenant_id, cashier_id, business_date, expected_total, counted_total, variance, by_method, note, closed_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+ON CONFLICT (tenant_id, cashier_id, business_date)
+DO UPDATE SET expected_total = EXCLUDED.expected_total, counted_total = EXCLUDED.counted_total,
+  variance = EXCLUDED.variance, by_method = EXCLUDED.by_method, note = EXCLUDED.note,
+  closed_by = EXCLUDED.closed_by, closed_at = now()
+RETURNING id, closed_at
+`
+
+type InsertReconciliationParams struct {
+	TenantID      uuid.UUID  `json:"tenant_id"`
+	CashierID     uuid.UUID  `json:"cashier_id"`
+	BusinessDate  time.Time  `json:"business_date"`
+	ExpectedTotal string     `json:"expected_total"`
+	CountedTotal  string     `json:"counted_total"`
+	Variance      string     `json:"variance"`
+	ByMethod      string     `json:"by_method"`
+	Note          *string    `json:"note"`
+	ClosedBy      *uuid.UUID `json:"closed_by"`
+}
+
+type InsertReconciliationRow struct {
+	ID       uuid.UUID `json:"id"`
+	ClosedAt time.Time `json:"closed_at"`
+}
+
+func (q *Queries) InsertReconciliation(ctx context.Context, arg InsertReconciliationParams) (InsertReconciliationRow, error) {
+	row := q.db.QueryRow(ctx, insertReconciliation,
+		arg.TenantID,
+		arg.CashierID,
+		arg.BusinessDate,
+		arg.ExpectedTotal,
+		arg.CountedTotal,
+		arg.Variance,
+		arg.ByMethod,
+		arg.Note,
+		arg.ClosedBy,
+	)
+	var i InsertReconciliationRow
+	err := row.Scan(&i.ID, &i.ClosedAt)
 	return i, err
 }
 
@@ -706,7 +924,7 @@ func (q *Queries) ListCardPaymentsByPatient(ctx context.Context, arg ListCardPay
 }
 
 const listChargesByPatient = `-- name: ListChargesByPatient :many
-SELECT id, source, description, amount, currency, status, payment_method, waive_reason, settled_at, created_at
+SELECT id, source, description, amount, currency, status, payment_method, waive_reason, settled_at, created_at, receipt_no
 FROM charges
 WHERE tenant_id = $1 AND patient_id = $2 AND deleted_at IS NULL
 ORDER BY created_at DESC LIMIT 50
@@ -728,6 +946,7 @@ type ListChargesByPatientRow struct {
 	WaiveReason   *string    `json:"waive_reason"`
 	SettledAt     *time.Time `json:"settled_at"`
 	CreatedAt     time.Time  `json:"created_at"`
+	ReceiptNo     *int64     `json:"receipt_no"`
 }
 
 func (q *Queries) ListChargesByPatient(ctx context.Context, arg ListChargesByPatientParams) ([]ListChargesByPatientRow, error) {
@@ -750,6 +969,7 @@ func (q *Queries) ListChargesByPatient(ctx context.Context, arg ListChargesByPat
 			&i.WaiveReason,
 			&i.SettledAt,
 			&i.CreatedAt,
+			&i.ReceiptNo,
 		); err != nil {
 			return nil, err
 		}
@@ -844,6 +1064,62 @@ func (q *Queries) ListProvidersForServices(ctx context.Context, arg ListProvider
 	for rows.Next() {
 		var i ListProvidersForServicesRow
 		if err := rows.Scan(&i.ID, &i.FullName); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listReconciliations = `-- name: ListReconciliations :many
+SELECT r.id, r.cashier_id, COALESCE(u.full_name, 'Unknown') AS cashier, r.business_date,
+  r.expected_total, r.counted_total, r.variance, r.note, r.closed_at
+FROM cash_reconciliations r
+LEFT JOIN users u ON u.id = r.cashier_id AND u.tenant_id = r.tenant_id
+WHERE r.tenant_id = $1 AND ($2::uuid IS NULL OR r.cashier_id = $2)
+ORDER BY r.business_date DESC, r.closed_at DESC LIMIT 100
+`
+
+type ListReconciliationsParams struct {
+	TenantID  uuid.UUID  `json:"tenant_id"`
+	CashierID *uuid.UUID `json:"cashier_id"`
+}
+
+type ListReconciliationsRow struct {
+	ID            uuid.UUID `json:"id"`
+	CashierID     uuid.UUID `json:"cashier_id"`
+	Cashier       string    `json:"cashier"`
+	BusinessDate  time.Time `json:"business_date"`
+	ExpectedTotal string    `json:"expected_total"`
+	CountedTotal  string    `json:"counted_total"`
+	Variance      string    `json:"variance"`
+	Note          *string   `json:"note"`
+	ClosedAt      time.Time `json:"closed_at"`
+}
+
+func (q *Queries) ListReconciliations(ctx context.Context, arg ListReconciliationsParams) ([]ListReconciliationsRow, error) {
+	rows, err := q.db.Query(ctx, listReconciliations, arg.TenantID, arg.CashierID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListReconciliationsRow{}
+	for rows.Next() {
+		var i ListReconciliationsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CashierID,
+			&i.Cashier,
+			&i.BusinessDate,
+			&i.ExpectedTotal,
+			&i.CountedTotal,
+			&i.Variance,
+			&i.Note,
+			&i.ClosedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -953,6 +1229,36 @@ type MarkChargeEnqueuedParams struct {
 
 func (q *Queries) MarkChargeEnqueued(ctx context.Context, arg MarkChargeEnqueuedParams) error {
 	_, err := q.db.Exec(ctx, markChargeEnqueued, arg.TenantID, arg.ID)
+	return err
+}
+
+const nextReceiptNo = `-- name: NextReceiptNo :one
+INSERT INTO billing_counters (tenant_id, name, value) VALUES ($1, 'receipt', 1)
+ON CONFLICT (tenant_id, name) DO UPDATE SET value = billing_counters.value + 1
+RETURNING value
+`
+
+// Per-tenant monotonic receipt number (atomic increment).
+func (q *Queries) NextReceiptNo(ctx context.Context, tenantID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, nextReceiptNo, tenantID)
+	var value int64
+	err := row.Scan(&value)
+	return value, err
+}
+
+const setChargeReceipt = `-- name: SetChargeReceipt :exec
+UPDATE charges SET receipt_no = $1, updated_at = now()
+WHERE tenant_id = $2 AND id = $3
+`
+
+type SetChargeReceiptParams struct {
+	ReceiptNo *int64    `json:"receipt_no"`
+	TenantID  uuid.UUID `json:"tenant_id"`
+	ID        uuid.UUID `json:"id"`
+}
+
+func (q *Queries) SetChargeReceipt(ctx context.Context, arg SetChargeReceiptParams) error {
+	_, err := q.db.Exec(ctx, setChargeReceipt, arg.ReceiptNo, arg.TenantID, arg.ID)
 	return err
 }
 

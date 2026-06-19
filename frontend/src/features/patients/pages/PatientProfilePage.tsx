@@ -22,6 +22,8 @@ import {
   removeCondition,
 } from "@/features/patients/api";
 import { patientCharges, refundCharge, type ChargeRow } from "@/features/billing/api";
+import { printReceipt } from "@/features/billing/print";
+import { getClinic } from "@/features/admin/api";
 import { AppError } from "@/lib/api-client";
 
 function age(dob: string) {
@@ -152,7 +154,7 @@ export function PatientProfilePage() {
           </SectionCard>
 
           {(can("payment.collect") || can("billing.manage")) && (
-            <BillingSection patientId={id} canRefund={can("billing.manage")} />
+            <BillingSection patientId={id} patientName={fullName} mrn={data.mrn} canRefund={can("billing.manage")} />
           )}
         </div>
       </div>
@@ -162,11 +164,18 @@ export function PatientProfilePage() {
 
 const REFUND_REASONS = ["Service not provided", "Overcharged", "Duplicate payment", "Patient cancelled", "Billing error"];
 
-function BillingSection({ patientId, canRefund }: { patientId: string; canRefund: boolean }) {
+function BillingSection({ patientId, patientName, mrn, canRefund }: { patientId: string; patientName: string; mrn?: string; canRefund: boolean }) {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["patient-charges", patientId], queryFn: () => patientCharges(patientId) });
+  const clinic = useQuery({ queryKey: ["clinic"], queryFn: getClinic, retry: false });
   const [refunding, setRefunding] = useState<ChargeRow | null>(null);
   const [reason, setReason] = useState("");
+  const receipt = (c: ChargeRow) =>
+    printReceipt({
+      clinic: clinic.data?.name || "Clinic", receiptNo: c.receipt_no, patient: patientName, mrn,
+      description: c.description, amount: c.amount, currency: c.currency, method: c.payment_method,
+      when: c.settled_at || c.created_at, refund: c.source === "refund",
+    });
   const mut = useMutation({
     mutationFn: () => refundCharge(refunding!.id, reason),
     onSuccess: () => {
@@ -192,6 +201,7 @@ function BillingSection({ patientId, canRefund }: { patientId: string; canRefund
             <div className="flex items-center gap-3">
               <Badge variant={c.status === "paid" ? "success" : c.status === "pending" ? "warning" : "outline"} className="capitalize">{c.status}</Badge>
               <span className={`font-mono ${negative ? "text-rose-600" : ""}`}>{c.currency} {c.amount}</span>
+              {c.receipt_no != null && <Button size="sm" variant="ghost" onClick={() => receipt(c)}>Receipt</Button>}
               {refundable && <Button size="sm" variant="ghost" className="text-rose-600" onClick={() => setRefunding(c)}>Refund</Button>}
             </div>
           </div>
