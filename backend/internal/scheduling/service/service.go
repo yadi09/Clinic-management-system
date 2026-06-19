@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/reicb/clinicsaas/internal/billing"
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
 	"github.com/reicb/clinicsaas/internal/kernel/events"
@@ -31,13 +32,16 @@ var validQueueState = map[string]bool{"waiting": true, "called": true, "in_consu
 type Service struct {
 	db        *kerneldb.DB
 	publisher events.Publisher
+	billing   billing.Charger
 }
 
 var _ scheduling.Service = (*Service)(nil)
 
-// NewService constructs a scheduling Service.
-func NewService(db *kerneldb.DB, publisher events.Publisher) *Service {
-	return &Service{db: db, publisher: publisher}
+// NewService constructs a scheduling Service. The billing Charger lets walk-in /
+// appointment check-in raise the default intake charge so the queue entry is gated
+// on payment (no free bypass of the cashier).
+func NewService(db *kerneldb.DB, publisher events.Publisher, charger billing.Charger) *Service {
+	return &Service{db: db, publisher: publisher, billing: charger}
 }
 
 // Book creates an appointment; overlapping provider/resource times are rejected
@@ -179,8 +183,9 @@ func (s *Service) MarkFollowup(ctx context.Context, id uuid.UUID, freeUntil time
 // CheckIn marks an appointment checked-in and enqueues the patient (FR-QUE-01).
 // Routing: to triage (nurse assigns later) or straight to a doctor (the chosen
 // provider, defaulting to the appointment's booked provider).
-func (s *Service) CheckIn(ctx context.Context, id uuid.UUID, in scheduling.CheckInInput) error {
+func (s *Service) CheckIn(ctx context.Context, id uuid.UUID, in scheduling.CheckInInput) (bool, error) {
 	tenantID, actor := actorOf(ctx)
+	var gated bool
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := schedulingdb.New(tx)
 		appt, e := q.GetAppointment(ctx, schedulingdb.GetAppointmentParams{TenantID: tenantID, ID: id})
@@ -201,37 +206,62 @@ func (s *Service) CheckIn(ctx context.Context, id uuid.UUID, in scheduling.Check
 			p := appt.ProviderID
 			prov = &p
 		}
-		qe, e := q.CreateQueueEntry(ctx, schedulingdb.CreateQueueEntryParams{
-			TenantID: tenantID, BranchID: appt.BranchID, DepartmentID: *appt.DepartmentID, PatientID: appt.PatientID,
-			AppointmentID: &id, Stage: stage, AssignedProviderID: prov, Priority: int32(in.Priority), CreatedBy: actor,
+		// Billing gate: raise the default intake charge (routed). If any was raised the
+		// patient waits for payment — settlement enqueues them (advanceIfPaid). Otherwise
+		// (no default fee) enqueue immediately.
+		raised, e := s.billing.RaiseIntakeChargesTx(ctx, tx, billing.IntakeInput{
+			PatientID: appt.PatientID, BranchID: appt.BranchID, DepartmentID: *appt.DepartmentID, ToTriage: in.ToTriage, ProviderID: prov,
 		})
 		if e != nil {
 			return e
 		}
-		notifyQueue(ctx, q, tenantID, qe.BranchID, qe.DepartmentID)
+		gated = raised > 0
+		if !gated {
+			qe, e := q.CreateQueueEntry(ctx, schedulingdb.CreateQueueEntryParams{
+				TenantID: tenantID, BranchID: appt.BranchID, DepartmentID: *appt.DepartmentID, PatientID: appt.PatientID,
+				AppointmentID: &id, Stage: stage, AssignedProviderID: prov, Priority: int32(in.Priority), CreatedBy: actor,
+			})
+			if e != nil {
+				return e
+			}
+			notifyQueue(ctx, q, tenantID, qe.BranchID, qe.DepartmentID)
+		}
 		return s.publisher.Publish(ctx, tx, &tenantID, "appointment", id, "scheduling.patient.checked_in",
-			map[string]any{"appointment_id": id, "patient_id": appt.PatientID})
+			map[string]any{"appointment_id": id, "patient_id": appt.PatientID, "gated": gated})
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return apperr.NotFound("APPOINTMENT_NOT_FOUND", "appointment not found")
+		return false, apperr.NotFound("APPOINTMENT_NOT_FOUND", "appointment not found")
 	}
 	if ae, ok := apperr.As(err); ok {
-		return ae
+		return false, ae
 	}
 	if err != nil {
-		return apperr.Internal(err)
+		return false, apperr.Internal(err)
 	}
-	return nil
+	return gated, nil
 }
 
 // EnqueueWalkIn adds a patient to a department queue without an appointment.
-func (s *Service) EnqueueWalkIn(ctx context.Context, in scheduling.WalkInInput) error {
+func (s *Service) EnqueueWalkIn(ctx context.Context, in scheduling.WalkInInput) (bool, error) {
 	tenantID, actor := actorOf(ctx)
-	return s.db.WithTx(ctx, func(tx pgx.Tx) error {
+	var gated bool
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := schedulingdb.New(tx)
 		stage := "with_doctor"
 		if in.ToTriage {
 			stage = "triage"
+		}
+		// Billing gate: raise the default intake charge (routed). If any was raised the
+		// patient waits for payment (settlement enqueues them); otherwise enqueue now.
+		raised, e := s.billing.RaiseIntakeChargesTx(ctx, tx, billing.IntakeInput{
+			PatientID: in.PatientID, BranchID: in.BranchID, DepartmentID: in.DepartmentID, ToTriage: in.ToTriage, ProviderID: in.ProviderID,
+		})
+		if e != nil {
+			return e
+		}
+		gated = raised > 0
+		if gated {
+			return nil
 		}
 		qe, e := q.CreateQueueEntry(ctx, schedulingdb.CreateQueueEntryParams{
 			TenantID: tenantID, BranchID: in.BranchID, DepartmentID: in.DepartmentID, PatientID: in.PatientID,
@@ -243,6 +273,13 @@ func (s *Service) EnqueueWalkIn(ctx context.Context, in scheduling.WalkInInput) 
 		notifyQueue(ctx, q, tenantID, qe.BranchID, qe.DepartmentID)
 		return nil
 	})
+	if ae, ok := apperr.As(err); ok {
+		return false, ae
+	}
+	if err != nil {
+		return false, apperr.Internal(err)
+	}
+	return gated, nil
 }
 
 // ListQueue returns today's queue entries for a department, optionally filtered

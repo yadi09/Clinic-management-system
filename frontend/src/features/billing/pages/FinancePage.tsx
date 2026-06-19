@@ -81,9 +81,10 @@ export function FinancePage() {
         {(c?.by_source?.length ?? 0) === 0 && <p className="p-8 text-center text-sm text-muted-foreground">No collections in this period.</p>}
       </Card>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-3">
         <GroupCard title="By payment method" rows={c?.by_method ?? []} cur={cur} />
         <GroupCard title="By cashier" rows={c?.by_cashier ?? []} cur={cur} />
+        <GroupCard title="By branch" rows={c?.by_branch ?? []} cur={cur} />
       </div>
 
       <Card className="overflow-hidden">

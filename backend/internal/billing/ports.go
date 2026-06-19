@@ -140,6 +140,7 @@ type CashSummary struct {
 	BySource         []CashLine  `json:"by_source"`  // gross collected per line (excludes refunds)
 	ByMethod         []CashGroup `json:"by_method"`  // collected per payment method
 	ByCashier        []CashGroup `json:"by_cashier"` // collected per cashier
+	ByBranch         []CashGroup `json:"by_branch"`  // collected per branch
 }
 
 // ExpectedDay is a cashier's drawer for one business day (the Z-report basis).
@@ -216,4 +217,17 @@ type Charger interface {
 	// ChargeStatusTx reports a charge's status ('pending'|'paid'|'waived'|'void')
 	// for a pre-pay gate; returns NotFound if the charge is missing.
 	ChargeStatusTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (string, error)
+	// RaiseIntakeChargesTx raises the catalog's default-service charges (routed) for a
+	// patient entering via walk-in / appointment check-in, so settlement gates the
+	// queue entry. Returns how many charges were raised (0 = no default fee → enqueue free).
+	RaiseIntakeChargesTx(ctx context.Context, tx pgx.Tx, in IntakeInput) (int, error)
+}
+
+// IntakeInput routes the default intake charges so advanceIfPaid enqueues on payment.
+type IntakeInput struct {
+	PatientID    uuid.UUID
+	BranchID     uuid.UUID
+	DepartmentID uuid.UUID
+	ToTriage     bool
+	ProviderID   *uuid.UUID
 }

@@ -89,9 +89,11 @@ func main() {
 	orgHandlers := orghttp.NewHandlers(orgservice.NewService(db))
 	patientSvc := patientservice.NewService(db, store, publisher)
 	patientHandlers := patienthttp.NewHandlers(patientSvc)
-	schedulingHandlers := schedulinghttp.NewHandlers(schedulingservice.NewService(db, publisher), db)
 	billingSvc := billingservice.NewService(db, publisher)
 	billingHandlers := billinghttp.NewHandlers(billingSvc)
+	// Scheduling bills the default intake charge through billing so walk-in / check-in
+	// are gated on payment (no free bypass of the cashier).
+	schedulingHandlers := schedulinghttp.NewHandlers(schedulingservice.NewService(db, publisher, billingSvc), db)
 	clinicalHandlers := clinicalhttp.NewHandlers(clinicalservice.NewService(db, publisher))
 	// Lab & pharmacy bill through billing (Charger) so revenue reaches the cashier.
 	pharmacyHandlers := pharmacyhttp.NewHandlers(pharmacyservice.NewService(db, publisher, billingSvc))

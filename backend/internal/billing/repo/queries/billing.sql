@@ -52,6 +52,13 @@ ORDER BY is_default DESC, category, name;
 SELECT id, code, name, category, price, currency, is_active, is_default FROM service_items
 WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
 
+-- name: ListDefaultServices :many
+-- Active services tagged as the default intake fee (registration / consultation),
+-- raised automatically when a patient enters via walk-in or appointment check-in.
+SELECT id, code, name, price FROM service_items
+WHERE tenant_id = @tenant_id AND deleted_at IS NULL AND is_active AND is_default
+ORDER BY name;
+
 -- name: CreateServiceItem :one
 INSERT INTO service_items (tenant_id, code, name, category, price, created_by)
 VALUES (@tenant_id, @code, @name, @category, @price, @created_by)
@@ -220,6 +227,15 @@ FROM charges WHERE tenant_id = @tenant_id AND source = 'refund' AND status = 'pa
 SELECT COALESCE(payment_method, 'unknown') AS method, COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
 FROM charges WHERE tenant_id = @tenant_id AND status = 'paid' AND settled_at >= @since
 GROUP BY payment_method ORDER BY total DESC;
+
+-- name: CashByBranchSince :many
+-- Collected grouped by branch (charges with no branch — e.g. lab/pharmacy today —
+-- bucket as 'Unassigned').
+SELECT COALESCE(b.name, 'Unassigned') AS branch, COALESCE(sum(c.amount), 0)::numeric AS total, count(*)::int AS n
+FROM charges c
+LEFT JOIN branches b ON b.id = c.branch_id AND b.tenant_id = c.tenant_id
+WHERE c.tenant_id = @tenant_id AND c.status = 'paid' AND c.source <> 'refund' AND c.settled_at >= @since
+GROUP BY b.name ORDER BY total DESC;
 
 -- name: CashByCashierSince :many
 -- Collected grouped by the cashier who settled it (excludes refund reversing entries).

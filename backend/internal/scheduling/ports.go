@@ -107,8 +107,10 @@ type Service interface {
 	Reschedule(ctx context.Context, id uuid.UUID, in RescheduleInput) (*Appointment, error)
 	SetStatus(ctx context.Context, id uuid.UUID, status, cancelReason string) error
 	MarkFollowup(ctx context.Context, id uuid.UUID, freeUntil time.Time) error
-	CheckIn(ctx context.Context, id uuid.UUID, in CheckInInput) error
-	EnqueueWalkIn(ctx context.Context, in WalkInInput) error
+	// CheckIn / EnqueueWalkIn return gated=true when an intake charge was raised and
+	// the patient must pay before entering the queue (vs. enqueued immediately when free).
+	CheckIn(ctx context.Context, id uuid.UUID, in CheckInInput) (gated bool, err error)
+	EnqueueWalkIn(ctx context.Context, in WalkInInput) (gated bool, err error)
 
 	ListQueue(ctx context.Context, departmentID uuid.UUID, stage string) ([]QueueEntry, error)
 	ListWorklist(ctx context.Context, providerID uuid.UUID) ([]WorklistEntry, error)

@@ -331,6 +331,31 @@ func (s *Service) RaiseChargeTx(ctx context.Context, tx pgx.Tx, in billing.Charg
 	return r.ID, nil
 }
 
+// RaiseIntakeChargesTx raises the default-service charges (routed) for a patient
+// entering the clinic, so settlement gates the queue entry. Returns the count raised.
+func (s *Service) RaiseIntakeChargesTx(ctx context.Context, tx pgx.Tx, in billing.IntakeInput) (int, error) {
+	tenantID, actor := actorOf(ctx)
+	q := billingdb.New(tx)
+	defaults, e := q.ListDefaultServices(ctx, tenantID)
+	if e != nil {
+		return 0, e
+	}
+	branch, dept := in.BranchID, in.DepartmentID
+	for _, d := range defaults {
+		r, e := q.CreateCharge(ctx, billingdb.CreateChargeParams{
+			TenantID: tenantID, PatientID: in.PatientID, Source: "consultation", Description: d.Name, Amount: priceOrZero(d.Price), Currency: "ETB",
+			ServiceItemID: &d.ID, BranchID: &branch, DepartmentID: &dept, ToTriage: in.ToTriage, ProviderID: in.ProviderID, CreatedBy: actor,
+		})
+		if e != nil {
+			return 0, e
+		}
+		if e := s.publisher.Publish(ctx, tx, &tenantID, "charge", r.ID, "billing.charge.raised", map[string]any{"charge_id": r.ID, "patient_id": in.PatientID, "amount": r.Amount}); e != nil {
+			return 0, e
+		}
+	}
+	return len(defaults), nil
+}
+
 // ChargeStatusTx reports a charge's status for a pre-pay gate.
 func (s *Service) ChargeStatusTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (string, error) {
 	tenantID, _ := actorOf(ctx)
@@ -565,6 +590,13 @@ func (s *Service) CashSince(ctx context.Context, since time.Time) (*billing.Cash
 		}
 		for _, r := range bc {
 			out.ByCashier = append(out.ByCashier, billing.CashGroup{Label: r.Cashier, Total: r.Total, Count: int(r.N)})
+		}
+		bb, e := q.CashByBranchSince(ctx, billingdb.CashByBranchSinceParams{TenantID: tenantID, Since: &since})
+		if e != nil {
+			return e
+		}
+		for _, r := range bb {
+			out.ByBranch = append(out.ByBranch, billing.CashGroup{Label: r.Branch, Total: r.Total, Count: int(r.N)})
 		}
 		return nil
 	})

@@ -29,6 +29,47 @@ func (q *Queries) AddServiceProvider(ctx context.Context, arg AddServiceProvider
 	return err
 }
 
+const cashByBranchSince = `-- name: CashByBranchSince :many
+SELECT COALESCE(b.name, 'Unassigned') AS branch, COALESCE(sum(c.amount), 0)::numeric AS total, count(*)::int AS n
+FROM charges c
+LEFT JOIN branches b ON b.id = c.branch_id AND b.tenant_id = c.tenant_id
+WHERE c.tenant_id = $1 AND c.status = 'paid' AND c.source <> 'refund' AND c.settled_at >= $2
+GROUP BY b.name ORDER BY total DESC
+`
+
+type CashByBranchSinceParams struct {
+	TenantID uuid.UUID  `json:"tenant_id"`
+	Since    *time.Time `json:"since"`
+}
+
+type CashByBranchSinceRow struct {
+	Branch string `json:"branch"`
+	Total  string `json:"total"`
+	N      int32  `json:"n"`
+}
+
+// Collected grouped by branch (charges with no branch — e.g. lab/pharmacy today —
+// bucket as 'Unassigned').
+func (q *Queries) CashByBranchSince(ctx context.Context, arg CashByBranchSinceParams) ([]CashByBranchSinceRow, error) {
+	rows, err := q.db.Query(ctx, cashByBranchSince, arg.TenantID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CashByBranchSinceRow{}
+	for rows.Next() {
+		var i CashByBranchSinceRow
+		if err := rows.Scan(&i.Branch, &i.Total, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const cashByCashierSince = `-- name: CashByCashierSince :many
 SELECT c.settled_by, COALESCE(u.full_name, 'Unknown') AS cashier, COALESCE(sum(c.amount), 0)::numeric AS total, count(*)::int AS n
 FROM charges c
@@ -970,6 +1011,46 @@ func (q *Queries) ListChargesByPatient(ctx context.Context, arg ListChargesByPat
 			&i.SettledAt,
 			&i.CreatedAt,
 			&i.ReceiptNo,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDefaultServices = `-- name: ListDefaultServices :many
+SELECT id, code, name, price FROM service_items
+WHERE tenant_id = $1 AND deleted_at IS NULL AND is_active AND is_default
+ORDER BY name
+`
+
+type ListDefaultServicesRow struct {
+	ID    uuid.UUID `json:"id"`
+	Code  string    `json:"code"`
+	Name  string    `json:"name"`
+	Price string    `json:"price"`
+}
+
+// Active services tagged as the default intake fee (registration / consultation),
+// raised automatically when a patient enters via walk-in or appointment check-in.
+func (q *Queries) ListDefaultServices(ctx context.Context, tenantID uuid.UUID) ([]ListDefaultServicesRow, error) {
+	rows, err := q.db.Query(ctx, listDefaultServices, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListDefaultServicesRow{}
+	for rows.Next() {
+		var i ListDefaultServicesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.Price,
 		); err != nil {
 			return nil, err
 		}

@@ -148,8 +148,8 @@ function WalkInDialog({ departmentId, onAdded }: { departmentId: string; onAdded
 
   const mut = useMutation({
     mutationFn: () => walkIn({ branch_id: branches.data![0].id, department_id: departmentId, patient_id: patient!.id }),
-    onSuccess: () => {
-      toast.success("Added to queue");
+    onSuccess: (r) => {
+      toast.success(r.gated ? "Billed — sent to cashier. Patient joins the queue once payment is collected." : "Added to queue");
       setPatient(null);
       onAdded();
       setOpen(false);

@@ -238,10 +238,20 @@ Addresses the 3 financial criticals + the billing-gate-leak highs. 41 audit item
     `payment.collect`-gated (reception can't close); owner sees all closeouts in Finance.
   - Migration 0019 (`billing_counters`, `charges.receipt_no`, `cash_reconciliations`).
   - **Deferred:** by-branch (needs a branch attributed to lab/pharmacy charges first).
-- **[BILL-C] Close the gate leaks** *(highs)* — _Status: planned_
-  - Appointment check-in and queue-board walk-ins route through the same billing gate as
-    reception in cashier mode (raise configured charge / require waiver) so nothing enters
-    the queue free.
+- **[BILL-C] Close the gate leaks** *(highs)* — _Status: **done** (smoke 10/10 + regressions, awaiting sign-off)_
+  - Walk-in (queue board) and appointment check-in now route through the billing gate:
+    `billing.Charger.RaiseIntakeChargesTx` raises the catalog's **default** service charges
+    (routed); the queue entry is created only when settled (via `advanceIfPaid`). No default
+    fee configured → enqueue free (unchanged). Handlers return `gated` so the UI messages
+    "billed — joins the queue once paid" vs "added to queue".
+  - **by-branch** finance breakdown added (`CashByBranchSince`); charges without a branch
+    (lab/pharmacy today) bucket as "Unassigned". *(Lab/pharmacy branch attribution = small
+    follow-on.)*
+  - No migration. Smoke: bill_c_smoke.py 10/10; bill_a 29 + bill_b 13 + rbac 10 (no regression).
+
+**✅ Billing Integrity phase COMPLETE** — all 3 financial criticals + gate-leak highs resolved
+(BILL-A capture/reverse · CASH-6 role-based collection · BILL-B receipts/Z-report · BILL-C gate).
+Remaining audit clusters (Clinical safety, Accountability) are separate phases.
 
 ### Phase: Role-based payment collection (CASH-6) — replaces the payment_mode toggle
 

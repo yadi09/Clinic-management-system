@@ -90,6 +90,7 @@ export interface CashSummary {
   by_source: { source: string; total: string; count: number }[];
   by_method: CashGroup[];
   by_cashier: CashGroup[];
+  by_branch: CashGroup[];
 }
 export interface Reconciliation {
   cashier?: string;

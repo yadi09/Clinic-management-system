@@ -81,7 +81,7 @@ export interface CheckInOpts {
   provider_id?: string;
 }
 export function checkInAppointment(id: string, opts: CheckInOpts = {}) {
-  return apiFetch<void>(`/appointments/${id}/check-in`, { method: "POST", body: { priority: 0, ...opts } });
+  return apiFetch<{ gated: boolean }>(`/appointments/${id}/check-in`, { method: "POST", body: { priority: 0, ...opts } });
 }
 /** Mark an appointment as a covered (doctor-booked) follow-up, free of the card fee within its window. */
 export function markFollowup(id: string, freeUntilISO?: string) {
@@ -111,7 +111,7 @@ export function walkIn(body: {
   to_triage?: boolean;
   provider_id?: string;
 }) {
-  return apiFetch<{ status: string }>("/queue/walk-in", { method: "POST", body });
+  return apiFetch<{ status: string; gated: boolean }>("/queue/walk-in", { method: "POST", body });
 }
 
 /** SSE URL for the live queue stream (token in query — EventSource can't set headers). */

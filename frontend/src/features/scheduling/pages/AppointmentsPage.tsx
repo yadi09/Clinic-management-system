@@ -70,8 +70,8 @@ export function AppointmentsPage() {
 
   const checkIn = useMutation({
     mutationFn: (id: string) => checkInAppointment(id),
-    onSuccess: () => {
-      toast.success("Checked in — added to queue");
+    onSuccess: (r) => {
+      toast.success(r.gated ? "Checked in — billed; patient joins the queue once payment is collected." : "Checked in — added to queue");
       qc.invalidateQueries({ queryKey: ["appointments"] });
     },
     onError: () => toast.error("Check-in failed"),

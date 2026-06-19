@@ -163,11 +163,12 @@ func (h *Handlers) CheckIn(c *gin.Context) {
 		}
 		in.ProviderID = p
 	}
-	if err := h.svc.CheckIn(c.Request.Context(), aid, in); err != nil {
+	gated, err := h.svc.CheckIn(c.Request.Context(), aid, in)
+	if err != nil {
 		httpx.Fail(c, err)
 		return
 	}
-	httpx.NoContent(c)
+	httpx.OK(c, gin.H{"gated": gated})
 }
 
 // MarkFollowup handles POST /appointments/:id/followup — flags the appointment
@@ -219,11 +220,12 @@ func (h *Handlers) WalkIn(c *gin.Context) {
 			return
 		}
 	}
-	if err := h.svc.EnqueueWalkIn(c.Request.Context(), in); err != nil {
+	gated, err := h.svc.EnqueueWalkIn(c.Request.Context(), in)
+	if err != nil {
 		httpx.Fail(c, err)
 		return
 	}
-	httpx.Created(c, gin.H{"status": "queued"})
+	httpx.Created(c, gin.H{"status": "queued", "gated": gated})
 }
 
 // ListQueue handles GET /queue?department=&stage=.
