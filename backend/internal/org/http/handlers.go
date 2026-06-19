@@ -112,7 +112,6 @@ type settingsReq struct {
 	FreeWindowDays   int     `json:"free_window_days"`
 	TriageRequired   bool    `json:"triage_required"`
 	DoctorAssignment string  `json:"doctor_assignment"`
-	PaymentMode      string  `json:"payment_mode"`
 }
 
 func (h *Handlers) GetSettings(c *gin.Context) {
@@ -137,7 +136,6 @@ func (h *Handlers) SaveSettings(c *gin.Context) {
 		FreeWindowDays:   req.FreeWindowDays,
 		TriageRequired:   req.TriageRequired,
 		DoctorAssignment: req.DoctorAssignment,
-		PaymentMode:      req.PaymentMode,
 	})
 	if err != nil {
 		httpx.Fail(c, err)

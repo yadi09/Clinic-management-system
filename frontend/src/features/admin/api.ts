@@ -45,7 +45,6 @@ export interface ClinicSettings {
   free_window_days: number;
   triage_required: boolean;
   doctor_assignment: string; // "manual" | "auto"
-  payment_mode: string; // "reception" | "cashier"
 }
 export function getSettings() {
   return apiFetch<ClinicSettings>("/org/settings");
@@ -57,7 +56,6 @@ export function saveSettings(body: {
   free_window_days: number;
   triage_required: boolean;
   doctor_assignment: string;
-  payment_mode: string;
 }) {
   return apiFetch<ClinicSettings>("/org/settings", { method: "PUT", body });
 }

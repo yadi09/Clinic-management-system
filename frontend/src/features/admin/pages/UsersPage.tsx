@@ -14,7 +14,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/app/auth-context";
 import { AppError } from "@/lib/api-client";
-import { inviteUser, listRoles, listUsers, updateUserStatus, type InviteResult } from "@/features/admin/api";
+import { assignRoles, inviteUser, listRoles, listUsers, updateUserStatus, type InviteResult, type UserListItem } from "@/features/admin/api";
 
 function statusVariant(s: string): "success" | "warning" | "destructive" | "default" {
   if (s === "active") return "success";
@@ -28,9 +28,11 @@ export function UsersPage() {
   const qc = useQueryClient();
   const canInvite = can("user.invite");
   const canUpdate = can("user.update");
+  const canAssign = can("role.assign");
 
   const users = useQuery({ queryKey: ["users"], queryFn: listUsers });
   const invalidate = () => qc.invalidateQueries({ queryKey: ["users"] });
+  const [editing, setEditing] = useState<UserListItem | null>(null);
 
   const statusMut = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) => updateUserStatus(id, status),
@@ -65,7 +67,7 @@ export function UsersPage() {
                 <TableHead>Email</TableHead>
                 <TableHead>Roles</TableHead>
                 <TableHead>Status</TableHead>
-                {canUpdate && <TableHead>Actions</TableHead>}
+                {(canUpdate || canAssign) && <TableHead>Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -77,19 +79,25 @@ export function UsersPage() {
                   <TableCell>
                     <Badge variant={statusVariant(u.status)}>{u.status}</Badge>
                   </TableCell>
-                  {canUpdate && (
+                  {(canUpdate || canAssign) && (
                     <TableCell>
-                      {u.status === "active" ? (
-                        <button className="text-xs text-destructive hover:underline" onClick={() => statusMut.mutate({ id: u.id, status: "suspended" })}>
-                          Suspend
-                        </button>
-                      ) : u.status === "suspended" ? (
-                        <button className="text-xs text-primary hover:underline" onClick={() => statusMut.mutate({ id: u.id, status: "active" })}>
-                          Reactivate
-                        </button>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
+                      <div className="flex items-center gap-3">
+                        {canAssign && (
+                          <button className="text-xs text-primary hover:underline" onClick={() => setEditing(u)}>
+                            Edit roles
+                          </button>
+                        )}
+                        {canUpdate && u.status === "active" && (
+                          <button className="text-xs text-destructive hover:underline" onClick={() => statusMut.mutate({ id: u.id, status: "suspended" })}>
+                            Suspend
+                          </button>
+                        )}
+                        {canUpdate && u.status === "suspended" && (
+                          <button className="text-xs text-primary hover:underline" onClick={() => statusMut.mutate({ id: u.id, status: "active" })}>
+                            Reactivate
+                          </button>
+                        )}
+                      </div>
                     </TableCell>
                   )}
                 </TableRow>
@@ -98,7 +106,59 @@ export function UsersPage() {
           </Table>
         )}
       </Card>
+
+      <EditRolesDialog user={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); invalidate(); }} />
     </div>
+  );
+}
+
+function EditRolesDialog({ user, onClose, onSaved }: { user: UserListItem | null; onClose: () => void; onSaved: () => void }) {
+  const [selected, setSelected] = useState<string[]>([]);
+  const roles = useQuery({ queryKey: ["roles"], queryFn: listRoles, enabled: !!user });
+  // Reset selection whenever a different user is opened.
+  const [forUser, setForUser] = useState<string | null>(null);
+  if (user && forUser !== user.id) {
+    setForUser(user.id);
+    setSelected(user.roles);
+  }
+  const mut = useMutation({
+    mutationFn: () => assignRoles(user!.id, selected),
+    onSuccess: () => { toast.success("Roles updated"); onSaved(); },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not update roles"),
+  });
+  const toggle = (code: string) => setSelected((s) => (s.includes(code) ? s.filter((c) => c !== code) : [...s, code]));
+  return (
+    <Dialog open={!!user} onOpenChange={(o) => { if (!o) { setForUser(null); onClose(); } }}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Edit roles{user ? ` — ${user.full_name}` : ""}</DialogTitle></DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          A role's permissions take effect the next time the user signs in (or their session refreshes).
+          To let a receptionist collect cash, add the <span className="font-medium text-foreground">Cashier</span> role.
+        </p>
+        <div className="space-y-1.5">
+          <Label>Roles</Label>
+          <div className="flex flex-wrap gap-2">
+            {(roles.data ?? []).map((r) => (
+              <button
+                key={r.code}
+                type="button"
+                onClick={() => toggle(r.code)}
+                className={
+                  "rounded-full border px-3 py-1 text-xs capitalize transition-colors " +
+                  (selected.includes(r.code) ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent")
+                }
+              >
+                {r.name}
+              </button>
+            ))}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => { setForUser(null); onClose(); }}>Cancel</Button>
+          <Button disabled={selected.length === 0} loading={mut.isPending} onClick={() => mut.mutate()}>Save roles</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

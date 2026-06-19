@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
+import { useAuth } from "@/app/auth-context";
 import { listBranches, listDepartments, getSettings } from "@/features/admin/api";
 import { listServices, providersForServices, raiseCharge, settleCharge, waiveCharge, waiverReasons } from "@/features/billing/api";
 import { walkIn } from "@/features/scheduling/api";
@@ -20,12 +21,16 @@ type SendOpts = { action: "cashier" | "collect" | "waive"; method?: string; reas
 
 export function ReceptionPage() {
   const qc = useQueryClient();
+  const { can } = useAuth();
+  // Whether this user can collect cash themselves (Cashier capability). If they
+  // can, reception collects inline; if not, charges hand off to the cashier.
+  const canCollect = can("payment.collect");
 
   const branches = useQuery({ queryKey: ["branches"], queryFn: listBranches });
   const departments = useQuery({ queryKey: ["departments"], queryFn: listDepartments });
   const settings = useQuery({ queryKey: ["settings"], queryFn: getSettings, retry: false });
   const services = useQuery({ queryKey: ["services-active"], queryFn: () => listServices(true) });
-  const reasons = useQuery({ queryKey: ["waiver-reasons"], queryFn: waiverReasons });
+  const reasons = useQuery({ queryKey: ["waiver-reasons"], queryFn: waiverReasons, enabled: canCollect });
 
   const [patient, setPatient] = useState<{ id: string; name: string } | null>(null);
   const [dept, setDept] = useState("");
@@ -37,7 +42,8 @@ export function ReceptionPage() {
   const [waiveReason, setWaiveReason] = useState("");
 
   const branchId = branches.data?.[0]?.id;
-  const cashierMode = settings.data?.payment_mode === "cashier";
+  // Hand off to a separate cashier when this user can't collect cash themselves.
+  const cashierMode = !canCollect;
 
   useEffect(() => {
     if (services.data && Object.keys(picked).length === 0) {

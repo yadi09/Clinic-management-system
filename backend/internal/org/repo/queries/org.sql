@@ -17,7 +17,7 @@ UPDATE clinics SET name = @name, timezone = @timezone, locale = @locale, updated
 WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
 
 -- name: GetClinicSettings :one
-SELECT id, card_fee_enabled, card_fee_amount, card_currency, free_window_days, triage_required, doctor_assignment, payment_mode
+SELECT id, card_fee_enabled, card_fee_amount, card_currency, free_window_days, triage_required, doctor_assignment
 FROM clinics
 WHERE tenant_id = @tenant_id AND deleted_at IS NULL
 ORDER BY created_at
@@ -31,7 +31,6 @@ UPDATE clinics SET
   free_window_days = @free_window_days,
   triage_required = @triage_required,
   doctor_assignment = @doctor_assignment,
-  payment_mode = @payment_mode,
   updated_at = now()
 WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
 

@@ -323,7 +323,6 @@ function FlowSettingsCard({ manage }: { manage: boolean }) {
         free_window_days: form!.free_window_days,
         triage_required: form!.triage_required,
         doctor_assignment: form!.doctor_assignment,
-        payment_mode: form!.payment_mode || "reception",
       }),
     onSuccess: () => {
       toast.success("Flow settings saved");
@@ -395,18 +394,11 @@ function FlowSettingsCard({ manage }: { manage: boolean }) {
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-1.5">
-            <Label>Payment collection</Label>
-            <Select value={form.payment_mode || "reception"} onValueChange={(v) => set("payment_mode", v)}>
-              <SelectTrigger disabled={disabled}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="reception">Reception collects (inline)</SelectItem>
-                <SelectItem value="cashier">Separate cashier (pay then proceed)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+        </div>
+        <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">Payment collection follows roles.</span> Give a receptionist the
+          <span className="font-medium text-foreground"> Cashier</span> role and they collect at the desk; without it, charges
+          go to the Cashier worklist for a dedicated cashier to settle. Manage this in <span className="font-medium text-foreground">Users</span>.
         </div>
         {manage && (
           <div className="border-t pt-4">

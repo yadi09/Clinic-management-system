@@ -86,7 +86,6 @@ func (s *Service) GetSettings(ctx context.Context) (*org.Settings, error) {
 		out = &org.Settings{
 			CardFeeEnabled: r.CardFeeEnabled, CardFeeAmount: r.CardFeeAmount, CardCurrency: r.CardCurrency,
 			FreeWindowDays: int(r.FreeWindowDays), TriageRequired: r.TriageRequired, DoctorAssignment: r.DoctorAssignment,
-			PaymentMode: r.PaymentMode,
 		}
 		return nil
 	})
@@ -114,9 +113,6 @@ func (s *Service) SaveSettings(ctx context.Context, in org.SettingsInput) (*org.
 	if in.FreeWindowDays < 0 {
 		in.FreeWindowDays = 0
 	}
-	if in.PaymentMode != "reception" && in.PaymentMode != "cashier" {
-		in.PaymentMode = "reception"
-	}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := orgdb.New(tx)
 		cur, e := q.GetClinicSettings(ctx, tenantID)
@@ -126,7 +122,7 @@ func (s *Service) SaveSettings(ctx context.Context, in org.SettingsInput) (*org.
 		return q.UpdateClinicSettings(ctx, orgdb.UpdateClinicSettingsParams{
 			CardFeeEnabled: in.CardFeeEnabled, CardFeeAmount: in.CardFeeAmount, CardCurrency: in.CardCurrency,
 			FreeWindowDays: int32(in.FreeWindowDays), TriageRequired: in.TriageRequired, DoctorAssignment: in.DoctorAssignment,
-			PaymentMode: in.PaymentMode, TenantID: tenantID, ID: cur.ID,
+			TenantID: tenantID, ID: cur.ID,
 		})
 	})
 	if err != nil {

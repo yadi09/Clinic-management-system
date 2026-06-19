@@ -224,7 +224,7 @@ export const HELP: Record<string, HelpEntry> = {
       { h: "Waive", body: "If a patient doesn't pay (staff, charity, exemption), Waive it with a required reason — it's recorded for the finance report." },
       { h: "Auto-advance", body: "Settling (or waiving) a consultation charge sends the patient on to triage / the doctor automatically." },
     ],
-    tips: ["This screen is the heart of 'separate cashier' mode (set in Settings → Payment collection)."],
+    tips: ["This worklist appears for anyone with the Cashier role (the payment.collect permission). Reception without that role sends charges here; a receptionist who also holds the Cashier role collects at the desk instead."],
   },
   "/finance": {
     title: "Finance",
