@@ -55,6 +55,16 @@ Status: `logged` → `planned` → `in-progress` → `done`.
 
 ---
 
+- **[REG-3] Patient search · Reception/all · bug** — The patient picker only matched
+  **whole words** (full-text `websearch_to_tsquery`) or fuzzy trigram, so partials/
+  prefixes like "Yad" or "ter" returned nothing — "sometimes there, sometimes not"
+  depending on whether you typed a full name. **Fixed:** SearchPatients/CountPatients
+  now also do a substring `ILIKE` on `concat_ws(' ', first, middle, last)`, so any
+  prefix/substring of the name matches (MRN/phone substring already worked). Verified
+  Yad/yad/Yada/ter/Tere/"yadamzer ter" → hit; non-match → empty. *Status: done.*
+
+---
+
 ## Billing / Payments
 
 - **[CASH-1] Cashier role + payments flow · Cashier/Reception · workflow (large)** —

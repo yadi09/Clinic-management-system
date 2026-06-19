@@ -40,6 +40,7 @@ FROM patients
 WHERE tenant_id = @tenant_id AND deleted_at IS NULL
   AND (
     @q::text = ''
+    OR concat_ws(' ', first_name, middle_name, last_name) ILIKE '%' || @q || '%'
     OR search_tsv @@ websearch_to_tsquery('simple', @q)
     OR lower(first_name || ' ' || last_name) % lower(@q)
     OR mrn ILIKE '%' || @q || '%'
@@ -54,6 +55,7 @@ FROM patients
 WHERE tenant_id = @tenant_id AND deleted_at IS NULL
   AND (
     @q::text = ''
+    OR concat_ws(' ', first_name, middle_name, last_name) ILIKE '%' || @q || '%'
     OR search_tsv @@ websearch_to_tsquery('simple', @q)
     OR lower(first_name || ' ' || last_name) % lower(@q)
     OR mrn ILIKE '%' || @q || '%'
