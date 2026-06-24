@@ -24,12 +24,21 @@ function initials(name?: string) {
 }
 
 export function AppShell() {
-  const { user, signOut, can } = useAuth();
+  const { user, signOut, can, flagOn } = useAuth();
   const navigate = useNavigate();
   const primaryRole = user?.roles?.[0]?.replace(/_/g, " ") ?? "staff";
 
+  // A module the clinic isn't entitled to (feature flag off) is hidden entirely.
+  const moduleFor = (to: string) => (to.startsWith("/pharmacy") ? "pharmacy" : to.startsWith("/lab") ? "laboratory" : null);
   const sections = navSections
-    .map((s) => ({ ...s, items: s.items.filter((i) => !i.perm || i.perm.some((p) => can(p))) }))
+    .map((s) => ({
+      ...s,
+      items: s.items.filter((i) => {
+        if (i.perm && !i.perm.some((p) => can(p))) return false;
+        const mod = moduleFor(i.to);
+        return !mod || flagOn(mod);
+      }),
+    }))
     .filter((s) => s.items.length > 0);
 
   // Live alert badge for the doctor's results inbox (unacknowledged criticals).

@@ -1,0 +1,289 @@
+// Package provision holds the canonical "bootstrap a tenant" logic so the seed
+// and the platform (super-admin) provisioning create identical clinics. It runs
+// raw SQL inside a caller-supplied transaction on a privileged (RLS-bypassing)
+// connection — it writes across the global + tenant boundary in one go.
+package provision
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+)
+
+// TenantRoles are the tenant-side system roles (Part 1 §3.7.1).
+var TenantRoles = []struct{ Code, Name string }{
+	{"tenant_owner", "Tenant Owner"},
+	{"clinic_admin", "Clinic Administrator"},
+	{"branch_manager", "Branch Manager"},
+	{"receptionist", "Receptionist"},
+	{"doctor", "Doctor"},
+	{"nurse", "Nurse"},
+	{"lab_technician", "Laboratory Technician"},
+	{"lab_manager", "Laboratory Manager"},
+	{"pharmacist", "Pharmacist"},
+	{"pharmacy_manager", "Pharmacy Manager"},
+	{"cashier", "Cashier"},
+	{"accountant", "Accountant"},
+	{"inventory_manager", "Inventory Manager"},
+	{"hr_manager", "HR Manager"},
+	{"patient_portal_user", "Patient Portal User"},
+}
+
+// BasePermissions is the baseline permission catalogue (owner/admin get all).
+var BasePermissions = []struct{ Code, Desc string }{
+	{"clinic.manage", "Configure clinic, branches, departments"},
+	{"user.invite", "Invite staff users"},
+	{"user.read", "View users"},
+	{"user.update", "Update users"},
+	{"role.assign", "Assign roles and scopes"},
+	{"patient.create", "Register patients"},
+	{"patient.read", "View patient records"},
+	{"patient.update", "Update patient records"},
+	{"patient.search", "Search patients"},
+	{"appointment.manage", "Book/reschedule/cancel appointments"},
+	{"queue.manage", "Manage department queues and routing"},
+	{"triage.manage", "Record triage vitals"},
+	{"payment.charge", "Raise a charge / register a payable visit (without collecting cash)"},
+	{"payment.collect", "Collect payment and settle charges (cashier)"},
+	{"payment.waive", "Waive a charge / fee with a documented reason"},
+	{"billing.manage", "Manage the service catalog and view the finance dashboard"},
+	{"encounter.manage", "Conduct consultations and EMR"},
+	{"prescription.create", "Create prescriptions"},
+	{"pharmacy.read", "View the drug catalog and stock"},
+	{"pharmacy.dispense", "Dispense prescriptions"},
+	{"pharmacy.stock", "Adjust pharmacy stock"},
+	{"pharmacy.sell", "Make OTC counter sales"},
+	{"pharmacy.manage", "Manage the drug catalog, purchasing and reports"},
+	{"lab.order", "Order laboratory tests"},
+	{"lab.process", "Accession samples and enter lab results"},
+	{"lab.validate", "Validate and release lab results"},
+	{"lab.manage", "Manage the lab test catalog"},
+	{"settings.manage", "Manage tenant/branch settings"},
+	{"audit.read", "View audit logs"},
+}
+
+// BusinessFlags are the default feature flags for a Business-tier tenant.
+var BusinessFlags = map[string]bool{
+	"laboratory":       true,
+	"pharmacy":         true,
+	"inventory":        true,
+	"finance_advanced": true,
+	"insurance":        false,
+	"telemedicine":     false,
+	"hr":               false,
+}
+
+// RoleGrants is the canonical permission set per operational role.
+var RoleGrants = map[string][]string{
+	"branch_manager":   {"patient.create", "patient.read", "patient.update", "patient.search", "appointment.manage", "queue.manage", "triage.manage", "payment.charge", "payment.collect", "payment.waive", "billing.manage", "user.read"},
+	"receptionist":     {"patient.create", "patient.read", "patient.update", "patient.search", "appointment.manage", "queue.manage", "payment.charge"},
+	"doctor":           {"patient.read", "patient.search", "encounter.manage", "prescription.create", "queue.manage", "appointment.manage", "lab.order"},
+	"nurse":            {"patient.read", "patient.search", "triage.manage", "queue.manage"},
+	"cashier":          {"payment.charge", "payment.collect", "payment.waive", "patient.read", "patient.search"},
+	"pharmacist":       {"patient.read", "patient.search", "pharmacy.read", "pharmacy.dispense", "pharmacy.stock", "pharmacy.sell"},
+	"pharmacy_manager": {"patient.read", "patient.search", "pharmacy.read", "pharmacy.dispense", "pharmacy.stock", "pharmacy.sell", "pharmacy.manage"},
+	"lab_technician":   {"patient.read", "patient.search", "lab.process"},
+	"lab_manager":      {"patient.read", "patient.search", "lab.process", "lab.validate", "lab.manage"},
+}
+
+// Params bootstraps one tenant + its owner.
+type Params struct {
+	Name              string // clinic display name
+	Slug              string // workspace identifier (login)
+	OwnerEmail        string
+	OwnerName         string
+	OwnerPasswordHash string          // pre-hashed (Argon2id)
+	OwnerStatus       string          // "active" (seed/provision) — invited owners may differ later
+	Flags             map[string]bool // optional module-entitlement overrides (merged over BusinessFlags)
+}
+
+// Result returns the created ids so callers can layer more on (demo staff, catalogs).
+type Result struct {
+	TenantID    uuid.UUID
+	OwnerUserID uuid.UUID
+	ClinicID    uuid.UUID
+	BranchID    uuid.UUID
+	DeptID      uuid.UUID
+	PlanID      uuid.UUID
+	RoleIDs     map[string]uuid.UUID
+}
+
+// BootstrapTenant creates the full structural baseline for a clinic: plan +
+// permission catalogue (global, idempotent), tenant, subscription, billing
+// account, feature flags, system roles + permission grants, the owner user +
+// tenant-wide role, a clinic with a main branch + default department, and the
+// default Registration/Consultation services (so the billing gate works). It is
+// idempotent on (slug) so a re-seed is safe; callers that must reject an existing
+// clinic should check the slug first.
+func BootstrapTenant(ctx context.Context, tx pgx.Tx, p Params) (Result, error) {
+	res := Result{RoleIDs: map[string]uuid.UUID{}}
+	if p.OwnerStatus == "" {
+		p.OwnerStatus = "active"
+	}
+
+	// Plan (global) + permission catalogue.
+	if err := tx.QueryRow(ctx,
+		`INSERT INTO plans (code, name, branch_limit, user_limit, storage_gb, audit_retention_days, price_monthly)
+		 VALUES ('business','Business',10,100,500,1095,0)
+		 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name RETURNING id`).Scan(&res.PlanID); err != nil {
+		return res, fmt.Errorf("plan: %w", err)
+	}
+	for _, perm := range BasePermissions {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO permissions (code, description) VALUES ($1,$2) ON CONFLICT (code) DO NOTHING`,
+			perm.Code, perm.Desc); err != nil {
+			return res, fmt.Errorf("permission %s: %w", perm.Code, err)
+		}
+	}
+
+	// Tenant.
+	if err := tx.QueryRow(ctx,
+		`INSERT INTO tenants (name, slug, status, plan_id, onboarded_at)
+		 VALUES ($1, $2, 'active', $3, now())
+		 ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, status = 'active'
+		 RETURNING id`, p.Name, p.Slug, res.PlanID).Scan(&res.TenantID); err != nil {
+		return res, fmt.Errorf("tenant: %w", err)
+	}
+
+	// Subscription + billing account.
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO subscriptions (tenant_id, plan_id, status) VALUES ($1,$2,'active') ON CONFLICT DO NOTHING`,
+		res.TenantID, res.PlanID); err != nil {
+		return res, fmt.Errorf("subscription: %w", err)
+	}
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO billing_accounts (tenant_id, billing_email, currency) VALUES ($1,$2,'ETB')
+		 ON CONFLICT (tenant_id) DO NOTHING`, res.TenantID, p.OwnerEmail); err != nil {
+		return res, fmt.Errorf("billing account: %w", err)
+	}
+
+	// Feature flags (module entitlements): BusinessFlags defaults, overridden by any
+	// caller-supplied choices for known flags.
+	flags := map[string]bool{}
+	for k, v := range BusinessFlags {
+		flags[k] = v
+	}
+	for k, v := range p.Flags {
+		if _, known := BusinessFlags[k]; known {
+			flags[k] = v
+		}
+	}
+	for flag, enabled := range flags {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO feature_flags (tenant_id, flag, enabled, source) VALUES ($1,$2,$3,'plan')
+			 ON CONFLICT (tenant_id, flag) DO UPDATE SET enabled = EXCLUDED.enabled`,
+			res.TenantID, flag, enabled); err != nil {
+			return res, fmt.Errorf("flag %s: %w", flag, err)
+		}
+	}
+
+	// Roles.
+	var ownerRoleID uuid.UUID
+	for _, r := range TenantRoles {
+		var rid uuid.UUID
+		if err := tx.QueryRow(ctx,
+			`INSERT INTO roles (tenant_id, code, name, is_system) VALUES ($1,$2,$3,true)
+			 ON CONFLICT (tenant_id, code) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
+			res.TenantID, r.Code, r.Name).Scan(&rid); err != nil {
+			return res, fmt.Errorf("role %s: %w", r.Code, err)
+		}
+		res.RoleIDs[r.Code] = rid
+		if r.Code == "tenant_owner" {
+			ownerRoleID = rid
+		}
+	}
+
+	// tenant_owner + clinic_admin get every permission.
+	for _, code := range []string{"tenant_owner", "clinic_admin"} {
+		rid := res.RoleIDs[code]
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO role_permissions (tenant_id, role_id, permission_id)
+			 SELECT $1, $2, p.id FROM permissions p ON CONFLICT (role_id, permission_id) DO NOTHING`,
+			res.TenantID, rid); err != nil {
+			return res, fmt.Errorf("grant %s: %w", code, err)
+		}
+	}
+	// Operational roles: reconcile to exactly the canonical set.
+	for code, perms := range RoleGrants {
+		rid, ok := res.RoleIDs[code]
+		if !ok {
+			continue
+		}
+		if _, err := tx.Exec(ctx,
+			`DELETE FROM role_permissions WHERE tenant_id = $1 AND role_id = $2
+			   AND permission_id NOT IN (SELECT id FROM permissions WHERE code = ANY($3::text[]))`,
+			res.TenantID, rid, perms); err != nil {
+			return res, fmt.Errorf("reconcile %s: %w", code, err)
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO role_permissions (tenant_id, role_id, permission_id)
+			 SELECT $1, $2, p.id FROM permissions p WHERE p.code = ANY($3::text[])
+			 ON CONFLICT (role_id, permission_id) DO NOTHING`, res.TenantID, rid, perms); err != nil {
+			return res, fmt.Errorf("grant %s: %w", code, err)
+		}
+	}
+
+	// Owner user + tenant-wide role.
+	if err := tx.QueryRow(ctx,
+		`INSERT INTO users (tenant_id, email, password_hash, full_name, status)
+		 VALUES ($1,$2,$3,$4,$5)
+		 ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, status = EXCLUDED.status
+		 RETURNING id`, res.TenantID, p.OwnerEmail, p.OwnerPasswordHash, p.OwnerName, p.OwnerStatus).Scan(&res.OwnerUserID); err != nil {
+		return res, fmt.Errorf("owner user: %w", err)
+	}
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO user_role_scopes (tenant_id, user_id, role_id) VALUES ($1,$2,$3)
+		 ON CONFLICT (user_id, role_id, branch_id, department_id) DO NOTHING`,
+		res.TenantID, res.OwnerUserID, ownerRoleID); err != nil {
+		return res, fmt.Errorf("owner role: %w", err)
+	}
+
+	// Clinic + main branch + default department.
+	e := tx.QueryRow(ctx, `SELECT id FROM clinics WHERE tenant_id = $1 AND deleted_at IS NULL LIMIT 1`, res.TenantID).Scan(&res.ClinicID)
+	if e == pgx.ErrNoRows {
+		if e = tx.QueryRow(ctx, `INSERT INTO clinics (tenant_id, name) VALUES ($1, $2) RETURNING id`,
+			res.TenantID, p.Name).Scan(&res.ClinicID); e != nil {
+			return res, fmt.Errorf("clinic: %w", e)
+		}
+	} else if e != nil {
+		return res, fmt.Errorf("clinic lookup: %w", e)
+	}
+	if err := tx.QueryRow(ctx,
+		`INSERT INTO branches (tenant_id, clinic_id, name, code) VALUES ($1, $2, 'Main Branch', 'MAIN')
+		 ON CONFLICT (tenant_id, code) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
+		res.TenantID, res.ClinicID).Scan(&res.BranchID); err != nil {
+		return res, fmt.Errorf("branch: %w", err)
+	}
+	// Default department (idempotent on name within the branch).
+	e = tx.QueryRow(ctx, `SELECT id FROM departments WHERE tenant_id = $1 AND branch_id = $2 AND deleted_at IS NULL ORDER BY created_at LIMIT 1`, res.TenantID, res.BranchID).Scan(&res.DeptID)
+	if e == pgx.ErrNoRows {
+		if e = tx.QueryRow(ctx,
+			`INSERT INTO departments (tenant_id, branch_id, name, specialty) VALUES ($1,$2,'General Practice','general') RETURNING id`,
+			res.TenantID, res.BranchID).Scan(&res.DeptID); e != nil {
+			return res, fmt.Errorf("department: %w", e)
+		}
+	} else if e != nil {
+		return res, fmt.Errorf("department lookup: %w", e)
+	}
+
+	// Default intake services (so the billing gate works out of the box).
+	for _, s := range []struct {
+		Code, Name string
+		Price      string
+	}{
+		{"REG", "Registration fee", "50"},
+		{"CONSULT", "Consultation", "200"},
+	} {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO service_items (tenant_id, code, name, category, price, is_default)
+			 VALUES ($1,$2,$3,'general',$4,true)
+			 ON CONFLICT (tenant_id, lower(code)) WHERE deleted_at IS NULL DO NOTHING`,
+			res.TenantID, s.Code, s.Name, s.Price); err != nil {
+			return res, fmt.Errorf("default service %s: %w", s.Code, err)
+		}
+	}
+
+	return res, nil
+}

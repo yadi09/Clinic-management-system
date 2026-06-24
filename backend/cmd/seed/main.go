@@ -24,26 +24,8 @@ import (
 
 	"github.com/reicb/clinicsaas/internal/kernel/auth"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
+	"github.com/reicb/clinicsaas/internal/platform/provision"
 )
-
-// Tenant-side system roles (Part 1 §3.7.1; platform roles are vendor-side).
-var tenantRoles = []struct{ Code, Name string }{
-	{"tenant_owner", "Tenant Owner"},
-	{"clinic_admin", "Clinic Administrator"},
-	{"branch_manager", "Branch Manager"},
-	{"receptionist", "Receptionist"},
-	{"doctor", "Doctor"},
-	{"nurse", "Nurse"},
-	{"lab_technician", "Laboratory Technician"},
-	{"lab_manager", "Laboratory Manager"},
-	{"pharmacist", "Pharmacist"},
-	{"pharmacy_manager", "Pharmacy Manager"},
-	{"cashier", "Cashier"},
-	{"accountant", "Accountant"},
-	{"inventory_manager", "Inventory Manager"},
-	{"hr_manager", "HR Manager"},
-	{"patient_portal_user", "Patient Portal User"},
-}
 
 // demoStaff is one login per operational role, created when SEED_DEMO=1 so the
 // platform can be exercised end-to-end as each real user (shared password via
@@ -58,50 +40,6 @@ var demoStaff = []struct{ Email, Name, Role string }{
 	{"pharmacist@demo.clinic", "Dawit Solomon (Pharmacist)", "pharmacist"},
 	{"pharmacymgr@demo.clinic", "Sara Mengistu (Pharmacy Manager)", "pharmacy_manager"},
 	{"cashier@demo.clinic", "Bethel Assefa (Cashier)", "cashier"},
-}
-
-// Baseline permission catalog (grows per phase). Owner is granted all.
-var basePermissions = []struct{ Code, Desc string }{
-	{"clinic.manage", "Configure clinic, branches, departments"},
-	{"user.invite", "Invite staff users"},
-	{"user.read", "View users"},
-	{"user.update", "Update users"},
-	{"role.assign", "Assign roles and scopes"},
-	{"patient.create", "Register patients"},
-	{"patient.read", "View patient records"},
-	{"patient.update", "Update patient records"},
-	{"patient.search", "Search patients"},
-	{"appointment.manage", "Book/reschedule/cancel appointments"},
-	{"queue.manage", "Manage department queues and routing"},
-	{"triage.manage", "Record triage vitals"},
-	{"payment.charge", "Raise a charge / register a payable visit (without collecting cash)"},
-	{"payment.collect", "Collect payment and settle charges (cashier)"},
-	{"payment.waive", "Waive a charge / fee with a documented reason"},
-	{"billing.manage", "Manage the service catalog and view the finance dashboard"},
-	{"encounter.manage", "Conduct consultations and EMR"},
-	{"prescription.create", "Create prescriptions"},
-	{"pharmacy.read", "View the drug catalog and stock"},
-	{"pharmacy.dispense", "Dispense prescriptions"},
-	{"pharmacy.stock", "Adjust pharmacy stock"},
-	{"pharmacy.sell", "Make OTC counter sales"},
-	{"pharmacy.manage", "Manage the drug catalog, purchasing and reports"},
-	{"lab.order", "Order laboratory tests"},
-	{"lab.process", "Accession samples and enter lab results"},
-	{"lab.validate", "Validate and release lab results"},
-	{"lab.manage", "Manage the lab test catalog"},
-	{"settings.manage", "Manage tenant/branch settings"},
-	{"audit.read", "View audit logs"},
-}
-
-// Business-tier flag defaults.
-var businessFlags = map[string]bool{
-	"laboratory":       true,
-	"pharmacy":         true,
-	"inventory":        true,
-	"finance_advanced": true,
-	"insurance":        false,
-	"telemedicine":     false,
-	"hr":               false,
 }
 
 // seedDiagnosisCatalog inserts a small starter set of disease categories and
@@ -213,8 +151,8 @@ func seedPharmacy(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) error {
 func seedLab(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) error {
 	f := func(v float64) *float64 { return &v }
 	type an struct {
-		Name, Unit             string
-		Lo, Hi, CLo, CHi       *float64
+		Name, Unit       string
+		Lo, Hi, CLo, CHi *float64
 	}
 	type tst struct {
 		Code, Name, Specimen string
@@ -382,198 +320,51 @@ func main() {
 		}
 	}
 
-	// Phase 1: global + registry rows (no tenant RLS).
-	var planID, tenantID uuid.UUID
+	// Bootstrap the tenant structure (shared with platform provisioning), then
+	// layer the demo staff + richer starter catalogs on top.
+	var tenantID uuid.UUID
 	if err := db.WithTenantTx(ctx, uuid.Nil, func(tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx,
-			`INSERT INTO plans (code, name, branch_limit, user_limit, storage_gb, audit_retention_days, price_monthly)
-			 VALUES ('business','Business',10,100,500,1095,0)
-			 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name
-			 RETURNING id`).Scan(&planID); err != nil {
-			return fmt.Errorf("plan: %w", err)
+		res, e := provision.BootstrapTenant(ctx, tx, provision.Params{
+			Name: "Demo Clinic", Slug: workspace, OwnerEmail: ownerEmail, OwnerName: ownerName, OwnerPasswordHash: passwordHash,
+		})
+		if e != nil {
+			return e
 		}
-		for _, p := range basePermissions {
-			if _, err := tx.Exec(ctx,
-				`INSERT INTO permissions (code, description) VALUES ($1,$2) ON CONFLICT (code) DO NOTHING`,
-				p.Code, p.Desc); err != nil {
-				return fmt.Errorf("permission %s: %w", p.Code, err)
-			}
-		}
-		if err := tx.QueryRow(ctx,
-			`INSERT INTO tenants (name, slug, status, plan_id, onboarded_at)
-			 VALUES ($1, $2, 'active', $3, now())
-			 ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, status = 'active'
-			 RETURNING id`, "Demo Clinic", workspace, planID).Scan(&tenantID); err != nil {
-			return fmt.Errorf("tenant: %w", err)
-		}
-		return nil
-	}); err != nil {
-		log.Fatalf("seed (global): %v", err)
-	}
-
-	// Phase 2: tenant-owned rows (RLS enforced; GUC set to tenantID).
-	var ownerUserID, ownerRoleID uuid.UUID
-	if err := db.WithTenantTx(ctx, tenantID, func(tx pgx.Tx) error {
-		// Subscription + billing.
-		if _, err := tx.Exec(ctx,
-			`INSERT INTO subscriptions (tenant_id, plan_id, status) VALUES ($1,$2,'active')
-			 ON CONFLICT DO NOTHING`, tenantID, planID); err != nil {
-			return fmt.Errorf("subscription: %w", err)
-		}
-		if _, err := tx.Exec(ctx,
-			`INSERT INTO billing_accounts (tenant_id, billing_email, currency) VALUES ($1,$2,'ETB')
-			 ON CONFLICT (tenant_id) DO NOTHING`, tenantID, ownerEmail); err != nil {
-			return fmt.Errorf("billing: %w", err)
-		}
-		// Feature flags.
-		for flag, enabled := range businessFlags {
-			if _, err := tx.Exec(ctx,
-				`INSERT INTO feature_flags (tenant_id, flag, enabled, source) VALUES ($1,$2,$3,'plan')
-				 ON CONFLICT (tenant_id, flag) DO UPDATE SET enabled = EXCLUDED.enabled`,
-				tenantID, flag, enabled); err != nil {
-				return fmt.Errorf("flag %s: %w", flag, err)
-			}
-		}
-		// Roles.
-		roleIDs := map[string]uuid.UUID{}
-		for _, r := range tenantRoles {
-			var rid uuid.UUID
-			if err := tx.QueryRow(ctx,
-				`INSERT INTO roles (tenant_id, code, name, is_system) VALUES ($1,$2,$3,true)
-				 ON CONFLICT (tenant_id, code) DO UPDATE SET name = EXCLUDED.name
-				 RETURNING id`, tenantID, r.Code, r.Name).Scan(&rid); err != nil {
-				return fmt.Errorf("role %s: %w", r.Code, err)
-			}
-			roleIDs[r.Code] = rid
-			if r.Code == "tenant_owner" {
-				ownerRoleID = rid
-			}
-		}
-		// tenant_owner and clinic_admin get every permission.
-		for _, code := range []string{"tenant_owner", "clinic_admin"} {
-			rid, ok := roleIDs[code]
-			if !ok {
-				continue
-			}
-			if _, err := tx.Exec(ctx,
-				`INSERT INTO role_permissions (tenant_id, role_id, permission_id)
-				 SELECT $1, $2, p.id FROM permissions p
-				 ON CONFLICT (role_id, permission_id) DO NOTHING`, tenantID, rid); err != nil {
-				return fmt.Errorf("grant %s permissions: %w", code, err)
-			}
-		}
-		// Default permission sets for the operational roles (Phase 3b-2), so each
-		// role can be invited and tested with a realistic scoped view.
-		roleGrants := map[string][]string{
-			"branch_manager": {"patient.create", "patient.read", "patient.update", "patient.search", "appointment.manage", "queue.manage", "triage.manage", "payment.charge", "payment.collect", "payment.waive", "billing.manage", "user.read"},
-			"receptionist":   {"patient.create", "patient.read", "patient.update", "patient.search", "appointment.manage", "queue.manage", "payment.charge"},
-			"doctor":         {"patient.read", "patient.search", "encounter.manage", "prescription.create", "queue.manage", "appointment.manage", "lab.order"},
-			"nurse":          {"patient.read", "patient.search", "triage.manage", "queue.manage"},
-			"cashier":        {"payment.charge", "payment.collect", "payment.waive", "patient.read", "patient.search"},
-			"pharmacist":      {"patient.read", "patient.search", "pharmacy.read", "pharmacy.dispense", "pharmacy.stock", "pharmacy.sell"},
-			"pharmacy_manager": {"patient.read", "patient.search", "pharmacy.read", "pharmacy.dispense", "pharmacy.stock", "pharmacy.sell", "pharmacy.manage"},
-			"lab_technician":   {"patient.read", "patient.search", "lab.process"},
-			"lab_manager":      {"patient.read", "patient.search", "lab.process", "lab.validate", "lab.manage"},
-		}
-		for code, perms := range roleGrants {
-			rid, ok := roleIDs[code]
-			if !ok {
-				continue
-			}
-			// Reconcile to exactly the canonical set: drop any grant no longer in the
-			// list so a re-seed picks up *removed* permissions (e.g. receptionist
-			// losing payment.collect when payments moved to role-based collection).
-			if _, err := tx.Exec(ctx,
-				`DELETE FROM role_permissions
-				 WHERE tenant_id = $1 AND role_id = $2
-				   AND permission_id NOT IN (SELECT id FROM permissions WHERE code = ANY($3::text[]))`,
-				tenantID, rid, perms); err != nil {
-				return fmt.Errorf("reconcile %s permissions: %w", code, err)
-			}
-			if _, err := tx.Exec(ctx,
-				`INSERT INTO role_permissions (tenant_id, role_id, permission_id)
-				 SELECT $1, $2, p.id FROM permissions p WHERE p.code = ANY($3::text[])
-				 ON CONFLICT (role_id, permission_id) DO NOTHING`, tenantID, rid, perms); err != nil {
-				return fmt.Errorf("grant %s permissions: %w", code, err)
-			}
-		}
-		// Owner user (re-seed resets the password).
-		if err := tx.QueryRow(ctx,
-			`INSERT INTO users (tenant_id, email, password_hash, full_name, status)
-			 VALUES ($1,$2,$3,$4,'active')
-			 ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, status = 'active'
-			 RETURNING id`, tenantID, ownerEmail, passwordHash, ownerName).Scan(&ownerUserID); err != nil {
-			return fmt.Errorf("owner user: %w", err)
-		}
-		// Owner role assignment (tenant-wide).
-		if _, err := tx.Exec(ctx,
-			`INSERT INTO user_role_scopes (tenant_id, user_id, role_id) VALUES ($1,$2,$3)
-			 ON CONFLICT (user_id, role_id, branch_id, department_id) DO NOTHING`,
-			tenantID, ownerUserID, ownerRoleID); err != nil {
-			return fmt.Errorf("owner role assignment: %w", err)
-		}
-		// Optional per-role demo staff (SEED_DEMO=1): one active login per role,
-		// sharing demoPass, each assigned its matching system role tenant-wide.
+		tenantID = res.TenantID
 		if seedDemo {
-			for _, s := range demoStaff {
-				rid, ok := roleIDs[s.Role]
+			for _, st := range demoStaff {
+				rid, ok := res.RoleIDs[st.Role]
 				if !ok {
 					continue
 				}
 				var uid uuid.UUID
-				if err := tx.QueryRow(ctx,
+				if e := tx.QueryRow(ctx,
 					`INSERT INTO users (tenant_id, email, password_hash, full_name, status)
 					 VALUES ($1,$2,$3,$4,'active')
 					 ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, full_name = EXCLUDED.full_name, status = 'active'
-					 RETURNING id`, tenantID, s.Email, demoHash, s.Name).Scan(&uid); err != nil {
-					return fmt.Errorf("demo user %s: %w", s.Email, err)
+					 RETURNING id`, tenantID, st.Email, demoHash, st.Name).Scan(&uid); e != nil {
+					return fmt.Errorf("demo user %s: %w", st.Email, e)
 				}
-				if _, err := tx.Exec(ctx,
+				if _, e := tx.Exec(ctx,
 					`INSERT INTO user_role_scopes (tenant_id, user_id, role_id) VALUES ($1,$2,$3)
 					 ON CONFLICT (user_id, role_id, branch_id, department_id) DO NOTHING`,
-					tenantID, uid, rid); err != nil {
-					return fmt.Errorf("demo role %s: %w", s.Email, err)
+					tenantID, uid, rid); e != nil {
+					return fmt.Errorf("demo role %s: %w", st.Email, e)
 				}
 			}
 		}
-
-		// Default clinic + main branch.
-		var clinicID uuid.UUID
-		e := tx.QueryRow(ctx, `SELECT id FROM clinics WHERE tenant_id = $1 AND deleted_at IS NULL LIMIT 1`, tenantID).Scan(&clinicID)
-		if errors.Is(e, pgx.ErrNoRows) {
-			if e = tx.QueryRow(ctx,
-				`INSERT INTO clinics (tenant_id, name) VALUES ($1, $2) RETURNING id`,
-				tenantID, "Demo Clinic").Scan(&clinicID); e != nil {
-				return fmt.Errorf("clinic: %w", e)
-			}
-		} else if e != nil {
-			return fmt.Errorf("clinic lookup: %w", e)
-		}
-		if _, e := tx.Exec(ctx,
-			`INSERT INTO branches (tenant_id, clinic_id, name, code) VALUES ($1, $2, 'Main Branch', 'MAIN')
-			 ON CONFLICT (tenant_id, code) DO NOTHING`, tenantID, clinicID); e != nil {
-			return fmt.Errorf("branch: %w", e)
-		}
-		// Payment collection now follows roles, not a clinic flag: the demo
-		// receptionist holds payment.charge only (raises charges → the cashier
-		// collects). A one-person desk gets the Cashier role too (collects inline).
-		// Starter diagnosis catalog (admins extend it in Settings).
 		if e := seedDiagnosisCatalog(ctx, tx, tenantID); e != nil {
 			return e
 		}
-		// Starter drug catalog + stock (pharmacy managers extend it).
 		if e := seedPharmacy(ctx, tx, tenantID); e != nil {
 			return e
 		}
-		// Starter lab test catalog (lab managers extend it).
 		if e := seedLab(ctx, tx, tenantID); e != nil {
 			return e
 		}
-		// Starter billable services (admins extend / re-price).
 		if e := seedBillingServices(ctx, tx, tenantID); e != nil {
 			return e
 		}
-		// Demo: assign the staff who perform each service (needs the demo logins).
 		if seedDemo {
 			if e := seedServiceProviders(ctx, tx, tenantID); e != nil {
 				return e
@@ -581,10 +372,26 @@ func main() {
 		}
 		return nil
 	}); err != nil {
-		log.Fatalf("seed (tenant): %v", err)
+		log.Fatalf("seed: %v", err)
+	}
+
+	// Platform (super-admin) operator — vendor-side, not tenant-scoped.
+	platformEmail := env("SEED_PLATFORM_EMAIL", "super@clinicos.local")
+	platformPass := env("SEED_PLATFORM_PASSWORD", "ChangeMe123!")
+	platHash, err := auth.HashPassword(platformPass)
+	if err != nil {
+		log.Fatalf("hash platform password: %v", err)
+	}
+	if _, err := db.Pool.Exec(ctx,
+		`INSERT INTO platform_admins (email, password_hash, full_name, status)
+		 VALUES ($1,$2,$3,'active')
+		 ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, status = 'active'`,
+		platformEmail, platHash, "Platform Super Admin"); err != nil {
+		log.Fatalf("platform admin: %v", err)
 	}
 
 	fmt.Println("✔ Seed complete")
+	fmt.Printf("  Platform  : %s / %s  (super-admin)\n", platformEmail, platformPass)
 	fmt.Printf("  Workspace : %s\n", workspace)
 	fmt.Printf("  Email     : %s\n", ownerEmail)
 	fmt.Printf("  Password  : %s\n", ownerPass)

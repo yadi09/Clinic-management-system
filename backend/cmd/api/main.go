@@ -23,6 +23,7 @@ import (
 	"github.com/reicb/clinicsaas/internal/kernel/notify"
 	"github.com/reicb/clinicsaas/internal/kernel/ratelimit"
 	"github.com/reicb/clinicsaas/internal/kernel/storage"
+	"github.com/reicb/clinicsaas/internal/kernel/transcribe"
 
 	billinghttp "github.com/reicb/clinicsaas/internal/billing/http"
 	billingservice "github.com/reicb/clinicsaas/internal/billing/service"
@@ -36,6 +37,8 @@ import (
 	orgservice "github.com/reicb/clinicsaas/internal/org/service"
 	patienthttp "github.com/reicb/clinicsaas/internal/patient/http"
 	patientservice "github.com/reicb/clinicsaas/internal/patient/service"
+	platformhttp "github.com/reicb/clinicsaas/internal/platform/http"
+	platformservice "github.com/reicb/clinicsaas/internal/platform/service"
 	pharmacyhttp "github.com/reicb/clinicsaas/internal/pharmacy/http"
 	pharmacyservice "github.com/reicb/clinicsaas/internal/pharmacy/service"
 	schedulinghttp "github.com/reicb/clinicsaas/internal/scheduling/http"
@@ -94,12 +97,27 @@ func main() {
 	// Scheduling bills the default intake charge through billing so walk-in / check-in
 	// are gated on payment (no free bypass of the cashier).
 	schedulingHandlers := schedulinghttp.NewHandlers(schedulingservice.NewService(db, publisher, billingSvc), db)
-	clinicalHandlers := clinicalhttp.NewHandlers(clinicalservice.NewService(db, publisher))
+	transcriber := transcribe.New(cfg.Transcription.DeepgramAPIKey, cfg.Transcription.Model, cfg.Transcription.Language)
+	clinicalHandlers := clinicalhttp.NewHandlers(clinicalservice.NewService(db, publisher), transcriber)
 	// Lab & pharmacy bill through billing (Charger) so revenue reaches the cashier.
 	pharmacyHandlers := pharmacyhttp.NewHandlers(pharmacyservice.NewService(db, publisher, billingSvc))
 	labHandlers := labhttp.NewHandlers(labservice.NewService(db, publisher, billingSvc))
 
-	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, pharmacyHandlers, labHandlers)
+	// Platform (super-admin) layer: provisions tenants across the RLS boundary via a
+	// dedicated privileged connection. Disabled when PLATFORM_DATABASE_URL is unset.
+	var platformHandlers *platformhttp.Handlers
+	if cfg.PlatformDatabaseURL != "" {
+		platformDB, perr := connectWithRetry(ctx, cfg.PlatformDatabaseURL, 10, 2*time.Second)
+		if perr != nil {
+			log.Error("platform db connect failed; platform surface disabled", "err", perr)
+		} else {
+			defer platformDB.Close()
+			platformHandlers = platformhttp.NewHandlers(platformservice.NewService(platformDB, tokens))
+			log.Info("platform (super-admin) surface enabled")
+		}
+	}
+
+	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, pharmacyHandlers, labHandlers, platformHandlers)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -138,6 +156,7 @@ func newRouter(
 	clinicalHandlers *clinicalhttp.Handlers,
 	pharmacyHandlers *pharmacyhttp.Handlers,
 	labHandlers *labhttp.Handlers,
+	platformHandlers *platformhttp.Handlers,
 ) *gin.Engine {
 	if cfg.IsProd() {
 		gin.SetMode(gin.ReleaseMode)
@@ -168,6 +187,9 @@ func newRouter(
 	v1 := r.Group("/api/v1")
 	v1.Use(httpx.RateLimit(limiter))
 	identityHandlers.RegisterPublic(v1)                  // /auth/login, /auth/refresh, /auth/mfa, /auth/logout
+	if platformHandlers != nil {
+		platformHandlers.Register(v1, tokens) // /platform/auth/login (public) + /platform/clinics (platform.admin)
+	}
 	protected := v1.Group("", httpx.RequireAuth(tokens)) // requires a valid access token
 	identityHandlers.RegisterProtected(protected)        // /auth/me
 	orgHandlers.RegisterProtected(protected)             // /org/...

@@ -36,10 +36,16 @@ import { CashierPage } from "@/features/billing/pages/CashierPage";
 import { ServiceCatalogPage } from "@/features/billing/pages/ServiceCatalogPage";
 import { FinancePage } from "@/features/billing/pages/FinancePage";
 import { NotFoundPage } from "@/features/misc/NotFoundPage";
+import { PlatformLoginPage } from "@/features/platform/pages/PlatformLoginPage";
+import { PlatformConsolePage } from "@/features/platform/pages/PlatformConsolePage";
 
 export function AppRoutes() {
   return (
     <Routes>
+      {/* Platform (vendor super-admin) — standalone, its own auth, outside the tenant shell. */}
+      <Route path="/platform/login" element={<PlatformLoginPage />} />
+      <Route path="/platform" element={<PlatformConsolePage />} />
+
       <Route element={<AuthLayout />}>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/mfa" element={<MfaPage />} />
