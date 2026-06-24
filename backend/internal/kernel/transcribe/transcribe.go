@@ -18,6 +18,9 @@ import (
 // ErrNotConfigured is returned when no Deepgram API key is set.
 var ErrNotConfigured = errors.New("transcription is not configured")
 
+// ErrUnauthorized is returned when Deepgram rejects the API key (revoked/invalid).
+var ErrUnauthorized = errors.New("deepgram rejected the API key")
+
 const endpoint = "https://api.deepgram.com/v1/listen"
 
 // Client calls Deepgram's pre-recorded transcription API.
@@ -85,6 +88,9 @@ func (c *Client) Transcribe(ctx context.Context, audio []byte, contentType strin
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return "", ErrUnauthorized
+	}
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("deepgram returned %d: %s", resp.StatusCode, string(body))
 	}

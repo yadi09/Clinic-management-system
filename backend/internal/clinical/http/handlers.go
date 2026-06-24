@@ -3,6 +3,7 @@
 package http
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"time"
@@ -750,6 +751,10 @@ func (h *Handlers) Transcribe(c *gin.Context) {
 		return
 	}
 	text, err := h.transcriber.Transcribe(c.Request.Context(), audio, c.ContentType())
+	if errors.Is(err, transcribe.ErrUnauthorized) {
+		httpx.Fail(c, apperr.New(http.StatusBadGateway, "TRANSCRIPTION_AUTH", "voice dictation key is invalid or revoked — update DEEPGRAM_API_KEY"))
+		return
+	}
 	if err != nil {
 		httpx.Fail(c, apperr.New(http.StatusBadGateway, "TRANSCRIPTION_FAILED", "could not transcribe the audio"))
 		return
