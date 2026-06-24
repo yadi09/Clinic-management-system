@@ -312,6 +312,20 @@ func (q *Queries) ClearServiceProviders(ctx context.Context, arg ClearServicePro
 	return err
 }
 
+const clinicRequiresTriage = `-- name: ClinicRequiresTriage :one
+SELECT COALESCE(triage_required, false) FROM clinics
+WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY created_at LIMIT 1
+`
+
+// Clinic policy (Settings → Patient flow): when true, every visit must be triaged
+// before a doctor, so enqueue is forced to the triage stage regardless of routing.
+func (q *Queries) ClinicRequiresTriage(ctx context.Context, tenantID uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, clinicRequiresTriage, tenantID)
+	var triage_required bool
+	err := row.Scan(&triage_required)
+	return triage_required, err
+}
+
 const countActiveQueueByPatient = `-- name: CountActiveQueueByPatient :one
 SELECT count(*)::int FROM queue_entries
 WHERE tenant_id = $1 AND patient_id = $2 AND deleted_at IS NULL
@@ -834,6 +848,55 @@ func (q *Queries) GetReconciliation(ctx context.Context, arg GetReconciliationPa
 	return i, err
 }
 
+const getRefundableByReceipt = `-- name: GetRefundableByReceipt :many
+SELECT c.id, c.patient_id, c.encounter_id, c.description, c.amount, c.currency FROM charges c
+WHERE c.tenant_id = $1 AND c.receipt_no = $2 AND c.status = 'paid' AND c.source <> 'refund'
+  AND c.deleted_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM charges r WHERE r.reverses_charge_id = c.id AND r.deleted_at IS NULL)
+`
+
+type GetRefundableByReceiptParams struct {
+	TenantID  uuid.UUID `json:"tenant_id"`
+	ReceiptNo *int64    `json:"receipt_no"`
+}
+
+type GetRefundableByReceiptRow struct {
+	ID          uuid.UUID  `json:"id"`
+	PatientID   uuid.UUID  `json:"patient_id"`
+	EncounterID *uuid.UUID `json:"encounter_id"`
+	Description string     `json:"description"`
+	Amount      string     `json:"amount"`
+	Currency    string     `json:"currency"`
+}
+
+// Charges under a receipt that are still refundable (paid, not already reversed).
+func (q *Queries) GetRefundableByReceipt(ctx context.Context, arg GetRefundableByReceiptParams) ([]GetRefundableByReceiptRow, error) {
+	rows, err := q.db.Query(ctx, getRefundableByReceipt, arg.TenantID, arg.ReceiptNo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetRefundableByReceiptRow{}
+	for rows.Next() {
+		var i GetRefundableByReceiptRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PatientID,
+			&i.EncounterID,
+			&i.Description,
+			&i.Amount,
+			&i.Currency,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getServiceItem = `-- name: GetServiceItem :one
 SELECT id, code, name, category, price, currency, is_active, is_default FROM service_items
 WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
@@ -1051,6 +1114,71 @@ func (q *Queries) ListDefaultServices(ctx context.Context, tenantID uuid.UUID) (
 			&i.Code,
 			&i.Name,
 			&i.Price,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPaidSince = `-- name: ListPaidSince :many
+SELECT c.receipt_no, c.patient_id, p.first_name, p.last_name, p.mrn,
+       c.description, c.amount, c.currency, c.payment_method, c.settled_at,
+       EXISTS (SELECT 1 FROM charges r WHERE r.reverses_charge_id = c.id AND r.deleted_at IS NULL) AS refunded
+FROM charges c
+JOIN patients p ON p.id = c.patient_id AND p.tenant_id = c.tenant_id
+WHERE c.tenant_id = $1 AND c.status = 'paid' AND c.source <> 'refund'
+  AND c.receipt_no IS NOT NULL AND c.settled_at >= $2
+ORDER BY c.settled_at DESC, c.receipt_no DESC
+LIMIT 300
+`
+
+type ListPaidSinceParams struct {
+	TenantID uuid.UUID  `json:"tenant_id"`
+	Since    *time.Time `json:"since"`
+}
+
+type ListPaidSinceRow struct {
+	ReceiptNo     *int64     `json:"receipt_no"`
+	PatientID     uuid.UUID  `json:"patient_id"`
+	FirstName     string     `json:"first_name"`
+	LastName      string     `json:"last_name"`
+	Mrn           string     `json:"mrn"`
+	Description   string     `json:"description"`
+	Amount        string     `json:"amount"`
+	Currency      string     `json:"currency"`
+	PaymentMethod *string    `json:"payment_method"`
+	SettledAt     *time.Time `json:"settled_at"`
+	Refunded      bool       `json:"refunded"`
+}
+
+// The cashier's "Paid today" audit list: settled charges (not refund entries) with a
+// receipt, newest first, flagged if a line has been refunded. Grouped by receipt in Go.
+func (q *Queries) ListPaidSince(ctx context.Context, arg ListPaidSinceParams) ([]ListPaidSinceRow, error) {
+	rows, err := q.db.Query(ctx, listPaidSince, arg.TenantID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPaidSinceRow{}
+	for rows.Next() {
+		var i ListPaidSinceRow
+		if err := rows.Scan(
+			&i.ReceiptNo,
+			&i.PatientID,
+			&i.FirstName,
+			&i.LastName,
+			&i.Mrn,
+			&i.Description,
+			&i.Amount,
+			&i.Currency,
+			&i.PaymentMethod,
+			&i.SettledAt,
+			&i.Refunded,
 		); err != nil {
 			return nil, err
 		}
@@ -1419,6 +1547,65 @@ func (q *Queries) SettleCharge(ctx context.Context, arg SettleChargeParams) (Set
 		&i.Enqueued,
 	)
 	return i, err
+}
+
+const settleVisit = `-- name: SettleVisit :many
+UPDATE charges SET status = 'paid', payment_method = $1, settled_by = $2,
+  settled_at = now(), receipt_no = $3, updated_at = now()
+WHERE tenant_id = $4 AND patient_id = $5 AND status = 'pending' AND deleted_at IS NULL
+RETURNING id, amount, branch_id, department_id, to_triage, provider_id
+`
+
+type SettleVisitParams struct {
+	PaymentMethod *string    `json:"payment_method"`
+	SettledBy     *uuid.UUID `json:"settled_by"`
+	ReceiptNo     *int64     `json:"receipt_no"`
+	TenantID      uuid.UUID  `json:"tenant_id"`
+	PatientID     uuid.UUID  `json:"patient_id"`
+}
+
+type SettleVisitRow struct {
+	ID           uuid.UUID  `json:"id"`
+	Amount       string     `json:"amount"`
+	BranchID     *uuid.UUID `json:"branch_id"`
+	DepartmentID *uuid.UUID `json:"department_id"`
+	ToTriage     bool       `json:"to_triage"`
+	ProviderID   *uuid.UUID `json:"provider_id"`
+}
+
+// One-click visit checkout: settle ALL of a patient's pending charges in a single
+// statement, sharing one receipt number. Returns routing so the patient advances once.
+func (q *Queries) SettleVisit(ctx context.Context, arg SettleVisitParams) ([]SettleVisitRow, error) {
+	rows, err := q.db.Query(ctx, settleVisit,
+		arg.PaymentMethod,
+		arg.SettledBy,
+		arg.ReceiptNo,
+		arg.TenantID,
+		arg.PatientID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SettleVisitRow{}
+	for rows.Next() {
+		var i SettleVisitRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Amount,
+			&i.BranchID,
+			&i.DepartmentID,
+			&i.ToTriage,
+			&i.ProviderID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const softDeleteServiceItem = `-- name: SoftDeleteServiceItem :exec

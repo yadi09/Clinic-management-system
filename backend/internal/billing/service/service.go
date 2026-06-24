@@ -306,6 +306,57 @@ func (s *Service) RaiseCharge(ctx context.Context, in billing.ChargeInput) (uuid
 	return id, nil
 }
 
+// RaiseChargeBatch registers all of a visit's charges in one transaction. It first
+// guards against a duplicate registration: if the patient still has unpaid charges
+// at the cashier, or is already in an active visit, it raises nothing and returns a
+// conflict — so reception can't send the same patient (and the same services) twice.
+func (s *Service) RaiseChargeBatch(ctx context.Context, in billing.ChargeBatchInput) ([]uuid.UUID, error) {
+	if in.PatientID == uuid.Nil {
+		return nil, apperr.Validation("a patient is required")
+	}
+	if len(in.Items) == 0 {
+		return nil, apperr.Validation("at least one service is required")
+	}
+	tenantID, _ := actorOf(ctx)
+	var ids []uuid.UUID
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := billingdb.New(tx)
+		pending, e := q.CountPendingChargesByPatient(ctx, billingdb.CountPendingChargesByPatientParams{TenantID: tenantID, PatientID: in.PatientID})
+		if e != nil {
+			return e
+		}
+		if pending > 0 {
+			return apperr.Conflict("PATIENT_HAS_PENDING_CHARGES", "this patient already has unpaid charges at the cashier — settle or void them before registering the visit again")
+		}
+		active, e := q.CountActiveQueueByPatient(ctx, billingdb.CountActiveQueueByPatientParams{TenantID: tenantID, PatientID: in.PatientID})
+		if e != nil {
+			return e
+		}
+		if active > 0 {
+			return apperr.Conflict("PATIENT_HAS_ACTIVE_VISIT", "this patient is already in an active visit — finish or close it before registering again")
+		}
+		branch, dept := in.BranchID, in.DepartmentID
+		for _, it := range in.Items {
+			cid, e := s.RaiseChargeTx(ctx, tx, billing.ChargeInput{
+				PatientID: in.PatientID, ServiceItemID: it.ServiceItemID, Source: it.Source, Description: it.Description, Amount: it.Amount,
+				BranchID: &branch, DepartmentID: &dept, ToTriage: in.ToTriage, ProviderID: in.ProviderID,
+			})
+			if e != nil {
+				return e
+			}
+			ids = append(ids, cid)
+		}
+		return nil
+	})
+	if ae, ok := apperr.As(err); ok {
+		return nil, ae
+	}
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return ids, nil
+}
+
 // RaiseChargeTx creates a pending charge inside the caller's transaction, so a
 // module (lab, pharmacy) can bill atomically alongside its own write.
 func (s *Service) RaiseChargeTx(ctx context.Context, tx pgx.Tx, in billing.ChargeInput) (uuid.UUID, error) {
@@ -440,6 +491,51 @@ func (s *Service) SettleCharge(ctx context.Context, id uuid.UUID, method string)
 	return nil
 }
 
+// SettleVisit collects ALL of a patient's pending charges in one go under a single
+// receipt number, then advances the patient once. This is the cashier's one-click
+// visit checkout (vs. SettleCharge for a single line).
+func (s *Service) SettleVisit(ctx context.Context, patientID uuid.UUID, method string) (*billing.VisitSettlement, error) {
+	tenantID, actor := actorOf(ctx)
+	var out billing.VisitSettlement
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := billingdb.New(tx)
+		no, e := q.NextReceiptNo(ctx, tenantID)
+		if e != nil {
+			return e
+		}
+		rows, e := q.SettleVisit(ctx, billingdb.SettleVisitParams{PaymentMethod: strPtr(method), SettledBy: actor, ReceiptNo: &no, TenantID: tenantID, PatientID: patientID})
+		if e != nil {
+			return e
+		}
+		if len(rows) == 0 {
+			return apperr.Conflict("NOTHING_PENDING", "no pending charges for this patient")
+		}
+		var total float64
+		var routed *billingdb.SettleVisitRow
+		for i := range rows {
+			total += parseMoneyB(rows[i].Amount)
+			if routed == nil && rows[i].BranchID != nil && rows[i].DepartmentID != nil {
+				routed = &rows[i]
+			}
+		}
+		if routed != nil {
+			if e := advanceIfPaid(ctx, q, tenantID, actor, routed.BranchID, routed.DepartmentID, routed.ToTriage, routed.ProviderID, patientID); e != nil {
+				return e
+			}
+		}
+		out = billing.VisitSettlement{ReceiptNo: no, Total: money2(total), Count: len(rows)}
+		return s.publisher.Publish(ctx, tx, &tenantID, "charge", patientID, "billing.visit.paid",
+			map[string]any{"patient_id": patientID, "receipt_no": no, "total": out.Total, "count": out.Count})
+	})
+	if ae, ok := apperr.As(err); ok {
+		return nil, ae
+	}
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return &out, nil
+}
+
 // WaiveCharge marks a pending charge waived (free, with reason) and still advances
 // the patient if it's a routed consultation charge.
 func (s *Service) WaiveCharge(ctx context.Context, id uuid.UUID, reason string) error {
@@ -535,6 +631,88 @@ func (s *Service) RefundCharge(ctx context.Context, id uuid.UUID, reason string)
 		}
 		return s.publisher.Publish(ctx, tx, &tenantID, "charge", rev.ID, "billing.charge.refunded",
 			map[string]any{"refund_charge_id": rev.ID, "original_charge_id": id, "amount": rev.Amount, "reason": reason})
+	})
+	if ae, ok := apperr.As(err); ok {
+		return ae
+	}
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}
+
+// PaymentsSince lists completed payments (grouped by receipt) for the cashier's
+// "Paid today" audit view, newest first.
+func (s *Service) PaymentsSince(ctx context.Context, since time.Time) ([]billing.PaidVisit, error) {
+	tenantID, _ := actorOf(ctx)
+	out := []billing.PaidVisit{}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		rows, e := billingdb.New(tx).ListPaidSince(ctx, billingdb.ListPaidSinceParams{TenantID: tenantID, Since: &since})
+		if e != nil {
+			return e
+		}
+		idx := map[int64]int{} // receipt_no → position in out
+		for _, r := range rows {
+			if r.ReceiptNo == nil {
+				continue
+			}
+			no := *r.ReceiptNo
+			pos, ok := idx[no]
+			if !ok {
+				out = append(out, billing.PaidVisit{
+					ReceiptNo: no, PatientID: r.PatientID, PatientName: r.FirstName + " " + r.LastName, MRN: r.Mrn,
+					Currency: r.Currency, Method: deref(r.PaymentMethod), SettledAt: r.SettledAt, Refunded: true,
+				})
+				pos = len(out) - 1
+				idx[no] = pos
+			}
+			out[pos].Lines = append(out[pos].Lines, billing.PaidLine{Description: r.Description, Amount: r.Amount})
+			out[pos].Total = money2(parseMoneyB(out[pos].Total) + parseMoneyB(r.Amount))
+			if !r.Refunded {
+				out[pos].Refunded = false // a payment is "refunded" only if every line is
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+// RefundVisit refunds an entire receipt — every still-refundable line gets a linked
+// negative reversing entry. Manager-gated. Reuses the per-charge reversal logic.
+func (s *Service) RefundVisit(ctx context.Context, receiptNo int64, reason string) error {
+	tenantID, actor := actorOf(ctx)
+	if strings.TrimSpace(reason) == "" {
+		return apperr.Validation("a reason is required to refund")
+	}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := billingdb.New(tx)
+		rows, e := q.GetRefundableByReceipt(ctx, billingdb.GetRefundableByReceiptParams{TenantID: tenantID, ReceiptNo: &receiptNo})
+		if e != nil {
+			return e
+		}
+		if len(rows) == 0 {
+			return apperr.Conflict("NOTHING_TO_REFUND", "this payment has already been fully refunded")
+		}
+		for _, r := range rows {
+			origID := r.ID
+			rev, e := q.CreateReversalCharge(ctx, billingdb.CreateReversalChargeParams{
+				TenantID: tenantID, PatientID: r.PatientID, EncounterID: r.EncounterID,
+				Description: "Refund: " + reason + " (re: " + r.Description + ")",
+				Amount:      negate(r.Amount), Currency: r.Currency,
+				PaymentMethod: strPtr("refund"), SettledBy: actor, ReversesChargeID: &origID, CreatedBy: actor,
+			})
+			if e != nil {
+				return e
+			}
+			if e := stampReceipt(ctx, q, tenantID, rev.ID); e != nil {
+				return e
+			}
+		}
+		return s.publisher.Publish(ctx, tx, &tenantID, "charge", uuid.Nil, "billing.visit.refunded",
+			map[string]any{"receipt_no": receiptNo, "lines": len(rows), "reason": reason})
 	})
 	if ae, ok := apperr.As(err); ok {
 		return ae
@@ -783,6 +961,12 @@ func advanceIfPaid(ctx context.Context, q *billingdb.Queries, tenantID uuid.UUID
 	stage := "with_doctor"
 	if toTriage {
 		stage = "triage"
+	}
+	// Clinic policy: when triage is required, force the triage stage (the provider is
+	// assigned by the nurse afterwards) — no door can bypass it.
+	if req, _ := q.ClinicRequiresTriage(ctx, tenantID); req {
+		stage = "triage"
+		providerID = nil
 	}
 	return q.EnqueueFromCharge(ctx, billingdb.EnqueueFromChargeParams{
 		TenantID: tenantID, BranchID: *branchID, DepartmentID: *departmentID, PatientID: patientID, Stage: stage, AssignedProviderID: providerID, CreatedBy: actor,

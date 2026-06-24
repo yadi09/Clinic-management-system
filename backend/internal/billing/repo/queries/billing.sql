@@ -132,6 +132,14 @@ UPDATE charges SET status = 'paid', payment_method = @payment_method, settled_by
 WHERE tenant_id = @tenant_id AND id = @id AND status = 'pending' AND deleted_at IS NULL
 RETURNING id, source, patient_id, branch_id, department_id, to_triage, provider_id, enqueued;
 
+-- name: SettleVisit :many
+-- One-click visit checkout: settle ALL of a patient's pending charges in a single
+-- statement, sharing one receipt number. Returns routing so the patient advances once.
+UPDATE charges SET status = 'paid', payment_method = @payment_method, settled_by = @settled_by,
+  settled_at = now(), receipt_no = @receipt_no, updated_at = now()
+WHERE tenant_id = @tenant_id AND patient_id = @patient_id AND status = 'pending' AND deleted_at IS NULL
+RETURNING id, amount, branch_id, department_id, to_triage, provider_id;
+
 -- name: NextReceiptNo :one
 -- Per-tenant monotonic receipt number (atomic increment).
 INSERT INTO billing_counters (tenant_id, name, value) VALUES (@tenant_id, 'receipt', 1)
@@ -149,6 +157,26 @@ RETURNING id, source, patient_id, branch_id, department_id, to_triage, provider_
 
 -- name: MarkChargeEnqueued :exec
 UPDATE charges SET enqueued = true, updated_at = now() WHERE tenant_id = @tenant_id AND id = @id;
+
+-- name: ListPaidSince :many
+-- The cashier's "Paid today" audit list: settled charges (not refund entries) with a
+-- receipt, newest first, flagged if a line has been refunded. Grouped by receipt in Go.
+SELECT c.receipt_no, c.patient_id, p.first_name, p.last_name, p.mrn,
+       c.description, c.amount, c.currency, c.payment_method, c.settled_at,
+       EXISTS (SELECT 1 FROM charges r WHERE r.reverses_charge_id = c.id AND r.deleted_at IS NULL) AS refunded
+FROM charges c
+JOIN patients p ON p.id = c.patient_id AND p.tenant_id = c.tenant_id
+WHERE c.tenant_id = @tenant_id AND c.status = 'paid' AND c.source <> 'refund'
+  AND c.receipt_no IS NOT NULL AND c.settled_at >= @since
+ORDER BY c.settled_at DESC, c.receipt_no DESC
+LIMIT 300;
+
+-- name: GetRefundableByReceipt :many
+-- Charges under a receipt that are still refundable (paid, not already reversed).
+SELECT c.id, c.patient_id, c.encounter_id, c.description, c.amount, c.currency FROM charges c
+WHERE c.tenant_id = @tenant_id AND c.receipt_no = @receipt_no AND c.status = 'paid' AND c.source <> 'refund'
+  AND c.deleted_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM charges r WHERE r.reverses_charge_id = c.id AND r.deleted_at IS NULL);
 
 -- name: GetCharge :one
 SELECT id, patient_id, encounter_id, source, description, amount, currency, status, settled_at
@@ -190,6 +218,12 @@ WHERE tenant_id = @tenant_id AND patient_id = @patient_id AND status = 'pending'
 SELECT count(*)::int FROM queue_entries
 WHERE tenant_id = @tenant_id AND patient_id = @patient_id AND deleted_at IS NULL
   AND state NOT IN ('done','no_show');
+
+-- name: ClinicRequiresTriage :one
+-- Clinic policy (Settings → Patient flow): when true, every visit must be triaged
+-- before a doctor, so enqueue is forced to the triage stage regardless of routing.
+SELECT COALESCE(triage_required, false) FROM clinics
+WHERE tenant_id = @tenant_id AND deleted_at IS NULL ORDER BY created_at LIMIT 1;
 
 -- name: EnqueueFromCharge :exec
 -- Auto-advance after payment: enqueue the patient to the routing captured on the

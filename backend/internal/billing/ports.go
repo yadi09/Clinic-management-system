@@ -80,6 +80,26 @@ type ChargeInput struct {
 	ProviderID    *uuid.UUID
 }
 
+// ChargeBatchItem is one service line of a reception registration.
+type ChargeBatchItem struct {
+	ServiceItemID *uuid.UUID
+	Source        string
+	Description   string
+	Amount        string
+}
+
+// ChargeBatchInput registers a whole visit's charges at once (reception → cashier).
+// Raising them atomically lets the service reject a duplicate registration before
+// any line is written, so the same patient can't be billed to the cashier twice.
+type ChargeBatchInput struct {
+	PatientID    uuid.UUID
+	BranchID     uuid.UUID
+	DepartmentID uuid.UUID
+	ToTriage     bool
+	ProviderID   *uuid.UUID
+	Items        []ChargeBatchItem
+}
+
 // PendingCharge is a row on the cashier's pending-payments worklist.
 type PendingCharge struct {
 	ID          uuid.UUID `json:"-"`
@@ -106,6 +126,34 @@ type ChargeRow struct {
 	SettledAt     *time.Time `json:"settled_at,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
 	ReceiptNo     *int64     `json:"receipt_no,omitempty"`
+}
+
+// PaidLine is one service on a completed payment.
+type PaidLine struct {
+	Description string `json:"description"`
+	Amount      string `json:"amount"`
+}
+
+// PaidVisit is a completed checkout (one receipt) on the cashier's "Paid today" list.
+type PaidVisit struct {
+	ReceiptNo   int64      `json:"receipt_no"`
+	PatientID   uuid.UUID  `json:"-"`
+	PatientName string     `json:"patient_name"`
+	MRN         string     `json:"mrn"`
+	Total       string     `json:"total"`
+	Currency    string     `json:"currency"`
+	Method      string     `json:"method,omitempty"`
+	SettledAt   *time.Time `json:"settled_at,omitempty"`
+	Refunded    bool       `json:"refunded"` // every line reversed
+	Lines       []PaidLine `json:"lines"`
+}
+
+// VisitSettlement is the result of a one-click visit checkout (all of a patient's
+// pending charges settled together under one receipt).
+type VisitSettlement struct {
+	ReceiptNo int64  `json:"receipt_no"`
+	Total     string `json:"total"`
+	Count     int    `json:"count"`
 }
 
 // Provider is a staff member who performs a service.
@@ -192,12 +240,16 @@ type Service interface {
 
 	// Charges + cashier.
 	RaiseCharge(ctx context.Context, in ChargeInput) (uuid.UUID, error)
+	RaiseChargeBatch(ctx context.Context, in ChargeBatchInput) ([]uuid.UUID, error)
 	PendingCharges(ctx context.Context) ([]PendingCharge, error)
 	PatientCharges(ctx context.Context, patientID uuid.UUID) ([]ChargeRow, error)
 	SettleCharge(ctx context.Context, id uuid.UUID, method string) error
+	SettleVisit(ctx context.Context, patientID uuid.UUID, method string) (*VisitSettlement, error)
 	WaiveCharge(ctx context.Context, id uuid.UUID, reason string) error
 	VoidCharge(ctx context.Context, id uuid.UUID, reason string) error
 	RefundCharge(ctx context.Context, id uuid.UUID, reason string) error
+	RefundVisit(ctx context.Context, receiptNo int64, reason string) error
+	PaymentsSince(ctx context.Context, since time.Time) ([]PaidVisit, error)
 	WaiverReasons() []string
 
 	// Owner finance view.

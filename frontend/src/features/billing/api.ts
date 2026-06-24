@@ -52,6 +52,7 @@ export interface ServiceItem {
 }
 export interface PendingCharge {
   id: string;
+  patient_id: string;
   source: string;
   description: string;
   amount: string;
@@ -158,6 +159,18 @@ export function raiseCharge(body: {
 }) {
   return apiFetch<{ id: string }>("/billing/charges", { method: "POST", body });
 }
+/** Register a whole visit's charges in one shot. Rejects (409) if the patient already
+ *  has unpaid charges at the cashier or an active visit — the duplicate-registration guard. */
+export function raiseChargeBatch(body: {
+  patient_id: string;
+  branch_id: string;
+  department_id: string;
+  to_triage?: boolean;
+  provider_id?: string;
+  items: { service_item_id?: string; source?: string; description: string; amount: number }[];
+}) {
+  return apiFetch<{ ids: string[] }>("/billing/charges/batch", { method: "POST", body });
+}
 export function pendingCharges() {
   return apiFetch<PendingCharge[]>("/billing/charges/pending");
 }
@@ -166,6 +179,26 @@ export function patientCharges(patientId: string) {
 }
 export function settleCharge(id: string, method: string) {
   return apiFetch<void>(`/billing/charges/${id}/settle`, { method: "POST", body: { method } });
+}
+export function settleVisit(patientId: string, method: string) {
+  return apiFetch<{ receipt_no: number; total: string; count: number }>("/billing/checkout", { method: "POST", body: { patient_id: patientId, method } });
+}
+export interface PaidVisit {
+  receipt_no: number;
+  patient_name: string;
+  mrn: string;
+  total: string;
+  currency: string;
+  method?: string;
+  settled_at?: string;
+  refunded: boolean;
+  lines: { description: string; amount: string }[];
+}
+export function paymentsToday(sinceISO?: string) {
+  return apiFetch<PaidVisit[]>(`/billing/payments${sinceISO ? `?since=${encodeURIComponent(sinceISO)}` : ""}`);
+}
+export function refundVisit(receiptNo: number, reason: string) {
+  return apiFetch<void>("/billing/refund-visit", { method: "POST", body: { receipt_no: receiptNo, reason } });
 }
 export function waiveCharge(id: string, reason: string) {
   return apiFetch<void>(`/billing/charges/${id}/waive`, { method: "POST", body: { reason } });

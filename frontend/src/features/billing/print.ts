@@ -64,6 +64,44 @@ function printReceiptRaw(no: string, o: Parameters<typeof printReceipt>[0]) {
   openAndPrint(no, body);
 }
 
+export function printVisitReceipt(o: {
+  clinic: string;
+  receiptNo?: number;
+  patient: string;
+  mrn?: string;
+  lines: { description: string; amount: string }[];
+  total: string;
+  currency: string;
+  method?: string;
+  cashier?: string;
+  when: string;
+}) {
+  const no = o.receiptNo != null ? `RCP-${String(o.receiptNo).padStart(6, "0")}` : "—";
+  const rows = o.lines
+    .map((l) => `<tr><td>${esc(l.description)}</td><td class="r">${esc(o.currency)} ${esc(l.amount)}</td></tr>`)
+    .join("");
+  const body = `
+    <h1 class="center">${esc(o.clinic)}</h1>
+    <div class="center muted">PAYMENT RECEIPT</div>
+    <hr/>
+    <table>
+      <tr><td class="muted">Receipt</td><td class="r b">${no}</td></tr>
+      <tr><td class="muted">Date</td><td class="r">${esc(new Date(o.when).toLocaleString())}</td></tr>
+      <tr><td class="muted">Patient</td><td class="r">${esc(o.patient)}${o.mrn ? ` (${esc(o.mrn)})` : ""}</td></tr>
+    </table>
+    <hr/>
+    <table>${rows}</table>
+    <hr/>
+    <table>
+      <tr><td class="b lg">TOTAL</td><td class="r b lg">${esc(o.currency)} ${esc(o.total)}</td></tr>
+      <tr><td class="muted">Method</td><td class="r">${esc(o.method || "—")}</td></tr>
+      <tr><td class="muted">Cashier</td><td class="r">${esc(o.cashier || "—")}</td></tr>
+    </table>
+    <hr/>
+    <div class="center muted mt">Thank you. Keep this receipt for your records.</div>`;
+  openAndPrint(no, body);
+}
+
 export function printZReport(o: {
   clinic: string;
   cashier: string;

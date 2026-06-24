@@ -32,9 +32,13 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	charge := httpx.RequirePermission("payment.charge")
 	collect := httpx.RequirePermission("payment.collect")
 	b.POST("/charges", charge, h.RaiseCharge)
+	b.POST("/charges/batch", charge, h.RaiseChargeBatch) // reception registers a whole visit at once (guards duplicates)
 	b.GET("/charges/pending", collect, h.PendingCharges) // the cashier worklist
 	b.GET("/charges", httpx.RequireAnyPermission("payment.charge", "payment.collect", "billing.manage"), h.PatientCharges) // ?patient=
 	b.POST("/charges/:id/settle", collect, h.SettleCharge)
+	b.POST("/checkout", collect, h.SettleVisit) // one-click visit checkout (settle all a patient's charges)
+	b.GET("/payments", collect, h.Payments)     // cashier's "Paid today" list (by receipt)
+	b.POST("/refund-visit", mgr, h.RefundVisit) // refund an entire receipt (manager-gated)
 	b.POST("/charges/:id/waive", httpx.RequirePermission("payment.waive"), h.WaiveCharge)
 	b.POST("/charges/:id/void", httpx.RequirePermission("payment.waive"), h.VoidCharge)   // retire a pending charge (mistake / patient left)
 	b.POST("/charges/:id/refund", mgr, h.RefundCharge)                                    // reverse a settled charge (manager-gated)

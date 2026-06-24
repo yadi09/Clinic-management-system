@@ -135,7 +135,8 @@ type serviceDTO struct {
 	billing.ServiceItem
 }
 type pendingDTO struct {
-	ID string `json:"id"`
+	ID        string `json:"id"`
+	PatientID string `json:"patient_id"`
 	billing.PendingCharge
 }
 type chargeRowDTO struct {
@@ -365,6 +366,69 @@ func (h *Handlers) RaiseCharge(c *gin.Context) {
 	httpx.Created(c, gin.H{"id": id.Encode(id.PrefixCharge, cid)})
 }
 
+type batchItemReq struct {
+	ServiceItemID string  `json:"service_item_id"`
+	Source        string  `json:"source"`
+	Description   string  `json:"description"`
+	Amount        float64 `json:"amount"`
+}
+type raiseBatchReq struct {
+	PatientID    string         `json:"patient_id" binding:"required"`
+	BranchID     string         `json:"branch_id" binding:"required"`
+	DepartmentID string         `json:"department_id" binding:"required"`
+	ToTriage     bool           `json:"to_triage"`
+	ProviderID   string         `json:"provider_id"`
+	Items        []batchItemReq `json:"items" binding:"required"`
+}
+
+// RaiseChargeBatch handles POST /billing/charges/batch — register a whole visit's
+// charges at once, rejecting a duplicate registration before any line is written.
+func (h *Handlers) RaiseChargeBatch(c *gin.Context) {
+	var req raiseBatchReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("patient_id, branch_id, department_id and items are required"))
+		return
+	}
+	pid, err := id.Decode(id.PrefixPatient, req.PatientID)
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("invalid patient_id"))
+		return
+	}
+	in := billing.ChargeBatchInput{PatientID: pid, ToTriage: req.ToTriage}
+	if in.BranchID, err = id.Decode(id.PrefixBranch, req.BranchID); err != nil {
+		httpx.Fail(c, apperr.Validation("invalid branch_id"))
+		return
+	}
+	if in.DepartmentID, err = id.Decode(id.PrefixDepartment, req.DepartmentID); err != nil {
+		httpx.Fail(c, apperr.Validation("invalid department_id"))
+		return
+	}
+	if !decodeOpt(c, id.PrefixUser, req.ProviderID, &in.ProviderID) {
+		return
+	}
+	for _, it := range req.Items {
+		if it.Amount < 0 {
+			httpx.Fail(c, apperr.Validation("amount cannot be negative"))
+			return
+		}
+		item := billing.ChargeBatchItem{Source: it.Source, Description: it.Description, Amount: strconv.FormatFloat(it.Amount, 'f', 2, 64)}
+		if !decodeOpt(c, id.PrefixServiceItem, it.ServiceItemID, &item.ServiceItemID) {
+			return
+		}
+		in.Items = append(in.Items, item)
+	}
+	ids, err := h.svc.RaiseChargeBatch(c.Request.Context(), in)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out := make([]string, 0, len(ids))
+	for _, cid := range ids {
+		out = append(out, id.Encode(id.PrefixCharge, cid))
+	}
+	httpx.Created(c, gin.H{"ids": out})
+}
+
 func (h *Handlers) PendingCharges(c *gin.Context) {
 	items, err := h.svc.PendingCharges(c.Request.Context())
 	if err != nil {
@@ -373,7 +437,7 @@ func (h *Handlers) PendingCharges(c *gin.Context) {
 	}
 	out := make([]pendingDTO, 0, len(items))
 	for _, p := range items {
-		out = append(out, pendingDTO{ID: id.Encode(id.PrefixCharge, p.ID), PendingCharge: p})
+		out = append(out, pendingDTO{ID: id.Encode(id.PrefixCharge, p.ID), PatientID: id.Encode(id.PrefixPatient, p.PatientID), PendingCharge: p})
 	}
 	httpx.OK(c, out)
 }
@@ -410,6 +474,29 @@ func (h *Handlers) SettleCharge(c *gin.Context) {
 		return
 	}
 	httpx.NoContent(c)
+}
+
+// SettleVisit handles POST /billing/checkout — settle all of a patient's pending charges at once.
+func (h *Handlers) SettleVisit(c *gin.Context) {
+	var req struct {
+		PatientID string `json:"patient_id"`
+		Method    string `json:"method"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("patient_id is required"))
+		return
+	}
+	pid, err := id.Decode(id.PrefixPatient, req.PatientID)
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("invalid patient_id"))
+		return
+	}
+	out, err := h.svc.SettleVisit(c.Request.Context(), pid, req.Method)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
 }
 
 func (h *Handlers) WaiveCharge(c *gin.Context) {
@@ -486,6 +573,40 @@ func (h *Handlers) Cash(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, out)
+}
+
+// Payments handles GET /billing/payments?since= — the cashier's "Paid today" list (by receipt).
+func (h *Handlers) Payments(c *gin.Context) {
+	now := time.Now().UTC()
+	since := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	if q := c.Query("since"); q != "" {
+		if t, err := time.Parse(time.RFC3339, q); err == nil {
+			since = t
+		}
+	}
+	out, err := h.svc.PaymentsSince(c.Request.Context(), since)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// RefundVisit handles POST /billing/refund-visit — refund an entire receipt (manager-gated).
+func (h *Handlers) RefundVisit(c *gin.Context) {
+	var req struct {
+		ReceiptNo int64  `json:"receipt_no"`
+		Reason    string `json:"reason"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.ReceiptNo <= 0 {
+		httpx.Fail(c, apperr.Validation("a receipt and reason are required"))
+		return
+	}
+	if err := h.svc.RefundVisit(c.Request.Context(), req.ReceiptNo, req.Reason); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
 }
 
 // DayClose handles GET /billing/day-close?date= — the cashier's expected drawer + any closeout.
