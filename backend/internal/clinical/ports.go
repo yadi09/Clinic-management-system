@@ -98,12 +98,14 @@ type Diagnosis struct {
 
 // Medication is a prescription line.
 type Medication struct {
-	ID           uuid.UUID `json:"-"`
-	DrugName     string    `json:"drug_name"`
-	Dose         string    `json:"dose,omitempty"`
-	Frequency    string    `json:"frequency,omitempty"`
-	Duration     string    `json:"duration,omitempty"`
-	Instructions string    `json:"instructions,omitempty"`
+	ID              uuid.UUID `json:"-"`
+	DrugName        string    `json:"drug_name"`
+	Dose            string    `json:"dose,omitempty"`
+	Frequency       string    `json:"frequency,omitempty"`
+	Duration        string    `json:"duration,omitempty"`
+	Instructions    string    `json:"instructions,omitempty"`
+	Allergens       []string  `json:"allergens,omitempty"`        // the drug's allergen tags
+	AllergyOverride string    `json:"allergy_override,omitempty"` // reason recorded when prescribed despite an allergy
 }
 
 // Workspace is the full encounter view the doctor opens from the worklist.
@@ -171,7 +173,45 @@ type DiagnosisInput struct {
 }
 
 // MedicationInput adds a prescription line (allergy-guarded).
-type MedicationInput struct{ DrugName, Dose, Frequency, Duration, Instructions string }
+type MedicationInput struct {
+	DrugName, Dose, Frequency, Duration, Instructions string
+	DrugID         *uuid.UUID // optional link to the drug library
+	OverrideReason string     // set to prescribe despite an allergy warning
+}
+
+// Allergen is one entry of the per-clinic allergen library.
+type Allergen struct {
+	ID       uuid.UUID `json:"-"`
+	Name     string    `json:"name"`
+	IsActive bool      `json:"is_active"`
+}
+
+// Drug is one entry of the per-clinic drug library, with its default sig and allergen tags.
+type Drug struct {
+	ID                  uuid.UUID `json:"-"`
+	Name                string    `json:"name"`
+	DefaultDose         string    `json:"default_dose,omitempty"`
+	DefaultFrequency    string    `json:"default_frequency,omitempty"`
+	DefaultDuration     string    `json:"default_duration,omitempty"`
+	DefaultInstructions string    `json:"default_instructions,omitempty"`
+	IsActive            bool      `json:"is_active"`
+	Allergens           []string  `json:"allergens"`
+}
+
+// AllergenInput / DrugInput carry create/update payloads for the libraries.
+type AllergenInput struct {
+	Name     string
+	IsActive bool
+}
+type DrugInput struct {
+	Name                string
+	DefaultDose         string
+	DefaultFrequency    string
+	DefaultDuration     string
+	DefaultInstructions string
+	IsActive            bool
+	AllergenIDs         []uuid.UUID
+}
 
 // DiagnosisCategory is an admin-managed disease category.
 type DiagnosisCategory struct {
@@ -226,7 +266,7 @@ type Service interface {
 	// it stays editable — only SignAndClose locks it.
 	SetAside(ctx context.Context, encounterID uuid.UUID) error
 	// MyBoard returns the calling doctor's in-progress and done-today encounters.
-	MyBoard(ctx context.Context, providerID uuid.UUID) (*Board, error)
+	MyBoard(ctx context.Context, providerID uuid.UUID, doneSince time.Time) (*Board, error)
 	History(ctx context.Context, patientID uuid.UUID) ([]HistoryItem, error)
 
 	// Diagnosis catalog (admin config + doctor search).
@@ -238,4 +278,51 @@ type Service interface {
 	CreateCatalogEntry(ctx context.Context, in CatalogEntryInput) (*CatalogEntry, error)
 	UpdateCatalogEntry(ctx context.Context, id uuid.UUID, in CatalogEntryInput) error
 	DeleteCatalogEntry(ctx context.Context, id uuid.UUID) error
+
+	// Vitals form configuration (VITALS-A): the per-clinic catalog of vital fields,
+	// with plausibility bounds (min/max) and reference ranges (low/high).
+	GetVitalFields(ctx context.Context) ([]VitalField, error)
+	SaveVitalFields(ctx context.Context, fields []VitalFieldInput) error
+
+	// Drug & allergen libraries (RX-LIB).
+	ListAllergens(ctx context.Context, search string, includeInactive bool) ([]Allergen, error)
+	CreateAllergen(ctx context.Context, name string) (*Allergen, error)
+	UpdateAllergen(ctx context.Context, id uuid.UUID, in AllergenInput) error
+	DeleteAllergen(ctx context.Context, id uuid.UUID) error
+	SearchDrugs(ctx context.Context, search string, includeInactive bool) ([]Drug, error)
+	CreateDrug(ctx context.Context, in DrugInput) (*Drug, error)
+	UpdateDrug(ctx context.Context, id uuid.UUID, in DrugInput) error
+	DeleteDrug(ctx context.Context, id uuid.UUID) error
+}
+
+// VitalField is one configurable vital measurement on the triage form. Min/Max are
+// plausibility bounds (values outside are rejected at entry); Low/High define the
+// reference range used to flag a value Low / Normal / High. Any threshold may be nil.
+type VitalField struct {
+	Key      string   `json:"key"`
+	Label    string   `json:"label"`
+	Unit     string   `json:"unit"`
+	Decimals int      `json:"decimals"`
+	Enabled  bool     `json:"enabled"`
+	Required bool     `json:"required"`
+	Order    int      `json:"order"`
+	Min      *float64 `json:"min,omitempty"`
+	Low      *float64 `json:"low,omitempty"`
+	High     *float64 `json:"high,omitempty"`
+	Max      *float64 `json:"max,omitempty"`
+}
+
+// VitalFieldInput is one row of an admin "save vitals form" request.
+type VitalFieldInput struct {
+	Key      string
+	Label    string
+	Unit     string
+	Decimals int
+	Enabled  bool
+	Required bool
+	Order    int
+	Min      *float64
+	Low      *float64
+	High     *float64
+	Max      *float64
 }

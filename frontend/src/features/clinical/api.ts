@@ -1,4 +1,24 @@
 import { apiFetch } from "@/lib/api-client";
+import { tokenStore } from "@/lib/token";
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api/v1";
+
+/** Send a recorded audio clip for speech-to-text (voice dictation). Returns the transcript. */
+export async function transcribe(blob: Blob): Promise<string> {
+  const res = await fetch(`${API_BASE}/transcribe`, {
+    method: "POST",
+    headers: { "Content-Type": blob.type || "audio/webm", Authorization: `Bearer ${tokenStore.get() ?? ""}` },
+    credentials: "include",
+    body: blob,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const code = json?.error?.code;
+    if (code === "TRANSCRIPTION_DISABLED") throw new Error("Voice dictation isn't enabled for this clinic.");
+    throw new Error(json?.error?.message || "Could not transcribe the audio.");
+  }
+  return (json?.data?.text ?? "") as string;
+}
 
 export interface Vitals {
   systolic?: number;
@@ -42,6 +62,37 @@ export function getVisit(queueEntryId: string) {
   return apiFetch<Visit>(`/visits/${queueEntryId}`);
 }
 
+// ---- Vitals form configuration (VITALS-A) ----
+
+export interface VitalField {
+  key: string;
+  label: string;
+  unit: string;
+  decimals: number;
+  enabled: boolean;
+  required: boolean;
+  order: number;
+  min?: number;
+  low?: number;
+  high?: number;
+  max?: number;
+}
+/** The clinic's configurable vitals form (defaults merged with admin overrides). */
+export function getVitalFields() {
+  return apiFetch<VitalField[]>("/vital-fields");
+}
+export function saveVitalFields(fields: VitalField[]) {
+  return apiFetch<void>("/vital-fields", { method: "PUT", body: { fields } });
+}
+
+/** Classify a numeric value against a field's reference range (low/normal/high). */
+export function vitalFlag(field: VitalField, value: number): "low" | "normal" | "high" | null {
+  if (field.low != null && value < field.low) return "low";
+  if (field.high != null && value > field.high) return "high";
+  if (field.low != null || field.high != null) return "normal";
+  return null;
+}
+
 // ---- Phase 3b: consultation / EMR ----
 
 export interface Allergy {
@@ -71,6 +122,8 @@ export interface Medication {
   frequency?: string;
   duration?: string;
   instructions?: string;
+  allergens?: string[]; // the drug's allergen tags
+  allergy_override?: string; // reason, if prescribed despite an allergy warning
 }
 export interface Workspace {
   encounter_id: string;
@@ -131,8 +184,67 @@ export function addDiagnosis(encounterId: string, body: { catalog_id?: string; c
 export function removeDiagnosis(encounterId: string, dxId: string) {
   return apiFetch<void>(`/encounters/${encounterId}/diagnoses/${dxId}`, { method: "DELETE" });
 }
-export function addMedication(encounterId: string, body: Omit<Medication, "id">) {
+export interface AddMedicationBody {
+  drug_name: string;
+  dose?: string;
+  frequency?: string;
+  duration?: string;
+  instructions?: string;
+  drug_id?: string; // link to the drug library
+  override_reason?: string; // set to prescribe despite an allergy warning
+}
+export function addMedication(encounterId: string, body: AddMedicationBody) {
   return apiFetch<Medication>(`/encounters/${encounterId}/prescriptions`, { method: "POST", body });
+}
+
+// ---- Drug & allergen libraries (RX-LIB) ----
+
+export interface Allergen {
+  id: string;
+  name: string;
+  is_active: boolean;
+}
+export interface Drug {
+  id: string;
+  name: string;
+  default_dose?: string;
+  default_frequency?: string;
+  default_duration?: string;
+  default_instructions?: string;
+  is_active: boolean;
+  allergens: string[];
+}
+export function searchDrugs(search?: string, all = false) {
+  const p = new URLSearchParams();
+  if (search) p.set("search", search);
+  if (all) p.set("all", "1");
+  const qs = p.toString();
+  return apiFetch<Drug[]>(`/drugs${qs ? `?${qs}` : ""}`);
+}
+export function createDrug(body: { name: string; default_dose?: string; default_frequency?: string; default_duration?: string; default_instructions?: string; allergen_ids?: string[] }) {
+  return apiFetch<Drug>("/drugs", { method: "POST", body });
+}
+export function updateDrug(id: string, body: { name: string; default_dose?: string; default_frequency?: string; default_duration?: string; default_instructions?: string; is_active?: boolean; allergen_ids?: string[] }) {
+  return apiFetch<void>(`/drugs/${id}`, { method: "PUT", body });
+}
+export function deleteDrug(id: string) {
+  return apiFetch<void>(`/drugs/${id}`, { method: "DELETE" });
+}
+export function listAllergens(search?: string, all = false) {
+  const p = new URLSearchParams();
+  if (search) p.set("search", search);
+  if (all) p.set("all", "1");
+  const qs = p.toString();
+  return apiFetch<Allergen[]>(`/allergens${qs ? `?${qs}` : ""}`);
+}
+export function createAllergen(name: string) {
+  return apiFetch<Allergen>("/allergens", { method: "POST", body: { name } });
+}
+export function updateAllergen(id: string, body: { name: string; is_active?: boolean }) {
+  return apiFetch<void>(`/allergens/${id}`, { method: "PUT", body });
+}
+export function deleteAllergen(id: string) {
+  return apiFetch<void>(`/allergens/${id}`, { method: "DELETE" });
 }
 export function removeMedication(encounterId: string, itemId: string) {
   return apiFetch<void>(`/encounters/${encounterId}/prescriptions/${itemId}`, { method: "DELETE" });
@@ -167,9 +279,14 @@ export interface Board {
   active: BoardActive[];
   done: BoardDone[];
 }
-/** The calling doctor's in-progress and done-today encounters. */
-export function myBoard(providerId?: string) {
-  return apiFetch<Board>(`/encounters/board${providerId ? `?provider=${providerId}` : ""}`);
+/** The calling doctor's in-progress (always) and recently-done encounters.
+ *  fromISO windows the "done" list (e.g. start of today, or 3 days back). */
+export function myBoard(providerId?: string, fromISO?: string) {
+  const p = new URLSearchParams();
+  if (providerId) p.set("provider", providerId);
+  if (fromISO) p.set("from", fromISO);
+  const qs = p.toString();
+  return apiFetch<Board>(`/encounters/board${qs ? `?${qs}` : ""}`);
 }
 
 // Diagnosis catalog

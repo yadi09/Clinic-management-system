@@ -42,6 +42,7 @@ const (
 	PrefixDiagCatalog    = "dgx"
 	PrefixPrescription   = "rx"
 	PrefixDrug           = "drg"
+	PrefixAllergen       = "aln" // allergen library (distinct from patient allergy "alg")
 	PrefixBatch          = "bat"
 	PrefixSale           = "sal"
 	PrefixSupplier       = "sup"

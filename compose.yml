@@ -20,6 +20,10 @@ x-backend-env: &backend-env
   CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
   CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
   CLOUDINARY_UPLOAD_FOLDER: ${CLOUDINARY_UPLOAD_FOLDER:-clinic}
+  # Deepgram speech-to-text for clinician voice dictation. Empty = feature disabled.
+  DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
+  DEEPGRAM_MODEL: ${DEEPGRAM_MODEL:-nova-3}
+  DEEPGRAM_LANGUAGE: ${DEEPGRAM_LANGUAGE:-en}
   RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-20}
   RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-40}
 
@@ -59,6 +63,10 @@ services:
     environment:
       <<: *backend-env
       API_HTTP_ADDR: ":8080"
+      # Privileged (RLS-bypassing) DSN used ONLY by the platform/super-admin module to
+      # provision tenants across the boundary. Uses the DB superuser; gated behind
+      # platform-admin auth. Empty disables the platform surface.
+      PLATFORM_DATABASE_URL: postgres://${POSTGRES_USER:-clinic}:${POSTGRES_PASSWORD:-clinic}@postgres:5432/${POSTGRES_DB:-clinic}?sslmode=disable
     depends_on:
       postgres:
         condition: service_healthy

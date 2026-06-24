@@ -22,6 +22,7 @@ import {
   removeCondition,
 } from "@/features/patients/api";
 import { patientCharges, refundCharge, type ChargeRow } from "@/features/billing/api";
+import { listAllergens, createAllergen } from "@/features/clinical/api";
 import { printReceipt } from "@/features/billing/print";
 import { getClinic } from "@/features/admin/api";
 import { AppError } from "@/lib/api-client";
@@ -269,20 +270,43 @@ function RowItem({ main, sub, badge, onRemove }: { main: string; sub?: string; b
 }
 
 function AllergyDialog({ patientId, onSaved }: { patientId: string; onSaved: () => void }) {
+  const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [substance, setSubstance] = useState("");
   const [reaction, setReaction] = useState("");
   const [severity, setSeverity] = useState("mild");
+  const [showSug, setShowSug] = useState(false);
+
+  // Substance is backed by the shared allergen library (the same one drugs are
+  // tagged with) so matching is reliable; a new one is added to the library on save.
+  const allergens = useQuery({ queryKey: ["allergens"], queryFn: () => listAllergens(), enabled: open });
+  const term = substance.trim().toLowerCase();
+  const suggestions = (allergens.data ?? []).filter((a) => a.name.toLowerCase().includes(term)).slice(0, 8);
+  const exact = (allergens.data ?? []).some((a) => a.name.toLowerCase() === term);
+
   const mut = useMutation({
-    mutationFn: () => addAllergy(patientId, { substance, reaction, severity }),
+    mutationFn: async () => {
+      const name = substance.trim();
+      // Ensure the allergen exists in the library (one source). Ignore "already exists".
+      if (name && !exact) {
+        try {
+          await createAllergen(name);
+        } catch {
+          /* already in the library — fine */
+        }
+      }
+      return addAllergy(patientId, { substance: name, reaction, severity });
+    },
     onSuccess: () => {
       toast.success("Allergy added");
       setSubstance("");
       setReaction("");
       setSeverity("mild");
+      qc.invalidateQueries({ queryKey: ["allergens"] });
       onSaved();
       setOpen(false);
     },
+    onError: () => toast.error("Could not add allergy"),
   });
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -296,9 +320,24 @@ function AllergyDialog({ patientId, onSaved }: { patientId: string; onSaved: () 
           <DialogTitle>Add allergy</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
-          <div className="space-y-1.5">
+          <div className="relative space-y-1.5">
             <Label>Substance</Label>
-            <Input value={substance} onChange={(e) => setSubstance(e.target.value)} />
+            <Input
+              value={substance}
+              onChange={(e) => { setSubstance(e.target.value); setShowSug(true); }}
+              onFocus={() => setShowSug(true)}
+              placeholder="Search or add an allergen…"
+            />
+            {showSug && term && suggestions.length > 0 && (
+              <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-md border bg-background shadow-md">
+                {suggestions.map((a) => (
+                  <button key={a.id} type="button" onClick={() => { setSubstance(a.name); setShowSug(false); }} className="block w-full px-3 py-1.5 text-left text-sm hover:bg-muted">
+                    {a.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            {term && !exact && <p className="text-xs text-muted-foreground">New — will be added to the allergen library.</p>}
           </div>
           <div className="space-y-1.5">
             <Label>Reaction</Label>

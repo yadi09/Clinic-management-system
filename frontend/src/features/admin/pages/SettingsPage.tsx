@@ -22,12 +22,24 @@ import {
   type ClinicSettings,
 } from "@/features/admin/api";
 import {
+  createAllergen,
   createCatalogEntry,
   createCategory,
+  createDrug,
+  deleteAllergen,
   deleteCatalogEntry,
+  deleteDrug,
+  getVitalFields,
+  listAllergens,
   listDiagnosisCategories,
+  saveVitalFields,
   searchCatalog,
+  searchDrugs,
+  updateDrug,
+  type Drug,
+  type VitalField,
 } from "@/features/clinical/api";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export function SettingsPage() {
   const { can } = useAuth();
@@ -102,6 +114,8 @@ export function SettingsPage() {
       </Card>
 
       <FlowSettingsCard manage={manage} />
+
+      <VitalsFormCard manage={manage} />
 
       <Card>
         <CardHeader>
@@ -188,7 +202,140 @@ export function SettingsPage() {
       </Card>
 
       <DiagnosisCatalogCard manage={manage} />
+
+      <DrugLibraryCard manage={manage} />
     </div>
+  );
+}
+
+function DrugLibraryCard({ manage }: { manage: boolean }) {
+  const qc = useQueryClient();
+  const [search, setSearch] = useState("");
+  const drugs = useQuery({ queryKey: ["drugs-all", search], queryFn: () => searchDrugs(search, true) });
+  const allergens = useQuery({ queryKey: ["allergens-all"], queryFn: () => listAllergens(undefined, true) });
+  const [editing, setEditing] = useState<Drug | "new" | null>(null);
+
+  const [newAllergen, setNewAllergen] = useState("");
+  const addAllergen = useMutation({
+    mutationFn: () => createAllergen(newAllergen.trim()),
+    onSuccess: () => { setNewAllergen(""); qc.invalidateQueries({ queryKey: ["allergens-all"] }); qc.invalidateQueries({ queryKey: ["allergens"] }); },
+    onError: () => toast.error("Could not add allergen (may already exist)"),
+  });
+  const removeAllergen = useMutation({
+    mutationFn: (id: string) => deleteAllergen(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["allergens-all"] }); qc.invalidateQueries({ queryKey: ["allergens"] }); },
+  });
+  const removeDrug = useMutation({
+    mutationFn: (id: string) => deleteDrug(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["drugs-all"] }),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Drug library</CardTitle>
+        <CardDescription>Drugs the doctor picks from when prescribing — defaults auto-fill, and allergen tags trigger an allergy warning. Doctors can also add drugs while prescribing.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {/* Allergens */}
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground">Allergens</Label>
+          <div className="flex flex-wrap gap-1.5">
+            {(allergens.data ?? []).map((a) => (
+              <span key={a.id} className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ${a.is_active ? "" : "opacity-50"}`}>
+                {a.name}
+                {manage && <button onClick={() => removeAllergen.mutate(a.id)} className="text-muted-foreground hover:text-destructive"><Plus className="h-3 w-3 rotate-45" /></button>}
+              </span>
+            ))}
+            {(allergens.data?.length ?? 0) === 0 && <span className="text-sm text-muted-foreground">No allergens yet.</span>}
+          </div>
+          {manage && (
+            <div className="flex items-end gap-2 pt-1">
+              <Input value={newAllergen} onChange={(e) => setNewAllergen(e.target.value)} placeholder="e.g. Penicillin" className="h-8 w-56" />
+              <Button size="sm" onClick={() => addAllergen.mutate()} disabled={!newAllergen.trim()} loading={addAllergen.isPending}><Plus /> Add allergen</Button>
+            </div>
+          )}
+        </div>
+
+        {/* Drugs */}
+        <div className="space-y-2 border-t pt-4">
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-xs text-muted-foreground">Drugs</Label>
+            {manage && <Button size="sm" variant="outline" onClick={() => setEditing("new")}><Plus /> Add drug</Button>}
+          </div>
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search drugs…" className="h-8" />
+          <ul className="max-h-80 space-y-1.5 overflow-auto">
+            {(drugs.data ?? []).map((d) => (
+              <li key={d.id} className={`flex items-center justify-between gap-3 rounded-md border bg-background p-2 text-sm ${d.is_active ? "" : "opacity-50"}`}>
+                <div className="min-w-0">
+                  <span className="font-medium">{d.name}</span>
+                  <span className="text-muted-foreground"> · {[d.default_dose, d.default_frequency, d.default_duration].filter(Boolean).join(" · ") || "no defaults"}</span>
+                  {d.allergens.length > 0 && <span className="ml-1 text-xs text-warning">⚠ {d.allergens.join(", ")}</span>}
+                </div>
+                {manage && (
+                  <div className="flex shrink-0 gap-2">
+                    <button onClick={() => setEditing(d)} className="text-xs text-muted-foreground hover:text-foreground">Edit</button>
+                    <button onClick={() => removeDrug.mutate(d.id)} className="text-xs text-muted-foreground hover:text-destructive">Remove</button>
+                  </div>
+                )}
+              </li>
+            ))}
+            {(drugs.data?.length ?? 0) === 0 && <p className="text-sm text-muted-foreground">No drugs yet.</p>}
+          </ul>
+        </div>
+      </CardContent>
+
+      {editing && <DrugDialog drug={editing === "new" ? null : editing} allergens={(allergens.data ?? []).filter((a) => a.is_active)} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); qc.invalidateQueries({ queryKey: ["drugs-all"] }); }} />}
+    </Card>
+  );
+}
+
+function DrugDialog({ drug, allergens, onClose, onSaved }: { drug: Drug | null; allergens: { id: string; name: string }[]; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState({
+    name: drug?.name ?? "", default_dose: drug?.default_dose ?? "", default_frequency: drug?.default_frequency ?? "",
+    default_duration: drug?.default_duration ?? "", default_instructions: drug?.default_instructions ?? "",
+  });
+  // Map current allergen names → ids (drug stores names; match against the library).
+  const initialIds = allergens.filter((a) => (drug?.allergens ?? []).some((n) => n.toLowerCase() === a.name.toLowerCase())).map((a) => a.id);
+  const [allergenIds, setAllergenIds] = useState<string[]>(initialIds);
+  const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const toggle = (id: string) => setAllergenIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (drug) await updateDrug(drug.id, { ...form, is_active: true, allergen_ids: allergenIds });
+      else await createDrug({ ...form, allergen_ids: allergenIds });
+    },
+    onSuccess: () => { toast.success(drug ? "Drug updated" : "Drug added"); onSaved(); },
+    onError: () => toast.error("Could not save the drug (name may already exist)"),
+  });
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>{drug ? "Edit drug" : "New drug"}</DialogTitle></DialogHeader>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2 space-y-1.5"><Label>Name</Label><Input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Amoxicillin 500mg" /></div>
+          <div className="space-y-1.5"><Label>Default dose</Label><Input value={form.default_dose} onChange={(e) => set("default_dose", e.target.value)} placeholder="1 cap" /></div>
+          <div className="space-y-1.5"><Label>Default frequency</Label><Input value={form.default_frequency} onChange={(e) => set("default_frequency", e.target.value)} placeholder="three times a day" /></div>
+          <div className="space-y-1.5"><Label>Default duration</Label><Input value={form.default_duration} onChange={(e) => set("default_duration", e.target.value)} placeholder="5 days" /></div>
+          <div className="col-span-2 space-y-1.5"><Label>Default instructions</Label><Input value={form.default_instructions} onChange={(e) => set("default_instructions", e.target.value)} placeholder="Complete the full course" /></div>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Allergen tags</Label>
+          <div className="flex flex-wrap gap-1.5">
+            {allergens.map((a) => (
+              <button key={a.id} type="button" onClick={() => toggle(a.id)} className={`rounded-full border px-2.5 py-1 text-xs ${allergenIds.includes(a.id) ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"}`}>{a.name}</button>
+            ))}
+            {allergens.length === 0 && <span className="text-xs text-muted-foreground">Add allergens above first.</span>}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={!form.name.trim()} loading={save.isPending} onClick={() => save.mutate()}>{drug ? "Save" : "Add"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -300,6 +447,94 @@ function DiagnosisCatalogCard({ manage }: { manage: boolean }) {
             </div>
           )}
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function VitalsFormCard({ manage }: { manage: boolean }) {
+  const qc = useQueryClient();
+  const cfg = useQuery({ queryKey: ["vital-fields"], queryFn: getVitalFields });
+  const [fields, setFields] = useState<VitalField[]>([]);
+  useEffect(() => {
+    if (cfg.data) setFields(cfg.data);
+  }, [cfg.data]);
+
+  const save = useMutation({
+    mutationFn: () => saveVitalFields(fields),
+    onSuccess: () => {
+      toast.success("Vitals form saved");
+      qc.invalidateQueries({ queryKey: ["vital-fields"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not save the vitals form"),
+  });
+
+  const patch = (i: number, p: Partial<VitalField>) => setFields((fs) => fs.map((f, j) => (j === i ? { ...f, ...p } : f)));
+  const num = (v: string): number | undefined => (v === "" ? undefined : Number(v));
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Vitals form</CardTitle>
+        <CardDescription>
+          Choose which vital signs triage records, and set each field's bounds. <span className="font-medium text-foreground">Min/Max</span> reject impossible
+          values at entry; <span className="font-medium text-foreground">Low/High</span> flag a reading as Low · Normal · High. Leave a box blank for "no limit".
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="py-2 pr-2 font-medium">On</th>
+                <th className="py-2 pr-2 font-medium">Field</th>
+                <th className="py-2 pr-2 font-medium">Unit</th>
+                <th className="py-2 px-1 font-medium text-center">Min</th>
+                <th className="py-2 px-1 font-medium text-center">Low</th>
+                <th className="py-2 px-1 font-medium text-center">High</th>
+                <th className="py-2 px-1 font-medium text-center">Max</th>
+                <th className="py-2 pl-2 font-medium text-center">Required</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {fields.map((f, i) => (
+                <tr key={f.key} className={f.enabled ? "" : "opacity-50"}>
+                  <td className="py-1.5 pr-2">
+                    <input type="checkbox" checked={f.enabled} disabled={!manage} onChange={(e) => patch(i, { enabled: e.target.checked })} />
+                  </td>
+                  <td className="py-1.5 pr-2">
+                    <Input className="h-8 w-32" value={f.label} disabled={!manage} onChange={(e) => patch(i, { label: e.target.value })} />
+                  </td>
+                  <td className="py-1.5 pr-2">
+                    <Input className="h-8 w-16" value={f.unit} disabled={!manage} onChange={(e) => patch(i, { unit: e.target.value })} />
+                  </td>
+                  {(["min", "low", "high", "max"] as const).map((k) => (
+                    <td key={k} className="px-1 py-1.5">
+                      <Input
+                        className="h-8 w-16 text-center"
+                        type="number"
+                        inputMode="decimal"
+                        value={f[k] ?? ""}
+                        disabled={!manage}
+                        onChange={(e) => patch(i, { [k]: num(e.target.value) })}
+                      />
+                    </td>
+                  ))}
+                  <td className="py-1.5 pl-2 text-center">
+                    <input type="checkbox" checked={f.required} disabled={!manage || !f.enabled} onChange={(e) => patch(i, { required: e.target.checked })} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {manage && (
+          <div className="border-t pt-4">
+            <Button onClick={() => save.mutate()} loading={save.isPending} disabled={fields.length === 0}>
+              Save vitals form
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

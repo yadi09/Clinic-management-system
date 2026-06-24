@@ -42,6 +42,14 @@ func (s *Service) RecordVitals(ctx context.Context, in clinical.RecordVitalsInpu
 	var outV clinical.Vitals
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := clinicaldb.New(tx)
+		// Enforce the clinic's plausibility bounds + required fields (VITALS-A).
+		fields, e := s.effectiveFields(ctx, q, tenantID)
+		if e != nil {
+			return e
+		}
+		if e := validateVitals(fields, in.Vitals); e != nil {
+			return e
+		}
 		qid := in.QueueEntryID
 		var encID uuid.UUID
 		enc, e := q.GetEncounterByQueueEntry(ctx, clinicaldb.GetEncounterByQueueEntryParams{TenantID: tenantID, QueueEntryID: &qid})
@@ -80,6 +88,9 @@ func (s *Service) RecordVitals(ctx context.Context, in clinical.RecordVitalsInpu
 		return s.publisher.Publish(ctx, tx, &tenantID, "encounter", encID, "clinical.vitals.recorded",
 			map[string]any{"encounter_id": encID, "patient_id": in.PatientID, "queue_entry_id": qid})
 	})
+	if ae, ok := apperr.As(err); ok {
+		return nil, nil, ae
+	}
 	if err != nil {
 		return nil, nil, apperr.Internal(err)
 	}
@@ -306,15 +317,22 @@ func (s *Service) AddMedication(ctx context.Context, encounterID uuid.UUID, in c
 		if enc.Status == "closed" {
 			return errLocked
 		}
-		// Allergy guard (name-based; drug-class intelligence needs a drug DB, later).
+		// Allergy guard: warn (overridable) when the drug's tagged allergens — or its
+		// name — match a recorded patient allergy. The doctor proceeds by supplying an
+		// override reason, which we record on the item for accountability.
 		allergies, e := q.ListPatientAllergies(ctx, clinicaldb.ListPatientAllergiesParams{TenantID: tenantID, PatientID: enc.PatientID})
 		if e != nil {
 			return e
 		}
-		for _, a := range allergies {
-			if allergyMatches(in.DrugName, a.Substance) {
-				return apperr.Conflict("ALLERGY_CONFLICT", "blocked: patient is allergic to "+a.Substance)
+		var drugAllergens []string
+		if in.DrugID != nil {
+			drugAllergens, e = q.GetDrugAllergenNames(ctx, clinicaldb.GetDrugAllergenNamesParams{TenantID: tenantID, DrugID: *in.DrugID})
+			if e != nil {
+				return e
 			}
+		}
+		if conflicts := allergyConflicts(in.DrugName, drugAllergens, allergies); len(conflicts) > 0 && strings.TrimSpace(in.OverrideReason) == "" {
+			return apperr.Conflict("ALLERGY_CONFLICT", "Patient is allergic to "+strings.Join(conflicts, ", ")+" — review before prescribing.")
 		}
 		// One prescription per encounter; create on first item.
 		rxID, e := q.GetPrescriptionByEncounter(ctx, clinicaldb.GetPrescriptionByEncounterParams{TenantID: tenantID, EncounterID: encounterID})
@@ -327,6 +345,7 @@ func (s *Service) AddMedication(ctx context.Context, encounterID uuid.UUID, in c
 		item, e := q.CreatePrescriptionItem(ctx, clinicaldb.CreatePrescriptionItemParams{
 			TenantID: tenantID, PrescriptionID: rxID, DrugName: in.DrugName,
 			Dose: strPtr(in.Dose), Frequency: strPtr(in.Frequency), Duration: strPtr(in.Duration), Instructions: strPtr(in.Instructions),
+			DrugID: in.DrugID, AllergyOverride: nilIfEmpty(in.OverrideReason),
 		})
 		if e != nil {
 			return e
@@ -411,10 +430,16 @@ func (s *Service) SetAside(ctx context.Context, encounterID uuid.UUID) error {
 
 // MyBoard returns the doctor's own in-progress (open/awaiting-results, with a
 // pending-lab count for the reason) and closed-today encounters.
-func (s *Service) MyBoard(ctx context.Context, providerID uuid.UUID) (*clinical.Board, error) {
+// MyBoard returns the doctor's open encounters (always, regardless of age — an
+// open encounter must stay visible until closed) plus encounters closed since
+// `doneSince` (the "Done" window; zero defaults to the last 24h).
+func (s *Service) MyBoard(ctx context.Context, providerID uuid.UUID, doneSince time.Time) (*clinical.Board, error) {
 	tenantID, _ := actorOf(ctx)
 	out := &clinical.Board{Active: []clinical.BoardActive{}, Done: []clinical.BoardDone{}}
-	since := time.Now().Add(-24 * time.Hour)
+	if doneSince.IsZero() {
+		doneSince = time.Now().Add(-24 * time.Hour)
+	}
+	since := doneSince
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := clinicaldb.New(tx)
 		act, e := q.ListMyActiveEncounters(ctx, clinicaldb.ListMyActiveEncountersParams{TenantID: tenantID, ProviderID: &providerID})
@@ -664,7 +689,7 @@ func loadWorkspace(ctx context.Context, q *clinicaldb.Queries, tenantID, encID u
 	}
 	ws.Prescription = []clinical.Medication{}
 	for _, m := range rx {
-		ws.Prescription = append(ws.Prescription, clinical.Medication{ID: m.ID, DrugName: m.DrugName, Dose: deref(m.Dose), Frequency: deref(m.Frequency), Duration: deref(m.Duration), Instructions: deref(m.Instructions)})
+		ws.Prescription = append(ws.Prescription, clinical.Medication{ID: m.ID, DrugName: m.DrugName, Dose: deref(m.Dose), Frequency: deref(m.Frequency), Duration: deref(m.Duration), Instructions: deref(m.Instructions), Allergens: m.Allergens, AllergyOverride: deref(m.AllergyOverride)})
 	}
 	return ws, nil
 }
@@ -697,6 +722,30 @@ func allergyMatches(drug, substance string) bool {
 		}
 	}
 	return false
+}
+
+// allergyConflicts returns the patient-allergy substances that clash with the drug
+// being prescribed — matched against the drug's library allergen tags (exact, case-
+// insensitive, plus token overlap) and, as a fallback, the free-typed drug name.
+func allergyConflicts(drugName string, drugAllergens []string, allergies []clinicaldb.ListPatientAllergiesRow) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, a := range allergies {
+		hit := allergyMatches(drugName, a.Substance)
+		for _, al := range drugAllergens {
+			if hit {
+				break
+			}
+			if strings.EqualFold(strings.TrimSpace(al), strings.TrimSpace(a.Substance)) || allergyMatches(al, a.Substance) {
+				hit = true
+			}
+		}
+		if hit && !seen[a.Substance] {
+			seen[a.Substance] = true
+			out = append(out, a.Substance)
+		}
+	}
+	return out
 }
 
 func ageOf(dob time.Time) int {

@@ -114,15 +114,19 @@ VALUES (@tenant_id, @encounter_id, @patient_id, @created_by)
 RETURNING id;
 
 -- name: CreatePrescriptionItem :one
-INSERT INTO prescription_items (tenant_id, prescription_id, drug_name, dose, frequency, duration, instructions)
-VALUES (@tenant_id, @prescription_id, @drug_name, @dose, @frequency, @duration, @instructions)
+INSERT INTO prescription_items (tenant_id, prescription_id, drug_name, dose, frequency, duration, instructions, drug_id, allergy_override)
+VALUES (@tenant_id, @prescription_id, @drug_name, @dose, @frequency, @duration, @instructions, @drug_id, @allergy_override)
 RETURNING id, drug_name, dose, frequency, duration, instructions;
 
 -- name: ListPrescriptionsByEncounter :many
-SELECT pi.id, pi.drug_name, pi.dose, pi.frequency, pi.duration, pi.instructions
+SELECT pi.id, pi.drug_name, pi.dose, pi.frequency, pi.duration, pi.instructions, pi.allergy_override,
+       COALESCE(array_agg(a.name ORDER BY a.name) FILTER (WHERE a.name IS NOT NULL), '{}')::text[] AS allergens
 FROM prescriptions p
 JOIN prescription_items pi ON pi.prescription_id = p.id AND pi.tenant_id = p.tenant_id
+LEFT JOIN drug_allergens da ON da.drug_id = pi.drug_id AND da.tenant_id = pi.tenant_id
+LEFT JOIN allergen_catalog a ON a.id = da.allergen_id AND a.tenant_id = pi.tenant_id AND a.deleted_at IS NULL
 WHERE p.tenant_id = @tenant_id AND p.encounter_id = @encounter_id AND p.deleted_at IS NULL
+GROUP BY pi.id
 ORDER BY pi.created_at, pi.id;
 
 -- name: DeletePrescriptionItem :exec
@@ -224,3 +228,23 @@ LEFT JOIN users u ON u.id = e.provider_id AND u.tenant_id = e.tenant_id
 WHERE e.tenant_id = @tenant_id AND e.patient_id = @patient_id AND e.deleted_at IS NULL
 ORDER BY e.started_at DESC
 LIMIT 20;
+
+-- name: ListVitalFieldDefs :many
+-- Per-clinic overrides for the triage vitals form (VITALS-A). Absent rows fall
+-- back to the built-in default catalog in the service.
+SELECT id, field_key, label, unit, decimals, enabled, required, sort_order,
+       min_val, low_val, high_val, max_val
+FROM vital_field_defs
+WHERE tenant_id = @tenant_id
+ORDER BY sort_order, field_key;
+
+-- name: UpsertVitalFieldDef :exec
+INSERT INTO vital_field_defs
+  (tenant_id, field_key, label, unit, decimals, enabled, required, sort_order, min_val, low_val, high_val, max_val)
+VALUES
+  (@tenant_id, @field_key, @label, @unit, @decimals, @enabled, @required, @sort_order, @min_val, @low_val, @high_val, @max_val)
+ON CONFLICT (tenant_id, field_key) DO UPDATE SET
+  label = EXCLUDED.label, unit = EXCLUDED.unit, decimals = EXCLUDED.decimals,
+  enabled = EXCLUDED.enabled, required = EXCLUDED.required, sort_order = EXCLUDED.sort_order,
+  min_val = EXCLUDED.min_val, low_val = EXCLUDED.low_val, high_val = EXCLUDED.high_val, max_val = EXCLUDED.max_val,
+  updated_at = now();

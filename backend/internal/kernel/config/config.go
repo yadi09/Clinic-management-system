@@ -31,6 +31,10 @@ type Config struct {
 	InviteTTL          time.Duration
 
 	DatabaseURL string
+	// PlatformDatabaseURL is a privileged (RLS-bypassing) DSN used only by the
+	// platform/super-admin module to provision tenants across the boundary. When
+	// empty, the platform surface is disabled.
+	PlatformDatabaseURL string
 
 	JWTSecret       []byte
 	JWTIssuer       string
@@ -42,9 +46,22 @@ type Config struct {
 
 	Cloudinary CloudinaryConfig
 
+	Transcription TranscriptionConfig
+
 	RateLimitRPS   float64
 	RateLimitBurst int
 }
+
+// TranscriptionConfig holds the Deepgram speech-to-text credentials used for voice
+// dictation. When the API key is empty the dictation endpoint is disabled.
+type TranscriptionConfig struct {
+	DeepgramAPIKey string
+	Model          string
+	Language       string
+}
+
+// Configured reports whether a Deepgram key is present.
+func (t TranscriptionConfig) Configured() bool { return t.DeepgramAPIKey != "" }
 
 // CloudinaryConfig holds the Cloudinary storage-provider credentials.
 type CloudinaryConfig struct {
@@ -68,18 +85,24 @@ func Load() (Config, error) {
 	fail := func(format string, a ...any) { errs = append(errs, fmt.Sprintf(format, a...)) }
 
 	cfg := Config{
-		Env:                Env(getenv("APP_ENV", "dev")),
-		HTTPAddr:           getenv("API_HTTP_ADDR", ":8080"),
-		CORSAllowedOrigins: splitCSV(getenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173")),
-		BaseDomain:         strings.TrimSpace(os.Getenv("BASE_DOMAIN")),
-		AppBaseURL:         getenv("APP_BASE_URL", "http://localhost:8088"),
-		DatabaseURL:        os.Getenv("DATABASE_URL"),
-		JWTIssuer:          getenv("JWT_ISSUER", "clinicsaas"),
+		Env:                 Env(getenv("APP_ENV", "dev")),
+		HTTPAddr:            getenv("API_HTTP_ADDR", ":8080"),
+		CORSAllowedOrigins:  splitCSV(getenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173")),
+		BaseDomain:          strings.TrimSpace(os.Getenv("BASE_DOMAIN")),
+		AppBaseURL:          getenv("APP_BASE_URL", "http://localhost:8088"),
+		DatabaseURL:         os.Getenv("DATABASE_URL"),
+		PlatformDatabaseURL: os.Getenv("PLATFORM_DATABASE_URL"),
+		JWTIssuer:           getenv("JWT_ISSUER", "clinicsaas"),
 		Cloudinary: CloudinaryConfig{
 			CloudName:    os.Getenv("CLOUDINARY_CLOUD_NAME"),
 			APIKey:       os.Getenv("CLOUDINARY_API_KEY"),
 			APISecret:    os.Getenv("CLOUDINARY_API_SECRET"),
 			UploadFolder: getenv("CLOUDINARY_UPLOAD_FOLDER", "clinic"),
+		},
+		Transcription: TranscriptionConfig{
+			DeepgramAPIKey: os.Getenv("DEEPGRAM_API_KEY"),
+			Model:          getenv("DEEPGRAM_MODEL", "nova-3"),
+			Language:       getenv("DEEPGRAM_LANGUAGE", "en"),
 		},
 	}
 

@@ -309,19 +309,21 @@ func (q *Queries) CreatePrescription(ctx context.Context, arg CreatePrescription
 }
 
 const createPrescriptionItem = `-- name: CreatePrescriptionItem :one
-INSERT INTO prescription_items (tenant_id, prescription_id, drug_name, dose, frequency, duration, instructions)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO prescription_items (tenant_id, prescription_id, drug_name, dose, frequency, duration, instructions, drug_id, allergy_override)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING id, drug_name, dose, frequency, duration, instructions
 `
 
 type CreatePrescriptionItemParams struct {
-	TenantID       uuid.UUID `json:"tenant_id"`
-	PrescriptionID uuid.UUID `json:"prescription_id"`
-	DrugName       string    `json:"drug_name"`
-	Dose           *string   `json:"dose"`
-	Frequency      *string   `json:"frequency"`
-	Duration       *string   `json:"duration"`
-	Instructions   *string   `json:"instructions"`
+	TenantID        uuid.UUID  `json:"tenant_id"`
+	PrescriptionID  uuid.UUID  `json:"prescription_id"`
+	DrugName        string     `json:"drug_name"`
+	Dose            *string    `json:"dose"`
+	Frequency       *string    `json:"frequency"`
+	Duration        *string    `json:"duration"`
+	Instructions    *string    `json:"instructions"`
+	DrugID          *uuid.UUID `json:"drug_id"`
+	AllergyOverride *string    `json:"allergy_override"`
 }
 
 type CreatePrescriptionItemRow struct {
@@ -342,6 +344,8 @@ func (q *Queries) CreatePrescriptionItem(ctx context.Context, arg CreatePrescrip
 		arg.Frequency,
 		arg.Duration,
 		arg.Instructions,
+		arg.DrugID,
+		arg.AllergyOverride,
 	)
 	var i CreatePrescriptionItemRow
 	err := row.Scan(
@@ -1069,10 +1073,14 @@ func (q *Queries) ListPatientEncounters(ctx context.Context, arg ListPatientEnco
 }
 
 const listPrescriptionsByEncounter = `-- name: ListPrescriptionsByEncounter :many
-SELECT pi.id, pi.drug_name, pi.dose, pi.frequency, pi.duration, pi.instructions
+SELECT pi.id, pi.drug_name, pi.dose, pi.frequency, pi.duration, pi.instructions, pi.allergy_override,
+       COALESCE(array_agg(a.name ORDER BY a.name) FILTER (WHERE a.name IS NOT NULL), '{}')::text[] AS allergens
 FROM prescriptions p
 JOIN prescription_items pi ON pi.prescription_id = p.id AND pi.tenant_id = p.tenant_id
+LEFT JOIN drug_allergens da ON da.drug_id = pi.drug_id AND da.tenant_id = pi.tenant_id
+LEFT JOIN allergen_catalog a ON a.id = da.allergen_id AND a.tenant_id = pi.tenant_id AND a.deleted_at IS NULL
 WHERE p.tenant_id = $1 AND p.encounter_id = $2 AND p.deleted_at IS NULL
+GROUP BY pi.id
 ORDER BY pi.created_at, pi.id
 `
 
@@ -1082,12 +1090,14 @@ type ListPrescriptionsByEncounterParams struct {
 }
 
 type ListPrescriptionsByEncounterRow struct {
-	ID           uuid.UUID `json:"id"`
-	DrugName     string    `json:"drug_name"`
-	Dose         *string   `json:"dose"`
-	Frequency    *string   `json:"frequency"`
-	Duration     *string   `json:"duration"`
-	Instructions *string   `json:"instructions"`
+	ID              uuid.UUID `json:"id"`
+	DrugName        string    `json:"drug_name"`
+	Dose            *string   `json:"dose"`
+	Frequency       *string   `json:"frequency"`
+	Duration        *string   `json:"duration"`
+	Instructions    *string   `json:"instructions"`
+	AllergyOverride *string   `json:"allergy_override"`
+	Allergens       []string  `json:"allergens"`
 }
 
 func (q *Queries) ListPrescriptionsByEncounter(ctx context.Context, arg ListPrescriptionsByEncounterParams) ([]ListPrescriptionsByEncounterRow, error) {
@@ -1106,6 +1116,66 @@ func (q *Queries) ListPrescriptionsByEncounter(ctx context.Context, arg ListPres
 			&i.Frequency,
 			&i.Duration,
 			&i.Instructions,
+			&i.AllergyOverride,
+			&i.Allergens,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listVitalFieldDefs = `-- name: ListVitalFieldDefs :many
+SELECT id, field_key, label, unit, decimals, enabled, required, sort_order,
+       min_val, low_val, high_val, max_val
+FROM vital_field_defs
+WHERE tenant_id = $1
+ORDER BY sort_order, field_key
+`
+
+type ListVitalFieldDefsRow struct {
+	ID        uuid.UUID `json:"id"`
+	FieldKey  string    `json:"field_key"`
+	Label     string    `json:"label"`
+	Unit      string    `json:"unit"`
+	Decimals  int32     `json:"decimals"`
+	Enabled   bool      `json:"enabled"`
+	Required  bool      `json:"required"`
+	SortOrder int32     `json:"sort_order"`
+	MinVal    *string   `json:"min_val"`
+	LowVal    *string   `json:"low_val"`
+	HighVal   *string   `json:"high_val"`
+	MaxVal    *string   `json:"max_val"`
+}
+
+// Per-clinic overrides for the triage vitals form (VITALS-A). Absent rows fall
+// back to the built-in default catalog in the service.
+func (q *Queries) ListVitalFieldDefs(ctx context.Context, tenantID uuid.UUID) ([]ListVitalFieldDefsRow, error) {
+	rows, err := q.db.Query(ctx, listVitalFieldDefs, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListVitalFieldDefsRow{}
+	for rows.Next() {
+		var i ListVitalFieldDefsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.FieldKey,
+			&i.Label,
+			&i.Unit,
+			&i.Decimals,
+			&i.Enabled,
+			&i.Required,
+			&i.SortOrder,
+			&i.MinVal,
+			&i.LowVal,
+			&i.HighVal,
+			&i.MaxVal,
 		); err != nil {
 			return nil, err
 		}
@@ -1314,4 +1384,49 @@ func (q *Queries) UpdateNote(ctx context.Context, arg UpdateNoteParams) (UpdateN
 		&i.SignedAt,
 	)
 	return i, err
+}
+
+const upsertVitalFieldDef = `-- name: UpsertVitalFieldDef :exec
+INSERT INTO vital_field_defs
+  (tenant_id, field_key, label, unit, decimals, enabled, required, sort_order, min_val, low_val, high_val, max_val)
+VALUES
+  ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+ON CONFLICT (tenant_id, field_key) DO UPDATE SET
+  label = EXCLUDED.label, unit = EXCLUDED.unit, decimals = EXCLUDED.decimals,
+  enabled = EXCLUDED.enabled, required = EXCLUDED.required, sort_order = EXCLUDED.sort_order,
+  min_val = EXCLUDED.min_val, low_val = EXCLUDED.low_val, high_val = EXCLUDED.high_val, max_val = EXCLUDED.max_val,
+  updated_at = now()
+`
+
+type UpsertVitalFieldDefParams struct {
+	TenantID  uuid.UUID `json:"tenant_id"`
+	FieldKey  string    `json:"field_key"`
+	Label     string    `json:"label"`
+	Unit      string    `json:"unit"`
+	Decimals  int32     `json:"decimals"`
+	Enabled   bool      `json:"enabled"`
+	Required  bool      `json:"required"`
+	SortOrder int32     `json:"sort_order"`
+	MinVal    *string   `json:"min_val"`
+	LowVal    *string   `json:"low_val"`
+	HighVal   *string   `json:"high_val"`
+	MaxVal    *string   `json:"max_val"`
+}
+
+func (q *Queries) UpsertVitalFieldDef(ctx context.Context, arg UpsertVitalFieldDefParams) error {
+	_, err := q.db.Exec(ctx, upsertVitalFieldDef,
+		arg.TenantID,
+		arg.FieldKey,
+		arg.Label,
+		arg.Unit,
+		arg.Decimals,
+		arg.Enabled,
+		arg.Required,
+		arg.SortOrder,
+		arg.MinVal,
+		arg.LowVal,
+		arg.HighVal,
+		arg.MaxVal,
+	)
+	return err
 }

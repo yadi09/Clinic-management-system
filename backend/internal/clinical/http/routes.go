@@ -14,6 +14,9 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	v.GET("/:qid", h.GetVisit)
 	v.POST("/:qid/vitals", h.RecordVitals)
 
+	// Voice dictation (speech-to-text) for clinical documentation — clinicians.
+	rg.POST("/transcribe", httpx.RequirePermission("encounter.manage"), h.Transcribe)
+
 	// Encounter workspace (3b) — doctors.
 	enc := rg.Group("/encounters", httpx.RequirePermission("encounter.manage"))
 	enc.POST("", h.OpenEncounter)   // open-or-get the encounter for a queue entry
@@ -32,11 +35,29 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	// reference data); writes are admin-only (clinic.manage).
 	rg.GET("/diagnosis-categories", h.ListCategories)
 	rg.GET("/diagnosis-catalog", h.SearchCatalog)
+	// Vitals form config (VITALS-A): the recorder reads it (any staff who take
+	// vitals); only an admin edits it.
+	rg.GET("/vital-fields", h.GetVitalFields)
 	admin := rg.Group("", httpx.RequirePermission("clinic.manage"))
+	admin.PUT("/vital-fields", h.SaveVitalFields)
 	admin.POST("/diagnosis-categories", h.CreateCategory)
 	admin.PUT("/diagnosis-categories/:id", h.UpdateCategory)
 	admin.DELETE("/diagnosis-categories/:id", h.DeleteCategory)
 	admin.POST("/diagnosis-catalog", h.CreateCatalogEntry)
 	admin.PUT("/diagnosis-catalog/:id", h.UpdateCatalogEntry)
 	admin.DELETE("/diagnosis-catalog/:id", h.DeleteCatalogEntry)
+
+	// Drug & allergen libraries (RX-LIB) — reads open to clinicians (used while
+	// prescribing); writes by a doctor (encounter.manage) or a clinic admin.
+	rg.GET("/drugs", h.SearchDrugs)
+	rg.GET("/allergens", h.ListAllergens)
+	rxlib := rg.Group("", httpx.RequireAnyPermission("encounter.manage", "clinic.manage"))
+	rxlib.POST("/drugs", h.CreateDrug)
+	rxlib.PUT("/drugs/:id", h.UpdateDrug)
+	rxlib.DELETE("/drugs/:id", h.DeleteDrug)
+	rxlib.PUT("/allergens/:id", h.UpdateAllergen)
+	rxlib.DELETE("/allergens/:id", h.DeleteAllergen)
+	// Creating an allergen is also allowed for whoever records patient allergies
+	// (patient.update), so the allergen library stays the single source of truth.
+	rg.POST("/allergens", httpx.RequireAnyPermission("encounter.manage", "clinic.manage", "patient.update"), h.CreateAllergen)
 }

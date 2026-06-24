@@ -3,6 +3,8 @@
 package http
 
 import (
+	"io"
+	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,13 +14,19 @@ import (
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
 	"github.com/reicb/clinicsaas/internal/kernel/httpx"
 	"github.com/reicb/clinicsaas/internal/kernel/id"
+	"github.com/reicb/clinicsaas/internal/kernel/transcribe"
 )
 
 // Handlers wires the clinical service to HTTP.
-type Handlers struct{ svc clinical.Service }
+type Handlers struct {
+	svc         clinical.Service
+	transcriber *transcribe.Client // voice dictation (nil/unconfigured = disabled)
+}
 
 // NewHandlers constructs clinical HTTP handlers.
-func NewHandlers(svc clinical.Service) *Handlers { return &Handlers{svc: svc} }
+func NewHandlers(svc clinical.Service, transcriber *transcribe.Client) *Handlers {
+	return &Handlers{svc: svc, transcriber: transcriber}
+}
 
 // ---- requests ----
 
@@ -158,11 +166,13 @@ type diagnosisRequest struct {
 	IsPrimary   bool   `json:"is_primary"`
 }
 type medicationRequest struct {
-	DrugName     string `json:"drug_name" binding:"required"`
-	Dose         string `json:"dose"`
-	Frequency    string `json:"frequency"`
-	Duration     string `json:"duration"`
-	Instructions string `json:"instructions"`
+	DrugName       string `json:"drug_name" binding:"required"`
+	Dose           string `json:"dose"`
+	Frequency      string `json:"frequency"`
+	Duration       string `json:"duration"`
+	Instructions   string `json:"instructions"`
+	DrugID         string `json:"drug_id"`         // optional drug-library link
+	OverrideReason string `json:"override_reason"` // set to prescribe despite an allergy warning
 }
 type categoryRequest struct {
 	Name      string `json:"name" binding:"required"`
@@ -391,9 +401,19 @@ func (h *Handlers) AddMedication(c *gin.Context) {
 		httpx.Fail(c, apperr.Validation("a medication name is required"))
 		return
 	}
-	m, err := h.svc.AddMedication(c.Request.Context(), encID, clinical.MedicationInput{
+	in := clinical.MedicationInput{
 		DrugName: req.DrugName, Dose: req.Dose, Frequency: req.Frequency, Duration: req.Duration, Instructions: req.Instructions,
-	})
+		OverrideReason: req.OverrideReason,
+	}
+	if req.DrugID != "" {
+		did, err := id.Decode(id.PrefixDrug, req.DrugID)
+		if err != nil {
+			httpx.Fail(c, apperr.Validation("invalid drug_id"))
+			return
+		}
+		in.DrugID = &did
+	}
+	m, err := h.svc.AddMedication(c.Request.Context(), encID, in)
 	if err != nil {
 		httpx.Fail(c, err)
 		return
@@ -478,7 +498,11 @@ func (h *Handlers) MyBoard(c *gin.Context) {
 		httpx.Fail(c, apperr.Unauthenticated("authentication required"))
 		return
 	}
-	board, err := h.svc.MyBoard(c.Request.Context(), provider)
+	var doneSince time.Time
+	if f, err := time.Parse(time.RFC3339, c.Query("from")); err == nil {
+		doneSince = f
+	}
+	board, err := h.svc.MyBoard(c.Request.Context(), provider, doneSince)
 	if err != nil {
 		httpx.Fail(c, err)
 		return
@@ -652,4 +676,256 @@ func decodeParam(c *gin.Context, prefix, param string) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return u, true
+}
+
+// GetVitalFields handles GET /vital-fields — the clinic's configurable vitals form.
+func (h *Handlers) GetVitalFields(c *gin.Context) {
+	fields, err := h.svc.GetVitalFields(c.Request.Context())
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, fields)
+}
+
+type vitalFieldReq struct {
+	Key      string   `json:"key"`
+	Label    string   `json:"label"`
+	Unit     string   `json:"unit"`
+	Decimals int      `json:"decimals"`
+	Enabled  bool     `json:"enabled"`
+	Required bool     `json:"required"`
+	Order    int      `json:"order"`
+	Min      *float64 `json:"min"`
+	Low      *float64 `json:"low"`
+	High     *float64 `json:"high"`
+	Max      *float64 `json:"max"`
+}
+type saveVitalFieldsReq struct {
+	Fields []vitalFieldReq `json:"fields" binding:"required"`
+}
+
+// SaveVitalFields handles PUT /vital-fields — admin updates the vitals form.
+func (h *Handlers) SaveVitalFields(c *gin.Context) {
+	var req saveVitalFieldsReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("fields are required"))
+		return
+	}
+	in := make([]clinical.VitalFieldInput, 0, len(req.Fields))
+	for _, f := range req.Fields {
+		in = append(in, clinical.VitalFieldInput{
+			Key: f.Key, Label: f.Label, Unit: f.Unit, Decimals: f.Decimals, Enabled: f.Enabled,
+			Required: f.Required, Order: f.Order, Min: f.Min, Low: f.Low, High: f.High, Max: f.Max,
+		})
+	}
+	if err := h.svc.SaveVitalFields(c.Request.Context(), in); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+// Transcribe handles POST /transcribe — accepts a raw audio body (e.g. audio/webm
+// from the browser mic) and returns the transcript for clinician voice dictation.
+// The Deepgram key is held server-side; the endpoint is disabled when unconfigured.
+func (h *Handlers) Transcribe(c *gin.Context) {
+	if h.transcriber == nil || !h.transcriber.Configured() {
+		httpx.Fail(c, apperr.New(http.StatusServiceUnavailable, "TRANSCRIPTION_DISABLED", "voice dictation is not configured"))
+		return
+	}
+	// Cap the upload so a runaway recording can't exhaust memory (~20 MB ≈ minutes of audio).
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 20<<20)
+	audio, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("audio upload too large or unreadable"))
+		return
+	}
+	if len(audio) == 0 {
+		httpx.Fail(c, apperr.Validation("no audio received"))
+		return
+	}
+	text, err := h.transcriber.Transcribe(c.Request.Context(), audio, c.ContentType())
+	if err != nil {
+		httpx.Fail(c, apperr.New(http.StatusBadGateway, "TRANSCRIPTION_FAILED", "could not transcribe the audio"))
+		return
+	}
+	httpx.OK(c, gin.H{"text": text})
+}
+
+// ============================================================================
+// Drug & allergen libraries (RX-LIB)
+// ============================================================================
+
+type allergenDTO struct {
+	ID string `json:"id"`
+	clinical.Allergen
+}
+type drugDTO struct {
+	ID string `json:"id"`
+	clinical.Drug
+}
+type allergenRequest struct {
+	Name     string `json:"name"`
+	IsActive *bool  `json:"is_active"`
+}
+type drugRequest struct {
+	Name                string   `json:"name"`
+	DefaultDose         string   `json:"default_dose"`
+	DefaultFrequency    string   `json:"default_frequency"`
+	DefaultDuration     string   `json:"default_duration"`
+	DefaultInstructions string   `json:"default_instructions"`
+	IsActive            *bool    `json:"is_active"`
+	AllergenIDs         []string `json:"allergen_ids"`
+}
+
+func boolOr(p *bool, def bool) bool {
+	if p == nil {
+		return def
+	}
+	return *p
+}
+
+// ListAllergens handles GET /allergens?search=&all=.
+func (h *Handlers) ListAllergens(c *gin.Context) {
+	items, err := h.svc.ListAllergens(c.Request.Context(), c.Query("search"), c.Query("all") == "1")
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out := make([]allergenDTO, 0, len(items))
+	for _, a := range items {
+		out = append(out, allergenDTO{ID: id.Encode(id.PrefixAllergen, a.ID), Allergen: a})
+	}
+	httpx.OK(c, out)
+}
+
+// CreateAllergen handles POST /allergens.
+func (h *Handlers) CreateAllergen(c *gin.Context) {
+	var req allergenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("name is required"))
+		return
+	}
+	a, err := h.svc.CreateAllergen(c.Request.Context(), req.Name)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.Created(c, allergenDTO{ID: id.Encode(id.PrefixAllergen, a.ID), Allergen: *a})
+}
+
+// UpdateAllergen handles PUT /allergens/:id.
+func (h *Handlers) UpdateAllergen(c *gin.Context) {
+	aid, ok := decodeParam(c, id.PrefixAllergen, "id")
+	if !ok {
+		return
+	}
+	var req allergenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("name is required"))
+		return
+	}
+	if err := h.svc.UpdateAllergen(c.Request.Context(), aid, clinical.AllergenInput{Name: req.Name, IsActive: boolOr(req.IsActive, true)}); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+// DeleteAllergen handles DELETE /allergens/:id.
+func (h *Handlers) DeleteAllergen(c *gin.Context) {
+	aid, ok := decodeParam(c, id.PrefixAllergen, "id")
+	if !ok {
+		return
+	}
+	if err := h.svc.DeleteAllergen(c.Request.Context(), aid); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+func (h *Handlers) drugInput(c *gin.Context, req drugRequest) (clinical.DrugInput, bool) {
+	in := clinical.DrugInput{
+		Name: req.Name, DefaultDose: req.DefaultDose, DefaultFrequency: req.DefaultFrequency,
+		DefaultDuration: req.DefaultDuration, DefaultInstructions: req.DefaultInstructions, IsActive: boolOr(req.IsActive, true),
+	}
+	for _, raw := range req.AllergenIDs {
+		aid, err := id.Decode(id.PrefixAllergen, raw)
+		if err != nil {
+			httpx.Fail(c, apperr.Validation("invalid allergen id"))
+			return in, false
+		}
+		in.AllergenIDs = append(in.AllergenIDs, aid)
+	}
+	return in, true
+}
+
+// SearchDrugs handles GET /drugs?search=&all=.
+func (h *Handlers) SearchDrugs(c *gin.Context) {
+	items, err := h.svc.SearchDrugs(c.Request.Context(), c.Query("search"), c.Query("all") == "1")
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out := make([]drugDTO, 0, len(items))
+	for _, d := range items {
+		out = append(out, drugDTO{ID: id.Encode(id.PrefixDrug, d.ID), Drug: d})
+	}
+	httpx.OK(c, out)
+}
+
+// CreateDrug handles POST /drugs.
+func (h *Handlers) CreateDrug(c *gin.Context) {
+	var req drugRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("name is required"))
+		return
+	}
+	in, ok := h.drugInput(c, req)
+	if !ok {
+		return
+	}
+	d, err := h.svc.CreateDrug(c.Request.Context(), in)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.Created(c, drugDTO{ID: id.Encode(id.PrefixDrug, d.ID), Drug: *d})
+}
+
+// UpdateDrug handles PUT /drugs/:id.
+func (h *Handlers) UpdateDrug(c *gin.Context) {
+	did, ok := decodeParam(c, id.PrefixDrug, "id")
+	if !ok {
+		return
+	}
+	var req drugRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("name is required"))
+		return
+	}
+	in, ok := h.drugInput(c, req)
+	if !ok {
+		return
+	}
+	if err := h.svc.UpdateDrug(c.Request.Context(), did, in); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+// DeleteDrug handles DELETE /drugs/:id.
+func (h *Handlers) DeleteDrug(c *gin.Context) {
+	did, ok := decodeParam(c, id.PrefixDrug, "id")
+	if !ok {
+		return
+	}
+	if err := h.svc.DeleteDrug(c.Request.Context(), did); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
 }
