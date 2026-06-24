@@ -194,8 +194,12 @@ export interface PaidVisit {
   refunded: boolean;
   lines: { description: string; amount: string }[];
 }
-export function paymentsToday(sinceISO?: string) {
-  return apiFetch<PaidVisit[]>(`/billing/payments${sinceISO ? `?since=${encodeURIComponent(sinceISO)}` : ""}`);
+export function paymentsToday(sinceISO?: string, untilISO?: string) {
+  const p = new URLSearchParams();
+  if (sinceISO) p.set("since", sinceISO);
+  if (untilISO) p.set("until", untilISO);
+  const qs = p.toString();
+  return apiFetch<PaidVisit[]>(`/billing/payments${qs ? `?${qs}` : ""}`);
 }
 export function refundVisit(receiptNo: number, reason: string) {
   return apiFetch<void>("/billing/refund-visit", { method: "POST", body: { receipt_no: receiptNo, reason } });
@@ -212,8 +216,12 @@ export function refundCharge(id: string, reason: string) {
 export function waiverReasons() {
   return apiFetch<string[]>("/billing/waiver-reasons");
 }
-export function cashSummary(sinceISO?: string) {
-  return apiFetch<CashSummary>(`/billing/cash${sinceISO ? `?since=${encodeURIComponent(sinceISO)}` : ""}`);
+export function cashSummary(sinceISO?: string, untilISO?: string) {
+  const p = new URLSearchParams();
+  if (sinceISO) p.set("since", sinceISO);
+  if (untilISO) p.set("until", untilISO);
+  const qs = p.toString();
+  return apiFetch<CashSummary>(`/billing/cash${qs ? `?${qs}` : ""}`);
 }
 export function dayClose(date?: string) {
   return apiFetch<ExpectedDay>(`/billing/day-close${date ? `?date=${date}` : ""}`);

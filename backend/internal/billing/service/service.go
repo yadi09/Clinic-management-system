@@ -643,11 +643,11 @@ func (s *Service) RefundCharge(ctx context.Context, id uuid.UUID, reason string)
 
 // PaymentsSince lists completed payments (grouped by receipt) for the cashier's
 // "Paid today" audit view, newest first.
-func (s *Service) PaymentsSince(ctx context.Context, since time.Time) ([]billing.PaidVisit, error) {
+func (s *Service) PaymentsSince(ctx context.Context, since time.Time, until *time.Time) ([]billing.PaidVisit, error) {
 	tenantID, _ := actorOf(ctx)
 	out := []billing.PaidVisit{}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		rows, e := billingdb.New(tx).ListPaidSince(ctx, billingdb.ListPaidSinceParams{TenantID: tenantID, Since: &since})
+		rows, e := billingdb.New(tx).ListPaidSince(ctx, billingdb.ListPaidSinceParams{TenantID: tenantID, Since: &since, Until: until})
 		if e != nil {
 			return e
 		}
@@ -723,17 +723,17 @@ func (s *Service) RefundVisit(ctx context.Context, receiptNo int64, reason strin
 	return nil
 }
 
-func (s *Service) CashSince(ctx context.Context, since time.Time) (*billing.CashSummary, error) {
+func (s *Service) CashSince(ctx context.Context, since time.Time, until *time.Time) (*billing.CashSummary, error) {
 	tenantID, _ := actorOf(ctx)
 	out := &billing.CashSummary{BySource: []billing.CashLine{}}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := billingdb.New(tx)
-		col, e := q.CashCollectedSince(ctx, billingdb.CashCollectedSinceParams{TenantID: tenantID, Since: &since})
+		col, e := q.CashCollectedSince(ctx, billingdb.CashCollectedSinceParams{TenantID: tenantID, Since: &since, Until: until})
 		if e != nil {
 			return e
 		}
 		out.Collected, out.CollectedCount = col.Total, int(col.N)
-		wv, e := q.CashWaivedSince(ctx, billingdb.CashWaivedSinceParams{TenantID: tenantID, Since: &since})
+		wv, e := q.CashWaivedSince(ctx, billingdb.CashWaivedSinceParams{TenantID: tenantID, Since: &since, Until: until})
 		if e != nil {
 			return e
 		}
@@ -743,33 +743,33 @@ func (s *Service) CashSince(ctx context.Context, since time.Time) (*billing.Cash
 			return e
 		}
 		out.Outstanding, out.OutstandingCount = os.Total, int(os.N)
-		rf, e := q.CashRefundedSince(ctx, billingdb.CashRefundedSinceParams{TenantID: tenantID, Since: &since})
+		rf, e := q.CashRefundedSince(ctx, billingdb.CashRefundedSinceParams{TenantID: tenantID, Since: &since, Until: until})
 		if e != nil {
 			return e
 		}
 		out.Refunded, out.RefundedCount = rf.Total, int(rf.N)
-		by, e := q.CashBySourceSince(ctx, billingdb.CashBySourceSinceParams{TenantID: tenantID, Since: &since})
+		by, e := q.CashBySourceSince(ctx, billingdb.CashBySourceSinceParams{TenantID: tenantID, Since: &since, Until: until})
 		if e != nil {
 			return e
 		}
 		for _, r := range by {
 			out.BySource = append(out.BySource, billing.CashLine{Source: r.Source, Total: r.Total, Count: int(r.N)})
 		}
-		bm, e := q.CashByMethodSince(ctx, billingdb.CashByMethodSinceParams{TenantID: tenantID, Since: &since})
+		bm, e := q.CashByMethodSince(ctx, billingdb.CashByMethodSinceParams{TenantID: tenantID, Since: &since, Until: until})
 		if e != nil {
 			return e
 		}
 		for _, r := range bm {
 			out.ByMethod = append(out.ByMethod, billing.CashGroup{Label: r.Method, Total: r.Total, Count: int(r.N)})
 		}
-		bc, e := q.CashByCashierSince(ctx, billingdb.CashByCashierSinceParams{TenantID: tenantID, Since: &since})
+		bc, e := q.CashByCashierSince(ctx, billingdb.CashByCashierSinceParams{TenantID: tenantID, Since: &since, Until: until})
 		if e != nil {
 			return e
 		}
 		for _, r := range bc {
 			out.ByCashier = append(out.ByCashier, billing.CashGroup{Label: r.Cashier, Total: r.Total, Count: int(r.N)})
 		}
-		bb, e := q.CashByBranchSince(ctx, billingdb.CashByBranchSinceParams{TenantID: tenantID, Since: &since})
+		bb, e := q.CashByBranchSince(ctx, billingdb.CashByBranchSinceParams{TenantID: tenantID, Since: &since, Until: until})
 		if e != nil {
 			return e
 		}

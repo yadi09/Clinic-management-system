@@ -3,20 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { Card } from "@/components/ui/card";
 import { cashSummary, reconciliations } from "@/features/billing/api";
-
-function startOf(range: "today" | "7d" | "30d") {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  if (range === "7d") d.setDate(d.getDate() - 6);
-  if (range === "30d") d.setDate(d.getDate() - 29);
-  return d.toISOString();
-}
-
-const RANGES = [
-  { key: "today", label: "Today" },
-  { key: "7d", label: "Last 7 days" },
-  { key: "30d", label: "Last 30 days" },
-] as const;
+import { DateRangeFilter, windowFor, type DateWindow } from "@/components/ui/date-range-filter";
 
 function Kpi({ label, value, sub, tone }: { label: string; value: string; sub: string; tone?: string }) {
   return (
@@ -29,8 +16,8 @@ function Kpi({ label, value, sub, tone }: { label: string; value: string; sub: s
 }
 
 export function FinancePage() {
-  const [range, setRange] = useState<(typeof RANGES)[number]["key"]>("today");
-  const q = useQuery({ queryKey: ["cash", range], queryFn: () => cashSummary(startOf(range)), refetchInterval: 30000 });
+  const [win, setWin] = useState<DateWindow>(() => windowFor("today"));
+  const q = useQuery({ queryKey: ["cash", win.from, win.to], queryFn: () => cashSummary(win.from, win.to), refetchInterval: 30000 });
   const recon = useQuery({ queryKey: ["reconciliations-all"], queryFn: () => reconciliations(true) });
   const c = q.data;
   const cur = "ETB";
@@ -42,17 +29,7 @@ export function FinancePage() {
           <h1>Finance</h1>
           <p className="text-sm text-muted-foreground">Cash collected (net of refunds), waived, refunded, and outstanding.</p>
         </div>
-        <div className="flex gap-1 rounded-md border p-0.5">
-          {RANGES.map((r) => (
-            <button
-              key={r.key}
-              onClick={() => setRange(r.key)}
-              className={`rounded px-3 py-1.5 text-sm font-medium ${range === r.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
+        <DateRangeFilter onChange={setWin} />
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

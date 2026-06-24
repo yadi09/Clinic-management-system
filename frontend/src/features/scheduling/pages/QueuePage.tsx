@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { listDepartments } from "@/features/admin/api";
 import { listQueue, queueStreamUrl, type QueueEntry } from "@/features/scheduling/api";
+import { DateRangeFilter, windowFor, type DateWindow } from "@/components/ui/date-range-filter";
 
 type BadgeVariant = "default" | "brand" | "success" | "warning" | "destructive" | "outline";
 type Lane = "waiting" | "in_consult" | "in_lab" | "done";
@@ -47,24 +48,6 @@ function waitMins(iso: string) {
   return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
 }
 
-type RangeKind = "today" | "yesterday" | "3d";
-
-// Local-day boundaries → ISO, so "today" means the staff's calendar day.
-function rangeWindow(kind: RangeKind): { from: string; to: string } {
-  const now = new Date();
-  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const day = 86_400_000;
-  if (kind === "yesterday") {
-    return { from: new Date(startToday.getTime() - day).toISOString(), to: startToday.toISOString() };
-  }
-  if (kind === "3d") {
-    return { from: new Date(startToday.getTime() - 2 * day).toISOString(), to: new Date(startToday.getTime() + day).toISOString() };
-  }
-  return { from: startToday.toISOString(), to: new Date(startToday.getTime() + day).toISOString() };
-}
-
-const RANGE_LABEL: Record<RangeKind, string> = { today: "Today", yesterday: "Yesterday", "3d": "Last 3 days" };
-
 export function QueuePage() {
   const qc = useQueryClient();
 
@@ -74,25 +57,24 @@ export function QueuePage() {
     if (!dept && departments.data?.length) setDept(departments.data[0].id);
   }, [departments.data, dept]);
 
-  const [range, setRange] = useState<RangeKind>("today");
+  const [win, setWin] = useState<DateWindow>(() => windowFor("today"));
   const [view, setView] = useState<"board" | "list">(() => (localStorage.getItem("clinicos_queue_view") === "list" ? "list" : "board"));
   useEffect(() => localStorage.setItem("clinicos_queue_view", view), [view]);
 
-  const win = useMemo(() => rangeWindow(range), [range]);
   const queue = useQuery({
-    queryKey: ["queue", dept, range],
+    queryKey: ["queue", dept, win.from, win.to],
     queryFn: () => listQueue(dept, undefined, win),
     enabled: !!dept,
     refetchInterval: 60000, // safety net; SSE drives most updates
   });
 
-  // Live updates via SSE (Postgres LISTEN/NOTIFY). Only "today" is actively changing.
+  // Live updates via SSE (Postgres LISTEN/NOTIFY); refetches the current window.
   useEffect(() => {
-    if (!dept || range !== "today") return;
+    if (!dept) return;
     const es = new EventSource(queueStreamUrl(dept));
     es.addEventListener("queue", () => qc.invalidateQueries({ queryKey: ["queue", dept] }));
     return () => es.close();
-  }, [dept, range, qc]);
+  }, [dept, qc]);
 
   const entries = queue.data ?? [];
   const grouped = useMemo(() => {
@@ -106,11 +88,9 @@ export function QueuePage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2">
-            Queue {range === "today" && <Radio className="h-4 w-4 text-primary" aria-label="live" />}
+            Queue <Radio className="h-4 w-4 text-primary" aria-label="live" />
           </h1>
-          <p className="text-sm text-muted-foreground">
-            {range === "today" ? "Live department board — view only" : `Showing ${RANGE_LABEL[range].toLowerCase()}`}
-          </p>
+          <p className="text-sm text-muted-foreground">Live department board — view only</p>
         </div>
         <div className="w-52">
           <Select value={dept} onValueChange={setDept}>
@@ -130,17 +110,7 @@ export function QueuePage() {
 
       {/* Toolbar: date filter + view toggle */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex rounded-lg border p-0.5">
-          {(Object.keys(RANGE_LABEL) as RangeKind[]).map((k) => (
-            <button
-              key={k}
-              onClick={() => setRange(k)}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium ${range === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              {RANGE_LABEL[k]}
-            </button>
-          ))}
-        </div>
+        <DateRangeFilter onChange={setWin} />
         <div className="inline-flex rounded-lg border p-0.5">
           <ViewBtn active={view === "board"} onClick={() => setView("board")} icon={<LayoutGrid className="h-4 w-4" />} label="Board" />
           <ViewBtn active={view === "list"} onClick={() => setView("list")} icon={<ListIcon className="h-4 w-4" />} label="List" />
@@ -153,7 +123,7 @@ export function QueuePage() {
         </Card>
       ) : entries.length === 0 ? (
         <Card className="p-12 text-center text-sm text-muted-foreground">
-          No patients {RANGE_LABEL[range].toLowerCase()}.
+          No patients in this range.
         </Card>
       ) : view === "board" ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">

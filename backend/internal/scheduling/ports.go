@@ -117,10 +117,10 @@ type Service interface {
 	EnqueueWalkIn(ctx context.Context, in WalkInInput) (gated bool, err error)
 
 	ListQueue(ctx context.Context, departmentID uuid.UUID, stage string, from time.Time, until *time.Time) ([]QueueEntry, error)
-	ListWorklist(ctx context.Context, providerID uuid.UUID, from time.Time) ([]WorklistEntry, error)
+	ListWorklist(ctx context.Context, providerID uuid.UUID, from time.Time, until *time.Time) ([]WorklistEntry, error)
 	// ListUnassigned returns patients past triage but not yet assigned to any
 	// doctor — the pick-up pool for a doctor's My day.
-	ListUnassigned(ctx context.Context, from time.Time) ([]WorklistEntry, error)
+	ListUnassigned(ctx context.Context, from time.Time, until *time.Time) ([]WorklistEntry, error)
 	AssignProvider(ctx context.Context, id, providerID uuid.UUID) error
 	TransitionQueue(ctx context.Context, id uuid.UUID, state string) error
 	SetQueuePriority(ctx context.Context, id uuid.UUID, priority int) error

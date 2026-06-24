@@ -502,7 +502,11 @@ func (h *Handlers) MyBoard(c *gin.Context) {
 	if f, err := time.Parse(time.RFC3339, c.Query("from")); err == nil {
 		doneSince = f
 	}
-	board, err := h.svc.MyBoard(c.Request.Context(), provider, doneSince)
+	var doneUntil *time.Time
+	if t, err := time.Parse(time.RFC3339, c.Query("to")); err == nil {
+		doneUntil = &t
+	}
+	board, err := h.svc.MyBoard(c.Request.Context(), provider, doneSince, doneUntil)
 	if err != nil {
 		httpx.Fail(c, err)
 		return

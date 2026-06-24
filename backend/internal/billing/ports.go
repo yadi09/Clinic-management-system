@@ -249,11 +249,11 @@ type Service interface {
 	VoidCharge(ctx context.Context, id uuid.UUID, reason string) error
 	RefundCharge(ctx context.Context, id uuid.UUID, reason string) error
 	RefundVisit(ctx context.Context, receiptNo int64, reason string) error
-	PaymentsSince(ctx context.Context, since time.Time) ([]PaidVisit, error)
+	PaymentsSince(ctx context.Context, since time.Time, until *time.Time) ([]PaidVisit, error)
 	WaiverReasons() []string
 
 	// Owner finance view.
-	CashSince(ctx context.Context, since time.Time) (*CashSummary, error)
+	CashSince(ctx context.Context, since time.Time, until *time.Time) (*CashSummary, error)
 
 	// Cash control (BILL-B): end-of-day drawer reconciliation (Z-report).
 	ExpectedForDay(ctx context.Context, date string) (*ExpectedDay, error)

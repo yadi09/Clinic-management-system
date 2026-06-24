@@ -276,7 +276,11 @@ func (h *Handlers) Worklist(c *gin.Context) {
 	if f, err := time.Parse(time.RFC3339, c.Query("from")); err == nil {
 		from = f
 	}
-	entries, err := h.svc.ListWorklist(c.Request.Context(), provider, from)
+	var until *time.Time
+	if t, err := time.Parse(time.RFC3339, c.Query("to")); err == nil {
+		until = &t
+	}
+	entries, err := h.svc.ListWorklist(c.Request.Context(), provider, from, until)
 	if err != nil {
 		httpx.Fail(c, err)
 		return
@@ -295,7 +299,11 @@ func (h *Handlers) Unassigned(c *gin.Context) {
 	if f, err := time.Parse(time.RFC3339, c.Query("from")); err == nil {
 		from = f
 	}
-	entries, err := h.svc.ListUnassigned(c.Request.Context(), from)
+	var until *time.Time
+	if t, err := time.Parse(time.RFC3339, c.Query("to")); err == nil {
+		until = &t
+	}
+	entries, err := h.svc.ListUnassigned(c.Request.Context(), from, until)
 	if err != nil {
 		httpx.Fail(c, err)
 		return

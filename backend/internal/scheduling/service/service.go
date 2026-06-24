@@ -328,14 +328,14 @@ func (s *Service) ListQueue(ctx context.Context, departmentID uuid.UUID, stage s
 
 // ListUnassigned returns patients past triage (stage=with_doctor) who are waiting
 // but not yet claimed by any doctor — the pick-up pool. Windowed by `from`.
-func (s *Service) ListUnassigned(ctx context.Context, from time.Time) ([]scheduling.WorklistEntry, error) {
+func (s *Service) ListUnassigned(ctx context.Context, from time.Time, until *time.Time) ([]scheduling.WorklistEntry, error) {
 	tenantID, _ := actorOf(ctx)
 	if from.IsZero() {
 		from = startOfDayUTC()
 	}
 	var out []scheduling.WorklistEntry
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		rows, e := schedulingdb.New(tx).ListUnassignedReady(ctx, schedulingdb.ListUnassignedReadyParams{TenantID: tenantID, Since: from})
+		rows, e := schedulingdb.New(tx).ListUnassignedReady(ctx, schedulingdb.ListUnassignedReadyParams{TenantID: tenantID, Since: from, Until: until})
 		if e != nil {
 			return e
 		}
@@ -356,14 +356,14 @@ func (s *Service) ListUnassigned(ctx context.Context, from time.Time) ([]schedul
 
 // ListWorklist returns the active patients assigned to one provider (their
 // personal "patients waiting for me" list), across departments.
-func (s *Service) ListWorklist(ctx context.Context, providerID uuid.UUID, from time.Time) ([]scheduling.WorklistEntry, error) {
+func (s *Service) ListWorklist(ctx context.Context, providerID uuid.UUID, from time.Time, until *time.Time) ([]scheduling.WorklistEntry, error) {
 	tenantID, _ := actorOf(ctx)
 	if from.IsZero() {
 		from = startOfDayUTC()
 	}
 	var out []scheduling.WorklistEntry
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		rows, e := schedulingdb.New(tx).ListWorklist(ctx, schedulingdb.ListWorklistParams{TenantID: tenantID, AssignedProviderID: &providerID, Since: from})
+		rows, e := schedulingdb.New(tx).ListWorklist(ctx, schedulingdb.ListWorklistParams{TenantID: tenantID, AssignedProviderID: &providerID, Since: from, Until: until})
 		if e != nil {
 			return e
 		}

@@ -560,6 +560,19 @@ func (h *Handlers) WaiverReasons(c *gin.Context) {
 	httpx.OK(c, h.svc.WaiverReasons())
 }
 
+// financeUntil parses an optional upper bound for the finance window (accepts
+// either ?until= or ?to=, RFC3339). Nil means "up to now".
+func financeUntil(c *gin.Context) *time.Time {
+	for _, k := range []string{"until", "to"} {
+		if q := c.Query(k); q != "" {
+			if t, err := time.Parse(time.RFC3339, q); err == nil {
+				return &t
+			}
+		}
+	}
+	return nil
+}
+
 func (h *Handlers) Cash(c *gin.Context) {
 	since := time.Now().Add(-24 * time.Hour)
 	if q := c.Query("since"); q != "" {
@@ -567,7 +580,8 @@ func (h *Handlers) Cash(c *gin.Context) {
 			since = t
 		}
 	}
-	out, err := h.svc.CashSince(c.Request.Context(), since)
+	until := financeUntil(c)
+	out, err := h.svc.CashSince(c.Request.Context(), since, until)
 	if err != nil {
 		httpx.Fail(c, err)
 		return
@@ -584,7 +598,7 @@ func (h *Handlers) Payments(c *gin.Context) {
 			since = t
 		}
 	}
-	out, err := h.svc.PaymentsSince(c.Request.Context(), since)
+	out, err := h.svc.PaymentsSince(c.Request.Context(), since, financeUntil(c))
 	if err != nil {
 		httpx.Fail(c, err)
 		return

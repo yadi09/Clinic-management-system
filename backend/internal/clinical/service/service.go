@@ -433,7 +433,7 @@ func (s *Service) SetAside(ctx context.Context, encounterID uuid.UUID) error {
 // MyBoard returns the doctor's open encounters (always, regardless of age — an
 // open encounter must stay visible until closed) plus encounters closed since
 // `doneSince` (the "Done" window; zero defaults to the last 24h).
-func (s *Service) MyBoard(ctx context.Context, providerID uuid.UUID, doneSince time.Time) (*clinical.Board, error) {
+func (s *Service) MyBoard(ctx context.Context, providerID uuid.UUID, doneSince time.Time, doneUntil *time.Time) (*clinical.Board, error) {
 	tenantID, _ := actorOf(ctx)
 	out := &clinical.Board{Active: []clinical.BoardActive{}, Done: []clinical.BoardDone{}}
 	if doneSince.IsZero() {
@@ -452,7 +452,7 @@ func (s *Service) MyBoard(ctx context.Context, providerID uuid.UUID, doneSince t
 				PatientName: r.FirstName + " " + r.LastName, MRN: r.Mrn, PendingLabs: int(r.PendingLabs),
 			})
 		}
-		done, e := q.ListMyDoneEncountersToday(ctx, clinicaldb.ListMyDoneEncountersTodayParams{TenantID: tenantID, ProviderID: &providerID, Since: &since})
+		done, e := q.ListMyDoneEncountersToday(ctx, clinicaldb.ListMyDoneEncountersTodayParams{TenantID: tenantID, ProviderID: &providerID, Since: &since, Until: doneUntil})
 		if e != nil {
 			return e
 		}

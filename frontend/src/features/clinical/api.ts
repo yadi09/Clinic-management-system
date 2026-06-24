@@ -281,10 +281,11 @@ export interface Board {
 }
 /** The calling doctor's in-progress (always) and recently-done encounters.
  *  fromISO windows the "done" list (e.g. start of today, or 3 days back). */
-export function myBoard(providerId?: string, fromISO?: string) {
+export function myBoard(providerId?: string, fromISO?: string, toISO?: string) {
   const p = new URLSearchParams();
   if (providerId) p.set("provider", providerId);
   if (fromISO) p.set("from", fromISO);
+  if (toISO) p.set("to", toISO);
   const qs = p.toString();
   return apiFetch<Board>(`/encounters/board${qs ? `?${qs}` : ""}`);
 }

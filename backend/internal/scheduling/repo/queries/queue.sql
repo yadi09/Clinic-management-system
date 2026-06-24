@@ -53,6 +53,7 @@ LEFT JOIN departments d ON d.id = q.department_id AND d.tenant_id = q.tenant_id
 WHERE q.tenant_id = @tenant_id AND q.assigned_provider_id = @assigned_provider_id
   AND q.deleted_at IS NULL AND q.state IN ('waiting','called','in_consult')
   AND q.enqueued_at >= @since
+  AND (sqlc.narg(until)::timestamptz IS NULL OR q.enqueued_at < sqlc.narg(until))
 ORDER BY q.priority DESC, q.enqueued_at;
 
 -- name: AssignQueueProvider :one
@@ -92,4 +93,5 @@ WHERE q.tenant_id = @tenant_id AND q.deleted_at IS NULL
   AND q.stage = 'with_doctor' AND q.assigned_provider_id IS NULL
   AND q.state IN ('waiting','called')
   AND q.enqueued_at >= @since
+  AND (sqlc.narg(until)::timestamptz IS NULL OR q.enqueued_at < sqlc.narg(until))
 ORDER BY q.priority DESC, q.enqueued_at;

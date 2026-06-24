@@ -214,6 +214,7 @@ FROM encounters e
 JOIN patients p ON p.id = e.patient_id AND p.tenant_id = e.tenant_id
 WHERE e.tenant_id = @tenant_id AND e.provider_id = @provider_id AND e.deleted_at IS NULL
   AND e.status = 'closed' AND e.closed_at >= @since
+  AND (sqlc.narg(until)::timestamptz IS NULL OR e.closed_at < sqlc.narg(until))
 ORDER BY e.closed_at DESC LIMIT 100;
 
 -- name: ListPatientEncounters :many

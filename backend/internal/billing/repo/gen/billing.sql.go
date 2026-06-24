@@ -33,13 +33,14 @@ const cashByBranchSince = `-- name: CashByBranchSince :many
 SELECT COALESCE(b.name, 'Unassigned') AS branch, COALESCE(sum(c.amount), 0)::numeric AS total, count(*)::int AS n
 FROM charges c
 LEFT JOIN branches b ON b.id = c.branch_id AND b.tenant_id = c.tenant_id
-WHERE c.tenant_id = $1 AND c.status = 'paid' AND c.source <> 'refund' AND c.settled_at >= $2
+WHERE c.tenant_id = $1 AND c.status = 'paid' AND c.source <> 'refund' AND c.settled_at >= $2 AND ($3::timestamptz IS NULL OR c.settled_at < $3)
 GROUP BY b.name ORDER BY total DESC
 `
 
 type CashByBranchSinceParams struct {
 	TenantID uuid.UUID  `json:"tenant_id"`
 	Since    *time.Time `json:"since"`
+	Until    *time.Time `json:"until"`
 }
 
 type CashByBranchSinceRow struct {
@@ -51,7 +52,7 @@ type CashByBranchSinceRow struct {
 // Collected grouped by branch (charges with no branch — e.g. lab/pharmacy today —
 // bucket as 'Unassigned').
 func (q *Queries) CashByBranchSince(ctx context.Context, arg CashByBranchSinceParams) ([]CashByBranchSinceRow, error) {
-	rows, err := q.db.Query(ctx, cashByBranchSince, arg.TenantID, arg.Since)
+	rows, err := q.db.Query(ctx, cashByBranchSince, arg.TenantID, arg.Since, arg.Until)
 	if err != nil {
 		return nil, err
 	}
@@ -74,13 +75,14 @@ const cashByCashierSince = `-- name: CashByCashierSince :many
 SELECT c.settled_by, COALESCE(u.full_name, 'Unknown') AS cashier, COALESCE(sum(c.amount), 0)::numeric AS total, count(*)::int AS n
 FROM charges c
 LEFT JOIN users u ON u.id = c.settled_by AND u.tenant_id = c.tenant_id
-WHERE c.tenant_id = $1 AND c.status = 'paid' AND c.source <> 'refund' AND c.settled_at >= $2
+WHERE c.tenant_id = $1 AND c.status = 'paid' AND c.source <> 'refund' AND c.settled_at >= $2 AND ($3::timestamptz IS NULL OR c.settled_at < $3)
 GROUP BY c.settled_by, u.full_name ORDER BY total DESC
 `
 
 type CashByCashierSinceParams struct {
 	TenantID uuid.UUID  `json:"tenant_id"`
 	Since    *time.Time `json:"since"`
+	Until    *time.Time `json:"until"`
 }
 
 type CashByCashierSinceRow struct {
@@ -92,7 +94,7 @@ type CashByCashierSinceRow struct {
 
 // Collected grouped by the cashier who settled it (excludes refund reversing entries).
 func (q *Queries) CashByCashierSince(ctx context.Context, arg CashByCashierSinceParams) ([]CashByCashierSinceRow, error) {
-	rows, err := q.db.Query(ctx, cashByCashierSince, arg.TenantID, arg.Since)
+	rows, err := q.db.Query(ctx, cashByCashierSince, arg.TenantID, arg.Since, arg.Until)
 	if err != nil {
 		return nil, err
 	}
@@ -118,13 +120,14 @@ func (q *Queries) CashByCashierSince(ctx context.Context, arg CashByCashierSince
 
 const cashByMethodSince = `-- name: CashByMethodSince :many
 SELECT COALESCE(payment_method, 'unknown') AS method, COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
-FROM charges WHERE tenant_id = $1 AND status = 'paid' AND settled_at >= $2
+FROM charges WHERE tenant_id = $1 AND status = 'paid' AND settled_at >= $2 AND ($3::timestamptz IS NULL OR settled_at < $3)
 GROUP BY payment_method ORDER BY total DESC
 `
 
 type CashByMethodSinceParams struct {
 	TenantID uuid.UUID  `json:"tenant_id"`
 	Since    *time.Time `json:"since"`
+	Until    *time.Time `json:"until"`
 }
 
 type CashByMethodSinceRow struct {
@@ -135,7 +138,7 @@ type CashByMethodSinceRow struct {
 
 // Collected grouped by payment method (cash / card / mobile / transfer / refund).
 func (q *Queries) CashByMethodSince(ctx context.Context, arg CashByMethodSinceParams) ([]CashByMethodSinceRow, error) {
-	rows, err := q.db.Query(ctx, cashByMethodSince, arg.TenantID, arg.Since)
+	rows, err := q.db.Query(ctx, cashByMethodSince, arg.TenantID, arg.Since, arg.Until)
 	if err != nil {
 		return nil, err
 	}
@@ -156,13 +159,14 @@ func (q *Queries) CashByMethodSince(ctx context.Context, arg CashByMethodSincePa
 
 const cashBySourceSince = `-- name: CashBySourceSince :many
 SELECT source, COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
-FROM charges WHERE tenant_id = $1 AND status = 'paid' AND source <> 'refund' AND settled_at >= $2
+FROM charges WHERE tenant_id = $1 AND status = 'paid' AND source <> 'refund' AND settled_at >= $2 AND ($3::timestamptz IS NULL OR settled_at < $3)
 GROUP BY source ORDER BY total DESC
 `
 
 type CashBySourceSinceParams struct {
 	TenantID uuid.UUID  `json:"tenant_id"`
 	Since    *time.Time `json:"since"`
+	Until    *time.Time `json:"until"`
 }
 
 type CashBySourceSinceRow struct {
@@ -173,7 +177,7 @@ type CashBySourceSinceRow struct {
 
 // Gross collected by service line (refund reversing entries are reported separately).
 func (q *Queries) CashBySourceSince(ctx context.Context, arg CashBySourceSinceParams) ([]CashBySourceSinceRow, error) {
-	rows, err := q.db.Query(ctx, cashBySourceSince, arg.TenantID, arg.Since)
+	rows, err := q.db.Query(ctx, cashBySourceSince, arg.TenantID, arg.Since, arg.Until)
 	if err != nil {
 		return nil, err
 	}
@@ -195,12 +199,13 @@ func (q *Queries) CashBySourceSince(ctx context.Context, arg CashBySourceSincePa
 const cashCollectedSince = `-- name: CashCollectedSince :one
 
 SELECT COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
-FROM charges WHERE tenant_id = $1 AND status = 'paid' AND settled_at >= $2
+FROM charges WHERE tenant_id = $1 AND status = 'paid' AND settled_at >= $2 AND ($3::timestamptz IS NULL OR settled_at < $3)
 `
 
 type CashCollectedSinceParams struct {
 	TenantID uuid.UUID  `json:"tenant_id"`
 	Since    *time.Time `json:"since"`
+	Until    *time.Time `json:"until"`
 }
 
 type CashCollectedSinceRow struct {
@@ -210,7 +215,7 @@ type CashCollectedSinceRow struct {
 
 // ---- cash summary (owner finance view) ----
 func (q *Queries) CashCollectedSince(ctx context.Context, arg CashCollectedSinceParams) (CashCollectedSinceRow, error) {
-	row := q.db.QueryRow(ctx, cashCollectedSince, arg.TenantID, arg.Since)
+	row := q.db.QueryRow(ctx, cashCollectedSince, arg.TenantID, arg.Since, arg.Until)
 	var i CashCollectedSinceRow
 	err := row.Scan(&i.Total, &i.N)
 	return i, err
@@ -235,12 +240,13 @@ func (q *Queries) CashOutstanding(ctx context.Context, tenantID uuid.UUID) (Cash
 
 const cashRefundedSince = `-- name: CashRefundedSince :one
 SELECT COALESCE(-sum(amount), 0)::numeric AS total, count(*)::int AS n
-FROM charges WHERE tenant_id = $1 AND source = 'refund' AND status = 'paid' AND settled_at >= $2
+FROM charges WHERE tenant_id = $1 AND source = 'refund' AND status = 'paid' AND settled_at >= $2 AND ($3::timestamptz IS NULL OR settled_at < $3)
 `
 
 type CashRefundedSinceParams struct {
 	TenantID uuid.UUID  `json:"tenant_id"`
 	Since    *time.Time `json:"since"`
+	Until    *time.Time `json:"until"`
 }
 
 type CashRefundedSinceRow struct {
@@ -250,7 +256,7 @@ type CashRefundedSinceRow struct {
 
 // Refunds are stored as negative entries; report them as a positive total.
 func (q *Queries) CashRefundedSince(ctx context.Context, arg CashRefundedSinceParams) (CashRefundedSinceRow, error) {
-	row := q.db.QueryRow(ctx, cashRefundedSince, arg.TenantID, arg.Since)
+	row := q.db.QueryRow(ctx, cashRefundedSince, arg.TenantID, arg.Since, arg.Until)
 	var i CashRefundedSinceRow
 	err := row.Scan(&i.Total, &i.N)
 	return i, err
@@ -258,12 +264,13 @@ func (q *Queries) CashRefundedSince(ctx context.Context, arg CashRefundedSincePa
 
 const cashWaivedSince = `-- name: CashWaivedSince :one
 SELECT COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
-FROM charges WHERE tenant_id = $1 AND status = 'waived' AND settled_at >= $2
+FROM charges WHERE tenant_id = $1 AND status = 'waived' AND settled_at >= $2 AND ($3::timestamptz IS NULL OR settled_at < $3)
 `
 
 type CashWaivedSinceParams struct {
 	TenantID uuid.UUID  `json:"tenant_id"`
 	Since    *time.Time `json:"since"`
+	Until    *time.Time `json:"until"`
 }
 
 type CashWaivedSinceRow struct {
@@ -272,7 +279,7 @@ type CashWaivedSinceRow struct {
 }
 
 func (q *Queries) CashWaivedSince(ctx context.Context, arg CashWaivedSinceParams) (CashWaivedSinceRow, error) {
-	row := q.db.QueryRow(ctx, cashWaivedSince, arg.TenantID, arg.Since)
+	row := q.db.QueryRow(ctx, cashWaivedSince, arg.TenantID, arg.Since, arg.Until)
 	var i CashWaivedSinceRow
 	err := row.Scan(&i.Total, &i.N)
 	return i, err
@@ -1132,7 +1139,7 @@ SELECT c.receipt_no, c.patient_id, p.first_name, p.last_name, p.mrn,
 FROM charges c
 JOIN patients p ON p.id = c.patient_id AND p.tenant_id = c.tenant_id
 WHERE c.tenant_id = $1 AND c.status = 'paid' AND c.source <> 'refund'
-  AND c.receipt_no IS NOT NULL AND c.settled_at >= $2
+  AND c.receipt_no IS NOT NULL AND c.settled_at >= $2 AND ($3::timestamptz IS NULL OR c.settled_at < $3)
 ORDER BY c.settled_at DESC, c.receipt_no DESC
 LIMIT 300
 `
@@ -1140,6 +1147,7 @@ LIMIT 300
 type ListPaidSinceParams struct {
 	TenantID uuid.UUID  `json:"tenant_id"`
 	Since    *time.Time `json:"since"`
+	Until    *time.Time `json:"until"`
 }
 
 type ListPaidSinceRow struct {
@@ -1159,7 +1167,7 @@ type ListPaidSinceRow struct {
 // The cashier's "Paid today" audit list: settled charges (not refund entries) with a
 // receipt, newest first, flagged if a line has been refunded. Grouped by receipt in Go.
 func (q *Queries) ListPaidSince(ctx context.Context, arg ListPaidSinceParams) ([]ListPaidSinceRow, error) {
-	rows, err := q.db.Query(ctx, listPaidSince, arg.TenantID, arg.Since)
+	rows, err := q.db.Query(ctx, listPaidSince, arg.TenantID, arg.Since, arg.Until)
 	if err != nil {
 		return nil, err
 	}

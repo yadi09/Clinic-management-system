@@ -266,7 +266,7 @@ type Service interface {
 	// it stays editable — only SignAndClose locks it.
 	SetAside(ctx context.Context, encounterID uuid.UUID) error
 	// MyBoard returns the calling doctor's in-progress and done-today encounters.
-	MyBoard(ctx context.Context, providerID uuid.UUID, doneSince time.Time) (*Board, error)
+	MyBoard(ctx context.Context, providerID uuid.UUID, doneSince time.Time, doneUntil *time.Time) (*Board, error)
 	History(ctx context.Context, patientID uuid.UUID) ([]HistoryItem, error)
 
 	// Diagnosis catalog (admin config + doctor search).

@@ -12,6 +12,7 @@ import { useAuth } from "@/app/auth-context";
 import { listBranches, listUsers } from "@/features/admin/api";
 import { assignProvider, listAppointments, listUnassigned, listWorklist, transitionQueue } from "@/features/scheduling/api";
 import { myBoard, type BoardActive } from "@/features/clinical/api";
+import { DateRangeFilter, windowFor, type DateWindow } from "@/components/ui/date-range-filter";
 
 function waitMins(iso: string) {
   return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
@@ -30,16 +31,6 @@ function reasonOf(e: BoardActive): { label: string; cls: string } {
 }
 
 type TabKey = "waiting" | "progress" | "appointments" | "done";
-type RangeKind = "today" | "3d";
-
-// Start of the window in local time: today, or two days back ("last 3 days").
-function rangeFromISO(range: RangeKind): string {
-  const now = new Date();
-  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const from = range === "3d" ? new Date(startToday.getTime() - 2 * 86_400_000) : startToday;
-  return from.toISOString();
-}
-
 export function WorklistPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -49,26 +40,25 @@ export function WorklistPage() {
   const providers = useQuery({ queryKey: ["users"], queryFn: listUsers, enabled: canPickProvider });
   const [provider, setProvider] = useState(""); // "" = me
   const [tab, setTab] = useState<TabKey>("waiting");
-  const [range, setRange] = useState<RangeKind>("today");
+  const [win, setWin] = useState<DateWindow>(() => windowFor("today"));
   const providerId = provider || undefined;
   const viewingSelf = provider === "" || provider === user?.id;
   const claimProvider = provider || user?.id; // who "Pick up" assigns to
-  const fromISO = rangeFromISO(range);
 
   const waiting = useQuery({
-    queryKey: ["worklist", provider, range],
-    queryFn: () => listWorklist(providerId, fromISO),
+    queryKey: ["worklist", provider, win.from, win.to],
+    queryFn: () => listWorklist(providerId, win.from, win.to),
     refetchInterval: 20000,
   });
   // Unassigned pick-up pool — patients past triage not yet claimed by any doctor.
   const unassigned = useQuery({
-    queryKey: ["unassigned", range],
-    queryFn: () => listUnassigned(fromISO),
+    queryKey: ["unassigned", win.from, win.to],
+    queryFn: () => listUnassigned(win.from, win.to),
     refetchInterval: 20000,
   });
   const board = useQuery({
-    queryKey: ["board", provider, range],
-    queryFn: () => myBoard(providerId, fromISO),
+    queryKey: ["board", provider, win.from, win.to],
+    queryFn: () => myBoard(providerId, win.from, win.to),
     refetchInterval: 20000,
   });
 
@@ -91,13 +81,14 @@ export function WorklistPage() {
   const branches = useQuery({ queryKey: ["branches"], queryFn: listBranches, retry: false });
   const apptProvider = provider || user?.id;
   const appts = useQuery({
-    queryKey: ["board-appts", provider, range, (branches.data ?? []).map((b) => b.id).join(",")],
+    queryKey: ["board-appts", provider, win.from, (branches.data ?? []).map((b) => b.id).join(",")],
     enabled: tab === "appointments" && !!apptProvider && (branches.data?.length ?? 0) > 0,
     queryFn: async () => {
       const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
       const to = new Date(startToday.getTime() + 14 * 86_400_000);
+      const from = win.from ?? startToday.toISOString();
       const lists = await Promise.all(
-        (branches.data ?? []).map((b) => listAppointments(b.id, fromISO, to.toISOString(), apptProvider).catch(() => [])),
+        (branches.data ?? []).map((b) => listAppointments(b.id, from, to.toISOString(), apptProvider).catch(() => [])),
       );
       const open = new Set(["booked", "confirmed", "checked_in"]);
       return lists.flat().filter((a) => open.has(a.status)).sort((x, y) => x.starts_at.localeCompare(y.starts_at));
@@ -118,7 +109,7 @@ export function WorklistPage() {
     { key: "waiting", label: "Waiting" },
     { key: "progress", label: "In progress" },
     { key: "appointments", label: "Appointments" },
-    { key: "done", label: range === "today" ? "Done today" : "Done" },
+    { key: "done", label: "Done" },
   ];
 
   return (
@@ -130,21 +121,8 @@ export function WorklistPage() {
             {viewingSelf ? "Your patients — waiting, in progress, scheduled and done." : "The selected doctor's patients."}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-lg border p-0.5">
-            <button
-              onClick={() => setRange("today")}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium ${range === "today" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              Today
-            </button>
-            <button
-              onClick={() => setRange("3d")}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium ${range === "3d" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              Last 3 days
-            </button>
-          </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <DateRangeFilter onChange={setWin} />
           {canPickProvider && (
             <div className="w-52">
               <Select value={provider || "me"} onValueChange={(v) => setProvider(v === "me" ? "" : v)}>
@@ -305,7 +283,7 @@ export function WorklistPage() {
               </div>
             </Card>
           ))}
-          {counts.done === 0 && <Card className="p-12 text-center text-sm text-muted-foreground">{range === "today" ? "Nothing closed today." : "Nothing closed in this window."}</Card>}
+          {counts.done === 0 && <Card className="p-12 text-center text-sm text-muted-foreground">Nothing closed in this range.</Card>}
         </div>
       )}
     </div>

@@ -105,16 +105,21 @@ export function transitionQueue(id: string, state: string) {
 export function assignProvider(id: string, providerId: string) {
   return apiFetch<void>(`/queue/${id}/assign`, { method: "POST", body: { provider_id: providerId } });
 }
-export function listWorklist(providerId?: string, fromISO?: string) {
+export function listWorklist(providerId?: string, fromISO?: string, toISO?: string) {
   const p = new URLSearchParams();
   if (providerId) p.set("provider", providerId);
   if (fromISO) p.set("from", fromISO);
+  if (toISO) p.set("to", toISO);
   const qs = p.toString();
   return apiFetch<WorklistEntry[]>(`/worklist${qs ? `?${qs}` : ""}`);
 }
 /** Patients past triage but not yet claimed by any doctor — the My-day pick-up pool. */
-export function listUnassigned(fromISO?: string) {
-  return apiFetch<WorklistEntry[]>(`/worklist/unassigned${fromISO ? `?from=${encodeURIComponent(fromISO)}` : ""}`);
+export function listUnassigned(fromISO?: string, toISO?: string) {
+  const p = new URLSearchParams();
+  if (fromISO) p.set("from", fromISO);
+  if (toISO) p.set("to", toISO);
+  const qs = p.toString();
+  return apiFetch<WorklistEntry[]>(`/worklist/unassigned${qs ? `?${qs}` : ""}`);
 }
 export function walkIn(body: {
   branch_id: string;

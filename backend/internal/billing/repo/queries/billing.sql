@@ -167,7 +167,7 @@ SELECT c.receipt_no, c.patient_id, p.first_name, p.last_name, p.mrn,
 FROM charges c
 JOIN patients p ON p.id = c.patient_id AND p.tenant_id = c.tenant_id
 WHERE c.tenant_id = @tenant_id AND c.status = 'paid' AND c.source <> 'refund'
-  AND c.receipt_no IS NOT NULL AND c.settled_at >= @since
+  AND c.receipt_no IS NOT NULL AND c.settled_at >= @since AND (sqlc.narg(until)::timestamptz IS NULL OR c.settled_at < sqlc.narg(until))
 ORDER BY c.settled_at DESC, c.receipt_no DESC
 LIMIT 300;
 
@@ -235,11 +235,11 @@ VALUES (@tenant_id, @branch_id, @department_id, @patient_id, @stage, @assigned_p
 
 -- name: CashCollectedSince :one
 SELECT COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
-FROM charges WHERE tenant_id = @tenant_id AND status = 'paid' AND settled_at >= @since;
+FROM charges WHERE tenant_id = @tenant_id AND status = 'paid' AND settled_at >= @since AND (sqlc.narg(until)::timestamptz IS NULL OR settled_at < sqlc.narg(until));
 
 -- name: CashWaivedSince :one
 SELECT COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
-FROM charges WHERE tenant_id = @tenant_id AND status = 'waived' AND settled_at >= @since;
+FROM charges WHERE tenant_id = @tenant_id AND status = 'waived' AND settled_at >= @since AND (sqlc.narg(until)::timestamptz IS NULL OR settled_at < sqlc.narg(until));
 
 -- name: CashOutstanding :one
 SELECT COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
@@ -248,18 +248,18 @@ FROM charges WHERE tenant_id = @tenant_id AND status = 'pending' AND deleted_at 
 -- name: CashBySourceSince :many
 -- Gross collected by service line (refund reversing entries are reported separately).
 SELECT source, COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
-FROM charges WHERE tenant_id = @tenant_id AND status = 'paid' AND source <> 'refund' AND settled_at >= @since
+FROM charges WHERE tenant_id = @tenant_id AND status = 'paid' AND source <> 'refund' AND settled_at >= @since AND (sqlc.narg(until)::timestamptz IS NULL OR settled_at < sqlc.narg(until))
 GROUP BY source ORDER BY total DESC;
 
 -- name: CashRefundedSince :one
 -- Refunds are stored as negative entries; report them as a positive total.
 SELECT COALESCE(-sum(amount), 0)::numeric AS total, count(*)::int AS n
-FROM charges WHERE tenant_id = @tenant_id AND source = 'refund' AND status = 'paid' AND settled_at >= @since;
+FROM charges WHERE tenant_id = @tenant_id AND source = 'refund' AND status = 'paid' AND settled_at >= @since AND (sqlc.narg(until)::timestamptz IS NULL OR settled_at < sqlc.narg(until));
 
 -- name: CashByMethodSince :many
 -- Collected grouped by payment method (cash / card / mobile / transfer / refund).
 SELECT COALESCE(payment_method, 'unknown') AS method, COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
-FROM charges WHERE tenant_id = @tenant_id AND status = 'paid' AND settled_at >= @since
+FROM charges WHERE tenant_id = @tenant_id AND status = 'paid' AND settled_at >= @since AND (sqlc.narg(until)::timestamptz IS NULL OR settled_at < sqlc.narg(until))
 GROUP BY payment_method ORDER BY total DESC;
 
 -- name: CashByBranchSince :many
@@ -268,7 +268,7 @@ GROUP BY payment_method ORDER BY total DESC;
 SELECT COALESCE(b.name, 'Unassigned') AS branch, COALESCE(sum(c.amount), 0)::numeric AS total, count(*)::int AS n
 FROM charges c
 LEFT JOIN branches b ON b.id = c.branch_id AND b.tenant_id = c.tenant_id
-WHERE c.tenant_id = @tenant_id AND c.status = 'paid' AND c.source <> 'refund' AND c.settled_at >= @since
+WHERE c.tenant_id = @tenant_id AND c.status = 'paid' AND c.source <> 'refund' AND c.settled_at >= @since AND (sqlc.narg(until)::timestamptz IS NULL OR c.settled_at < sqlc.narg(until))
 GROUP BY b.name ORDER BY total DESC;
 
 -- name: CashByCashierSince :many
@@ -276,7 +276,7 @@ GROUP BY b.name ORDER BY total DESC;
 SELECT c.settled_by, COALESCE(u.full_name, 'Unknown') AS cashier, COALESCE(sum(c.amount), 0)::numeric AS total, count(*)::int AS n
 FROM charges c
 LEFT JOIN users u ON u.id = c.settled_by AND u.tenant_id = c.tenant_id
-WHERE c.tenant_id = @tenant_id AND c.status = 'paid' AND c.source <> 'refund' AND c.settled_at >= @since
+WHERE c.tenant_id = @tenant_id AND c.status = 'paid' AND c.source <> 'refund' AND c.settled_at >= @since AND (sqlc.narg(until)::timestamptz IS NULL OR c.settled_at < sqlc.narg(until))
 GROUP BY c.settled_by, u.full_name ORDER BY total DESC;
 
 -- ---- end-of-day cash reconciliation (Z-report) ----

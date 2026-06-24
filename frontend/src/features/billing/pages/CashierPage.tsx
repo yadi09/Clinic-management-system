@@ -14,6 +14,7 @@ import { AppError } from "@/lib/api-client";
 import { useAuth } from "@/app/auth-context";
 import { getClinic } from "@/features/admin/api";
 import { closeDay, dayClose, paymentsToday, pendingCharges, refundVisit, settleVisit, voidCharge, waiveCharge, waiverReasons, type PaidVisit, type PendingCharge } from "@/features/billing/api";
+import { DateRangeFilter, windowFor, type DateWindow } from "@/components/ui/date-range-filter";
 import { printVisitReceipt, printZReport } from "@/features/billing/print";
 import { Input } from "@/components/ui/input";
 import { Printer, RotateCcw } from "lucide-react";
@@ -34,8 +35,9 @@ export function CashierPage() {
   const qc = useQueryClient();
   const { user, can } = useAuth();
   const [tab, setTab] = useState<"pending" | "paid">("pending");
+  const [paidWin, setPaidWin] = useState<DateWindow>(() => windowFor("today"));
   const q = useQuery({ queryKey: ["pending-charges"], queryFn: pendingCharges, refetchInterval: 15000 });
-  const paid = useQuery({ queryKey: ["payments-today"], queryFn: () => paymentsToday(), enabled: tab === "paid" });
+  const paid = useQuery({ queryKey: ["payments-today", paidWin.from, paidWin.to], queryFn: () => paymentsToday(paidWin.from, paidWin.to), enabled: tab === "paid" });
   const reasons = useQuery({ queryKey: ["waiver-reasons"], queryFn: waiverReasons });
   const clinic = useQuery({ queryKey: ["clinic"], queryFn: getClinic, retry: false });
   const [waiving, setWaiving] = useState<PendingCharge | null>(null);
@@ -71,7 +73,12 @@ export function CashierPage() {
           <h1>Cashier</h1>
           <p className="text-sm text-muted-foreground">Pending checkouts, and a record of today's payments to reprint or refund.</p>
         </div>
-        {tab === "paid" && <Button variant="outline" onClick={() => setClosing(true)}>Close day</Button>}
+        {tab === "paid" && (
+          <div className="flex flex-wrap items-center gap-2">
+            <DateRangeFilter onChange={setPaidWin} />
+            <Button variant="outline" onClick={() => setClosing(true)}>Close day</Button>
+          </div>
+        )}
       </div>
 
       <div className="inline-flex rounded-lg border p-0.5">
@@ -131,7 +138,7 @@ function PaidList({ payments, loading, canRefund, clinicName, cashierName, onRef
       when: v.settled_at || new Date().toISOString(),
     });
   if (loading) return <Card className="p-8 text-center text-sm text-muted-foreground">Loading…</Card>;
-  if (payments.length === 0) return <Card className="p-12 text-center text-sm text-muted-foreground">No payments collected today yet.</Card>;
+  if (payments.length === 0) return <Card className="p-12 text-center text-sm text-muted-foreground">No payments in this range.</Card>;
   return (
     <div className="space-y-3">
       {payments.map((v) => (

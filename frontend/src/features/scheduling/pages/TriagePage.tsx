@@ -14,21 +14,10 @@ import { toast } from "@/components/ui/sonner";
 import { listBranches, listDepartments, listProviders } from "@/features/admin/api";
 import { getVisit, getVitalFields, recordVitals, vitalFlag, type VitalsBody, type VitalField } from "@/features/clinical/api";
 import { assignProvider, listQueue, type QueueEntry } from "@/features/scheduling/api";
+import { DateRangeFilter, windowFor, type DateWindow } from "@/components/ui/date-range-filter";
 
 function waitMins(iso: string) {
   return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
-}
-
-type RangeKind = "today" | "3d";
-const RANGE_LABEL: Record<RangeKind, string> = { today: "Today", "3d": "Last 3 days" };
-
-// Local-day window → ISO, matching the Queue board / My day filters.
-function rangeWindow(kind: RangeKind): { from: string; to: string } {
-  const now = new Date();
-  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const day = 86_400_000;
-  const from = kind === "3d" ? new Date(startToday.getTime() - 2 * day) : startToday;
-  return { from: from.toISOString(), to: new Date(startToday.getTime() + day).toISOString() };
 }
 
 export function TriagePage() {
@@ -40,12 +29,11 @@ export function TriagePage() {
     if (!dept && departments.data?.length) setDept(departments.data[0].id);
   }, [departments.data, dept]);
 
-  const [range, setRange] = useState<RangeKind>("today");
-  const win = rangeWindow(range);
+  const [win, setWin] = useState<DateWindow>(() => windowFor("today"));
 
   const branchId = branches.data?.[0]?.id;
   const queue = useQuery({
-    queryKey: ["triage", dept, range],
+    queryKey: ["triage", dept, win.from, win.to],
     queryFn: () => listQueue(dept, "triage", win),
     enabled: !!dept,
     refetchInterval: 30000,
@@ -54,7 +42,7 @@ export function TriagePage() {
   // Patients we've already sent to a doctor (stage moves to 'with_doctor' on
   // assignment). Kept visible here so triage keeps the trail after handoff.
   const assignedQ = useQuery({
-    queryKey: ["triage-assigned", dept, range],
+    queryKey: ["triage-assigned", dept, win.from, win.to],
     queryFn: () => listQueue(dept, "with_doctor", win),
     enabled: !!dept,
     refetchInterval: 30000,
@@ -80,18 +68,8 @@ export function TriagePage() {
           <h1>Triage</h1>
           <p className="text-sm text-muted-foreground">Take vitals first, then send the patient to a doctor — assignment is blocked until vitals are recorded.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-lg border p-0.5">
-            {(Object.keys(RANGE_LABEL) as RangeKind[]).map((k) => (
-              <button
-                key={k}
-                onClick={() => setRange(k)}
-                className={`rounded-md px-3 py-1.5 text-sm font-medium ${range === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                {RANGE_LABEL[k]}
-              </button>
-            ))}
-          </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <DateRangeFilter onChange={setWin} />
           <div className="w-56">
             <Select value={dept} onValueChange={setDept}>
               <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
@@ -115,9 +93,7 @@ export function TriagePage() {
         <div className="space-y-3">
           {!dept && <Card className="p-12 text-center text-sm text-muted-foreground">Select a department.</Card>}
           {dept && assigned.length === 0 && (
-            <Card className="p-12 text-center text-sm text-muted-foreground">
-              {range === "today" ? "No patients sent to a doctor today yet." : "No patients sent to a doctor in this window."}
-            </Card>
+            <Card className="p-12 text-center text-sm text-muted-foreground">No patients sent to a doctor in this range.</Card>
           )}
           {assigned.map((e) => (
             <AssignedCard key={e.id} entry={e} />

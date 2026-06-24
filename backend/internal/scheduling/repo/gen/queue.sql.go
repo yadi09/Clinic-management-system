@@ -229,12 +229,14 @@ WHERE q.tenant_id = $1 AND q.deleted_at IS NULL
   AND q.stage = 'with_doctor' AND q.assigned_provider_id IS NULL
   AND q.state IN ('waiting','called')
   AND q.enqueued_at >= $2
+  AND ($3::timestamptz IS NULL OR q.enqueued_at < $3)
 ORDER BY q.priority DESC, q.enqueued_at
 `
 
 type ListUnassignedReadyParams struct {
-	TenantID uuid.UUID `json:"tenant_id"`
-	Since    time.Time `json:"since"`
+	TenantID uuid.UUID  `json:"tenant_id"`
+	Since    time.Time  `json:"since"`
+	Until    *time.Time `json:"until"`
 }
 
 type ListUnassignedReadyRow struct {
@@ -259,7 +261,7 @@ type ListUnassignedReadyRow struct {
 // Patients who've cleared triage (stage=with_doctor) and are waiting but not yet
 // assigned to any doctor — the "pick up" pool surfaced on each doctor's My day.
 func (q *Queries) ListUnassignedReady(ctx context.Context, arg ListUnassignedReadyParams) ([]ListUnassignedReadyRow, error) {
-	rows, err := q.db.Query(ctx, listUnassignedReady, arg.TenantID, arg.Since)
+	rows, err := q.db.Query(ctx, listUnassignedReady, arg.TenantID, arg.Since, arg.Until)
 	if err != nil {
 		return nil, err
 	}
@@ -306,6 +308,7 @@ LEFT JOIN departments d ON d.id = q.department_id AND d.tenant_id = q.tenant_id
 WHERE q.tenant_id = $1 AND q.assigned_provider_id = $2
   AND q.deleted_at IS NULL AND q.state IN ('waiting','called','in_consult')
   AND q.enqueued_at >= $3
+  AND ($4::timestamptz IS NULL OR q.enqueued_at < $4)
 ORDER BY q.priority DESC, q.enqueued_at
 `
 
@@ -313,6 +316,7 @@ type ListWorklistParams struct {
 	TenantID           uuid.UUID  `json:"tenant_id"`
 	AssignedProviderID *uuid.UUID `json:"assigned_provider_id"`
 	Since              time.Time  `json:"since"`
+	Until              *time.Time `json:"until"`
 }
 
 type ListWorklistRow struct {
@@ -335,7 +339,12 @@ type ListWorklistRow struct {
 }
 
 func (q *Queries) ListWorklist(ctx context.Context, arg ListWorklistParams) ([]ListWorklistRow, error) {
-	rows, err := q.db.Query(ctx, listWorklist, arg.TenantID, arg.AssignedProviderID, arg.Since)
+	rows, err := q.db.Query(ctx, listWorklist,
+		arg.TenantID,
+		arg.AssignedProviderID,
+		arg.Since,
+		arg.Until,
+	)
 	if err != nil {
 		return nil, err
 	}

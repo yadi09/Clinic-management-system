@@ -936,6 +936,7 @@ FROM encounters e
 JOIN patients p ON p.id = e.patient_id AND p.tenant_id = e.tenant_id
 WHERE e.tenant_id = $1 AND e.provider_id = $2 AND e.deleted_at IS NULL
   AND e.status = 'closed' AND e.closed_at >= $3
+  AND ($4::timestamptz IS NULL OR e.closed_at < $4)
 ORDER BY e.closed_at DESC LIMIT 100
 `
 
@@ -943,6 +944,7 @@ type ListMyDoneEncountersTodayParams struct {
 	TenantID   uuid.UUID  `json:"tenant_id"`
 	ProviderID *uuid.UUID `json:"provider_id"`
 	Since      *time.Time `json:"since"`
+	Until      *time.Time `json:"until"`
 }
 
 type ListMyDoneEncountersTodayRow struct {
@@ -955,7 +957,12 @@ type ListMyDoneEncountersTodayRow struct {
 }
 
 func (q *Queries) ListMyDoneEncountersToday(ctx context.Context, arg ListMyDoneEncountersTodayParams) ([]ListMyDoneEncountersTodayRow, error) {
-	rows, err := q.db.Query(ctx, listMyDoneEncountersToday, arg.TenantID, arg.ProviderID, arg.Since)
+	rows, err := q.db.Query(ctx, listMyDoneEncountersToday,
+		arg.TenantID,
+		arg.ProviderID,
+		arg.Since,
+		arg.Until,
+	)
 	if err != nil {
 		return nil, err
 	}
