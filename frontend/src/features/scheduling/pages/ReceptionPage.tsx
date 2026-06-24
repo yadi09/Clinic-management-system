@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { HandCoins, Stethoscope, UserCheck } from "lucide-react";
+import { HandCoins, Stethoscope, UserCheck, AlertTriangle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -11,7 +11,7 @@ import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
 import { useAuth } from "@/app/auth-context";
 import { listBranches, listDepartments, getSettings } from "@/features/admin/api";
-import { listServices, providersForServices, raiseCharge, settleCharge, waiveCharge, waiverReasons } from "@/features/billing/api";
+import { listServices, providersForServices, raiseChargeBatch, settleCharge, waiveCharge, waiverReasons, patientCharges } from "@/features/billing/api";
 import { walkIn } from "@/features/scheduling/api";
 import { PatientCombobox } from "@/features/scheduling/components/BookingDialog";
 
@@ -44,6 +44,9 @@ export function ReceptionPage() {
   const branchId = branches.data?.[0]?.id;
   // Hand off to a separate cashier when this user can't collect cash themselves.
   const cashierMode = !canCollect;
+  // When the clinic requires triage (Settings → Patient flow), reception cannot send
+  // a patient straight to a doctor — every visit goes through triage first.
+  const triageRequired = !!settings.data?.triage_required;
 
   useEffect(() => {
     if (services.data && Object.keys(picked).length === 0) {
@@ -74,6 +77,18 @@ export function ReceptionPage() {
     if (provider && !providerList.some((p) => p.id === provider)) setProvider("");
   }, [providerList, provider]);
 
+  // Duplicate-registration guard: surface what the selected patient is already
+  // waiting to pay at the cashier, so reception doesn't send them through twice.
+  const patientPending = useQuery({
+    queryKey: ["patient-pending", patient?.id],
+    queryFn: () => patientCharges(patient!.id),
+    enabled: !!patient,
+    select: (rows) => rows.filter((r) => r.status === "pending"),
+  });
+  const pendingList = patientPending.data ?? [];
+  const hasPending = pendingList.length > 0;
+  const pendingTotal = pendingList.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+
   const resetForm = () => {
     setPatient(null);
     setDept("");
@@ -95,21 +110,18 @@ export function ReceptionPage() {
         await walkIn({ patient_id: patient!.id, ...routing });
         return;
       }
-      // Raise ALL charges first (so the visit total is complete before any
-      // settle/waive), then act. The patient auto-advances server-side once
-      // nothing is owed.
-      const ids: string[] = [];
-      for (const s of chosen) {
-        const r = await raiseCharge({
-          patient_id: patient!.id,
-          service_item_id: s.id,
-          source: "consultation",
-          description: s.name,
-          amount: parseFloat(s.price) || 0,
-          ...routing,
-        });
-        ids.push(r.id);
-      }
+      // Raise ALL charges in one atomic batch: the server rejects a duplicate
+      // registration (pending charges / active visit) before writing any line,
+      // so the same patient can't be sent to the cashier twice. The patient
+      // auto-advances server-side once nothing is owed.
+      const { ids } = await raiseChargeBatch({
+        patient_id: patient!.id,
+        branch_id: routing.branch_id,
+        department_id: routing.department_id,
+        to_triage: routing.to_triage,
+        provider_id: routing.provider_id,
+        items: chosen.map((s) => ({ service_item_id: s.id, source: "consultation", description: s.name, amount: parseFloat(s.price) || 0 })),
+      });
       if (opts.action === "collect") {
         for (const cid of ids) await settleCharge(cid, opts.method || "cash");
       } else if (opts.action === "waive") {
@@ -129,6 +141,7 @@ export function ReceptionPage() {
       resetForm();
       qc.invalidateQueries({ queryKey: ["queue"] });
       qc.invalidateQueries({ queryKey: ["pending-charges"] });
+      qc.invalidateQueries({ queryKey: ["patient-pending"] });
     },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not register the visit"),
   });
@@ -159,6 +172,30 @@ export function ReceptionPage() {
               <Label>Patient</Label>
               <PatientCombobox value={patient} onSelect={setPatient} />
             </div>
+
+            {hasPending && (
+              <div className="space-y-2 rounded-md border border-warning/40 bg-warning/10 p-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-warning">
+                  <AlertTriangle className="h-4 w-4" />
+                  Already at the cashier
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {patient?.name} already has {pendingList.length} unpaid charge{pendingList.length > 1 ? "s" : ""} waiting to be paid. Don't register the visit again — settle or void {pendingList.length > 1 ? "them" : "it"} at the cashier first.
+                </p>
+                <ul className="space-y-1 rounded border bg-background/60 p-2 text-xs">
+                  {pendingList.map((r) => (
+                    <li key={r.id} className="flex items-center justify-between gap-2">
+                      <span className="truncate">{r.description}</span>
+                      <span className="font-mono text-muted-foreground">{r.currency} {r.amount}</span>
+                    </li>
+                  ))}
+                  <li className="flex items-center justify-between gap-2 border-t pt-1 font-semibold">
+                    <span>Pending total</span>
+                    <span className="font-mono">ETB {pendingTotal.toFixed(2)}</span>
+                  </li>
+                </ul>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>Services</Label>
@@ -214,14 +251,21 @@ export function ReceptionPage() {
 
             <div className="space-y-2">
               <Label>Next step</Label>
-              <div className="flex gap-2">
-                <Button type="button" variant={toTriage ? "default" : "outline"} className="flex-1" onClick={() => setToTriage(true)}>
-                  <Stethoscope /> Triage first
-                </Button>
-                <Button type="button" variant={!toTriage ? "default" : "outline"} className="flex-1" onClick={() => setToTriage(false)}>
-                  <UserCheck /> Straight to doctor
-                </Button>
-              </div>
+              {triageRequired ? (
+                <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                  <Stethoscope className="h-4 w-4 text-brand" />
+                  <span>Triage first <span className="text-muted-foreground">— required by clinic settings</span></span>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Button type="button" variant={toTriage ? "default" : "outline"} className="flex-1" onClick={() => setToTriage(true)}>
+                    <Stethoscope /> Triage first
+                  </Button>
+                  <Button type="button" variant={!toTriage ? "default" : "outline"} className="flex-1" onClick={() => setToTriage(false)}>
+                    <UserCheck /> Straight to doctor
+                  </Button>
+                </div>
+              )}
             </div>
 
             {!toTriage && (
@@ -248,7 +292,7 @@ export function ReceptionPage() {
             {/* --- payment / send --- */}
             {cashierMode ? (
               <>
-                <Button className="w-full" disabled={!routeReady} loading={send.isPending} onClick={() => send.mutate({ action: "cashier" })}>
+                <Button className="w-full" disabled={!routeReady || hasPending} loading={send.isPending} onClick={() => send.mutate({ action: "cashier" })}>
                   {hasFee ? "Send to cashier" : `Send to ${toTriage ? "triage" : "doctor"}`}
                 </Button>
                 {hasFee && (
@@ -271,14 +315,14 @@ export function ReceptionPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <Button variant="outline" disabled={!routeReady} onClick={() => setWaiveOpen(true)}>Waive…</Button>
+                  <Button variant="outline" disabled={!routeReady || hasPending} onClick={() => setWaiveOpen(true)}>Waive…</Button>
                 </div>
-                <Button className="w-full" disabled={!routeReady} loading={send.isPending} onClick={() => send.mutate({ action: "collect", method })}>
+                <Button className="w-full" disabled={!routeReady || hasPending} loading={send.isPending} onClick={() => send.mutate({ action: "collect", method })}>
                   <HandCoins className="h-4 w-4" /> Collect ETB {total.toFixed(2)} &amp; send to {toTriage ? "triage" : "doctor"}
                 </Button>
               </div>
             ) : (
-              <Button className="w-full" disabled={!routeReady} loading={send.isPending} onClick={() => send.mutate({ action: "cashier" })}>
+              <Button className="w-full" disabled={!routeReady || hasPending} loading={send.isPending} onClick={() => send.mutate({ action: "cashier" })}>
                 Send to {toTriage ? "triage" : "doctor"}
               </Button>
             )}
@@ -302,7 +346,7 @@ export function ReceptionPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setWaiveOpen(false)}>Cancel</Button>
-            <Button disabled={!waiveReason} loading={send.isPending} onClick={() => send.mutate({ action: "waive", reason: waiveReason })}>
+            <Button disabled={!waiveReason || hasPending} loading={send.isPending} onClick={() => send.mutate({ action: "waive", reason: waiveReason })}>
               Waive &amp; send
             </Button>
           </DialogFooter>

@@ -25,6 +25,8 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	q.POST("/:id/priority", httpx.RequirePermission("queue.manage"), h.SetPriority)
 	q.POST("/:id/assign", httpx.RequirePermission("queue.manage"), h.Assign)
 
-	// A doctor's personal worklist ("patients waiting for me").
+	// A doctor's personal worklist ("patients waiting for me") + the unassigned
+	// pick-up pool (patients past triage not yet claimed by any doctor).
 	rg.GET("/worklist", httpx.RequirePermission("encounter.manage"), h.Worklist)
+	rg.GET("/worklist/unassigned", httpx.RequirePermission("encounter.manage"), h.Unassigned)
 }

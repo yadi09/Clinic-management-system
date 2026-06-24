@@ -14,7 +14,7 @@ import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
 import { useDebounce } from "@/hooks/useDebounce";
 import { searchPatients } from "@/features/patients/api";
-import { listDepartments, listUsers } from "@/features/admin/api";
+import { listDepartments, listProviders } from "@/features/admin/api";
 import { bookAppointment, rescheduleAppointment, type Appointment } from "@/features/scheduling/api";
 
 const DURATIONS = [15, 20, 30, 45, 60];
@@ -41,7 +41,7 @@ export function BookingDialog({ open, onOpenChange, branchId, defaultDate, exist
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const providers = useQuery({ queryKey: ["users"], queryFn: listUsers, enabled: open });
+  const providers = useQuery({ queryKey: ["providers"], queryFn: listProviders, enabled: open });
   const departments = useQuery({ queryKey: ["departments"], queryFn: listDepartments, enabled: open });
 
   useEffect(() => {
@@ -130,7 +130,7 @@ export function BookingDialog({ open, onOpenChange, branchId, defaultDate, exist
                   <SelectValue placeholder="Select…" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(providers.data ?? []).filter((u) => u.status === "active").map((u) => (
+                  {(providers.data ?? []).map((u) => (
                     <SelectItem key={u.id} value={u.id}>
                       {u.full_name}
                     </SelectItem>

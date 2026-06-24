@@ -43,6 +43,8 @@ type Appointment struct {
 	EndsAt         time.Time  `json:"ends_at"`
 	Status         string     `json:"status"`
 	Reason         string     `json:"reason,omitempty"`
+	IsFollowup     bool       `json:"is_followup"`
+	FreeUntil      *time.Time `json:"free_until,omitempty"`
 	PatientName    string     `json:"patient_name"`
 	MRN            string     `json:"mrn"`
 	ProviderName   string     `json:"provider_name"`
@@ -65,6 +67,8 @@ type QueueEntry struct {
 	PatientName        string     `json:"patient_name"`
 	MRN                string     `json:"mrn"`
 	ProviderName       string     `json:"provider_name,omitempty"`
+	HasVitals          bool       `json:"has_vitals"`
+	InLab              bool       `json:"in_lab"`
 }
 
 // WorklistEntry is a patient on a doctor's personal worklist.
@@ -112,8 +116,11 @@ type Service interface {
 	CheckIn(ctx context.Context, id uuid.UUID, in CheckInInput) (gated bool, err error)
 	EnqueueWalkIn(ctx context.Context, in WalkInInput) (gated bool, err error)
 
-	ListQueue(ctx context.Context, departmentID uuid.UUID, stage string) ([]QueueEntry, error)
-	ListWorklist(ctx context.Context, providerID uuid.UUID) ([]WorklistEntry, error)
+	ListQueue(ctx context.Context, departmentID uuid.UUID, stage string, from time.Time, until *time.Time) ([]QueueEntry, error)
+	ListWorklist(ctx context.Context, providerID uuid.UUID, from time.Time) ([]WorklistEntry, error)
+	// ListUnassigned returns patients past triage but not yet assigned to any
+	// doctor — the pick-up pool for a doctor's My day.
+	ListUnassigned(ctx context.Context, from time.Time) ([]WorklistEntry, error)
 	AssignProvider(ctx context.Context, id, providerID uuid.UUID) error
 	TransitionQueue(ctx context.Context, id uuid.UUID, state string) error
 	SetQueuePriority(ctx context.Context, id uuid.UUID, priority int) error

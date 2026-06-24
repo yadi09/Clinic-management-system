@@ -228,13 +228,23 @@ func (h *Handlers) WalkIn(c *gin.Context) {
 	httpx.Created(c, gin.H{"status": "queued", "gated": gated})
 }
 
-// ListQueue handles GET /queue?department=&stage=.
+// ListQueue handles GET /queue?department=&stage=&from=&to=. The optional
+// from/to window (RFC3339) drives the board's date filter (today / yesterday /
+// last 3 days); absent from defaults to the start of today.
 func (h *Handlers) ListQueue(c *gin.Context) {
 	dept, ok := decodeID(c, id.PrefixDepartment, c.Query("department"))
 	if !ok {
 		return
 	}
-	entries, err := h.svc.ListQueue(c.Request.Context(), dept, c.Query("stage"))
+	var from time.Time
+	if f, err := time.Parse(time.RFC3339, c.Query("from")); err == nil {
+		from = f
+	}
+	var until *time.Time
+	if t, err := time.Parse(time.RFC3339, c.Query("to")); err == nil {
+		until = &t
+	}
+	entries, err := h.svc.ListQueue(c.Request.Context(), dept, c.Query("stage"), from, until)
 	if err != nil {
 		httpx.Fail(c, err)
 		return
@@ -262,7 +272,30 @@ func (h *Handlers) Worklist(c *gin.Context) {
 		httpx.Fail(c, apperr.Unauthenticated("authentication required"))
 		return
 	}
-	entries, err := h.svc.ListWorklist(c.Request.Context(), provider)
+	var from time.Time
+	if f, err := time.Parse(time.RFC3339, c.Query("from")); err == nil {
+		from = f
+	}
+	entries, err := h.svc.ListWorklist(c.Request.Context(), provider, from)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out := make([]worklistDTO, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, toWorklistDTO(e))
+	}
+	httpx.OK(c, out)
+}
+
+// Unassigned handles GET /worklist/unassigned — the pick-up pool of patients past
+// triage but not yet claimed by any doctor.
+func (h *Handlers) Unassigned(c *gin.Context) {
+	var from time.Time
+	if f, err := time.Parse(time.RFC3339, c.Query("from")); err == nil {
+		from = f
+	}
+	entries, err := h.svc.ListUnassigned(c.Request.Context(), from)
 	if err != nil {
 		httpx.Fail(c, err)
 		return

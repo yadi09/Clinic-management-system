@@ -97,6 +97,7 @@ func (s *Service) List(ctx context.Context, branchID uuid.UUID, from, to time.Ti
 			out = append(out, scheduling.Appointment{
 				ID: r.ID, PatientID: r.PatientID, ProviderID: r.ProviderID, DepartmentID: r.DepartmentID,
 				ResourceID: r.ResourceID, StartsAt: r.StartsAt, EndsAt: r.EndsAt, Status: r.Status, Reason: deref(r.Reason),
+				IsFollowup: r.IsFollowup, FreeUntil: r.FreeUntil,
 				PatientName: r.FirstName + " " + r.LastName, MRN: r.Mrn, ProviderName: r.ProviderName, DepartmentName: deref(r.DepartmentName),
 			})
 		}
@@ -195,6 +196,10 @@ func (s *Service) CheckIn(ctx context.Context, id uuid.UUID, in scheduling.Check
 		if appt.DepartmentID == nil {
 			return apperr.Validation("assign a department to the appointment before check-in")
 		}
+		// Clinic policy: when triage is required, no door sends straight to a doctor.
+		if req, _ := q.ClinicRequiresTriage(ctx, tenantID); req {
+			in.ToTriage = true
+		}
 		if _, e := q.SetAppointmentStatus(ctx, schedulingdb.SetAppointmentStatusParams{Status: "checked_in", TenantID: tenantID, ID: id}); e != nil {
 			return e
 		}
@@ -247,6 +252,10 @@ func (s *Service) EnqueueWalkIn(ctx context.Context, in scheduling.WalkInInput) 
 	var gated bool
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := schedulingdb.New(tx)
+		// Clinic policy: when triage is required, no door sends straight to a doctor.
+		if req, _ := q.ClinicRequiresTriage(ctx, tenantID); req {
+			in.ToTriage = true
+		}
 		stage := "with_doctor"
 		if in.ToTriage {
 			stage = "triage"
@@ -282,17 +291,22 @@ func (s *Service) EnqueueWalkIn(ctx context.Context, in scheduling.WalkInInput) 
 	return gated, nil
 }
 
-// ListQueue returns today's queue entries for a department, optionally filtered
-// to a stage ("triage" or "with_doctor"; empty = all).
-func (s *Service) ListQueue(ctx context.Context, departmentID uuid.UUID, stage string) ([]scheduling.QueueEntry, error) {
+// ListQueue returns a department's queue entries within [from, until) — used by
+// the live board's date filter (today / yesterday / last 3 days). A zero `from`
+// defaults to the start of today (UTC); a nil `until` means no upper bound.
+// Optionally filtered to a stage ("triage" or "with_doctor"; empty = all).
+func (s *Service) ListQueue(ctx context.Context, departmentID uuid.UUID, stage string, from time.Time, until *time.Time) ([]scheduling.QueueEntry, error) {
 	tenantID, _ := actorOf(ctx)
 	var st *string
 	if stage != "" {
 		st = &stage
 	}
+	if from.IsZero() {
+		from = startOfDayUTC()
+	}
 	var out []scheduling.QueueEntry
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		rows, e := schedulingdb.New(tx).ListQueue(ctx, schedulingdb.ListQueueParams{TenantID: tenantID, DepartmentID: departmentID, Since: startOfDayUTC(), Stage: st})
+		rows, e := schedulingdb.New(tx).ListQueue(ctx, schedulingdb.ListQueueParams{TenantID: tenantID, DepartmentID: departmentID, Since: from, Until: until, Stage: st})
 		if e != nil {
 			return e
 		}
@@ -301,7 +315,35 @@ func (s *Service) ListQueue(ctx context.Context, departmentID uuid.UUID, stage s
 				ID: r.ID, PatientID: r.PatientID, AppointmentID: r.AppointmentID, AssignedProviderID: r.AssignedProviderID,
 				State: r.State, Stage: r.Stage, Priority: int(r.Priority),
 				EnqueuedAt: r.EnqueuedAt, CalledAt: r.CalledAt, StartedAt: r.StartedAt, EndedAt: r.EndedAt,
-				PatientName: r.FirstName + " " + r.LastName, MRN: r.Mrn, ProviderName: deref(r.ProviderName),
+				PatientName: r.FirstName + " " + r.LastName, MRN: r.Mrn, ProviderName: deref(r.ProviderName), HasVitals: r.HasVitals, InLab: r.InLab,
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+// ListUnassigned returns patients past triage (stage=with_doctor) who are waiting
+// but not yet claimed by any doctor — the pick-up pool. Windowed by `from`.
+func (s *Service) ListUnassigned(ctx context.Context, from time.Time) ([]scheduling.WorklistEntry, error) {
+	tenantID, _ := actorOf(ctx)
+	if from.IsZero() {
+		from = startOfDayUTC()
+	}
+	var out []scheduling.WorklistEntry
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		rows, e := schedulingdb.New(tx).ListUnassignedReady(ctx, schedulingdb.ListUnassignedReadyParams{TenantID: tenantID, Since: from})
+		if e != nil {
+			return e
+		}
+		for _, r := range rows {
+			out = append(out, scheduling.WorklistEntry{
+				ID: r.ID, PatientID: r.PatientID, DepartmentID: r.DepartmentID, State: r.State, Stage: r.Stage, Priority: int(r.Priority),
+				EnqueuedAt: r.EnqueuedAt, CalledAt: r.CalledAt, StartedAt: r.StartedAt,
+				PatientName: r.FirstName + " " + r.LastName, MRN: r.Mrn, DepartmentName: deref(r.DepartmentName),
 			})
 		}
 		return nil
@@ -314,11 +356,14 @@ func (s *Service) ListQueue(ctx context.Context, departmentID uuid.UUID, stage s
 
 // ListWorklist returns the active patients assigned to one provider (their
 // personal "patients waiting for me" list), across departments.
-func (s *Service) ListWorklist(ctx context.Context, providerID uuid.UUID) ([]scheduling.WorklistEntry, error) {
+func (s *Service) ListWorklist(ctx context.Context, providerID uuid.UUID, from time.Time) ([]scheduling.WorklistEntry, error) {
 	tenantID, _ := actorOf(ctx)
+	if from.IsZero() {
+		from = startOfDayUTC()
+	}
 	var out []scheduling.WorklistEntry
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		rows, e := schedulingdb.New(tx).ListWorklist(ctx, schedulingdb.ListWorklistParams{TenantID: tenantID, AssignedProviderID: &providerID, Since: startOfDayUTC()})
+		rows, e := schedulingdb.New(tx).ListWorklist(ctx, schedulingdb.ListWorklistParams{TenantID: tenantID, AssignedProviderID: &providerID, Since: from})
 		if e != nil {
 			return e
 		}
@@ -343,6 +388,14 @@ func (s *Service) AssignProvider(ctx context.Context, id, providerID uuid.UUID) 
 	tenantID, _ := actorOf(ctx)
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := schedulingdb.New(tx)
+		// Triage gate: a patient cannot be sent to a doctor until vitals are recorded.
+		if rd, e := q.GetTriageReadiness(ctx, schedulingdb.GetTriageReadinessParams{TenantID: tenantID, ID: id}); e == nil {
+			if rd.Stage == "triage" && !rd.HasVitals {
+				return apperr.Conflict("VITALS_REQUIRED", "record vitals before assigning the patient to a doctor")
+			}
+		} else if !errors.Is(e, pgx.ErrNoRows) {
+			return e
+		}
 		r, e := q.AssignQueueProvider(ctx, schedulingdb.AssignQueueProviderParams{AssignedProviderID: &providerID, TenantID: tenantID, ID: id})
 		if e != nil {
 			return e
@@ -352,6 +405,9 @@ func (s *Service) AssignProvider(ctx context.Context, id, providerID uuid.UUID) 
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return apperr.NotFound("QUEUE_ENTRY_NOT_FOUND", "queue entry not found")
+	}
+	if ae, ok := apperr.As(err); ok {
+		return ae
 	}
 	if err != nil {
 		return apperr.Internal(err)

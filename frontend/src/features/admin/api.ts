@@ -89,6 +89,14 @@ export interface InviteResult {
 export function listUsers() {
   return apiFetch<UserListItem[]>("/users");
 }
+export interface Provider {
+  id: string;
+  full_name: string;
+}
+/** Assignable consulting clinicians — for triage/reception "assign doctor" pickers (no user.read needed). */
+export function listProviders() {
+  return apiFetch<Provider[]>("/providers");
+}
 export function listRoles() {
   return apiFetch<Role[]>("/roles");
 }

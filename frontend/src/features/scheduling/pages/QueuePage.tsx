@@ -1,34 +1,72 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { UserPlus, Radio } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Radio, LayoutGrid, List as ListIcon, FlaskConical, Clock } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { toast } from "@/components/ui/sonner";
-import { useAuth } from "@/app/auth-context";
-import { listBranches, listDepartments } from "@/features/admin/api";
-import { listQueue, queueStreamUrl, transitionQueue, walkIn, type QueueEntry } from "@/features/scheduling/api";
-import { PatientCombobox } from "@/features/scheduling/components/BookingDialog";
+import { listDepartments } from "@/features/admin/api";
+import { listQueue, queueStreamUrl, type QueueEntry } from "@/features/scheduling/api";
 
-const COLUMNS: { key: string; label: string; next?: string; nextLabel?: string }[] = [
-  { key: "waiting", label: "Waiting", next: "called", nextLabel: "Call" },
-  { key: "called", label: "Called", next: "in_consult", nextLabel: "Start" },
-  { key: "in_consult", label: "In consult", next: "done", nextLabel: "Complete" },
+type BadgeVariant = "default" | "brand" | "success" | "warning" | "destructive" | "outline";
+type Lane = "waiting" | "in_consult" | "in_lab" | "done";
+
+// A read-only monitor: the queue board only reflects where each patient is, it
+// never moves them. Transitions are driven by the people doing the work — the
+// doctor opening a patient (→ in consult), ordering a lab (→ in lab) and signing
+// off (→ done). Reception adds patients from the Reception page, not here.
+
+// Which lane a patient sits in. "called" folds into Waiting (still waiting to be
+// seen); the In-lab lane is the in_consult state split out by the derived flag.
+function laneOf(e: QueueEntry): Lane {
+  if (e.state === "done" || e.state === "no_show") return "done";
+  if (e.state === "in_consult") return e.in_lab ? "in_lab" : "in_consult";
+  return "waiting";
+}
+
+const LANES: { key: Lane; label: string; lab?: boolean }[] = [
+  { key: "waiting", label: "Waiting" },
+  { key: "in_consult", label: "In consult" },
+  { key: "in_lab", label: "In lab", lab: true },
   { key: "done", label: "Done" },
 ];
+
+const LANE_BADGE: Record<Lane, { label: string; variant: BadgeVariant }> = {
+  waiting: { label: "Waiting", variant: "outline" },
+  in_consult: { label: "In consult", variant: "brand" },
+  in_lab: { label: "In lab", variant: "warning" },
+  done: { label: "Done", variant: "success" },
+};
+
+function statusBadge(e: QueueEntry): { label: string; variant: BadgeVariant } {
+  if (e.state === "no_show") return { label: "No-show", variant: "destructive" };
+  return LANE_BADGE[laneOf(e)];
+}
 
 function waitMins(iso: string) {
   return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
 }
 
+type RangeKind = "today" | "yesterday" | "3d";
+
+// Local-day boundaries → ISO, so "today" means the staff's calendar day.
+function rangeWindow(kind: RangeKind): { from: string; to: string } {
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const day = 86_400_000;
+  if (kind === "yesterday") {
+    return { from: new Date(startToday.getTime() - day).toISOString(), to: startToday.toISOString() };
+  }
+  if (kind === "3d") {
+    return { from: new Date(startToday.getTime() - 2 * day).toISOString(), to: new Date(startToday.getTime() + day).toISOString() };
+  }
+  return { from: startToday.toISOString(), to: new Date(startToday.getTime() + day).toISOString() };
+}
+
+const RANGE_LABEL: Record<RangeKind, string> = { today: "Today", yesterday: "Yesterday", "3d": "Last 3 days" };
+
 export function QueuePage() {
   const qc = useQueryClient();
-  const { can } = useAuth();
-  const manage = can("queue.manage");
 
   const departments = useQuery({ queryKey: ["departments"], queryFn: listDepartments });
   const [dept, setDept] = useState("");
@@ -36,60 +74,76 @@ export function QueuePage() {
     if (!dept && departments.data?.length) setDept(departments.data[0].id);
   }, [departments.data, dept]);
 
+  const [range, setRange] = useState<RangeKind>("today");
+  const [view, setView] = useState<"board" | "list">(() => (localStorage.getItem("clinicos_queue_view") === "list" ? "list" : "board"));
+  useEffect(() => localStorage.setItem("clinicos_queue_view", view), [view]);
+
+  const win = useMemo(() => rangeWindow(range), [range]);
   const queue = useQuery({
-    queryKey: ["queue", dept],
-    queryFn: () => listQueue(dept),
+    queryKey: ["queue", dept, range],
+    queryFn: () => listQueue(dept, undefined, win),
     enabled: !!dept,
     refetchInterval: 60000, // safety net; SSE drives most updates
   });
 
-  // Live updates via SSE (Postgres LISTEN/NOTIFY).
+  // Live updates via SSE (Postgres LISTEN/NOTIFY). Only "today" is actively changing.
   useEffect(() => {
-    if (!dept) return;
+    if (!dept || range !== "today") return;
     const es = new EventSource(queueStreamUrl(dept));
     es.addEventListener("queue", () => qc.invalidateQueries({ queryKey: ["queue", dept] }));
     return () => es.close();
-  }, [dept, qc]);
+  }, [dept, range, qc]);
 
-  const transition = useMutation({
-    mutationFn: ({ id, state }: { id: string; state: string }) => transitionQueue(id, state),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["queue", dept] }),
-  });
-
+  const entries = queue.data ?? [];
   const grouped = useMemo(() => {
-    const m: Record<string, QueueEntry[]> = { waiting: [], called: [], in_consult: [], done: [] };
-    for (const e of queue.data ?? []) {
-      if (e.state === "no_show") m.done.push(e);
-      else (m[e.state] ??= []).push(e);
-    }
+    const m: Record<Lane, QueueEntry[]> = { waiting: [], in_consult: [], in_lab: [], done: [] };
+    for (const e of entries) m[laneOf(e)].push(e);
     return m;
-  }, [queue.data]);
+  }, [entries]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2">
-            Queue <Radio className="h-4 w-4 text-primary" aria-label="live" />
+            Queue {range === "today" && <Radio className="h-4 w-4 text-primary" aria-label="live" />}
           </h1>
-          <p className="text-sm text-muted-foreground">Live department board</p>
+          <p className="text-sm text-muted-foreground">
+            {range === "today" ? "Live department board — view only" : `Showing ${RANGE_LABEL[range].toLowerCase()}`}
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-56">
-            <Select value={dept} onValueChange={setDept}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select department" />
-              </SelectTrigger>
-              <SelectContent>
-                {(departments.data ?? []).map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {manage && dept && <WalkInDialog departmentId={dept} onAdded={() => qc.invalidateQueries({ queryKey: ["queue", dept] })} />}
+        <div className="w-52">
+          <Select value={dept} onValueChange={setDept}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select department" />
+            </SelectTrigger>
+            <SelectContent>
+              {(departments.data ?? []).map((d) => (
+                <SelectItem key={d.id} value={d.id}>
+                  {d.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* Toolbar: date filter + view toggle */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex rounded-lg border p-0.5">
+          {(Object.keys(RANGE_LABEL) as RangeKind[]).map((k) => (
+            <button
+              key={k}
+              onClick={() => setRange(k)}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium ${range === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              {RANGE_LABEL[k]}
+            </button>
+          ))}
+        </div>
+        <div className="inline-flex rounded-lg border p-0.5">
+          <ViewBtn active={view === "board"} onClick={() => setView("board")} icon={<LayoutGrid className="h-4 w-4" />} label="Board" />
+          <ViewBtn active={view === "list"} onClick={() => setView("list")} icon={<ListIcon className="h-4 w-4" />} label="List" />
         </div>
       </div>
 
@@ -97,88 +151,137 @@ export function QueuePage() {
         <Card className="p-12 text-center text-sm text-muted-foreground">
           Create a department in Settings to use the queue.
         </Card>
-      ) : (
+      ) : entries.length === 0 ? (
+        <Card className="p-12 text-center text-sm text-muted-foreground">
+          No patients {RANGE_LABEL[range].toLowerCase()}.
+        </Card>
+      ) : view === "board" ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {COLUMNS.map((col) => (
-            <div key={col.key} className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-h3">{col.label}</h2>
-                <Badge variant="outline">{grouped[col.key]?.length ?? 0}</Badge>
+          {LANES.map((lane) => (
+            <div key={lane.key} className="flex min-h-0 flex-col gap-2 rounded-lg bg-muted/30 p-2">
+              <div className="flex items-center justify-between px-1">
+                <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+                  {lane.lab && <FlaskConical className="h-3.5 w-3.5 text-warning" />}
+                  {lane.label}
+                </h2>
+                <Badge variant="outline">{grouped[lane.key].length}</Badge>
               </div>
-              <div className="space-y-2">
-                {(grouped[col.key] ?? []).map((e) => (
+              <div className="max-h-[62vh] space-y-2 overflow-y-auto pr-0.5">
+                {grouped[lane.key].map((e) => (
                   <Card key={e.id} className="p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="font-medium text-brand">{e.patient_name}</p>
+                        <p className="truncate font-medium text-brand">{e.patient_name}</p>
                         <p className="font-mono text-xs text-muted-foreground">{e.mrn}</p>
                       </div>
-                      {e.state !== "done" && e.state !== "no_show" && (
-                        <span className="shrink-0 text-xs text-muted-foreground">{waitMins(e.enqueued_at)}m</span>
+                      {lane.key !== "done" && (
+                        <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                          <Clock className="h-3 w-3" />
+                          {waitMins(e.enqueued_at)}m
+                        </span>
                       )}
                     </div>
-                    {manage && col.next && (
-                      <div className="mt-3 flex gap-2">
-                        <Button size="sm" className="h-8 flex-1" onClick={() => transition.mutate({ id: e.id, state: col.next! })}>
-                          {col.nextLabel}
-                        </Button>
-                        <Button size="sm" variant="outline" className="h-8" onClick={() => transition.mutate({ id: e.id, state: "no_show" })}>
-                          No-show
-                        </Button>
-                      </div>
+                    {lane.key === "in_lab" ? (
+                      <p className="mt-1 text-xs text-warning">Awaiting lab results</p>
+                    ) : (
+                      e.provider_name && <p className="mt-1 truncate text-xs text-muted-foreground">{e.provider_name}</p>
                     )}
                   </Card>
                 ))}
-                {!(grouped[col.key] ?? []).length && (
-                  <p className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">Empty</p>
+                {grouped[lane.key].length === 0 && (
+                  <p className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">Empty</p>
                 )}
               </div>
             </div>
           ))}
         </div>
+      ) : (
+        <QueueList entries={entries} grouped={grouped} />
       )}
     </div>
   );
 }
 
-function WalkInDialog({ departmentId, onAdded }: { departmentId: string; onAdded: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [patient, setPatient] = useState<{ id: string; name: string } | null>(null);
-  const branches = useQuery({ queryKey: ["branches"], queryFn: listBranches, enabled: open });
+function ViewBtn({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+    >
+      {icon} {label}
+    </button>
+  );
+}
 
-  const mut = useMutation({
-    mutationFn: () => walkIn({ branch_id: branches.data![0].id, department_id: departmentId, patient_id: patient!.id }),
-    onSuccess: (r) => {
-      toast.success(r.gated ? "Billed — sent to cashier. Patient joins the queue once payment is collected." : "Added to queue");
-      setPatient(null);
-      onAdded();
-      setOpen(false);
-    },
-    onError: () => toast.error("Could not add walk-in"),
-  });
+function QueueList({ entries, grouped }: { entries: QueueEntry[]; grouped: Record<Lane, QueueEntry[]> }) {
+  const [filter, setFilter] = useState<Lane | "all">("all");
+  const rows = filter === "all" ? entries : grouped[filter];
+
+  const chips: { key: Lane | "all"; label: string; count: number }[] = [
+    { key: "all", label: "All", count: entries.length },
+    ...LANES.map((l) => ({ key: l.key, label: l.label, count: grouped[l.key].length })),
+  ];
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <Button onClick={() => setOpen(true)}>
-        <UserPlus /> Walk-in
-      </Button>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Add walk-in to queue</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-1.5">
-          <Label>Patient</Label>
-          <PatientCombobox value={patient} onSelect={setPatient} />
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-1.5">
+        {chips.map((c) => (
+          <button
+            key={c.key}
+            onClick={() => setFilter(c.key)}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium ${
+              filter === c.key ? "border-primary bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {c.label}
+            <span className={`rounded-full px-1.5 text-xs ${filter === c.key ? "bg-background/20" : "bg-muted"}`}>{c.count}</span>
+          </button>
+        ))}
+      </div>
+
+      <Card className="overflow-hidden p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-4 py-2.5 font-medium">Patient</th>
+                <th className="px-4 py-2.5 font-medium">Status</th>
+                <th className="px-4 py-2.5 font-medium">Doctor</th>
+                <th className="px-4 py-2.5 font-medium">Waiting</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {rows.map((e) => {
+                const st = statusBadge(e);
+                const active = laneOf(e) !== "done";
+                return (
+                  <tr key={e.id} className="hover:bg-muted/20">
+                    <td className="px-4 py-2.5">
+                      <p className="font-medium text-brand">{e.patient_name}</p>
+                      <p className="font-mono text-xs text-muted-foreground">{e.mrn}</p>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <Badge variant={st.variant} className="gap-1">
+                        {laneOf(e) === "in_lab" && <FlaskConical className="h-3 w-3" />}
+                        {st.label}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-2.5 text-muted-foreground">{e.provider_name || "—"}</td>
+                    <td className="px-4 py-2.5 text-muted-foreground">{active ? `${waitMins(e.enqueued_at)}m` : "—"}</td>
+                  </tr>
+                );
+              })}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                    No patients in this status.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-          <Button disabled={!patient || !branches.data?.length} loading={mut.isPending} onClick={() => mut.mutate()}>
-            Add to queue
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </Card>
+    </div>
   );
 }

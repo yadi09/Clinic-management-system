@@ -13,6 +13,8 @@ export interface Appointment {
   ends_at: string;
   status: string;
   reason?: string;
+  is_followup: boolean;
+  free_until?: string;
   patient_name: string;
   mrn: string;
   provider_name: string;
@@ -33,6 +35,8 @@ export interface QueueEntry {
   patient_name: string;
   mrn: string;
   provider_name?: string;
+  has_vitals: boolean;
+  in_lab: boolean;
 }
 
 export interface WorklistEntry {
@@ -88,9 +92,11 @@ export function markFollowup(id: string, freeUntilISO?: string) {
   return apiFetch<void>(`/appointments/${id}/followup`, { method: "POST", body: { free_until: freeUntilISO } });
 }
 
-export function listQueue(departmentId: string, stage?: string) {
+export function listQueue(departmentId: string, stage?: string, window?: { from?: string; to?: string }) {
   const p = new URLSearchParams({ department: departmentId });
   if (stage) p.set("stage", stage);
+  if (window?.from) p.set("from", window.from);
+  if (window?.to) p.set("to", window.to);
   return apiFetch<QueueEntry[]>(`/queue?${p.toString()}`);
 }
 export function transitionQueue(id: string, state: string) {
@@ -99,9 +105,16 @@ export function transitionQueue(id: string, state: string) {
 export function assignProvider(id: string, providerId: string) {
   return apiFetch<void>(`/queue/${id}/assign`, { method: "POST", body: { provider_id: providerId } });
 }
-export function listWorklist(providerId?: string) {
-  const q = providerId ? `?provider=${providerId}` : "";
-  return apiFetch<WorklistEntry[]>(`/worklist${q}`);
+export function listWorklist(providerId?: string, fromISO?: string) {
+  const p = new URLSearchParams();
+  if (providerId) p.set("provider", providerId);
+  if (fromISO) p.set("from", fromISO);
+  const qs = p.toString();
+  return apiFetch<WorklistEntry[]>(`/worklist${qs ? `?${qs}` : ""}`);
+}
+/** Patients past triage but not yet claimed by any doctor — the My-day pick-up pool. */
+export function listUnassigned(fromISO?: string) {
+  return apiFetch<WorklistEntry[]>(`/worklist/unassigned${fromISO ? `?from=${encodeURIComponent(fromISO)}` : ""}`);
 }
 export function walkIn(body: {
   branch_id: string;

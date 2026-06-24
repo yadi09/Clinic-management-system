@@ -10,7 +10,7 @@ WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
 
 -- name: ListAppointments :many
 SELECT a.id, a.patient_id, a.provider_id, a.department_id, a.resource_id,
-       a.starts_at, a.ends_at, a.status, a.reason,
+       a.starts_at, a.ends_at, a.status, a.reason, a.is_followup, a.free_until,
        p.first_name, p.last_name, p.mrn,
        u.full_name AS provider_name,
        d.name AS department_name

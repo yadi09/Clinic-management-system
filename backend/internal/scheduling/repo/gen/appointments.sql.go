@@ -109,7 +109,7 @@ func (q *Queries) GetAppointment(ctx context.Context, arg GetAppointmentParams) 
 
 const listAppointments = `-- name: ListAppointments :many
 SELECT a.id, a.patient_id, a.provider_id, a.department_id, a.resource_id,
-       a.starts_at, a.ends_at, a.status, a.reason,
+       a.starts_at, a.ends_at, a.status, a.reason, a.is_followup, a.free_until,
        p.first_name, p.last_name, p.mrn,
        u.full_name AS provider_name,
        d.name AS department_name
@@ -141,6 +141,8 @@ type ListAppointmentsRow struct {
 	EndsAt         time.Time  `json:"ends_at"`
 	Status         string     `json:"status"`
 	Reason         *string    `json:"reason"`
+	IsFollowup     bool       `json:"is_followup"`
+	FreeUntil      *time.Time `json:"free_until"`
 	FirstName      string     `json:"first_name"`
 	LastName       string     `json:"last_name"`
 	Mrn            string     `json:"mrn"`
@@ -173,6 +175,8 @@ func (q *Queries) ListAppointments(ctx context.Context, arg ListAppointmentsPara
 			&i.EndsAt,
 			&i.Status,
 			&i.Reason,
+			&i.IsFollowup,
+			&i.FreeUntil,
 			&i.FirstName,
 			&i.LastName,
 			&i.Mrn,

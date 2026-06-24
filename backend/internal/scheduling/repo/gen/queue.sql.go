@@ -38,6 +38,19 @@ func (q *Queries) AssignQueueProvider(ctx context.Context, arg AssignQueueProvid
 	return i, err
 }
 
+const clinicRequiresTriage = `-- name: ClinicRequiresTriage :one
+SELECT COALESCE(triage_required, false) FROM clinics
+WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY created_at LIMIT 1
+`
+
+// Clinic policy (Settings → Patient flow): when true, every visit is triaged first.
+func (q *Queries) ClinicRequiresTriage(ctx context.Context, tenantID uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, clinicRequiresTriage, tenantID)
+	var triage_required bool
+	err := row.Scan(&triage_required)
+	return triage_required, err
+}
+
 const createQueueEntry = `-- name: CreateQueueEntry :one
 INSERT INTO queue_entries (tenant_id, branch_id, department_id, patient_id, appointment_id, stage, assigned_provider_id, priority, created_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -79,25 +92,65 @@ func (q *Queries) CreateQueueEntry(ctx context.Context, arg CreateQueueEntryPara
 	return i, err
 }
 
+const getTriageReadiness = `-- name: GetTriageReadiness :one
+SELECT q.stage,
+       EXISTS (SELECT 1 FROM vitals vt JOIN encounters e ON e.id = vt.encounter_id
+               WHERE e.queue_entry_id = q.id AND e.tenant_id = q.tenant_id AND e.deleted_at IS NULL) AS has_vitals
+FROM queue_entries q
+WHERE q.tenant_id = $1 AND q.id = $2 AND q.deleted_at IS NULL
+`
+
+type GetTriageReadinessParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+type GetTriageReadinessRow struct {
+	Stage     string `json:"stage"`
+	HasVitals bool   `json:"has_vitals"`
+}
+
+// A queue entry's stage + whether vitals have been recorded (gates triage → doctor).
+func (q *Queries) GetTriageReadiness(ctx context.Context, arg GetTriageReadinessParams) (GetTriageReadinessRow, error) {
+	row := q.db.QueryRow(ctx, getTriageReadiness, arg.TenantID, arg.ID)
+	var i GetTriageReadinessRow
+	err := row.Scan(&i.Stage, &i.HasVitals)
+	return i, err
+}
+
 const listQueue = `-- name: ListQueue :many
 SELECT q.id, q.patient_id, q.appointment_id, q.state, q.priority, q.stage, q.assigned_provider_id,
        q.enqueued_at, q.called_at, q.started_at, q.ended_at,
        p.first_name, p.last_name, p.mrn,
-       u.full_name AS provider_name
+       u.full_name AS provider_name,
+       EXISTS (SELECT 1 FROM vitals vt JOIN encounters e ON e.id = vt.encounter_id
+               WHERE e.queue_entry_id = q.id AND e.tenant_id = q.tenant_id AND e.deleted_at IS NULL) AS has_vitals,
+       -- Derived: the patient's consult has at least one lab sample still in flight.
+       -- The live status lives on lab_order_items (the order header stays 'ordered'),
+       -- so they show in the "In lab" lane and fall back to "In consult" the moment
+       -- results are submitted/validated (or the test is cancelled).
+       EXISTS (SELECT 1 FROM lab_order_items loi
+                 JOIN lab_orders lo ON lo.id = loi.order_id
+                 JOIN encounters le ON le.id = lo.encounter_id
+               WHERE le.queue_entry_id = q.id AND loi.tenant_id = q.tenant_id
+                 AND lo.deleted_at IS NULL
+                 AND loi.status IN ('ordered','collected','in_process')) AS in_lab
 FROM queue_entries q
 JOIN patients p ON p.id = q.patient_id AND p.tenant_id = q.tenant_id
 LEFT JOIN users u ON u.id = q.assigned_provider_id AND u.tenant_id = q.tenant_id
 WHERE q.tenant_id = $1 AND q.department_id = $2 AND q.deleted_at IS NULL
   AND q.enqueued_at >= $3
-  AND ($4::text IS NULL OR q.stage = $4)
+  AND ($4::timestamptz IS NULL OR q.enqueued_at < $4)
+  AND ($5::text IS NULL OR q.stage = $5)
 ORDER BY q.priority DESC, q.enqueued_at
 `
 
 type ListQueueParams struct {
-	TenantID     uuid.UUID `json:"tenant_id"`
-	DepartmentID uuid.UUID `json:"department_id"`
-	Since        time.Time `json:"since"`
-	Stage        *string   `json:"stage"`
+	TenantID     uuid.UUID  `json:"tenant_id"`
+	DepartmentID uuid.UUID  `json:"department_id"`
+	Since        time.Time  `json:"since"`
+	Until        *time.Time `json:"until"`
+	Stage        *string    `json:"stage"`
 }
 
 type ListQueueRow struct {
@@ -116,6 +169,8 @@ type ListQueueRow struct {
 	LastName           string     `json:"last_name"`
 	Mrn                string     `json:"mrn"`
 	ProviderName       *string    `json:"provider_name"`
+	HasVitals          bool       `json:"has_vitals"`
+	InLab              bool       `json:"in_lab"`
 }
 
 func (q *Queries) ListQueue(ctx context.Context, arg ListQueueParams) ([]ListQueueRow, error) {
@@ -123,6 +178,7 @@ func (q *Queries) ListQueue(ctx context.Context, arg ListQueueParams) ([]ListQue
 		arg.TenantID,
 		arg.DepartmentID,
 		arg.Since,
+		arg.Until,
 		arg.Stage,
 	)
 	if err != nil {
@@ -148,6 +204,86 @@ func (q *Queries) ListQueue(ctx context.Context, arg ListQueueParams) ([]ListQue
 			&i.LastName,
 			&i.Mrn,
 			&i.ProviderName,
+			&i.HasVitals,
+			&i.InLab,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUnassignedReady = `-- name: ListUnassignedReady :many
+SELECT q.id, q.patient_id, q.appointment_id, q.state, q.priority, q.stage, q.assigned_provider_id,
+       q.department_id, q.enqueued_at, q.called_at, q.started_at, q.ended_at,
+       p.first_name, p.last_name, p.mrn,
+       d.name AS department_name
+FROM queue_entries q
+JOIN patients p ON p.id = q.patient_id AND p.tenant_id = q.tenant_id
+LEFT JOIN departments d ON d.id = q.department_id AND d.tenant_id = q.tenant_id
+WHERE q.tenant_id = $1 AND q.deleted_at IS NULL
+  AND q.stage = 'with_doctor' AND q.assigned_provider_id IS NULL
+  AND q.state IN ('waiting','called')
+  AND q.enqueued_at >= $2
+ORDER BY q.priority DESC, q.enqueued_at
+`
+
+type ListUnassignedReadyParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	Since    time.Time `json:"since"`
+}
+
+type ListUnassignedReadyRow struct {
+	ID                 uuid.UUID  `json:"id"`
+	PatientID          uuid.UUID  `json:"patient_id"`
+	AppointmentID      *uuid.UUID `json:"appointment_id"`
+	State              string     `json:"state"`
+	Priority           int32      `json:"priority"`
+	Stage              string     `json:"stage"`
+	AssignedProviderID *uuid.UUID `json:"assigned_provider_id"`
+	DepartmentID       uuid.UUID  `json:"department_id"`
+	EnqueuedAt         time.Time  `json:"enqueued_at"`
+	CalledAt           *time.Time `json:"called_at"`
+	StartedAt          *time.Time `json:"started_at"`
+	EndedAt            *time.Time `json:"ended_at"`
+	FirstName          string     `json:"first_name"`
+	LastName           string     `json:"last_name"`
+	Mrn                string     `json:"mrn"`
+	DepartmentName     *string    `json:"department_name"`
+}
+
+// Patients who've cleared triage (stage=with_doctor) and are waiting but not yet
+// assigned to any doctor — the "pick up" pool surfaced on each doctor's My day.
+func (q *Queries) ListUnassignedReady(ctx context.Context, arg ListUnassignedReadyParams) ([]ListUnassignedReadyRow, error) {
+	rows, err := q.db.Query(ctx, listUnassignedReady, arg.TenantID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUnassignedReadyRow{}
+	for rows.Next() {
+		var i ListUnassignedReadyRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PatientID,
+			&i.AppointmentID,
+			&i.State,
+			&i.Priority,
+			&i.Stage,
+			&i.AssignedProviderID,
+			&i.DepartmentID,
+			&i.EnqueuedAt,
+			&i.CalledAt,
+			&i.StartedAt,
+			&i.EndedAt,
+			&i.FirstName,
+			&i.LastName,
+			&i.Mrn,
+			&i.DepartmentName,
 		); err != nil {
 			return nil, err
 		}
