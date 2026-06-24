@@ -17,6 +17,18 @@ ORDER BY u.created_at DESC;
 SELECT count(*) FROM users
 WHERE tenant_id = @tenant_id AND status = 'active' AND deleted_at IS NULL;
 
+-- name: ListProviders :many
+-- Active staff who can be a consulting provider (hold encounter.manage) — powers the
+-- triage / reception "assign doctor" pickers without requiring full user.read.
+SELECT DISTINCT u.id, u.full_name
+FROM users u
+JOIN user_role_scopes urs ON urs.user_id = u.id AND urs.tenant_id = u.tenant_id
+JOIN role_permissions rp ON rp.role_id = urs.role_id AND rp.tenant_id = u.tenant_id
+JOIN permissions p ON p.id = rp.permission_id
+WHERE u.tenant_id = @tenant_id AND u.status = 'active' AND u.deleted_at IS NULL
+  AND p.code = 'encounter.manage'
+ORDER BY u.full_name;
+
 -- name: GetTenantUserLimit :one
 SELECT p.user_limit
 FROM tenants t JOIN plans p ON p.id = t.plan_id

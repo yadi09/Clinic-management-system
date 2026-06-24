@@ -122,6 +122,27 @@ func (s *UserService) ListUsers(ctx context.Context) ([]identity.UserListItem, e
 	return out, nil
 }
 
+// ListProviders returns active consulting clinicians (hold encounter.manage) for
+// the triage/reception assign pickers — usable without full user.read.
+func (s *UserService) ListProviders(ctx context.Context) ([]identity.Provider, error) {
+	tenantID, _ := userActor(ctx)
+	out := []identity.Provider{}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		rows, e := identitydb.New(tx).ListProviders(ctx, tenantID)
+		if e != nil {
+			return e
+		}
+		for _, r := range rows {
+			out = append(out, identity.Provider{ID: r.ID, FullName: r.FullName})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
 // UpdateUserStatus changes a user's lifecycle state (FR-USR-02); activation is
 // subject to the plan's active-user limit.
 func (s *UserService) UpdateUserStatus(ctx context.Context, userID uuid.UUID, status string) error {

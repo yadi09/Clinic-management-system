@@ -11,6 +11,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AllergenCatalog struct {
+	ID        uuid.UUID  `json:"id"`
+	TenantID  uuid.UUID  `json:"tenant_id"`
+	Name      string     `json:"name"`
+	IsActive  bool       `json:"is_active"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	CreatedBy *uuid.UUID `json:"created_by"`
+	DeletedAt *time.Time `json:"deleted_at"`
+}
+
 type Allergy struct {
 	ID        uuid.UUID  `json:"id"`
 	TenantID  uuid.UUID  `json:"tenant_id"`
@@ -289,6 +300,12 @@ type Drug struct {
 	DeletedAt    *time.Time     `json:"deleted_at"`
 }
 
+type DrugAllergen struct {
+	TenantID   uuid.UUID `json:"tenant_id"`
+	DrugID     uuid.UUID `json:"drug_id"`
+	AllergenID uuid.UUID `json:"allergen_id"`
+}
+
 type DrugBatch struct {
 	ID          uuid.UUID  `json:"id"`
 	TenantID    uuid.UUID  `json:"tenant_id"`
@@ -301,6 +318,21 @@ type DrugBatch struct {
 	UpdatedAt   time.Time  `json:"updated_at"`
 	CreatedBy   *uuid.UUID `json:"created_by"`
 	DeletedAt   *time.Time `json:"deleted_at"`
+}
+
+type DrugCatalog struct {
+	ID                  uuid.UUID  `json:"id"`
+	TenantID            uuid.UUID  `json:"tenant_id"`
+	Name                string     `json:"name"`
+	DefaultDose         *string    `json:"default_dose"`
+	DefaultFrequency    *string    `json:"default_frequency"`
+	DefaultDuration     *string    `json:"default_duration"`
+	DefaultInstructions *string    `json:"default_instructions"`
+	IsActive            bool       `json:"is_active"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+	CreatedBy           *uuid.UUID `json:"created_by"`
+	DeletedAt           *time.Time `json:"deleted_at"`
 }
 
 type Encounter struct {
@@ -515,6 +547,19 @@ type Plan struct {
 	UpdatedAt          time.Time      `json:"updated_at"`
 }
 
+type PlatformAdmin struct {
+	ID           uuid.UUID  `json:"id"`
+	Email        string     `json:"email"`
+	PasswordHash string     `json:"password_hash"`
+	FullName     string     `json:"full_name"`
+	Status       string     `json:"status"`
+	MfaSecret    *string    `json:"mfa_secret"`
+	MfaEnabled   bool       `json:"mfa_enabled"`
+	LastLoginAt  *time.Time `json:"last_login_at"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
 type PoItem struct {
 	ID        uuid.UUID      `json:"id"`
 	TenantID  uuid.UUID      `json:"tenant_id"`
@@ -541,15 +586,17 @@ type Prescription struct {
 }
 
 type PrescriptionItem struct {
-	ID             uuid.UUID `json:"id"`
-	TenantID       uuid.UUID `json:"tenant_id"`
-	PrescriptionID uuid.UUID `json:"prescription_id"`
-	DrugName       string    `json:"drug_name"`
-	Dose           *string   `json:"dose"`
-	Frequency      *string   `json:"frequency"`
-	Duration       *string   `json:"duration"`
-	Instructions   *string   `json:"instructions"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID              uuid.UUID  `json:"id"`
+	TenantID        uuid.UUID  `json:"tenant_id"`
+	PrescriptionID  uuid.UUID  `json:"prescription_id"`
+	DrugName        string     `json:"drug_name"`
+	Dose            *string    `json:"dose"`
+	Frequency       *string    `json:"frequency"`
+	Duration        *string    `json:"duration"`
+	Instructions    *string    `json:"instructions"`
+	CreatedAt       time.Time  `json:"created_at"`
+	DrugID          *uuid.UUID `json:"drug_id"`
+	AllergyOverride *string    `json:"allergy_override"`
 }
 
 type PurchaseOrder struct {
@@ -788,4 +835,22 @@ type Vital struct {
 	RecordedAt  time.Time      `json:"recorded_at"`
 	RecordedBy  *uuid.UUID     `json:"recorded_by"`
 	CreatedAt   time.Time      `json:"created_at"`
+}
+
+type VitalFieldDef struct {
+	ID        uuid.UUID      `json:"id"`
+	TenantID  uuid.UUID      `json:"tenant_id"`
+	FieldKey  string         `json:"field_key"`
+	Label     string         `json:"label"`
+	Unit      string         `json:"unit"`
+	Decimals  int32          `json:"decimals"`
+	Enabled   bool           `json:"enabled"`
+	Required  bool           `json:"required"`
+	SortOrder int32          `json:"sort_order"`
+	MinVal    pgtype.Numeric `json:"min_val"`
+	LowVal    pgtype.Numeric `json:"low_val"`
+	HighVal   pgtype.Numeric `json:"high_val"`
+	MaxVal    pgtype.Numeric `json:"max_val"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
 }

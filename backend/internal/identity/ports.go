@@ -88,6 +88,12 @@ type UserListItem struct {
 	CreatedAt   time.Time  `json:"created_at"`
 }
 
+// Provider is an assignable consulting clinician (for triage/reception pickers).
+type Provider struct {
+	ID       uuid.UUID `json:"-"`
+	FullName string    `json:"full_name"`
+}
+
 // RoleItem is an assignable role.
 type RoleItem struct {
 	ID       uuid.UUID `json:"-"`
@@ -100,6 +106,7 @@ type RoleItem struct {
 type UserAdmin interface {
 	InviteUser(ctx context.Context, in InviteInput) (*InviteResult, error)
 	ListUsers(ctx context.Context) ([]UserListItem, error)
+	ListProviders(ctx context.Context) ([]Provider, error)
 	UpdateUserStatus(ctx context.Context, userID uuid.UUID, status string) error
 	AssignRoles(ctx context.Context, userID uuid.UUID, roleCodes []string) error
 	ListRoles(ctx context.Context) ([]RoleItem, error)

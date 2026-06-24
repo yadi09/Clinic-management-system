@@ -24,6 +24,20 @@ func (h *Handlers) ListUsers(c *gin.Context) {
 	httpx.OK(c, out)
 }
 
+// ListProviders handles GET /providers — assignable consulting clinicians.
+func (h *Handlers) ListProviders(c *gin.Context) {
+	items, err := h.users.ListProviders(c.Request.Context())
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out := make([]gin.H, 0, len(items))
+	for _, p := range items {
+		out = append(out, gin.H{"id": id.Encode(id.PrefixUser, p.ID), "full_name": p.FullName})
+	}
+	httpx.OK(c, out)
+}
+
 // InviteUser handles POST /users.
 func (h *Handlers) InviteUser(c *gin.Context) {
 	var req inviteRequest
