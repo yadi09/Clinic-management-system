@@ -55,6 +55,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // Re-check entitlements when the user returns to the tab, so a super-admin
+  // module change (e.g. disabling Laboratory) propagates to an open session
+  // without a manual reload.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible" && tokenStore.get()) loadMe().catch(() => {});
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, []);
+
   const signIn = async (accessToken: string, u: UserDTO) => {
     tokenStore.set(accessToken);
     setUser(u);
