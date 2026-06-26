@@ -439,6 +439,26 @@ type LabOrderItem struct {
 	NotifiedBy   *uuid.UUID `json:"notified_by"`
 }
 
+type LabReferral struct {
+	ID            uuid.UUID  `json:"id"`
+	TenantID      uuid.UUID  `json:"tenant_id"`
+	EncounterID   uuid.UUID  `json:"encounter_id"`
+	PatientID     uuid.UUID  `json:"patient_id"`
+	Tests         string     `json:"tests"`
+	Indication    *string    `json:"indication"`
+	Status        string     `json:"status"`
+	ResultSummary *string    `json:"result_summary"`
+	ResultValues  *string    `json:"result_values"`
+	ResultFiles   *string    `json:"result_files"`
+	ExternalLab   *string    `json:"external_lab"`
+	ResultedAt    *time.Time `json:"resulted_at"`
+	ResultedBy    *uuid.UUID `json:"resulted_by"`
+	CreatedBy     *uuid.UUID `json:"created_by"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	DeletedAt     *time.Time `json:"deleted_at"`
+}
+
 type LabResult struct {
 	ID          uuid.UUID `json:"id"`
 	TenantID    uuid.UUID `json:"tenant_id"`

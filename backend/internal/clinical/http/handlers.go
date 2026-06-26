@@ -3,6 +3,7 @@
 package http
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -214,6 +215,12 @@ type workspaceDTO struct {
 	Note         clinical.Note      `json:"note"`
 	Diagnoses    []diagnosisDTO     `json:"diagnoses"`
 	Prescription []medicationDTO    `json:"prescription"`
+	LabReferrals []labReferralDTO   `json:"lab_referrals"`
+}
+
+type labReferralDTO struct {
+	ID string `json:"id"`
+	clinical.LabReferral
 }
 type historyDTO struct {
 	ID string `json:"id"`
@@ -227,6 +234,7 @@ func encodePtr(prefix string, u *uuid.UUID) *string {
 	s := id.Encode(prefix, *u)
 	return &s
 }
+
 type categoryDTO struct {
 	ID string `json:"id"`
 	clinical.DiagnosisCategory
@@ -252,17 +260,17 @@ func catalogOut(e clinical.CatalogEntry) catalogEntryDTO {
 
 func workspaceOut(ws *clinical.Workspace) workspaceDTO {
 	out := workspaceDTO{
-		EncounterID: id.Encode(id.PrefixEncounter, ws.EncounterID),
-		Status:      ws.Status,
-		StartedAt:   ws.StartedAt,
-		BranchID:    id.Encode(id.PrefixBranch, ws.BranchID),
+		EncounterID:  id.Encode(id.PrefixEncounter, ws.EncounterID),
+		Status:       ws.Status,
+		StartedAt:    ws.StartedAt,
+		BranchID:     id.Encode(id.PrefixBranch, ws.BranchID),
 		DepartmentID: encodePtr(id.PrefixDepartment, ws.DepartmentID),
-		ProviderID:  encodePtr(id.PrefixUser, ws.ProviderID),
-		Patient:     bannerDTO{PatientID: id.Encode(id.PrefixPatient, ws.Patient.PatientID), PatientBanner: ws.Patient},
-		Allergies:   ws.Allergies,
-		Vitals:      ws.Vitals,
-		Note:        ws.Note,
-		Diagnoses:   make([]diagnosisDTO, 0, len(ws.Diagnoses)),
+		ProviderID:   encodePtr(id.PrefixUser, ws.ProviderID),
+		Patient:      bannerDTO{PatientID: id.Encode(id.PrefixPatient, ws.Patient.PatientID), PatientBanner: ws.Patient},
+		Allergies:    ws.Allergies,
+		Vitals:       ws.Vitals,
+		Note:         ws.Note,
+		Diagnoses:    make([]diagnosisDTO, 0, len(ws.Diagnoses)),
 		Prescription: make([]medicationDTO, 0, len(ws.Prescription)),
 	}
 	for _, d := range ws.Diagnoses {
@@ -270,6 +278,10 @@ func workspaceOut(ws *clinical.Workspace) workspaceDTO {
 	}
 	for _, m := range ws.Prescription {
 		out.Prescription = append(out.Prescription, medicationOut(m))
+	}
+	out.LabReferrals = make([]labReferralDTO, 0, len(ws.LabReferrals))
+	for _, r := range ws.LabReferrals {
+		out.LabReferrals = append(out.LabReferrals, labReferralDTO{ID: id.Encode(id.PrefixLabReferral, r.ID), LabReferral: r})
 	}
 	return out
 }
@@ -933,6 +945,73 @@ func (h *Handlers) DeleteDrug(c *gin.Context) {
 		return
 	}
 	if err := h.svc.DeleteDrug(c.Request.Context(), did); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+// ============================================================================
+// External lab referrals (RX-LAB-REFERRAL)
+// ============================================================================
+
+type labReferralRequest struct {
+	Tests      string `json:"tests" binding:"required"`
+	Indication string `json:"indication"`
+}
+type labReferralResultRequest struct {
+	Summary     string          `json:"summary"`
+	ExternalLab string          `json:"external_lab"`
+	Values      json.RawMessage `json:"values"`
+	Files       json.RawMessage `json:"files"`
+}
+
+// CreateLabReferral handles POST /encounters/:id/lab-referrals.
+func (h *Handlers) CreateLabReferral(c *gin.Context) {
+	encID, ok := decodeParam(c, id.PrefixEncounter, "id")
+	if !ok {
+		return
+	}
+	var req labReferralRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("list at least one test to request"))
+		return
+	}
+	r, err := h.svc.CreateLabReferral(c.Request.Context(), encID, clinical.LabReferralInput{Tests: req.Tests, Indication: req.Indication})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.Created(c, labReferralDTO{ID: id.Encode(id.PrefixLabReferral, r.ID), LabReferral: *r})
+}
+
+// RecordLabReferralResult handles POST /lab-referrals/:id/result.
+func (h *Handlers) RecordLabReferralResult(c *gin.Context) {
+	rid, ok := decodeParam(c, id.PrefixLabReferral, "id")
+	if !ok {
+		return
+	}
+	var req labReferralResultRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("a result is required"))
+		return
+	}
+	if err := h.svc.RecordLabReferralResult(c.Request.Context(), rid, clinical.LabReferralResultInput{
+		Summary: req.Summary, ExternalLab: req.ExternalLab, Values: req.Values, Files: req.Files,
+	}); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+// CancelLabReferral handles POST /lab-referrals/:id/cancel.
+func (h *Handlers) CancelLabReferral(c *gin.Context) {
+	rid, ok := decodeParam(c, id.PrefixLabReferral, "id")
+	if !ok {
+		return
+	}
+	if err := h.svc.CancelLabReferral(c.Request.Context(), rid); err != nil {
 		httpx.Fail(c, err)
 		return
 	}

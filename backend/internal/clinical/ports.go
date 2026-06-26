@@ -5,6 +5,7 @@ package clinical
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -122,6 +123,36 @@ type Workspace struct {
 	Note         Note          `json:"note"`
 	Diagnoses    []Diagnosis   `json:"diagnoses"`
 	Prescription []Medication  `json:"prescription"`
+	LabReferrals []LabReferral `json:"lab_referrals"`
+}
+
+// LabReferral is an external-lab request (and its returned result) for clinics
+// without an in-house lab. result_values / result_files are raw JSON passthrough.
+type LabReferral struct {
+	ID            uuid.UUID       `json:"-"`
+	Tests         string          `json:"tests"`
+	Indication    string          `json:"indication,omitempty"`
+	Status        string          `json:"status"`
+	ResultSummary string          `json:"result_summary,omitempty"`
+	ResultValues  json.RawMessage `json:"result_values,omitempty"`
+	ResultFiles   json.RawMessage `json:"result_files,omitempty"`
+	ExternalLab   string          `json:"external_lab,omitempty"`
+	ResultedAt    *time.Time      `json:"resulted_at,omitempty"`
+	CreatedAt     time.Time       `json:"created_at"`
+}
+
+// LabReferralInput requests external lab tests (free-text, one per line).
+type LabReferralInput struct {
+	Tests      string
+	Indication string
+}
+
+// LabReferralResultInput records a returned result — any subset may be set.
+type LabReferralResultInput struct {
+	Summary     string
+	ExternalLab string
+	Values      json.RawMessage // optional structured rows (raw JSON array)
+	Files       json.RawMessage // optional attachment refs (raw JSON array)
 }
 
 // BoardActive is one in-progress encounter on the doctor's "My day" board.
@@ -175,8 +206,8 @@ type DiagnosisInput struct {
 // MedicationInput adds a prescription line (allergy-guarded).
 type MedicationInput struct {
 	DrugName, Dose, Frequency, Duration, Instructions string
-	DrugID         *uuid.UUID // optional link to the drug library
-	OverrideReason string     // set to prescribe despite an allergy warning
+	DrugID                                            *uuid.UUID // optional link to the drug library
+	OverrideReason                                    string     // set to prescribe despite an allergy warning
 }
 
 // Allergen is one entry of the per-clinic allergen library.
@@ -293,6 +324,11 @@ type Service interface {
 	CreateDrug(ctx context.Context, in DrugInput) (*Drug, error)
 	UpdateDrug(ctx context.Context, id uuid.UUID, in DrugInput) error
 	DeleteDrug(ctx context.Context, id uuid.UUID) error
+
+	// External lab referrals (RX-LAB-REFERRAL) — for clinics without an in-house lab.
+	CreateLabReferral(ctx context.Context, encounterID uuid.UUID, in LabReferralInput) (*LabReferral, error)
+	RecordLabReferralResult(ctx context.Context, referralID uuid.UUID, in LabReferralResultInput) error
+	CancelLabReferral(ctx context.Context, referralID uuid.UUID) error
 }
 
 // VitalField is one configurable vital measurement on the triage form. Min/Max are

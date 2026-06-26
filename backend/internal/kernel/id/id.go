@@ -43,6 +43,7 @@ const (
 	PrefixPrescription   = "rx"
 	PrefixDrug           = "drg"
 	PrefixAllergen       = "aln" // allergen library (distinct from patient allergy "alg")
+	PrefixLabReferral    = "lrf" // external lab referral
 	PrefixBatch          = "bat"
 	PrefixSale           = "sal"
 	PrefixSupplier       = "sup"

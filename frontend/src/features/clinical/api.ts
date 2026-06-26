@@ -125,6 +125,31 @@ export interface Medication {
   allergens?: string[]; // the drug's allergen tags
   allergy_override?: string; // reason, if prescribed despite an allergy warning
 }
+export interface ReferralValue {
+  name: string;
+  value: string;
+  unit?: string;
+  ref?: string;
+  flag?: string;
+}
+export interface ReferralFile {
+  key: string;
+  url: string;
+  name: string;
+  mime?: string;
+}
+export interface LabReferral {
+  id: string;
+  tests: string;
+  indication?: string;
+  status: string; // requested | resulted | cancelled
+  result_summary?: string;
+  result_values?: ReferralValue[];
+  result_files?: ReferralFile[];
+  external_lab?: string;
+  resulted_at?: string;
+  created_at: string;
+}
 export interface Workspace {
   encounter_id: string;
   status: string; // open | closed
@@ -138,6 +163,16 @@ export interface Workspace {
   note: Note;
   diagnoses: Diagnosis[];
   prescription: Medication[];
+  lab_referrals: LabReferral[];
+}
+export function createLabReferral(encounterId: string, body: { tests: string; indication?: string }) {
+  return apiFetch<LabReferral>(`/encounters/${encounterId}/lab-referrals`, { method: "POST", body });
+}
+export function recordLabReferralResult(referralId: string, body: { summary?: string; external_lab?: string; values?: ReferralValue[]; files?: ReferralFile[] }) {
+  return apiFetch<void>(`/lab-referrals/${referralId}/result`, { method: "POST", body });
+}
+export function cancelLabReferral(referralId: string) {
+  return apiFetch<void>(`/lab-referrals/${referralId}/cancel`, { method: "POST" });
 }
 
 export interface HistoryItem {

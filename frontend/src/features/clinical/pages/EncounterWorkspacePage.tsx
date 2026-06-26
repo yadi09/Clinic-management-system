@@ -14,15 +14,17 @@ import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
 import { useAuth } from "@/app/auth-context";
 import { getClinic, getSettings, listBranches } from "@/features/admin/api";
-import { printPrescription } from "@/features/clinical/print";
+import { printPrescription, printLabRequest } from "@/features/clinical/print";
 import { DictateButton } from "@/features/clinical/components/DictateButton";
 import { bookAppointment, listAppointments, markFollowup, rescheduleAppointment, setAppointmentStatus, transitionQueue } from "@/features/scheduling/api";
 import { createOrder, encounterLabs, listTests } from "@/features/lab/api";
 import {
   addDiagnosis,
   addMedication,
+  cancelLabReferral,
   createAllergen,
   createDrug,
+  createLabReferral,
   getVitalFields,
   getWorkspace,
   listHistory,
@@ -30,6 +32,7 @@ import {
   removeDiagnosis,
   removeMedication,
   listAllergens,
+  recordLabReferralResult,
   saveNote,
   searchCatalog,
   searchDrugs,
@@ -39,6 +42,8 @@ import {
   type CatalogEntry,
   type Drug,
   type HistoryItem,
+  type LabReferral,
+  type ReferralValue,
   type VitalField,
   type Vitals,
   type Workspace,
@@ -233,6 +238,7 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
 
           <section id="lab">
             <LabOrders ws={ws} locked={locked} />
+            <LabReferralPanel ws={ws} locked={locked} onChanged={onChanged} />
           </section>
 
           <section id="prescription">
@@ -841,6 +847,174 @@ function LabOrders({ ws, locked }: { ws: Workspace; locked: boolean }) {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// External lab referrals — shown only when the clinic has no in-house lab module.
+// Request tests → print for the patient → record the result they bring back.
+function LabReferralPanel({ ws, locked, onChanged }: { ws: Workspace; locked: boolean; onChanged: () => void }) {
+  const { flagOn, user } = useAuth();
+  const clinic = useQuery({ queryKey: ["clinic"], queryFn: getClinic, retry: false });
+  const branches = useQuery({ queryKey: ["branches"], queryFn: listBranches });
+  const [requesting, setRequesting] = useState(false);
+  const [resultFor, setResultFor] = useState<LabReferral | null>(null);
+  const cancel = useMutation({ mutationFn: (id: string) => cancelLabReferral(id), onSuccess: onChanged });
+
+  if (flagOn("laboratory")) return null; // the in-house lab module handles ordering
+
+  const refs = ws.lab_referrals ?? [];
+  const printReq = (r: LabReferral) => {
+    const clinicName = clinic.data?.name || "Clinic";
+    const branch = (branches.data ?? []).find((b) => b.id === ws.branch_id);
+    printLabRequest({
+      clinic: clinicName,
+      clinicContact: [branch?.address, branch?.phone].filter(Boolean).join(" · ") || undefined,
+      ref: `Lab ${r.id.slice(-6)}`,
+      qrData: `LABREQ:${r.id}\n${clinicName}\n${ws.patient.name} ${ws.patient.mrn}`,
+      patient: ws.patient.name, mrn: ws.patient.mrn, age: ws.patient.age, gender: ws.patient.gender,
+      prescriber: user?.full_name, when: r.created_at,
+      tests: r.tests.split("\n"), indication: r.indication,
+    });
+  };
+
+  return (
+    <div className="mt-4">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="text-h3">Lab requests <span className="text-xs font-normal text-muted-foreground">· external lab</span></h2>
+        {!locked && <Button size="sm" variant="outline" onClick={() => setRequesting(true)}><FlaskConical className="h-3.5 w-3.5" /> Request lab</Button>}
+      </div>
+      {refs.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No lab requested. Use “Request lab” to order tests the patient takes to an outside lab; record the result here when they return.</p>
+      ) : (
+        <div className="space-y-3">
+          {refs.map((r) => (
+            <div key={r.id} className="rounded-md border">
+              <div className="flex items-center justify-between gap-2 border-b bg-muted/30 px-3 py-1.5 text-sm">
+                <span className="font-medium">{r.tests.split("\n").filter(Boolean).join(", ")}</span>
+                <Badge variant={r.status === "resulted" ? "success" : r.status === "cancelled" ? "outline" : "warning"}>{r.status}</Badge>
+              </div>
+              <div className="space-y-2 px-3 py-2 text-sm">
+                {r.indication && <p className="text-xs text-muted-foreground">Indication: {r.indication}</p>}
+                {r.status === "resulted" && (
+                  <div className="rounded bg-muted/40 p-2 text-xs">
+                    {(r.external_lab || r.resulted_at) && (
+                      <p className="font-medium">{r.external_lab || "External lab"}{r.resulted_at ? ` · ${new Date(r.resulted_at).toLocaleDateString()}` : ""}</p>
+                    )}
+                    {r.result_summary && <p className="mt-0.5 whitespace-pre-wrap">{r.result_summary}</p>}
+                    {(r.result_values?.length ?? 0) > 0 && (
+                      <table className="mt-1.5 w-full">
+                        <tbody>
+                          {r.result_values!.map((v, i) => (
+                            <tr key={i}>
+                              <td className="py-0.5 text-muted-foreground">{v.name}</td>
+                              <td className="py-0.5 font-medium">{v.value}{v.unit ? ` ${v.unit}` : ""}</td>
+                              <td className="py-0.5 text-muted-foreground">{v.ref || ""}</td>
+                              <td className="py-0.5 text-right">{v.flag ? <Badge variant="outline">{v.flag}</Badge> : null}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )}
+                {r.status !== "cancelled" && (
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" onClick={() => printReq(r)}><Printer className="h-3.5 w-3.5" /> Print request</Button>
+                    {!locked && r.status === "requested" && (
+                      <>
+                        <Button size="sm" onClick={() => setResultFor(r)}>Record result</Button>
+                        <Button size="sm" variant="ghost" className="text-destructive" onClick={() => cancel.mutate(r.id)}>Cancel</Button>
+                      </>
+                    )}
+                    {!locked && r.status === "resulted" && <Button size="sm" variant="ghost" onClick={() => setResultFor(r)}>Edit result</Button>}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {requesting && <RequestLabDialog encounterId={ws.encounter_id} onClose={() => setRequesting(false)} onDone={() => { setRequesting(false); onChanged(); }} />}
+      {resultFor && <RecordResultDialog referral={resultFor} onClose={() => setResultFor(null)} onDone={() => { setResultFor(null); onChanged(); }} />}
+    </div>
+  );
+}
+
+function RequestLabDialog({ encounterId, onClose, onDone }: { encounterId: string; onClose: () => void; onDone: () => void }) {
+  const [tests, setTests] = useState("");
+  const [indication, setIndication] = useState("");
+  const mut = useMutation({
+    mutationFn: () => createLabReferral(encounterId, { tests, indication }),
+    onSuccess: () => { toast.success("Lab request created — print it for the patient"); onDone(); },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not create the request"),
+  });
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Request external lab</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label>Tests (one per line)</Label>
+            <Textarea rows={4} value={tests} onChange={(e) => setTests(e.target.value)} placeholder={"CBC\nFasting blood sugar\nLipid panel"} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Clinical indication</Label>
+            <Input value={indication} onChange={(e) => setIndication(e.target.value)} placeholder="r/o anemia, ? diabetes" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={!tests.trim()} loading={mut.isPending} onClick={() => mut.mutate()}>Create request</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function RecordResultDialog({ referral, onClose, onDone }: { referral: LabReferral; onClose: () => void; onDone: () => void }) {
+  const [externalLab, setExternalLab] = useState(referral.external_lab ?? "");
+  const [summary, setSummary] = useState(referral.result_summary ?? "");
+  const [rows, setRows] = useState<ReferralValue[]>(referral.result_values ?? []);
+  const setRow = (i: number, p: Partial<ReferralValue>) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...p } : r)));
+  const filled = rows.filter((r) => r.name.trim() || r.value.trim());
+  const empty = !summary.trim() && filled.length === 0;
+  const mut = useMutation({
+    mutationFn: () => recordLabReferralResult(referral.id, { summary, external_lab: externalLab, values: filled }),
+    onSuccess: () => { toast.success("Result saved"); onDone(); },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not save the result"),
+  });
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader><DialogTitle>Record lab result</DialogTitle></DialogHeader>
+        <p className="text-xs text-muted-foreground">For: {referral.tests.split("\n").filter(Boolean).join(", ")}</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5"><Label>External lab</Label><Input value={externalLab} onChange={(e) => setExternalLab(e.target.value)} placeholder="St. Gabriel Lab" /></div>
+        </div>
+        <div className="space-y-1.5"><Label>Summary / interpretation</Label><Textarea rows={3} value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="Key findings…" /></div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground">Values (optional)</Label>
+            <Button size="sm" variant="ghost" onClick={() => setRows((rs) => [...rs, { name: "", value: "" }])}><Plus className="h-3.5 w-3.5" /> Add row</Button>
+          </div>
+          {rows.map((r, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              <Input className="h-8 flex-1" placeholder="Test" value={r.name} onChange={(e) => setRow(i, { name: e.target.value })} />
+              <Input className="h-8 w-20" placeholder="Value" value={r.value} onChange={(e) => setRow(i, { value: e.target.value })} />
+              <Input className="h-8 w-16" placeholder="Unit" value={r.unit ?? ""} onChange={(e) => setRow(i, { unit: e.target.value })} />
+              <Input className="h-8 w-24" placeholder="Ref" value={r.ref ?? ""} onChange={(e) => setRow(i, { ref: e.target.value })} />
+              <Input className="h-8 w-16" placeholder="Flag" value={r.flag ?? ""} onChange={(e) => setRow(i, { flag: e.target.value })} />
+              <button onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-destructive"><X className="h-4 w-4" /></button>
+            </div>
+          ))}
+        </div>
+        <p className="text-[11px] text-muted-foreground">Attaching the scanned report becomes available once Cloudinary storage is configured.</p>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={empty} loading={mut.isPending} onClick={() => mut.mutate()}>Save result</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

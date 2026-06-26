@@ -691,6 +691,18 @@ func loadWorkspace(ctx context.Context, q *clinicaldb.Queries, tenantID, encID u
 	for _, m := range rx {
 		ws.Prescription = append(ws.Prescription, clinical.Medication{ID: m.ID, DrugName: m.DrugName, Dose: deref(m.Dose), Frequency: deref(m.Frequency), Duration: deref(m.Duration), Instructions: deref(m.Instructions), Allergens: m.Allergens, AllergyOverride: deref(m.AllergyOverride)})
 	}
+	refs, e := q.ListLabReferralsByEncounter(ctx, clinicaldb.ListLabReferralsByEncounterParams{TenantID: tenantID, EncounterID: encID})
+	if e != nil {
+		return nil, e
+	}
+	ws.LabReferrals = []clinical.LabReferral{}
+	for _, r := range refs {
+		ws.LabReferrals = append(ws.LabReferrals, clinical.LabReferral{
+			ID: r.ID, Tests: r.Tests, Indication: deref(r.Indication), Status: r.Status, ResultSummary: deref(r.ResultSummary),
+			ResultValues: rawOrNil(r.ResultValues), ResultFiles: rawOrNil(r.ResultFiles), ExternalLab: deref(r.ExternalLab),
+			ResultedAt: r.ResultedAt, CreatedAt: r.CreatedAt,
+		})
+	}
 	return ws, nil
 }
 

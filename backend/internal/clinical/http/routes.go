@@ -20,9 +20,9 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 
 	// Encounter workspace (3b) — doctors.
 	enc := rg.Group("/encounters", httpx.RequirePermission("encounter.manage"))
-	enc.POST("", h.OpenEncounter)   // open-or-get the encounter for a queue entry
-	enc.GET("", h.History)          // ?patient= → patient history timeline
-	enc.GET("/board", h.MyBoard)    // doctor's "My day": in-progress + done today
+	enc.POST("", h.OpenEncounter) // open-or-get the encounter for a queue entry
+	enc.GET("", h.History)        // ?patient= → patient history timeline
+	enc.GET("/board", h.MyBoard)  // doctor's "My day": in-progress + done today
 	enc.GET("/:id", h.GetWorkspace)
 	enc.PUT("/:id/note", h.SaveNote)
 	enc.POST("/:id/diagnoses", h.AddDiagnosis)
@@ -31,6 +31,11 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	enc.DELETE("/:id/prescriptions/:itemId", h.RemoveMedication)
 	enc.POST("/:id/set-aside", h.SetAside)
 	enc.POST("/:id/sign", h.SignAndClose)
+	// External lab referrals (clinics without an in-house lab): request tests to
+	// print for the patient, then record the result they bring back.
+	enc.POST("/:id/lab-referrals", h.CreateLabReferral)
+	rg.POST("/lab-referrals/:id/result", httpx.RequirePermission("encounter.manage"), h.RecordLabReferralResult)
+	rg.POST("/lab-referrals/:id/cancel", httpx.RequirePermission("encounter.manage"), h.CancelLabReferral)
 
 	// Diagnosis catalog — reads open to any authenticated staff (non-PHI
 	// reference data); writes are admin-only (clinic.manage).
