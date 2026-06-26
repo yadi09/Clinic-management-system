@@ -14,8 +14,9 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	v.GET("/:qid", h.GetVisit)
 	v.POST("/:qid/vitals", h.RecordVitals)
 
-	// Voice dictation (speech-to-text) for clinical documentation — clinicians.
-	rg.POST("/transcribe", httpx.RequirePermission("encounter.manage"), h.Transcribe)
+	// Voice dictation (speech-to-text) for clinical documentation — doctors (SOAP
+	// notes) and triage nurses (triage notes).
+	rg.POST("/transcribe", httpx.RequireAnyPermission("encounter.manage", "triage.manage"), h.Transcribe)
 
 	// Encounter workspace (3b) — doctors.
 	enc := rg.Group("/encounters", httpx.RequirePermission("encounter.manage"))

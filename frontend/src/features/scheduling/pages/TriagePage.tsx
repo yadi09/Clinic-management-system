@@ -15,6 +15,7 @@ import { listBranches, listDepartments, listProviders } from "@/features/admin/a
 import { getVisit, getVitalFields, recordVitals, vitalFlag, type VitalsBody, type VitalField } from "@/features/clinical/api";
 import { assignProvider, listQueue, type QueueEntry } from "@/features/scheduling/api";
 import { DateRangeFilter, windowFor, type DateWindow } from "@/components/ui/date-range-filter";
+import { DictateButton } from "@/features/clinical/components/DictateButton";
 
 function waitMins(iso: string) {
   return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
@@ -323,7 +324,10 @@ function VitalsDialog({
           })}
         </div>
         <div className="space-y-1.5">
-          <Label>Notes</Label>
+          <div className="flex items-center justify-between gap-2">
+            <Label>Notes</Label>
+            <DictateButton onText={(t) => setNotes((n) => (n.trim() ? `${n.replace(/\s*$/, "")} ${t}` : t))} />
+          </div>
           <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Triage notes" />
         </div>
         <DialogFooter>
