@@ -38,11 +38,14 @@ import {
   searchDrugs,
   setAside,
   signEncounter,
+  signReferralUpload,
+  uploadToTarget,
   vitalFlag,
   type CatalogEntry,
   type Drug,
   type HistoryItem,
   type LabReferral,
+  type ReferralFile,
   type ReferralValue,
   type VitalField,
   type Vitals,
@@ -915,6 +918,15 @@ function LabReferralPanel({ ws, locked, onChanged }: { ws: Workspace; locked: bo
                         </tbody>
                       </table>
                     )}
+                    {(r.result_files?.length ?? 0) > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-2">
+                        {r.result_files!.map((f, i) => (
+                          <a key={i} href={f.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded border bg-background px-2 py-0.5 text-primary hover:underline">
+                            <Printer className="h-3 w-3" /> {f.name}
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
                 {r.status !== "cancelled" && (
@@ -975,11 +987,30 @@ function RecordResultDialog({ referral, onClose, onDone }: { referral: LabReferr
   const [externalLab, setExternalLab] = useState(referral.external_lab ?? "");
   const [summary, setSummary] = useState(referral.result_summary ?? "");
   const [rows, setRows] = useState<ReferralValue[]>(referral.result_values ?? []);
+  const [files, setFiles] = useState<ReferralFile[]>(referral.result_files ?? []);
+  const [uploading, setUploading] = useState(false);
   const setRow = (i: number, p: Partial<ReferralValue>) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...p } : r)));
   const filled = rows.filter((r) => r.name.trim() || r.value.trim());
-  const empty = !summary.trim() && filled.length === 0;
+  const empty = !summary.trim() && filled.length === 0 && files.length === 0;
+
+  const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file
+    if (!file) return;
+    setUploading(true);
+    try {
+      const target = await signReferralUpload(referral.id, { filename: file.name, type: file.type.startsWith("image/") ? "image" : "raw" });
+      const f = await uploadToTarget(target, file);
+      setFiles((fs) => [...fs, f]);
+    } catch (err) {
+      toast.error(err instanceof AppError ? err.message : "Could not attach the file");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const mut = useMutation({
-    mutationFn: () => recordLabReferralResult(referral.id, { summary, external_lab: externalLab, values: filled }),
+    mutationFn: () => recordLabReferralResult(referral.id, { summary, external_lab: externalLab, values: filled, files }),
     onSuccess: () => { toast.success("Result saved"); onDone(); },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not save the result"),
   });
@@ -1008,7 +1039,23 @@ function RecordResultDialog({ referral, onClose, onDone }: { referral: LabReferr
             </div>
           ))}
         </div>
-        <p className="text-[11px] text-muted-foreground">Attaching the scanned report becomes available once Cloudinary storage is configured.</p>
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Attachments (scanned report)</Label>
+          {files.length > 0 && (
+            <ul className="space-y-1">
+              {files.map((f, i) => (
+                <li key={i} className="flex items-center justify-between gap-2 rounded-md border bg-background px-2 py-1 text-sm">
+                  <a href={f.url} target="_blank" rel="noreferrer" className="truncate text-primary hover:underline">{f.name}</a>
+                  <button onClick={() => setFiles((fs) => fs.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-destructive"><X className="h-4 w-4" /></button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
+            <Plus className="h-3.5 w-3.5" /> {uploading ? "Uploading…" : "Attach scan (image/PDF)"}
+            <input type="file" accept="image/*,application/pdf" className="hidden" disabled={uploading} onChange={onPickFile} />
+          </label>
+        </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button disabled={empty} loading={mut.isPending} onClick={() => mut.mutate()}>Save result</Button>

@@ -5,8 +5,10 @@ package http
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -16,6 +18,7 @@ import (
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
 	"github.com/reicb/clinicsaas/internal/kernel/httpx"
 	"github.com/reicb/clinicsaas/internal/kernel/id"
+	"github.com/reicb/clinicsaas/internal/kernel/storage"
 	"github.com/reicb/clinicsaas/internal/kernel/transcribe"
 )
 
@@ -23,11 +26,12 @@ import (
 type Handlers struct {
 	svc         clinical.Service
 	transcriber *transcribe.Client // voice dictation (nil/unconfigured = disabled)
+	store       storage.Provider   // signed direct-upload for lab-result attachments
 }
 
 // NewHandlers constructs clinical HTTP handlers.
-func NewHandlers(svc clinical.Service, transcriber *transcribe.Client) *Handlers {
-	return &Handlers{svc: svc, transcriber: transcriber}
+func NewHandlers(svc clinical.Service, transcriber *transcribe.Client, store storage.Provider) *Handlers {
+	return &Handlers{svc: svc, transcriber: transcriber, store: store}
 }
 
 // ---- requests ----
@@ -1016,4 +1020,37 @@ func (h *Handlers) CancelLabReferral(c *gin.Context) {
 		return
 	}
 	httpx.NoContent(c)
+}
+
+type referralSignRequest struct {
+	Filename string `json:"filename"`
+	Type     string `json:"type"` // image | raw
+}
+
+// SignReferralUpload handles POST /lab-referrals/:id/result/sign — a signed direct
+// upload target so the doctor can attach the scanned external-lab report.
+func (h *Handlers) SignReferralUpload(c *gin.Context) {
+	rid, ok := decodeParam(c, id.PrefixLabReferral, "id")
+	if !ok {
+		return
+	}
+	var req referralSignRequest
+	_ = c.ShouldBindJSON(&req)
+	p, okp := httpx.PrincipalFrom(c)
+	if !okp {
+		httpx.Fail(c, apperr.Unauthenticated("authentication required"))
+		return
+	}
+	resourceType := "raw"
+	if strings.HasPrefix(req.Type, "image") {
+		resourceType = "image"
+	}
+	target, err := h.store.SignUpload(c.Request.Context(), storage.UploadOptions{
+		Folder: fmt.Sprintf("%s/referrals/%s", p.TenantID, rid), ResourceType: resourceType, Tags: []string{"lab-result"},
+	})
+	if err != nil {
+		httpx.Fail(c, apperr.New(http.StatusServiceUnavailable, "STORAGE_DISABLED", "file storage is not configured for this clinic"))
+		return
+	}
+	httpx.OK(c, target)
 }

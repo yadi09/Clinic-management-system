@@ -35,6 +35,7 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	// print for the patient, then record the result they bring back.
 	enc.POST("/:id/lab-referrals", h.CreateLabReferral)
 	rg.POST("/lab-referrals/:id/result", httpx.RequirePermission("encounter.manage"), h.RecordLabReferralResult)
+	rg.POST("/lab-referrals/:id/result/sign", httpx.RequirePermission("encounter.manage"), h.SignReferralUpload)
 	rg.POST("/lab-referrals/:id/cancel", httpx.RequirePermission("encounter.manage"), h.CancelLabReferral)
 
 	// Diagnosis catalog — reads open to any authenticated staff (non-PHI

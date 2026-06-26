@@ -174,6 +174,26 @@ export function recordLabReferralResult(referralId: string, body: { summary?: st
 export function cancelLabReferral(referralId: string) {
   return apiFetch<void>(`/lab-referrals/${referralId}/cancel`, { method: "POST" });
 }
+export interface UploadTarget {
+  method: string;
+  url: string;
+  fields: Record<string, string>;
+  key: string;
+}
+/** Get a signed direct-upload target for a lab-result attachment. */
+export function signReferralUpload(referralId: string, body: { filename: string; type: string }) {
+  return apiFetch<UploadTarget>(`/lab-referrals/${referralId}/result/sign`, { method: "POST", body });
+}
+/** Upload a file directly to the storage provider (Cloudinary) using a signed target. */
+export async function uploadToTarget(target: UploadTarget, file: File): Promise<ReferralFile> {
+  const fd = new FormData();
+  Object.entries(target.fields).forEach(([k, v]) => fd.append(k, v));
+  fd.append("file", file);
+  const res = await fetch(target.url, { method: target.method || "POST", body: fd });
+  if (!res.ok) throw new Error("Upload failed");
+  const j = await res.json();
+  return { key: j.public_id ?? target.key, url: j.secure_url ?? j.url, name: file.name, mime: file.type };
+}
 
 export interface HistoryItem {
   id: string;

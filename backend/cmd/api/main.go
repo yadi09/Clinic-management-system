@@ -98,7 +98,7 @@ func main() {
 	// are gated on payment (no free bypass of the cashier).
 	schedulingHandlers := schedulinghttp.NewHandlers(schedulingservice.NewService(db, publisher, billingSvc), db)
 	transcriber := transcribe.New(cfg.Transcription.DeepgramAPIKey, cfg.Transcription.Model, cfg.Transcription.Language)
-	clinicalHandlers := clinicalhttp.NewHandlers(clinicalservice.NewService(db, publisher), transcriber)
+	clinicalHandlers := clinicalhttp.NewHandlers(clinicalservice.NewService(db, publisher), transcriber, store)
 	// Lab & pharmacy bill through billing (Charger) so revenue reaches the cashier.
 	pharmacyHandlers := pharmacyhttp.NewHandlers(pharmacyservice.NewService(db, publisher, billingSvc))
 	labHandlers := labhttp.NewHandlers(labservice.NewService(db, publisher, billingSvc))
