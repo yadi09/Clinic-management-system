@@ -80,6 +80,16 @@ export function RecordVisitForm({
     return () => { if (timer.current) clearTimeout(timer.current); };
   }, [dirty, draftKey, procedure, tooth, notes]);
 
+  // A visit note is typed with the patient in the chair. Closing the tab on one is
+  // the kind of loss that gets discovered days later, so the browser asks first.
+  // (The draft is also in sessionStorage, but that dies with the tab.)
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
   const save = useMutation({
     mutationFn: () => updateSession(patientId, session.id, {
       procedure: procedure.join(", "),
@@ -107,7 +117,15 @@ export function RecordVisitForm({
         <p className="text-[11px] font-semibold uppercase tracking-wide text-brand">
           Recording · {planTitle} · session {session.seq}
         </p>
-        <Button size="sm" variant="ghost" onClick={onCancel}><X className="h-3.5 w-3.5" /> Cancel</Button>
+        <Button size="sm" variant="ghost" onClick={() => {
+          if (dirty) {
+            // Write the draft NOW rather than promising one the 800ms debounce may
+            // not have flushed yet — the promise has to be true when it is made.
+            sessionStorage.setItem(draftKey, JSON.stringify({ procedure, tooth, notes } satisfies Draft));
+            if (!window.confirm("Close without recording? What you typed is kept as a draft and will be here when you reopen this visit.")) return;
+          }
+          onCancel();
+        }}><X className="h-3.5 w-3.5" /> Cancel</Button>
       </div>
 
       {restored && (

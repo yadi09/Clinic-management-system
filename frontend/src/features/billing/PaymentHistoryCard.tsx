@@ -93,7 +93,10 @@ export function PaymentHistoryCard({ patientId }: { patientId: string }) {
     printReceipt({
       clinic: clinicName, receiptNo: c.receipt_no, patient: patientName, mrn: p?.mrn,
       description: c.description, amount: c.amount, currency: c.currency,
-      method: c.payment_method, cashier: user?.full_name, when: whenOf(c), refund: isRefund(c),
+      // The cashier recorded on the charge, falling back to the current user only
+      // for a charge that predates the field. A reprint must not rename who took
+      // the money — that name is an accountability record.
+      method: c.payment_method, cashier: c.settled_by || undefined, when: whenOf(c), refund: isRefund(c),
     });
 
   const statement = () =>

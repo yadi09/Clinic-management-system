@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Segmented } from "@/components/ui/segmented";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -198,33 +199,92 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
   // render and the loaded render disagree, and the whole page unmounts to white.
   const resolved = useFocusVisit(summary.data?.plans ?? [], todayISO, params.get("visit"));
 
-  // Local, debounced-persisted odontogram (seeded once; local map is the edit source).
+  // Local, debounced odontogram. The local map is the edit source while the clinician
+  // is clicking teeth, but the SERVER is the source of truth the moment it answers.
+  // --- the odontogram -------------------------------------------------------
+  //
+  // A debounced, optimistic clinical record, which is a shape that gets subtly wrong
+  // very easily. Three refs, each with one job, because a single "dirty" boolean
+  // cannot express "a save succeeded but newer edits are still queued" — and that
+  // gap let a completed save re-seed the chart over a tooth the clinician had just
+  // clicked, then let the next click destroy the pending timer holding it.
+  //
+  //   draft       — the map on screen, updated synchronously so two fast clicks in
+  //                 one tick both build on each other rather than on stale state.
+  //   confirmed   — the last map the SERVER acknowledged. This, and only this, is
+  //                 what a failed save reverts to; a mid-burst snapshot is a state
+  //                 the server never held and must never be presented as the record.
+  //   queued      — the map waiting on the debounce. While it is non-null the chart
+  //                 belongs to the clinician, and no refetch may overwrite it.
   const [teeth, setTeeth] = useState<Record<string, string>>({});
-  const seeded = useRef(false);
+  const draft = useRef<Record<string, string>>({});
+  const confirmed = useRef<Record<string, string>>({});
+  const queued = useRef<Record<string, string> | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (summary.data && !seeded.current) {
-      setTeeth(summary.data.chart.teeth ?? {});
-      seeded.current = true;
-    }
-  }, [summary.data]);
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  // Two saves can be in flight if a click lands while one is running. Sequence stamps
+  // mean a slow earlier reply cannot overwrite a newer confirmed chart.
+  const sentSeq = useRef(0);
+  const ackSeq = useRef(0);
+
+  const showChart = (map: Record<string, string>) => { draft.current = map; setTeeth(map); };
 
   const chartSave = useMutation({
-    mutationFn: (map: Record<string, string>) => saveChart(patientId, map),
-    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not save the tooth chart"),
+    mutationFn: (v: { map: Record<string, string>; seq: number }) => saveChart(patientId, v.map),
+    onSuccess: (_res, v) => {
+      if (v.seq < ackSeq.current) return; // a straggler; a newer save already landed
+      ackSeq.current = v.seq;
+      confirmed.current = v.map;
+      // Only release the chart if nothing newer is waiting; otherwise the refetch
+      // below would land on top of an edit that has not been sent yet.
+      if (timer.current === null) queued.current = null;
+      qc.invalidateQueries({ queryKey: ["dental-summary", patientId] });
+    },
+    onError: (e) => {
+      // Back to the last thing the server actually confirmed, and say so. A toast
+      // over a chart still showing the failed edit is the one state a clinical
+      // record must never be in: it reads as saved.
+      if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+      queued.current = null;
+      showChart(confirmed.current);
+      toast.error(e instanceof AppError ? e.message : "Could not save the tooth chart — your last changes were undone");
+      qc.invalidateQueries({ queryKey: ["dental-summary", patientId] });
+    },
   });
+
+  useEffect(() => {
+    if (!summary.data) return;
+    const server = summary.data.chart.teeth ?? {};
+    confirmed.current = server;
+    // Adopt the server's chart only when nothing of ours is outstanding. This is what
+    // finally delivers a second clinician's edits — the old one-shot seed meant they
+    // never arrived, and the next click here saved a stale map back over their work.
+    if (queued.current === null && !chartSave.isPending) showChart(server);
+  }, [summary.data]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A pending click must not die with the page. Saved directly rather than through the
+  // mutation, which is gone by the time this runs.
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+    const last = queued.current;
+    if (last) saveChart(patientId, last).catch(() => {});
+  }, [patientId]);
+
   const toggleTooth = (code: string) => {
-    setTeeth((prev) => {
-      const cur = prev[code] ?? "";
-      const cycle = ["", "healthy", "decayed", "filled", "extracted", "crown"];
-      const next = cycle[(cycle.indexOf(cur) + 1) % cycle.length];
-      const map = { ...prev };
-      if (next) map[code] = next; else delete map[code];
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => chartSave.mutate(map), 700);
-      return map;
-    });
+    // Computed outside the state updater: React may run an updater more than once,
+    // and starting a save from inside one is a side effect in a place that promises
+    // to be pure.
+    const cycle = ["", "healthy", "decayed", "filled", "extracted", "crown"];
+    const next = cycle[(cycle.indexOf(draft.current[code] ?? "") + 1) % cycle.length];
+    const map = { ...draft.current };
+    if (next) map[code] = next; else delete map[code];
+    showChart(map);
+    queued.current = map;
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      const send = queued.current;
+      if (send) chartSave.mutate({ map: send, seq: ++sentSeq.current });
+    }, 700);
   };
 
   const [newPlan, setNewPlan] = useState(false);
@@ -1022,14 +1082,13 @@ function SessionImages({ patientId, session, editable, imageLimit, onChanged }: 
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-0.5 rounded-md bg-muted p-0.5 text-xs">
-          {IMG_TABS.map((t) => (
-            <button key={t.key} type="button" onClick={() => setTab(t.key)}
-              className={cn("flex items-center gap-1 rounded px-2 py-1 font-medium", tab === t.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
-              {t.label}<span className="tabular-nums opacity-70">{count(t.key)}</span>
-            </button>
-          ))}
-        </div>
+        <Segmented
+          size="sm"
+          ariaLabel="Filter images by type"
+          value={tab}
+          onChange={(v) => setTab(v as typeof tab)}
+          options={IMG_TABS.map((t) => ({ value: t.key, label: t.label, badge: count(t.key) }))}
+        />
         {editable && tab !== "all" && (
           <label className={cn("inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium", busy || all.length >= cap ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-accent")}>
             <ImagePlus className="h-3.5 w-3.5" /> {busy ? "Uploading…" : `Add ${tabLabel.toLowerCase()}`}

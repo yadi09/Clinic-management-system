@@ -458,17 +458,31 @@ func (s *Service) PatientCharges(ctx context.Context, patientID uuid.UUID) ([]bi
 	tenantID, _ := actorOf(ctx)
 	out := []billing.ChargeRow{}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		rows, e := billingdb.New(tx).ListChargesByPatient(ctx, billingdb.ListChargesByPatientParams{TenantID: tenantID, PatientID: patientID})
+		// Raw pgx rather than the generated query: this needs the settling cashier's
+		// name, and sqlc is not available in this environment to regenerate.
+		rows, e := tx.Query(ctx,
+			`SELECT c.id, c.source, c.description, c.amount, c.currency, c.status,
+			        c.payment_method, c.waive_reason, c.settled_at, c.created_at, c.receipt_no,
+			        coalesce(u.full_name, '')
+			 FROM charges c
+			 LEFT JOIN users u ON u.id = c.settled_by AND u.tenant_id = c.tenant_id
+			 WHERE c.tenant_id = $1 AND c.patient_id = $2 AND c.deleted_at IS NULL
+			 ORDER BY c.created_at DESC LIMIT 50`, tenantID, patientID)
 		if e != nil {
 			return e
 		}
-		for _, r := range rows {
-			out = append(out, billing.ChargeRow{
-				ID: r.ID, Source: r.Source, Description: r.Description, Amount: r.Amount, Currency: r.Currency, Status: r.Status,
-				PaymentMethod: deref(r.PaymentMethod), WaiveReason: deref(r.WaiveReason), SettledAt: r.SettledAt, CreatedAt: r.CreatedAt, ReceiptNo: r.ReceiptNo,
-			})
+		defer rows.Close()
+		for rows.Next() {
+			var r billing.ChargeRow
+			var method, waive *string
+			if e := rows.Scan(&r.ID, &r.Source, &r.Description, &r.Amount, &r.Currency, &r.Status,
+				&method, &waive, &r.SettledAt, &r.CreatedAt, &r.ReceiptNo, &r.SettledBy); e != nil {
+				return e
+			}
+			r.PaymentMethod, r.WaiveReason = deref(method), deref(waive)
+			out = append(out, r)
 		}
-		return nil
+		return rows.Err()
 	})
 	if err != nil {
 		return nil, apperr.Internal(err)
@@ -677,32 +691,57 @@ func (s *Service) PaymentsSince(ctx context.Context, since time.Time, until *tim
 	tenantID, _ := actorOf(ctx)
 	out := []billing.PaidVisit{}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		rows, e := billingdb.New(tx).ListPaidSince(ctx, billingdb.ListPaidSinceParams{TenantID: tenantID, Since: &since, Until: until})
+		// Raw pgx rather than the generated query: this needs the settling cashier's
+		// name so a reprinted receipt keeps the name of whoever actually took the
+		// money. sqlc is not available in this environment to regenerate.
+		rows, e := tx.Query(ctx,
+			`SELECT c.receipt_no, c.patient_id, p.first_name, p.last_name, p.mrn,
+			        c.description, c.amount, c.currency, c.payment_method, c.settled_at,
+			        EXISTS (SELECT 1 FROM charges r WHERE r.reverses_charge_id = c.id AND r.deleted_at IS NULL) AS refunded,
+			        coalesce(u.full_name, '')
+			 FROM charges c
+			 JOIN patients p ON p.id = c.patient_id AND p.tenant_id = c.tenant_id
+			 LEFT JOIN users u ON u.id = c.settled_by AND u.tenant_id = c.tenant_id
+			 WHERE c.tenant_id = $1 AND c.status = 'paid' AND c.source <> 'refund'
+			   AND c.receipt_no IS NOT NULL AND c.settled_at >= $2 AND ($3::timestamptz IS NULL OR c.settled_at < $3)
+			 ORDER BY c.settled_at DESC, c.receipt_no DESC
+			 LIMIT 300`, tenantID, &since, until)
 		if e != nil {
 			return e
 		}
+		defer rows.Close()
 		idx := map[int64]int{} // receipt_no → position in out
-		for _, r := range rows {
-			if r.ReceiptNo == nil {
+		for rows.Next() {
+			var receiptNo *int64
+			var patientID uuid.UUID
+			var first, last, mrn, description, amount, currency, settledBy string
+			var method *string
+			var settledAt *time.Time
+			var refunded bool
+			if e := rows.Scan(&receiptNo, &patientID, &first, &last, &mrn, &description, &amount,
+				&currency, &method, &settledAt, &refunded, &settledBy); e != nil {
+				return e
+			}
+			if receiptNo == nil {
 				continue
 			}
-			no := *r.ReceiptNo
+			no := *receiptNo
 			pos, ok := idx[no]
 			if !ok {
 				out = append(out, billing.PaidVisit{
-					ReceiptNo: no, PatientID: r.PatientID, PatientName: r.FirstName + " " + r.LastName, MRN: r.Mrn,
-					Currency: r.Currency, Method: deref(r.PaymentMethod), SettledAt: r.SettledAt, Refunded: true,
+					ReceiptNo: no, PatientID: patientID, PatientName: first + " " + last, MRN: mrn,
+					Currency: currency, Method: deref(method), SettledAt: settledAt, SettledBy: settledBy, Refunded: true,
 				})
 				pos = len(out) - 1
 				idx[no] = pos
 			}
-			out[pos].Lines = append(out[pos].Lines, billing.PaidLine{Description: r.Description, Amount: r.Amount})
-			out[pos].Total = money2(parseMoneyB(out[pos].Total) + parseMoneyB(r.Amount))
-			if !r.Refunded {
+			out[pos].Lines = append(out[pos].Lines, billing.PaidLine{Description: description, Amount: amount})
+			out[pos].Total = money2(parseMoneyB(out[pos].Total) + parseMoneyB(amount))
+			if !refunded {
 				out[pos].Refunded = false // a payment is "refunded" only if every line is
 			}
 		}
-		return nil
+		return rows.Err()
 	})
 	if err != nil {
 		return nil, apperr.Internal(err)

@@ -126,6 +126,10 @@ type ChargeRow struct {
 	SettledAt     *time.Time `json:"settled_at,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
 	ReceiptNo     *int64     `json:"receipt_no,omitempty"`
+	// Who actually took the money. A reprinted receipt used to carry whoever was
+	// logged in at the time of printing, which is a different person on a different
+	// shift — and the name on a receipt is an accountability record.
+	SettledBy string `json:"settled_by,omitempty"`
 }
 
 // PaidLine is one service on a completed payment.
@@ -145,7 +149,10 @@ type PaidVisit struct {
 	Method      string     `json:"method,omitempty"`
 	SettledAt   *time.Time `json:"settled_at,omitempty"`
 	Refunded    bool       `json:"refunded"` // every line reversed
-	Lines       []PaidLine `json:"lines"`
+	// The cashier who took the payment. A reprint must name them, not whoever
+	// happens to be at the terminal now.
+	SettledBy string     `json:"settled_by,omitempty"`
+	Lines     []PaidLine `json:"lines"`
 }
 
 // VisitSettlement is the result of a one-click visit checkout (all of a patient's

@@ -148,7 +148,9 @@ function PaidList({ payments, loading, canRefund, clinicName, cashierName, onRef
   const print = (v: PaidVisit) =>
     printVisitReceipt({
       clinic: clinicName, receiptNo: v.receipt_no, patient: v.patient_name, mrn: v.mrn,
-      lines: v.lines, total: v.total, currency: v.currency, method: v.method, cashier: cashierName,
+      // The cashier recorded on the payment, not whoever is at the terminal now:
+      // one receipt number must always print one name.
+      lines: v.lines, total: v.total, currency: v.currency, method: v.method, cashier: v.settled_by || cashierName,
       when: v.settled_at || new Date().toISOString(),
     });
   if (loading) return <Card className="p-8 text-center text-sm text-muted-foreground">Loading…</Card>;

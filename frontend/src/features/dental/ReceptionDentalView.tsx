@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { toast } from "@/components/ui/sonner";
 import { cn, ageLabel } from "@/lib/utils";
 import { useAuth } from "@/app/auth-context";
+import { Segmented } from "@/components/ui/segmented";
 import { AppError } from "@/lib/api-client";
 import { MoveSessionDialog } from "@/features/dental/shared/MoveSessionDialog";
 import { formatEthiopian } from "@/lib/ethiopian";
@@ -232,20 +233,17 @@ export function ReceptionDentalView({ patientId }: { patientId: string }) {
       <Card>
         <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
           <CardTitle>Treatments</CardTitle>
-          <div className="flex flex-wrap gap-1 rounded-lg bg-muted p-1 text-sm">
-            {([
+          <Segmented
+            ariaLabel="Filter treatments by payment state"
+            value={lens}
+            onChange={(v) => setLens(v as Lens)}
+            options={([
               ["all", "All", rows.length],
               ["unpaid", "Needs payment", rows.filter((r) => moneyState(r.s) === "due").length],
               ["upcoming", "Upcoming", rows.filter((r) => moneyState(r.s) === "scheduled").length],
               ["done", "Paid", rows.filter((r) => moneyState(r.s) === "paid").length],
-            ] as [Lens, string, number][]).map(([k, label, n]) => (
-              <button key={k} type="button" onClick={() => setLens(k)}
-                className={cn("flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors",
-                  lens === k ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
-                {label}<span className="rounded-full bg-foreground/10 px-1.5 text-xs tabular-nums">{n}</span>
-              </button>
-            ))}
-          </div>
+            ] as [Lens, string, number][]).map(([value, label, n]) => ({ value, label, badge: n }))}
+          />
         </CardHeader>
         <CardContent className="space-y-3">
           {plans.length === 0 ? (

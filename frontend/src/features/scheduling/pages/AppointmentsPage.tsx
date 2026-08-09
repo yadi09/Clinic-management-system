@@ -72,7 +72,7 @@ function sessAccent(s: DentalSessionCal) {
   return "border-l-violet-500 bg-violet-50";
 }
 /** Compact treatment-session chip for month/week cells. Static (div) in month cells. */
-function SessionChip({ s, onOpen }: { s: DentalSessionCal; onOpen?: (pid: string) => void }) {
+function SessionChip({ s, onOpen }: { s: DentalSessionCal; onOpen?: (pid: string, sessionId?: string) => void }) {
   const inner = (
     <>
       <Stethoscope className="h-2.5 w-2.5 shrink-0 text-violet-600" />
@@ -83,7 +83,7 @@ function SessionChip({ s, onOpen }: { s: DentalSessionCal; onOpen?: (pid: string
   const cls = `flex items-center gap-1 truncate rounded border-l-2 px-1 py-0.5 text-[11px] ${sessAccent(s)}`;
   const title = `${s.title} — session ${s.seq}/${s.session_count} · ${s.patient_name}${sessOwes(s) ? " · owes" : ""}`;
   return onOpen
-    ? <button type="button" title={title} className={`${cls} w-full text-left hover:shadow-sm`} onClick={(e) => { e.stopPropagation(); onOpen(s.patient_id); }}>{inner}</button>
+    ? <button type="button" title={title} className={`${cls} w-full text-left hover:shadow-sm`} onClick={(e) => { e.stopPropagation(); onOpen(s.patient_id, s.session_id); }}>{inner}</button>
     : <div title={title} className={cls}>{inner}</div>;
 }
 
@@ -194,7 +194,11 @@ export function AppointmentsPage() {
     onReassign: (a) => setReassign(a),
     onReschedule: (a) => { setEditing(a); setDialogOpen(true); },
     onStatus: (id, s) => status.mutate({ id, s }),
-    onOpenPatient: (pid) => navigate(`/patients/${pid}`),
+    // Clicking a treatment session opens the patient page focused on THAT visit
+    // rather than on whatever the page would resolve to on its own. Without the
+    // session id, booking a follow-up from the calendar and then clicking it landed
+    // the dentist on a different session of the same course.
+    onOpenPatient: (pid, visit) => navigate(`/patients/${pid}${visit ? `?visit=${visit}` : ""}`),
     onOpenDay: (d) => { setAnchor(startOfDay(d)); setView("day"); },
     canQueue: can("queue.manage"),
   };
@@ -284,7 +288,7 @@ type Actions = {
   onReassign: (a: Appointment) => void;
   onReschedule: (a: Appointment) => void;
   onStatus: (id: string, s: string) => void;
-  onOpenPatient: (pid: string) => void;
+  onOpenPatient: (pid: string, sessionId?: string) => void;
   onOpenDay: (d: Date) => void;
   canQueue: boolean;
 };
@@ -636,10 +640,10 @@ function sessPayBadge(s: DentalSessionCal) {
 }
 
 /** Day-view treatment-session card (mirrors ApptCard). */
-function SessionDayCard({ s, onOpen }: { s: DentalSessionCal; onOpen: (pid: string) => void }) {
+function SessionDayCard({ s, onOpen }: { s: DentalSessionCal; onOpen: (pid: string, sessionId?: string) => void }) {
   return (
     <div className={`rounded-lg border border-l-4 bg-background p-3 shadow-sm ${sessAccent(s).split(" ")[0]}`}>
-      <button className="block truncate font-medium text-brand hover:underline" onClick={() => onOpen(s.patient_id)}>{s.patient_name}</button>
+      <button className="block truncate font-medium text-brand hover:underline" onClick={() => onOpen(s.patient_id, s.session_id)}>{s.patient_name}</button>
       <div className="truncate text-xs text-muted-foreground">{s.title} · session {s.seq}/{s.session_count}{s.procedure ? ` · ${s.procedure}` : ""}{s.tooth ? ` (${s.tooth})` : ""}</div>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <Badge variant="outline" className="capitalize">{s.status}</Badge>
@@ -674,7 +678,7 @@ function DentalSessionsLens({ q, actions }: { q: { data?: DentalSessionCal[]; is
     </div>
   );
 }
-function SessionLensSection({ title, tone, items, onOpen }: { title: string; tone: "danger" | "brand" | "muted"; items: DentalSessionCal[]; onOpen: (pid: string) => void }) {
+function SessionLensSection({ title, tone, items, onOpen }: { title: string; tone: "danger" | "brand" | "muted"; items: DentalSessionCal[]; onOpen: (pid: string, sessionId?: string) => void }) {
   if (items.length === 0) return null;
   const dot = { danger: "bg-destructive", brand: "bg-primary", muted: "bg-muted-foreground" }[tone];
   return (
@@ -688,7 +692,7 @@ function SessionLensSection({ title, tone, items, onOpen }: { title: string; ton
               <div className="text-xs tabular-nums text-muted-foreground">S{s.seq}/{s.session_count}</div>
             </div>
             <div className="min-w-0 flex-1">
-              <button className="block truncate font-medium text-brand hover:underline" onClick={() => onOpen(s.patient_id)}>{s.patient_name}</button>
+              <button className="block truncate font-medium text-brand hover:underline" onClick={() => onOpen(s.patient_id, s.session_id)}>{s.patient_name}</button>
               <div className="truncate text-xs text-muted-foreground">{s.title}{s.procedure ? ` · ${s.procedure}` : ""}{s.tooth ? ` (${s.tooth})` : ""}</div>
             </div>
             <div className="flex items-center gap-1.5"><Badge variant="outline" className="capitalize">{s.status}</Badge>{sessPayBadge(s)}<span className="text-xs tabular-nums text-muted-foreground">{etb(s.amount_due)}</span></div>

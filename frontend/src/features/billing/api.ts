@@ -73,6 +73,8 @@ export interface ChargeRow {
   settled_at?: string;
   created_at: string;
   receipt_no?: number;
+  /** The cashier who actually settled it — not whoever is reprinting the receipt. */
+  settled_by?: string;
 }
 export interface CashGroup {
   label: string;
@@ -203,6 +205,8 @@ export interface PaidVisit {
   method?: string;
   settled_at?: string;
   refunded: boolean;
+  /** The cashier who took it. Empty on charges settled before this was recorded. */
+  settled_by?: string;
   lines: { description: string; amount: string }[];
 }
 export function paymentsToday(sinceISO?: string, untilISO?: string) {

@@ -224,6 +224,7 @@ function BillingSection({ patientId, patientName, mrn, canRefund }: { patientId:
     printReceipt({
       clinic: clinic.data?.name || "Clinic", receiptNo: c.receipt_no, patient: patientName, mrn,
       description: c.description, amount: c.amount, currency: c.currency, method: c.payment_method,
+      cashier: c.settled_by || undefined,
       when: c.settled_at || c.created_at, refund: c.source === "refund",
     });
   const mut = useMutation({

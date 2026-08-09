@@ -148,8 +148,10 @@ export function VisitCockpit({
           </>
         )}
 
-        {/* Demoted candidates are named, never hidden — the resolver can be wrong. */}
-        {others.length > 0 && (
+        {/* Demoted candidates are named, never hidden — the resolver can be wrong.
+            Hidden while recording for the same reason as the rail: switching the
+            focused visit under an open note retargets where it is saved. */}
+        {!recording && others.length > 0 && (
           <div className="space-y-1 border-t pt-3">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Also open</p>
             {others.slice(0, 4).map((o) => (
