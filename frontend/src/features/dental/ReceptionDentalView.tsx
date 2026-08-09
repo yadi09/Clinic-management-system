@@ -13,7 +13,6 @@ import { AlertTriangle, ArrowLeft, CalendarClock, CalendarDays, CheckCircle2, Ch
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -21,11 +20,11 @@ import { toast } from "@/components/ui/sonner";
 import { cn, ageLabel } from "@/lib/utils";
 import { useAuth } from "@/app/auth-context";
 import { AppError } from "@/lib/api-client";
-import { EthiopianDateInput } from "@/components/EthiopianDateInput";
+import { MoveSessionDialog } from "@/features/dental/shared/MoveSessionDialog";
 import { formatEthiopian } from "@/lib/ethiopian";
 import { getPatient } from "@/features/patients/api";
 import { PatientEditDialog } from "@/features/patients/components/PatientEditDialog";
-import { collectSessions, dentalSummary, rescheduleSession, uncollectSession, type Plan, type Session } from "@/features/dental/api";
+import { collectSessions, dentalSummary, uncollectSession, type Plan, type Session } from "@/features/dental/api";
 import { PaymentHistoryCard } from "@/features/billing/PaymentHistoryCard";
 
 const num = (s?: string) => Number(s || 0);
@@ -265,7 +264,14 @@ export function ReceptionDentalView({ patientId }: { patientId: string }) {
 
       {editingPatient && <PatientEditDialog patient={p} onClose={() => setEditingPatient(false)} onSaved={() => qc.invalidateQueries({ queryKey: ["patient", patientId] })} />}
       {collecting && <CollectDialog patientId={patientId} rows={billable} onClose={() => setCollecting(false)} onDone={refresh} />}
-      {rescheduling && <RescheduleDialog patientId={patientId} row={rescheduling} onClose={() => setRescheduling(null)} onDone={refresh} />}
+      {rescheduling && (
+        <MoveSessionDialog
+          patientId={patientId} sessionId={rescheduling.s.id} planTitle={rescheduling.plan.title}
+          currentDate={rescheduling.s.scheduled_date} seq={rescheduling.s.seq}
+          sessionCount={rescheduling.plan.session_count}
+          onClose={() => setRescheduling(null)} onMoved={refresh}
+        />
+      )}
     </div>
   );
 }
@@ -475,33 +481,3 @@ function CollectDialog({ patientId, rows, onClose, onDone }: { patientId: string
   );
 }
 
-/** Move a planned session. The desk may change WHEN, never what the session is. */
-function RescheduleDialog({ patientId, row, onClose, onDone }: { patientId: string; row: Row; onClose: () => void; onDone: () => void }) {
-  const [date, setDate] = useState(row.s.scheduled_date);
-  const mut = useMutation({
-    mutationFn: () => rescheduleSession(patientId, row.s.id, date),
-    onSuccess: () => { toast.success(`Moved to ${prettyDate(date)}`); onDone(); onClose(); },
-    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not move this session"),
-  });
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Reschedule session {row.s.seq}</DialogTitle></DialogHeader>
-        <p className="text-sm text-muted-foreground">
-          {row.plan.title} · session {row.s.seq} of {row.plan.session_count} · currently {prettyDate(row.s.scheduled_date)}.
-          Only the date changes; the treatment and its fee stay as the dentist set them.
-        </p>
-        <div className="space-y-1.5">
-          <Label>New date</Label>
-          <EthiopianDateInput value={date} onChange={setDate} showAge={false} />
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button disabled={!date || date === row.s.scheduled_date} loading={mut.isPending} onClick={() => mut.mutate()}>
-            <CalendarClock className="h-4 w-4" /> Move session
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}

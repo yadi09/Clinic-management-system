@@ -121,7 +121,18 @@
       "Bash(grep -n \"^═\\\\|^MOCKUP\\\\|^──\\\\|^#\\\\{1,3\\\\} \" final_mockups.txt)",
       "Bash(git reset *)",
       "Bash(grep -iE \"\\\\.history/|node_modules|\\\\.env|dist/|\\\\.log$\")",
-      "Bash(awk '$1==\"??\"{print $2}')"
+      "Bash(awk '$1==\"??\"{print $2}')",
+      "Bash(grep -rn \"function relative\\\\|days ago\\\\|in \\\\${\\\\|ago\\\\`\" features/patients/pages/PatientSchedulePage.tsx)",
+      "Bash(node -p \"require\\('./node_modules/@tanstack/react-query/package.json'\\).version\")",
+      "Bash(./node_modules/.bin/tsc --noEmit -p tsconfig.json)",
+      "Bash(timeout 300 ./node_modules/.bin/tsc --noEmit)",
+      "Bash(awk 'NR>=478 && NR<=484 {printf \"%d\\\\t%s\\\\n\", NR, $0}' src/features/dental/ReceptionDentalView.tsx)",
+      "Bash(awk 'NR>=648 && NR<=653 {printf \"%d\\\\t%s\\\\n\", NR, $0}' src/features/dental/DentalWorkspace.tsx)",
+      "Bash(xxd)",
+      "Bash(awk 'NR>=484' frontend/src/features/dental/ReceptionDentalView.tsx)",
+      "Bash(echo \"--- exit $? ---\")",
+      "Bash(awk 'NR>=117 && NR<=123 {printf \"%d\\\\t%s\\\\n\", NR, $0}' frontend/src/features/dental/shared/MoveSessionDialog.tsx)",
+      "Bash(grep -rn \"/schedule\\\\`\" src/)"
     ],
     "additionalDirectories": [
       "/home/yadi09/Yaz_project/Clinic-management-system/backend/internal/billing/repo/queries",

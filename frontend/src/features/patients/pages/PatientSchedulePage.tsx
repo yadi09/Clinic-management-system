@@ -11,25 +11,21 @@
 // the person looking at the problem fix it on the spot — every missed or upcoming
 // session can be moved without leaving the page.
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, CalendarClock, CalendarPlus, CheckCircle2, Repeat2, Stethoscope } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CalendarClock, CalendarPlus, Repeat2, Stethoscope } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { toast } from "@/components/ui/sonner";
-import { AppError } from "@/lib/api-client";
+import { MoveSessionDialog } from "@/features/dental/shared/MoveSessionDialog";
 import { cn, ageLabel } from "@/lib/utils";
 import { useAuth } from "@/app/auth-context";
-import { EthiopianDateInput } from "@/components/EthiopianDateInput";
 import { formatEthiopian } from "@/lib/ethiopian";
 import { getPatient } from "@/features/patients/api";
 import { listPatientAppointments } from "@/features/scheduling/api";
-import { dentalSummary, rescheduleSession, type Plan, type Session } from "@/features/dental/api";
+import { dentalSummary, type Plan, type Session } from "@/features/dental/api";
 
 const num = (s?: string) => Number(s || 0);
 const birr = (s?: string | number) => `${Number(s || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} ETB`;
@@ -341,7 +337,12 @@ export function PatientSchedulePage() {
       )}
 
       {moving && (
-        <RescheduleDialog patientId={id} entry={moving} sameDayOthers={sameDayOthers}
+        <MoveSessionDialog
+          patientId={id} sessionId={moving.id} planTitle={moving.planTitle ?? moving.title}
+          currentDate={moving.date} detail={moving.detail} missed={moving.missed}
+          clashes={(iso) => sameDayOthers(iso, moving.id).map((e) => ({
+            id: e.id, label: `${e.planTitle ?? e.title} · ${e.detail}`, done: e.session?.status === "done",
+          }))}
           onClose={() => setMoving(null)} onMoved={afterMove} />
       )}
     </div>
@@ -401,92 +402,3 @@ function Row({ e, today, onMove }: { e: Entry; today: string; onMove?: () => voi
   );
 }
 
-/** Move a planned session. Quick offsets cover the common cases; the full picker
- *  (with its Ethiopian mode) is there when the patient names a specific day. */
-function RescheduleDialog({ patientId, entry, sameDayOthers, onClose, onMoved }: {
-  patientId: string; entry: Entry;
-  sameDayOthers: (iso: string, exceptId: string) => Entry[];
-  onClose: () => void; onMoved: () => void;
-}) {
-  const [date, setDate] = useState(entry.date);
-  const [key, setKey] = useState(0); // remounts the picker when a preset is used
-  const set = (iso: string) => { setDate(iso); setKey((k) => k + 1); };
-  const plus = (days: number) => {
-    const base = new Date(`${todayISO()}T00:00:00`);
-    base.setDate(base.getDate() + days);
-    set(isoOf(base));
-  };
-
-  const mut = useMutation({
-    mutationFn: () => rescheduleSession(patientId, entry.id, date),
-    onSuccess: () => { toast.success(`Moved to ${fmtShort(date)}`); onMoved(); onClose(); },
-    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not reschedule"),
-  });
-
-  const moved = date !== entry.date;
-  const past = date < todayISO();
-  // Warn, never block: two sessions in one visit is a legitimate choice.
-  const clash = sameDayOthers(date, entry.id);
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Reschedule session</DialogTitle></DialogHeader>
-
-        <div className="rounded-md border bg-muted/40 px-3 py-2.5 text-sm">
-          <div className="font-medium">{entry.planTitle}</div>
-          <div className="text-xs text-muted-foreground">
-            {entry.detail} · currently {fmtShort(entry.date)} ({formatEthiopian(entry.date)} EC)
-            {entry.missed && <span className="ml-1 font-medium text-rose-600">· missed {relative(entry.date)}</span>}
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label>Move to</Label>
-          <div className="flex flex-wrap gap-2">
-            {([["Today", 0], ["In 3 days", 3], ["Next week", 7], ["In 2 weeks", 14], ["Next month", 30]] as const).map(([label, d]) => (
-              <button key={label} type="button" onClick={() => plus(d)}
-                className="rounded-full border px-3 py-1 text-xs font-medium transition-colors hover:bg-accent">
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <EthiopianDateInput key={key} value={date} onChange={setDate} showAge={false} />
-
-        {past && (
-          <p className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            That date is in the past. Fine if you're recording when the visit actually happened —
-            otherwise pick a future date so it shows as upcoming.
-          </p>
-        )}
-        {clash.length > 0 && (
-          <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            <p className="flex items-start gap-2 font-medium">
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              {clash.length === 1 ? "There is already a session that day" : `There are already ${clash.length} sessions that day`}
-            </p>
-            <ul className="mt-1 space-y-0.5 pl-[1.4rem]">
-              {clash.map((c) => (
-                <li key={c.id}>{c.title} · {c.detail}{c.session?.status === "done" ? " (done)" : ""}</li>
-              ))}
-            </ul>
-            <p className="mt-1 pl-[1.4rem]">Fine if the patient is having both in one visit — allow enough chair time.</p>
-          </div>
-        )}
-        {moved && !past && clash.length === 0 && (
-          <p className="flex items-center gap-2 text-xs text-emerald-700">
-            <CheckCircle2 className="h-3.5 w-3.5" /> New date: {fmtDay(date)} · {relative(date)}
-          </p>
-        )}
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button disabled={!moved} loading={mut.isPending} onClick={() => mut.mutate()}>Move session</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}

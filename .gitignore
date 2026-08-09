@@ -13,6 +13,8 @@ coverage.txt
 node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/reference
+frontend/reference/
 *.local
 
 # Editor / OS

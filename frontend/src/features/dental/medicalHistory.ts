@@ -98,12 +98,26 @@ export interface Alert {
   text: string;
 }
 
+/** What we know about the record itself, as opposed to the answers in it. */
+export interface HistoryMeta {
+  /** false = the questionnaire has never been taken for this patient. */
+  recorded?: boolean;
+  /** ISO timestamp of the last time it was confirmed. */
+  reviewedAt?: string;
+}
+
 /**
  * Turn answers into the handful of statements that should reach a clinician about
  * to treat this patient. Only "yes" triggers — "no" and "not sure" are silent,
  * except where not knowing is itself the risk.
+ *
+ * Pass `meta` wherever the record's own state is known. Without it, an empty answer
+ * map produces an empty alert list, which reads as "this patient is cleared" — and a
+ * patient nobody has ever questioned looks identical to one with a clean bill of
+ * health. That is the single most dangerous silence this module can produce, so the
+ * two states of the RECORD are raised as alerts in their own right.
  */
-export function historyAlerts(a: AnswerMap): Alert[] {
+export function historyAlerts(a: AnswerMap, meta?: HistoryMeta): Alert[] {
   const yes = (k: string) => a[k] === "yes";
   // "Not sure" is not "no". For a handful of questions, not knowing is itself the
   // risk: you cannot decide on antibiotic prophylaxis, plan an extraction, or take
@@ -135,6 +149,12 @@ export function historyAlerts(a: AnswerMap): Alert[] {
     out.push({ key: "asthma", level: "warn", text: "Asthma — keep an inhaler within reach" });
   if (yes("fainting"))
     out.push({ key: "fainting", level: "warn", text: "Has fainted in the chair — treat semi-supine" });
+  if (yes("liver_disease"))
+    out.push({ key: "liver", level: "warn", text: "Liver disease — check drug doses and clotting" });
+  if (yes("kidney_disease"))
+    out.push({ key: "kidney", level: "warn", text: "Kidney disease — check drug doses (NSAIDs, some antibiotics)" });
+  if (yes("steroids"))
+    out.push({ key: "steroids", level: "warn", text: "On steroids — adrenal suppression; discuss before surgery" });
   if (yes("cancer_treatment"))
     out.push({ key: "onco", level: "warn", text: "On cancer treatment — liaise with the treating team" });
   if (yes("breastfeeding"))
@@ -153,7 +173,28 @@ export function historyAlerts(a: AnswerMap): Alert[] {
   if (!yes("pregnant") && unsure("pregnant"))
     out.push({ key: "pregnant?", level: "warn", text: "Pregnancy status unknown — confirm before any radiograph" });
 
+  // The state of the record itself. These lead, because "we never asked" outranks
+  // anything the answers do or do not say.
+  if (meta) {
+    const state = reviewState(meta.reviewedAt, meta.recorded);
+    if (state === "missing") {
+      out.unshift({ key: "hx-missing", level: "danger", text: "No health check on file — take it before treating" });
+    } else if (state === "due") {
+      out.unshift({ key: "hx-stale", level: "warn", text: `Health check last confirmed ${staleFor(meta.reviewedAt)} — re-confirm` });
+    }
+  }
+
   return out;
+}
+
+/** "12 Jun 2025 (14 months ago)" — state the date, so the clinician can judge it. */
+function staleFor(reviewedAt?: string): string {
+  if (!reviewedAt) return "a long time ago";
+  const d = new Date(reviewedAt);
+  if (Number.isNaN(d.getTime())) return "a long time ago";
+  const months = Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24 * 30.44));
+  const when = d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  return `${when} (${months} months ago)`;
 }
 
 /** Questions answered "not sure" — an incomplete history is not a clear one. */

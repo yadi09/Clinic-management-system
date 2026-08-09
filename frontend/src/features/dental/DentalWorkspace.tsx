@@ -24,16 +24,17 @@ import { EthiopianDateInput } from "@/components/EthiopianDateInput";
 import { ETH_MONTHS, ethiopianDaysInMonth, ethiopianToGregorianISO, formatEthiopian, toEthiopian } from "@/lib/ethiopian";
 import { getPatient } from "@/features/patients/api";
 import { PatientEditDialog } from "@/features/patients/components/PatientEditDialog";
-import { StickyAlertBar, useScrolledPast, type ClinicalAlert } from "@/features/patients/components/StickyAlertBar";
-import { historyAlerts } from "@/features/dental/medicalHistory";
 import { PaymentHistoryCard } from "@/features/billing/PaymentHistoryCard";
-import { MedicalHistoryCard, HistoryAlertChips } from "@/features/dental/MedicalHistoryCard";
+import { SafetyStrip, PatientSafetyLine } from "@/features/dental/SafetyStrip";
+import { HistoryDialog } from "@/features/dental/HistoryDialog";
 import { ExaminationCard } from "@/features/dental/ExaminationCard";
 import { getMedicalHistory } from "@/features/dental/api";
+import { invalidateDental } from "@/features/dental/invalidate";
 import { STATUS_LABEL, statusStyle, ToothChart, TOOTH_QUADRANTS } from "@/features/dental/ToothChart";
+import { MoveSessionDialog } from "@/features/dental/shared/MoveSessionDialog";
 import {
   addPrescription, collectSession, collectSessions, createPlan, deleteDentalImage, deletePlan, deletePrescription, dentalSummary,
-  listDentalImages, rescheduleSession, saveChart, setPayLater, uncollectSession, updateSession, uploadDentalImage,
+  listDentalImages, saveChart, setPayLater, uncollectSession, updateSession, uploadDentalImage,
   type DentalImage, type ImageCategory, type PaymentState, type Plan, type Prescription, type RxItem, type Session, type SessionStatus,
 } from "@/features/dental/api";
 import { searchDrugs, type Drug } from "@/features/clinical/api";
@@ -178,14 +179,13 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
   // (dental.manage OR appointment.manage) — see dental/http/routes.go.
   const canReschedule = editable || can("appointment.manage");
   const [editingPatient, setEditingPatient] = useState(false);
-  const bannerRef = useRef<HTMLDivElement>(null);
-  const scrolledPast = useScrolledPast(bannerRef);
+  const [takingHistory, setTakingHistory] = useState(false);
 
   const patient = useQuery({ queryKey: ["patient", patientId], queryFn: () => getPatient(patientId) });
   const summary = useQuery({ queryKey: ["dental-summary", patientId], queryFn: () => dentalSummary(patientId) });
   // Safety flags belong next to the allergy chips, not buried in a card below.
   const history = useQuery({ queryKey: ["medical-history", patientId], queryFn: () => getMedicalHistory(patientId), enabled: editable });
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["dental-summary", patientId] });
+  const invalidate = () => invalidateDental(qc, patientId);
 
   // Local, debounced-persisted odontogram (seeded once; local map is the edit source).
   const [teeth, setTeeth] = useState<Record<string, string>>({});
@@ -240,12 +240,6 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
   const p = patient.data;
   const fullName = [p.first_name, p.middle_name, p.last_name].filter(Boolean).join(" ");
 
-  // What must stay in front of the dentist all the way down the page: recorded
-  // allergies, plus whatever the medical history flags as affecting treatment.
-  const clinicalAlerts: ClinicalAlert[] = [
-    ...p.allergies.map((a) => ({ key: "alg" + a.id, level: "danger" as const, text: `Allergy: ${a.substance}` })),
-    ...historyAlerts(history.data?.answers ?? {}),
-  ];
   const bal = summary.data.balance;
   const plans = summary.data.plans;
   const owed = num(bal.owed);
@@ -280,14 +274,12 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
 
   return (
     <div className="space-y-6">
-      <StickyAlertBar alerts={clinicalAlerts} show={scrolledPast} patientName={fullName} />
-
       <button onClick={() => navigate("/patients")} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="h-4 w-4" /> Patients
       </button>
 
       {/* Patient banner: name, allergies (safety), and the unpaid flag when they owe. */}
-      <div ref={bannerRef} className="flex flex-wrap items-center gap-4 rounded-lg bg-brand p-5 text-brand-foreground shadow-card">
+      <div className="flex flex-wrap items-center gap-4 rounded-lg bg-brand p-5 text-brand-foreground shadow-card">
         <Avatar className="h-12 w-12 bg-white/15">
           <AvatarFallback className="bg-transparent text-base text-brand-foreground">{(p.first_name[0] ?? "") + (p.last_name[0] ?? "")}</AvatarFallback>
         </Avatar>
@@ -311,23 +303,28 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
           </p>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <HistoryAlertChips answers={history.data?.answers ?? {}} />
+          {/* Money used to wear the same red pill as an allergy, in this very row.
+              It now lives with the balance; the banner carries identity only, and
+              every safety signal is in the strip directly below. */}
           {bal.overdue && (
-            <span className="flex items-center gap-1 rounded-full bg-destructive px-3 py-1 text-xs font-semibold text-destructive-foreground">
-              <AlertTriangle className="h-3.5 w-3.5" /> Owes {birr(bal.due)}
+            <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-medium">
+              Owes {birr(bal.due)}
             </span>
-          )}
-          {p.allergies.length === 0 ? (
-            <span className="rounded-full bg-white/15 px-3 py-1 text-xs">No known allergies</span>
-          ) : (
-            p.allergies.map((a) => (
-              <span key={a.id} className="flex items-center gap-1 rounded-full bg-destructive px-3 py-1 text-xs font-semibold text-destructive-foreground">
-                <AlertTriangle className="h-3.5 w-3.5" /> Allergy: {a.substance}
-              </span>
-            ))
           )}
         </div>
       </div>
+
+      <SafetyStrip
+        allergies={p.allergies}
+        history={editable && history.data
+          ? { answers: history.data.answers, recorded: history.data.recorded, reviewedAt: history.data.reviewed_at,
+              reviewedBy: history.data.reviewed_by, notes: history.data.notes }
+          : undefined}
+        isLoading={editable && history.isPending && !history.isError}
+        isError={editable && history.isError}
+        onRetry={() => history.refetch()}
+        onTakeHistory={editable ? () => setTakingHistory(true) : undefined}
+      />
 
       {/* Odontogram + balance — side by side, equal height */}
       <div className="grid items-stretch gap-6 lg:grid-cols-3">
@@ -372,8 +369,6 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
           </CardContent>
         </Card>
       </div>
-
-      <MedicalHistoryCard patientId={patientId} gender={p.gender} editable={editable} />
 
       {/* The clinical assessment sits between the history and the plans, because
           that is the order the work happens in: history -> examination -> diagnosis
@@ -430,6 +425,15 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
       {editingPatient && (
         <PatientEditDialog patient={p} onClose={() => setEditingPatient(false)}
           onSaved={() => qc.invalidateQueries({ queryKey: ["patient", patientId] })} />
+      )}
+      {/* The questionnaire's only mount point now that the card is gone. Gated on
+          history.data so it opens seeded with the current answers rather than blank —
+          re-confirming an unchanged history is how "I asked again" gets recorded. */}
+      {takingHistory && (
+        <HistoryDialog patientId={patientId} gender={p.gender}
+          current={history.data ?? { answers: {}, recorded: false }} allergies={p.allergies}
+          onClose={() => setTakingHistory(false)}
+          onSaved={() => qc.invalidateQueries({ queryKey: ["medical-history", patientId] })} />
       )}
     </div>
   );
@@ -557,7 +561,7 @@ function PlanCard({ patientId, plan, teeth, editable, canCollect, canReschedule,
                 )}
                 <div className="divide-y">
                   {items.map((se) => (
-                    <SessionRow key={se.id} patientId={patientId} session={se} teeth={teeth} editable={editable} canCollect={canCollect} canReschedule={canReschedule} imageLimit={imageLimit} onChanged={onChanged} />
+                    <SessionRow key={se.id} patientId={patientId} session={se} planTitle={plan.title} teeth={teeth} editable={editable} canCollect={canCollect} canReschedule={canReschedule} imageLimit={imageLimit} onChanged={onChanged} />
                   ))}
                 </div>
               </div>
@@ -612,7 +616,7 @@ function PlanStat({ label, value, tone, hint }: { label: string; value: string; 
 
 // --- session row ---
 
-function SessionRow({ patientId, session, teeth, editable, canCollect, canReschedule, imageLimit, onChanged }: { patientId: string; session: Session; teeth: Record<string, string>; editable: boolean; canCollect: boolean; canReschedule: boolean; imageLimit: number; onChanged: () => void }) {
+function SessionRow({ patientId, session, planTitle, teeth, editable, canCollect, canReschedule, imageLimit, onChanged }: { patientId: string; session: Session; planTitle: string; teeth: Record<string, string>; editable: boolean; canCollect: boolean; canReschedule: boolean; imageLimit: number; onChanged: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const [deferring, setDeferring] = useState(false);
   const [moving, setMoving] = useState(false);
@@ -645,12 +649,7 @@ function SessionRow({ patientId, session, teeth, editable, canCollect, canResche
     onSuccess: () => { toast.success("Reversed — the cashier can no longer collect it"); onChanged(); },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not reverse"),
   });
-  const [moveTo, setMoveTo] = useState(session.scheduled_date);
-  const reschedule = useMutation({
-    mutationFn: () => rescheduleSession(patientId, session.id, moveTo),
-    onSuccess: () => { toast.success(`Session ${session.seq} moved to ${moveTo}`); setMoving(false); onChanged(); },
-    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not move the session"),
-  });
+
 
   return (
     <div className={cn("p-3 transition-colors", session.status === "cancelled" && "opacity-60", expanded && "border-l-2 border-l-brand bg-muted/40")}>
@@ -676,7 +675,7 @@ function SessionRow({ patientId, session, teeth, editable, canCollect, canResche
               move; the backend enforces the same rule. */}
           {canReschedule && session.status === "planned" && (
             <Button size="sm" variant="ghost" title="Change this session's date"
-              onClick={() => { setMoveTo(session.scheduled_date); setMoving(true); }}>
+              onClick={() => setMoving(true)}>
               <CalendarClock className="h-3.5 w-3.5" /> Move
             </Button>
           )}
@@ -720,24 +719,14 @@ function SessionRow({ patientId, session, teeth, editable, canCollect, canResche
 
       {deferring && <PayLaterDialog patientId={patientId} session={session} onClose={() => setDeferring(false)} onSaved={() => { setDeferring(false); onChanged(); }} />}
 
-      <Dialog open={moving} onOpenChange={(o) => { if (!o) { setMoving(false); setMoveTo(session.scheduled_date); } }}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Move session {session.seq}</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            Currently {session.scheduled_date}. This changes the date only — the procedure,
-            notes, prescription and amount stay exactly as the dentist set them.
-          </p>
-          <div className="space-y-1.5">
-            <Label>New date</Label>
-            <EthiopianDateInput value={moveTo} onChange={setMoveTo} showAge={false} />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setMoving(false)}>Cancel</Button>
-            <Button loading={reschedule.isPending} disabled={!moveTo || moveTo === session.scheduled_date}
-              onClick={() => reschedule.mutate()}>Move session</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {moving && (
+        <MoveSessionDialog
+          patientId={patientId} sessionId={session.id} planTitle={planTitle}
+          currentDate={session.scheduled_date} seq={session.seq}
+          onClose={() => setMoving(false)}
+          onMoved={onChanged}
+        />
+      )}
 
       {expanded && (
         <div className="mt-3 pl-9">
@@ -975,6 +964,8 @@ function PrescriptionDialog({ patientId, sessionId, onClose, onSaved }: { patien
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-2xl">
         <DialogHeader><DialogTitle>New prescription</DialogTitle></DialogHeader>
+        {/* The allergy must be visible while the drug is being chosen, not behind this dialog. */}
+        <PatientSafetyLine patientId={patientId} />
         <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
           {meds.map((m, i) => (
             <MedLine key={i} index={i} med={m} onChange={(patch) => setMed(i, patch)} onRemove={meds.length > 1 ? () => setMeds((ms) => ms.filter((_, j) => j !== i)) : undefined} />
@@ -1442,6 +1433,7 @@ function NewPlanDialog({ patientId, teeth, onClose, onSaved }: { patientId: stri
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-2xl">
         <DialogHeader><DialogTitle>New treatment plan</DialogTitle></DialogHeader>
+        <PatientSafetyLine patientId={patientId} />
         <div className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5"><Label>Treatment</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Root canal" /></div>
