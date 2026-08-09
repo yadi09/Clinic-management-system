@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, CalendarClock, Check, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, HandCoins, ImagePlus, Lock, Pencil, Plus, Printer, Trash2, Undo2, X } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { AlertTriangle, ArrowLeft, CalendarClock, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, HandCoins, ImagePlus, Pencil, Plus, Printer, Trash2, Undo2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,8 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,10 +25,13 @@ import { PatientEditDialog } from "@/features/patients/components/PatientEditDia
 import { PaymentHistoryCard } from "@/features/billing/PaymentHistoryCard";
 import { useScrolledPast } from "@/features/patients/components/StickyAlertBar";
 import { SafetyStrip, PatientAllergyLine } from "@/features/dental/SafetyStrip";
+import { VisitCockpit } from "@/features/dental/visit/VisitCockpit";
+import { useFocusVisit } from "@/features/dental/visit/useFocusVisit";
 import { AllergyDialog } from "@/features/dental/AllergyDialog";
 import { ExaminationCard } from "@/features/dental/ExaminationCard";
 import { invalidateDental } from "@/features/dental/invalidate";
-import { STATUS_LABEL, statusStyle, ToothChart, TOOTH_QUADRANTS } from "@/features/dental/ToothChart";
+import { ToothChart } from "@/features/dental/ToothChart";
+import { FLAT_TEETH, parseCsv, ProcedureMultiSelect, ToothMultiSelect } from "@/features/dental/shared/pickers";
 import { MoveSessionDialog } from "@/features/dental/shared/MoveSessionDialog";
 import {
   addPrescription, collectSession, collectSessions, createPlan, deleteDentalImage, deletePlan, deletePrescription, dentalSummary,
@@ -58,11 +59,9 @@ const SESSION_STATUS_LABEL: Record<SessionStatus, string> = { planned: "Planned"
 //   in_progress — treatment underway (a session done or money moved), not finished
 //   done        — every session done + paid, or the plan was completed/cancelled
 type PlanPhase = "not_started" | "in_progress" | "done";
-type PlanTab = "not_started" | "in_progress" | "history";
 // Which sessions the Not-started / In-progress tabs show. "today" is the clinic-day
 // view; "upcoming" is what the front desk needs to answer "when do I come back?"
 // across every future date, not just the next one.
-type DateScope = "today" | "upcoming" | "all";
 function planPhase(plan: Plan): PlanPhase {
   if (plan.status === "cancelled") return "done";
   const active = plan.sessions.filter((s) => s.status !== "cancelled");
@@ -109,23 +108,16 @@ function ageYears(dob: string): number | undefined {
 function isoLocal(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-/** Does this session belong in the given date scope? scheduled_date is YYYY-MM-DD,
- *  so plain string comparison orders dates correctly. */
-function inScope(s: Session, scope: DateScope, todayISO: string): boolean {
-  if (s.status === "cancelled") return scope === "all";
-  if (scope === "today") return s.scheduled_date === todayISO;
-  // "Upcoming" means every future date, not merely the next one — a patient can
-  // have several sessions spread over weeks and the desk needs to see all of them.
-  if (scope === "upcoming") return s.scheduled_date > todayISO && s.status === "planned";
-  return true;
-}
-/** "Today" / "Tomorrow" / the date, flagging anything already past as overdue. */
-function dateLabel(date: string, todayISO: string): string {
+/** "Today" / "Tomorrow" / the date. A past date is only overdue if something on it
+ *  is still outstanding — now that the list is unfiltered it also carries completed
+ *  visits, and labelling a finished session "overdue" is simply wrong. */
+function dateLabel(date: string, todayISO: string, items: Session[] = []): string {
   if (date === todayISO) return "Today";
   const t = new Date(`${todayISO}T00:00:00`);
   t.setDate(t.getDate() + 1);
   if (date === isoLocal(t)) return "Tomorrow";
-  return date < todayISO ? `${date} · overdue` : date;
+  const missed = date < todayISO && items.some((s) => s.status === "planned" && !s.pay_later);
+  return missed ? `${date} · overdue` : date;
 }
 function addInterval(base: Date, unit: string, count: number): Date {
   const d = new Date(base);
@@ -180,6 +172,14 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
   const canReschedule = editable || can("appointment.manage");
   const [editingPatient, setEditingPatient] = useState(false);
   const [editingAllergies, setEditingAllergies] = useState(false);
+  // ?visit= makes the cockpit's choice addressable: it survives a refresh, a refetch
+  // and the back button, and it is what a chairside hand-off can point at.
+  const [params, setParams] = useSearchParams();
+  const pickVisit = (sessionId: string | null) => {
+    const next = new URLSearchParams(params);
+    if (sessionId) next.set("visit", sessionId); else next.delete("visit");
+    setParams(next, { replace: true });
+  };
   const bannerRef = useRef<HTMLDivElement>(null);
   const scrolledPast = useScrolledPast(bannerRef);
 
@@ -217,8 +217,6 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
   };
 
   const [newPlan, setNewPlan] = useState(false);
-  const [planTabRaw, setPlanTab] = useState<PlanTab | null>(null); // null = auto-pick a non-empty tab
-  const [dateScope, setDateScope] = useState<DateScope>("today"); // Not-started/In-progress: which sessions to list
 
   if (patient.isLoading || summary.isLoading) {
     return (
@@ -247,30 +245,11 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
 
   // Phase-based navigation: a patient can carry many plans, so group them.
   const todayISO = isoLocal(new Date());
-  const hasToday = (pl: Plan) => pl.sessions.some((s) => inScope(s, "today", todayISO));
-  const hasUpcoming = (pl: Plan) => pl.sessions.some((s) => inScope(s, "upcoming", todayISO));
-  // Not-started/In-progress honour the date scope; History is always the full list.
-  const byScope = (list: Plan[]) =>
-    dateScope === "today" ? list.filter(hasToday)
-      : dateScope === "upcoming" ? list.filter(hasUpcoming)
-        : list;
-  const notStarted = byScope(plans.filter((pl) => planPhase(pl) === "not_started"));
-  const inProgress = byScope(plans.filter((pl) => planPhase(pl) === "in_progress"));
-  const completed = plans.filter((pl) => planPhase(pl) === "done");
-  const scopeEmpty = dateScope === "today"
-    ? "Nothing scheduled for today — switch to Upcoming or All dates to see the full list."
-    : "Nothing scheduled after today — switch to All dates to see the full list.";
-  const planTabs: { key: PlanTab; label: string; list: Plan[]; empty: string }[] = [
-    { key: "not_started", label: "Not started", list: notStarted, empty: dateScope === "all" ? "No plans waiting to start." : scopeEmpty },
-    { key: "in_progress", label: "In progress", list: inProgress, empty: dateScope === "all" ? "No treatments in progress right now." : scopeEmpty },
-    { key: "history", label: "History", list: completed, empty: "No completed treatments yet." },
-  ];
-  // Default to the most useful non-empty tab, but honour an explicit click.
-  const autoTab: PlanTab = inProgress.length ? "in_progress" : notStarted.length ? "not_started" : completed.length ? "history" : "in_progress";
-  const planTab = planTabRaw ?? autoTab;
-  const activeTab = planTabs.find((t) => t.key === planTab)!;
-  // Completed plans are a record — always show every session regardless of the toggle.
-  const sessionScope: DateScope = planTab === "history" ? "all" : dateScope;
+  // Resolution replaces filtering. The old code filtered plans by date scope FIRST
+  // and then auto-picked a tab from what survived, so a patient with no session today
+  // showed "In progress 0" and landed on History — the running treatment hidden with
+  // no indication that a filter was responsible.
+  const resolved = useFocusVisit(plans, todayISO, params.get("visit"));
 
   return (
     <div className="space-y-6">
@@ -335,6 +314,13 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
 
       <SafetyStrip allergies={scrolledPast ? p.allergies : []} />
 
+      {/* The visit this page is about — resolved, never filtered. */}
+      <VisitCockpit
+        patientId={patientId} resolved={resolved} teeth={teeth} editable={editable}
+        canCollect={canCollect} canReschedule={canReschedule}
+        onPick={pickVisit} onChanged={invalidate}
+      />
+
       {/* Odontogram + balance — side by side, equal height */}
       <div className="grid items-stretch gap-6 lg:grid-cols-3">
         {editable && (
@@ -391,34 +377,11 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
           {editable && <Button size="sm" onClick={() => setNewPlan(true)}><Plus className="h-4 w-4" /> New plan</Button>}
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap gap-1 rounded-lg bg-muted p-1">
-              {planTabs.map((t) => (
-                <button key={t.key} type="button" onClick={() => setPlanTab(t.key)}
-                  className={cn("flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                    planTab === t.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
-                  {t.label}
-                  <span className={cn("rounded-full px-1.5 text-xs tabular-nums", planTab === t.key ? "bg-brand/10 text-brand" : "bg-foreground/10 text-muted-foreground")}>{t.list.length}</span>
-                </button>
-              ))}
-            </div>
-            {planTab !== "history" && (
-              <div className="flex rounded-md border bg-card p-0.5 text-xs">
-                {(["today", "upcoming", "all"] as const).map((s) => (
-                  <button key={s} type="button" onClick={() => setDateScope(s)}
-                    title={s === "upcoming" ? "Every session scheduled after today, grouped by date" : undefined}
-                    className={cn("rounded px-2.5 py-1 font-medium", dateScope === s ? "bg-brand text-brand-foreground" : "text-muted-foreground hover:text-foreground")}>
-                    {s === "today" ? "Today" : s === "upcoming" ? "Upcoming" : "All dates"}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          {activeTab.list.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">{activeTab.empty}</p>
+          {plans.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">No treatment plans yet.</p>
           ) : (
-            activeTab.list.map((plan) => (
-              <PlanCard key={plan.id} patientId={patientId} plan={plan} teeth={teeth} editable={editable} canCollect={canCollect} canReschedule={canReschedule} imageLimit={summary.data!.image_limit} scope={sessionScope} todayISO={todayISO} onChanged={invalidate} />
+            plans.map((plan) => (
+              <PlanCard key={plan.id} patientId={patientId} plan={plan} teeth={teeth} editable={editable} canCollect={canCollect} canReschedule={canReschedule} imageLimit={summary.data!.image_limit} todayISO={todayISO} onChanged={invalidate} />
             ))
           )}
         </CardContent>
@@ -446,9 +409,12 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
 
 // --- plan card ---
 
-function PlanCard({ patientId, plan, teeth, editable, canCollect, canReschedule, imageLimit, scope, todayISO, onChanged }: { patientId: string; plan: Plan; teeth: Record<string, string>; editable: boolean; canCollect: boolean; canReschedule: boolean; imageLimit: number; scope: DateScope; todayISO: string; onChanged: () => void }) {
+function PlanCard({ patientId, plan, teeth, editable, canCollect, canReschedule, imageLimit, todayISO, onChanged }: { patientId: string; plan: Plan; teeth: Record<string, string>; editable: boolean; canCollect: boolean; canReschedule: boolean; imageLimit: number; todayISO: string; onChanged: () => void }) {
   const phase = planPhase(plan);
-  const [open, setOpen] = useState(phase !== "done"); // finished plans start collapsed
+  // Collapsed by default: the cockpit above answers "what is happening now", so
+  // this list is reference material. Expanded-by-default made a three-plan
+  // patient roughly seven screens tall.
+  const [open, setOpen] = useState(false);
   const total = num(plan.total_amount);
   const paid = plan.sessions.filter((s) => s.payment === "paid").reduce((a, s) => a + num(s.amount_due), 0);
   const pct = total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0;
@@ -470,10 +436,12 @@ function PlanCard({ patientId, plan, teeth, editable, canCollect, canReschedule,
     };
   }, [plan.sessions]);
 
+  // Every session, always. The date scope that used to filter this list is gone:
+  // the cockpit answers "what is happening now", so the plan below it is the full
+  // record of the course rather than a second, competing filtered view of it.
   const shownSessions = useMemo(
-    () => plan.sessions.filter((s) => inScope(s, scope, todayISO))
-      .sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date) || a.seq - b.seq),
-    [plan.sessions, scope, todayISO],
+    () => [...plan.sessions].sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date) || a.seq - b.seq),
+    [plan.sessions],
   );
   // Group by date so several sessions on one day read as one visit, and a course
   // spread over weeks reads as a schedule rather than a flat list.
@@ -515,13 +483,11 @@ function PlanCard({ patientId, plan, teeth, editable, canCollect, canReschedule,
             {plan.status === "cancelled"
               ? <Badge variant="outline">Cancelled</Badge>
               : <Badge variant={PHASE_META[phase].variant}>{PHASE_META[phase].label}</Badge>}
-            {scope === "today" && <Badge variant="default">Today</Badge>}
-            {scope === "upcoming" && <Badge variant="outline">Upcoming</Badge>}
             {owes && <Badge variant="destructive">Owes</Badge>}
           </div>
           <div className="mt-0.5 flex items-center gap-3 text-xs text-muted-foreground">
             <span className="tabular-nums">{birr(plan.total_amount)}</span>
-            <span>· {scope === "all" ? `${plan.sessions.length} sessions` : `${shownSessions.length} of ${plan.sessions.length} sessions`}</span>
+            <span>· {plan.sessions.length} sessions</span>
             {plan.deadline && <span className="flex items-center gap-1"><CalendarClock className="h-3 w-3" /> ends {plan.deadline}</span>}
           </div>
         </div>
@@ -549,18 +515,15 @@ function PlanCard({ patientId, plan, teeth, editable, canCollect, canReschedule,
           </div>
           <div className="border-b bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
             {money.done} of {money.count} sessions done
-            {shownSessions.length !== plan.sessions.length && ` · showing ${shownSessions.length}`}
           </div>
           {shownSessions.length === 0 ? (
-            <p className="px-3 py-6 text-center text-xs text-muted-foreground">
-              {scope === "today" ? "No sessions for this plan today." : "No sessions scheduled after today."}
-            </p>
+            <p className="px-3 py-6 text-center text-xs text-muted-foreground">This plan has no sessions.</p>
           ) : (
             dateGroups.map(({ date, items }) => (
               <div key={date}>
                 {showDateHeaders && (
                   <div className="flex items-center justify-between border-b bg-muted/50 px-3 py-1.5 text-xs font-medium">
-                    <span className="flex items-center gap-1.5"><CalendarClock className="h-3 w-3" />{dateLabel(date, todayISO)}</span>
+                    <span className="flex items-center gap-1.5"><CalendarClock className="h-3 w-3" />{dateLabel(date, todayISO, items)}</span>
                     <span className="tabular-nums text-muted-foreground">{items.length} session{items.length === 1 ? "" : "s"}</span>
                   </div>
                 )}
@@ -625,19 +588,10 @@ function SessionRow({ patientId, session, planTitle, teeth, editable, canCollect
   const [expanded, setExpanded] = useState(false);
   const [deferring, setDeferring] = useState(false);
   const [moving, setMoving] = useState(false);
-  const [accessed, setAccessed] = useState(false); // doctor opened a future session on purpose
   const pay = PAY_META[session.payment];
   const today = isoLocal(new Date());
-  // Payment must be handled first: either collected (billed/paid) or the doctor
-  // flags pay-later. Until then, status changes and the visit record are locked.
-  const unlocked = session.payment !== "unpaid" || !!session.pay_later;
   const owes = (session.status === "done" || !!session.pay_later) && session.payment !== "paid";
   const overdue = session.status === "planned" && !session.pay_later && session.scheduled_date < today;
-  // A future, untouched session is gated behind an explicit "Access now" so the
-  // doctor can't act on the wrong (not-yet-due) session by mistake.
-  const untouched = session.status === "planned" && session.payment === "unpaid" && !session.pay_later;
-  const future = session.scheduled_date > today;
-  const gatedByDate = editable && future && untouched && !accessed;
 
   const setStatus = useMutation({
     mutationFn: (status: SessionStatus) => updateSession(patientId, session.id, { status }),
@@ -684,38 +638,38 @@ function SessionRow({ patientId, session, planTitle, teeth, editable, canCollect
               <CalendarClock className="h-3.5 w-3.5" /> Move
             </Button>
           )}
-          {/* Clinical controls belong to the dentist; billing is open to the front desk. */}
-          {editable && gatedByDate ? (
-            <Button size="sm" variant="outline" onClick={() => setAccessed(true)} title="This session isn't due yet — open it deliberately">
-              <Lock className="h-3.5 w-3.5" /> Access now
+          {/* Clinical controls belong to the dentist; billing is open to the front desk.
+              None of them are gated any more: a session used to be unopenable until it
+              was billed, and unopenable again if it was dated in the future. */}
+          {editable && (
+            <Select value={session.status} onValueChange={(v) => {
+              // Marking a not-yet-due session "done" makes its fee immediately owed.
+              // Recording the visit is the intended path; this is the blunt one, so
+              // it asks rather than silently inventing a debt.
+              if (v === "done" && session.scheduled_date > today &&
+                  !window.confirm(`Session ${session.seq} is scheduled for ${session.scheduled_date}, not today. Mark it done anyway? Its ${birr(session.amount_due)} fee becomes owed straight away.`)) return;
+              setStatus.mutate(v as SessionStatus);
+            }}>
+              <SelectTrigger className="h-8 w-28"><SelectValue /></SelectTrigger>
+              <SelectContent>{SESSION_STATUSES.map((s) => <SelectItem key={s} value={s}>{SESSION_STATUS_LABEL[s]}</SelectItem>)}</SelectContent>
+            </Select>
+          )}
+          {canCollect && session.payment === "billed" && (
+            <Button size="sm" variant="ghost" loading={uncollect.isPending} onClick={() => uncollect.mutate()} title="Undo — pull this back from the cashier">
+              <Undo2 className="h-3.5 w-3.5" /> Undo
             </Button>
-          ) : (
-            <>
-              {editable && unlocked && (
-                <Select value={session.status} onValueChange={(v) => setStatus.mutate(v as SessionStatus)}>
-                  <SelectTrigger className="h-8 w-28"><SelectValue /></SelectTrigger>
-                  <SelectContent>{SESSION_STATUSES.map((s) => <SelectItem key={s} value={s}>{SESSION_STATUS_LABEL[s]}</SelectItem>)}</SelectContent>
-                </Select>
-              )}
-              {canCollect && session.payment === "billed" && (
-                <Button size="sm" variant="ghost" loading={uncollect.isPending} onClick={() => uncollect.mutate()} title="Undo — pull this back from the cashier">
-                  <Undo2 className="h-3.5 w-3.5" /> Undo
-                </Button>
-              )}
-              {canCollect && session.payment === "unpaid" && num(session.amount_due) > 0 && (
-                <Button size="sm" variant="outline" loading={collect.isPending} onClick={() => collect.mutate()}>
-                  <HandCoins className="h-3.5 w-3.5" /> Collect
-                </Button>
-              )}
-              {editable && !unlocked && (
-                <Button size="sm" variant="outline" className="text-amber-700" onClick={() => setDeferring(true)}>Pay later</Button>
-              )}
-            </>
+          )}
+          {canCollect && session.payment === "unpaid" && num(session.amount_due) > 0 && (
+            <Button size="sm" variant="outline" loading={collect.isPending} onClick={() => collect.mutate()}>
+              <HandCoins className="h-3.5 w-3.5" /> Collect
+            </Button>
+          )}
+          {editable && session.payment === "unpaid" && !session.pay_later && (
+            <Button size="sm" variant="outline" className="text-amber-700" onClick={() => setDeferring(true)}>Pay later</Button>
           )}
         </div>
         {editable && (
-          <Button size="sm" variant="ghost" disabled={gatedByDate || !unlocked} onClick={() => setExpanded((e) => !e)}
-            title={gatedByDate ? "Access this session first" : !unlocked ? "Collect payment or mark pay-later to record this visit" : undefined}>
+          <Button size="sm" variant="ghost" onClick={() => setExpanded((e) => !e)}>
             {expanded ? "Close" : "Record"}
             <ChevronDown className={cn("h-4 w-4 transition-transform", !expanded && "-rotate-90")} />
           </Button>
@@ -773,7 +727,6 @@ function PayLaterDialog({ patientId, session, onClose, onSaved }: { patientId: s
   );
 }
 
-const parseCsv = (s?: string) => (s ? s.split(",").map((t) => t.trim()).filter(Boolean) : []);
 
 // The per-session clinical record, edited INLINE in the expanded row (no modal):
 // procedure, tooth, notes, prescription, plus the visit date and fee. It warns when
@@ -787,12 +740,10 @@ function InlineSessionRecord({ patientId, session, teeth, editable, imageLimit, 
   const [toothSel, setToothSel] = useState<string[]>(parseCsv(session.tooth));
   const [notes, setNotes] = useState(session.notes ?? "");
 
-  const [approved, setApproved] = useState(false); // doctor confirmed recording on a non-today date
   const today = isoLocal(new Date());
   const upcoming = date > today;
   const overdue = date < today && session.status === "planned";
   const notToday = upcoming || overdue;
-  const gated = notToday && !approved; // lock the record until the doctor confirms the date
   const moveToday = () => { setDate(today); setDateKey((k) => k + 1); };
 
   const save = useMutation({
@@ -832,25 +783,13 @@ function InlineSessionRecord({ patientId, session, teeth, editable, imageLimit, 
         <div className={cn("flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border px-3 py-2 text-sm",
           overdue ? "border-rose-300 bg-rose-50 text-rose-800" : "border-amber-300 bg-amber-50 text-amber-800")}>
           <AlertTriangle className="h-4 w-4 shrink-0" />
-          {gated ? (
-            <>
-              <span>
-                {overdue ? `Overdue — this session was scheduled for ${date}, not today.` : `Upcoming — this session is scheduled for ${date}, not today.`}
-                {" "}Recording is locked until you confirm the date.
-              </span>
-              <button type="button" onClick={moveToday} className="font-medium underline underline-offset-2">Move to today</button>
-              <span className="text-muted-foreground">·</span>
-              <button type="button" onClick={() => setApproved(true)} className="font-medium underline underline-offset-2">Record on {date} anyway</button>
-            </>
-          ) : (
-            <>
-              <span>Recording this visit on <b>{date}</b> (not today).</span>
-              <button type="button" onClick={moveToday} className="font-medium underline underline-offset-2">Move to today</button>
-            </>
-          )}
+          {/* Stated, not enforced. Recording a visit on the day it actually happened
+              is normal; the old form disabled every field until this was confirmed. */}
+          <span>Recording this visit on <b>{date}</b> (not today).</span>
+          <button type="button" onClick={moveToday} className="font-medium underline underline-offset-2">Move to today</button>
         </div>
       )}
-      <fieldset disabled={gated} className="space-y-3 disabled:opacity-50">
+      <fieldset className="space-y-3">
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5"><Label>Visit date</Label><EthiopianDateInput key={dateKey} value={date} onChange={setDate} showAge={false} /></div>
           <div className="space-y-1.5"><Label>Amount (ETB)</Label><Input type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
@@ -864,8 +803,8 @@ function InlineSessionRecord({ patientId, session, teeth, editable, imageLimit, 
           <Button size="sm" loading={save.isPending} onClick={() => save.mutate()}>Save record</Button>
         </div>
       </fieldset>
-      <div className="border-t pt-3"><PrescriptionSection patientId={patientId} session={session} editable={editable && !gated} onChanged={onChanged} /></div>
-      <div className="border-t pt-3"><SessionImages patientId={patientId} session={session} editable={editable && !gated} imageLimit={imageLimit} onChanged={onChanged} /></div>
+      <div className="border-t pt-3"><PrescriptionSection patientId={patientId} session={session} editable={editable} onChanged={onChanged} /></div>
+      <div className="border-t pt-3"><SessionImages patientId={patientId} session={session} editable={editable} imageLimit={imageLimit} onChanged={onChanged} /></div>
     </div>
   );
 }
@@ -1254,101 +1193,11 @@ function ImageGallery({ images, editable, onDelete, thumb }: { images: DentalIma
 // --- new plan dialog with live schedule preview ---
 
 // Every tooth in chart order — used to keep a multi-tooth selection sorted.
-const FLAT_TEETH = TOOTH_QUADRANTS.flatMap((q) => q.codes);
 
-const DENTAL_PROCEDURES = [
-  "Consultation", "X-Ray", "Teeth Cleaning", "Scaling & Polishing", "Tooth Extraction",
-  "Filling (Composite)", "Filling (Amalgam)", "Root Canal Treatment", "Crown Placement",
-  "Bridge", "Partial Denture", "Full Denture", "Teeth Whitening", "Orthodontic Consultation",
-  "Braces Fitting", "Emergency Treatment", "Other",
-];
 
 // Multi-select procedure picker — type to filter, tick several, or add a custom
 // one. The popover stays open while you toggle; selections show comma-joined.
-function ProcedureMultiSelect({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const q = query.trim();
-  const toggle = (p: string) => onChange(value.includes(p) ? value.filter((x) => x !== p) : [...value, p]);
-  // Built-in list plus any custom values already selected, so ticks always show.
-  const options = [...DENTAL_PROCEDURES, ...value.filter((v) => !DENTAL_PROCEDURES.includes(v))];
-  const exact = options.some((p) => p.toLowerCase() === q.toLowerCase());
-  return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQuery(""); }}>
-      <PopoverTrigger asChild>
-        <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
-          <span className={cn("truncate", value.length === 0 && "text-muted-foreground")}>
-            {value.length === 0 ? "Select procedures" : `${value.length} selected · ${value.join(", ")}`}
-          </span>
-          <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="p-0" style={{ width: "var(--radix-popover-trigger-width)" }}>
-        <Command>
-          <CommandInput placeholder="Search procedures…" value={query} onValueChange={setQuery} />
-          <CommandList>
-            <CommandEmpty>No procedure found.</CommandEmpty>
-            <CommandGroup>
-              {options.map((p) => (
-                <CommandItem key={p} value={p} onSelect={() => toggle(p)}>
-                  <Check className={cn("mr-2 h-4 w-4", value.includes(p) ? "opacity-100" : "opacity-0")} />
-                  {p}
-                </CommandItem>
-              ))}
-              {q && !exact && (
-                <CommandItem value={q} onSelect={() => { toggle(q); setQuery(""); }}>
-                  <Plus className="mr-2 h-4 w-4" /> Add "{q}"
-                </CommandItem>
-              )}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  );
-}
 
-// Multi-tooth picker (Palmer), grouped by quadrant, showing each tooth's charted
-// condition. Value is the selected codes; stored joined as "UR6, UR7".
-function ToothMultiSelect({ teeth, value, onChange, placeholder }: { teeth: Record<string, string>; value: string[]; onChange: (codes: string[]) => void; placeholder?: string }) {
-  const ordered = FLAT_TEETH.filter((c) => value.includes(c));
-  const toggle = (c: string) => onChange(value.includes(c) ? value.filter((x) => x !== c) : [...value, c]);
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
-          <span className={cn("truncate", value.length === 0 && "text-muted-foreground")}>
-            {value.length === 0 ? (placeholder ?? "No specific tooth") : `${value.length} selected · ${ordered.join(", ")}`}
-          </span>
-          <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="max-h-72 overflow-auto p-1" style={{ width: "var(--radix-popover-trigger-width)" }}>
-        {TOOTH_QUADRANTS.map((quad) => (
-          <div key={quad.label} className="py-0.5">
-            <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">{quad.label}</div>
-            {quad.codes.map((code) => {
-              const cond = teeth[code] ?? "";
-              const st = statusStyle(cond);
-              const checked = value.includes(code);
-              return (
-                <button key={code} type="button" onClick={() => toggle(code)}
-                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent">
-                  <span className={cn("flex h-4 w-4 shrink-0 items-center justify-center rounded border", checked ? "border-brand bg-brand text-brand-foreground" : "border-input")}>
-                    {checked && <Check className="h-3 w-3" />}
-                  </span>
-                  <span className="h-2.5 w-2.5 shrink-0 rounded-sm border" style={{ background: st.background, borderColor: st.borderColor }} />
-                  <span className="font-medium tabular-nums">{code}</span>
-                  {cond && <span className="text-xs text-muted-foreground">· {STATUS_LABEL[cond] ?? cond}</span>}
-                </button>
-              );
-            })}
-          </div>
-        ))}
-      </PopoverContent>
-    </Popover>
-  );
-}
 
 const ecParts = (v: string) => {
   if (!v) return { y: "", m: "", d: "" };

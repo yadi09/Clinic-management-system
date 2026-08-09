@@ -1,0 +1,112 @@
+// The two pickers the dental surfaces share: what was done, and to which tooth.
+//
+// Hoisted out of DentalWorkspace so the visit cockpit can use the same controls.
+// Both are deliberately multi-select — a single appointment routinely treats two
+// teeth, and the old single-value fields meant the second one went unrecorded.
+import { useState } from "react";
+import { Check, ChevronDown, Plus } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
+import { STATUS_LABEL, statusStyle, TOOTH_QUADRANTS } from "@/features/dental/ToothChart";
+
+/** Palmer codes in chart order, so a selection always reads UR6, UR7 — never UR7, UR6. */
+export const FLAT_TEETH = TOOTH_QUADRANTS.flatMap((q) => q.codes);
+
+/** Comma-separated storage <-> array. The server stores "UR6, UR7" verbatim. */
+export const parseCsv = (s?: string) => (s ? s.split(",").map((t) => t.trim()).filter(Boolean) : []);
+
+export const DENTAL_PROCEDURES = [
+  "Consultation", "X-Ray", "Teeth Cleaning", "Scaling & Polishing", "Tooth Extraction",
+  "Filling (Composite)", "Filling (Amalgam)", "Root Canal Treatment", "Crown Placement",
+  "Bridge", "Partial Denture", "Full Denture", "Teeth Whitening", "Orthodontic Consultation",
+  "Braces Fitting", "Emergency Treatment", "Other",
+];
+
+
+export function ProcedureMultiSelect({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const q = query.trim();
+  const toggle = (p: string) => onChange(value.includes(p) ? value.filter((x) => x !== p) : [...value, p]);
+  // Built-in list plus any custom values already selected, so ticks always show.
+  const options = [...DENTAL_PROCEDURES, ...value.filter((v) => !DENTAL_PROCEDURES.includes(v))];
+  const exact = options.some((p) => p.toLowerCase() === q.toLowerCase());
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQuery(""); }}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
+          <span className={cn("truncate", value.length === 0 && "text-muted-foreground")}>
+            {value.length === 0 ? "Select procedures" : `${value.length} selected · ${value.join(", ")}`}
+          </span>
+          <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="p-0" style={{ width: "var(--radix-popover-trigger-width)" }}>
+        <Command>
+          <CommandInput placeholder="Search procedures…" value={query} onValueChange={setQuery} />
+          <CommandList>
+            <CommandEmpty>No procedure found.</CommandEmpty>
+            <CommandGroup>
+              {options.map((p) => (
+                <CommandItem key={p} value={p} onSelect={() => toggle(p)}>
+                  <Check className={cn("mr-2 h-4 w-4", value.includes(p) ? "opacity-100" : "opacity-0")} />
+                  {p}
+                </CommandItem>
+              ))}
+              {q && !exact && (
+                <CommandItem value={q} onSelect={() => { toggle(q); setQuery(""); }}>
+                  <Plus className="mr-2 h-4 w-4" /> Add "{q}"
+                </CommandItem>
+              )}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// Multi-tooth picker (Palmer), grouped by quadrant, showing each tooth's charted
+// condition. Value is the selected codes; stored joined as "UR6, UR7".
+export function ToothMultiSelect({ teeth, value, onChange, placeholder }: { teeth: Record<string, string>; value: string[]; onChange: (codes: string[]) => void; placeholder?: string }) {
+  const ordered = FLAT_TEETH.filter((c) => value.includes(c));
+  const toggle = (c: string) => onChange(value.includes(c) ? value.filter((x) => x !== c) : [...value, c]);
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
+          <span className={cn("truncate", value.length === 0 && "text-muted-foreground")}>
+            {value.length === 0 ? (placeholder ?? "No specific tooth") : `${value.length} selected · ${ordered.join(", ")}`}
+          </span>
+          <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="max-h-72 overflow-auto p-1" style={{ width: "var(--radix-popover-trigger-width)" }}>
+        {TOOTH_QUADRANTS.map((quad) => (
+          <div key={quad.label} className="py-0.5">
+            <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">{quad.label}</div>
+            {quad.codes.map((code) => {
+              const cond = teeth[code] ?? "";
+              const st = statusStyle(cond);
+              const checked = value.includes(code);
+              return (
+                <button key={code} type="button" onClick={() => toggle(code)}
+                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent">
+                  <span className={cn("flex h-4 w-4 shrink-0 items-center justify-center rounded border", checked ? "border-brand bg-brand text-brand-foreground" : "border-input")}>
+                    {checked && <Check className="h-3 w-3" />}
+                  </span>
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-sm border" style={{ background: st.background, borderColor: st.borderColor }} />
+                  <span className="font-medium tabular-nums">{code}</span>
+                  {cond && <span className="text-xs text-muted-foreground">· {STATUS_LABEL[cond] ?? cond}</span>}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </PopoverContent>
+    </Popover>
+  );
+}

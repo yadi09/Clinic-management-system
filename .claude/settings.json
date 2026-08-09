@@ -133,7 +133,19 @@
       "Bash(echo \"--- exit $? ---\")",
       "Bash(awk 'NR>=117 && NR<=123 {printf \"%d\\\\t%s\\\\n\", NR, $0}' frontend/src/features/dental/shared/MoveSessionDialog.tsx)",
       "Bash(grep -rn \"/schedule\\\\`\" src/)",
-      "Bash(scp -q -i ~/.ssh/The-millions /tmp/claude-1000/-home-yadi09-Yaz-project-Clinic-management-system/645e13cd-7bf4-4bdd-bc99-7189bfed4c74/scratchpad/alg.sql themillions@77.68.116.240:/tmp/alg.sql)"
+      "Bash(scp -q -i ~/.ssh/The-millions /tmp/claude-1000/-home-yadi09-Yaz-project-Clinic-management-system/645e13cd-7bf4-4bdd-bc99-7189bfed4c74/scratchpad/alg.sql themillions@77.68.116.240:/tmp/alg.sql)",
+      "Bash(awk '{printf \"%d\\\\t%s\\\\n\", NR+539, substr\\($0, index\\($0,$2\\)\\)}')",
+      "Bash(awk '{printf \"%d\\\\t%s\\\\n\", NR+249, substr\\($0, index\\($0,$2\\)\\)}')",
+      "Bash(awk '{printf \"%d\\\\t%s\\\\n\", NR+329, substr\\($0, index\\($0,$2\\)\\)}')",
+      "Bash(sed 's/status: \"planned\" };/status: \"done\" };/' repro.cjs)",
+      "Bash(node repro2.cjs)",
+      "Bash(node -e \"console.log\\(require\\('react-dom/package.json'\\).version, require\\('react/package.json'\\).version\\)\")",
+      "Bash(npm ls *)",
+      "Bash(timeout 300 npm i --no-save --silent react@18.3.1 react-dom@18.3.1 jsdom@24)",
+      "Bash(node repro.cjs)",
+      "Bash(git diff *)",
+      "Bash(npx esbuild *)",
+      "Bash(node /tmp/claude-1000/-home-yadi09-Yaz-project-Clinic-management-system/645e13cd-7bf4-4bdd-bc99-7189bfed4c74/scratchpad/vt/t.mjs)"
     ],
     "additionalDirectories": [
       "/home/yadi09/Yaz_project/Clinic-management-system/backend/internal/billing/repo/queries",
