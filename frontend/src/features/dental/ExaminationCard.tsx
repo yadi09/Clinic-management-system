@@ -35,7 +35,6 @@ import { getPatient } from "@/features/patients/api";
 import { getClinic, listBranches } from "@/features/admin/api";
 import { TOOTH_QUADRANTS } from "@/features/dental/ToothChart";
 import { printExamination } from "@/features/dental/printExam";
-import { PatientSafetyLine } from "@/features/dental/SafetyStrip";
 import { ANAESTHESIA, EXAM_GROUPS, examHeadline, isBlankExam, toggleOption, type ExamGroup } from "@/features/dental/examination";
 import {
   createExam, deleteExam, listExams, updateExam,
@@ -313,7 +312,6 @@ function ExamForm({ patientId, examId, initial, onCancel, onSaved }: {
 
   return (
     <div className="space-y-5 rounded-lg border border-primary/40 bg-primary/[0.03] p-4">
-      <PatientSafetyLine patientId={patientId} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="w-full max-w-xs">
           <Label className="text-xs">Visit date</Label>

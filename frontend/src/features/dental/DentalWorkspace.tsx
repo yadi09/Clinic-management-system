@@ -26,10 +26,9 @@ import { getPatient } from "@/features/patients/api";
 import { PatientEditDialog } from "@/features/patients/components/PatientEditDialog";
 import { PaymentHistoryCard } from "@/features/billing/PaymentHistoryCard";
 import { useScrolledPast } from "@/features/patients/components/StickyAlertBar";
-import { SafetyStrip, PatientSafetyLine } from "@/features/dental/SafetyStrip";
-import { HistoryDialog } from "@/features/dental/HistoryDialog";
+import { SafetyStrip, PatientAllergyLine } from "@/features/dental/SafetyStrip";
+import { AllergyDialog } from "@/features/dental/AllergyDialog";
 import { ExaminationCard } from "@/features/dental/ExaminationCard";
-import { getMedicalHistory } from "@/features/dental/api";
 import { invalidateDental } from "@/features/dental/invalidate";
 import { STATUS_LABEL, statusStyle, ToothChart, TOOTH_QUADRANTS } from "@/features/dental/ToothChart";
 import { MoveSessionDialog } from "@/features/dental/shared/MoveSessionDialog";
@@ -180,14 +179,12 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
   // (dental.manage OR appointment.manage) — see dental/http/routes.go.
   const canReschedule = editable || can("appointment.manage");
   const [editingPatient, setEditingPatient] = useState(false);
-  const [takingHistory, setTakingHistory] = useState(false);
+  const [editingAllergies, setEditingAllergies] = useState(false);
   const bannerRef = useRef<HTMLDivElement>(null);
   const scrolledPast = useScrolledPast(bannerRef);
 
   const patient = useQuery({ queryKey: ["patient", patientId], queryFn: () => getPatient(patientId) });
   const summary = useQuery({ queryKey: ["dental-summary", patientId], queryFn: () => dentalSummary(patientId) });
-  // Safety flags belong next to the allergy chips, not buried in a card below.
-  const history = useQuery({ queryKey: ["medical-history", patientId], queryFn: () => getMedicalHistory(patientId), enabled: editable });
   const invalidate = () => invalidateDental(qc, patientId);
 
   // Local, debounced-persisted odontogram (seeded once; local map is the edit source).
@@ -316,30 +313,27 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
           )}
           {/* Allergies live on the banner, not only in the strip: they come from the
               patient record, so they render even when the health-history query fails. */}
-          {p.allergies.length === 0 ? (
+          {p.allergies.map((a) => (
+            <span key={a.id} className="flex items-center gap-1 rounded-full bg-destructive px-3 py-1 text-xs font-semibold text-destructive-foreground">
+              <AlertTriangle className="h-3.5 w-3.5" /> Allergy: {a.substance}
+            </span>
+          ))}
+          {/* Always a button, never a dead label: until now a dental clinic had no
+              way to record an allergy at all, so every patient read "no known
+              allergies" whether or not anyone had asked. */}
+          {editable ? (
+            <button onClick={() => setEditingAllergies(true)}
+              className={cn("flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-white/25",
+                p.allergies.length === 0 ? "bg-white/15" : "bg-white/20")}>
+              {p.allergies.length === 0 ? <><Plus className="h-3 w-3" /> Record allergies</> : <><Pencil className="h-3 w-3" /> Allergies</>}
+            </button>
+          ) : p.allergies.length === 0 ? (
             <span className="rounded-full bg-white/15 px-3 py-1 text-xs">No known allergies</span>
-          ) : (
-            p.allergies.map((a) => (
-              <span key={a.id} className="flex items-center gap-1 rounded-full bg-destructive px-3 py-1 text-xs font-semibold text-destructive-foreground">
-                <AlertTriangle className="h-3.5 w-3.5" /> Allergy: {a.substance}
-              </span>
-            ))
-          )}
+          ) : null}
         </div>
       </div>
 
-      <SafetyStrip
-        // Shown on the banner while it is visible; the strip takes over on scroll.
-        allergies={scrolledPast ? p.allergies : []}
-        history={editable && history.data
-          ? { answers: history.data.answers, recorded: history.data.recorded, reviewedAt: history.data.reviewed_at,
-              reviewedBy: history.data.reviewed_by, notes: history.data.notes }
-          : undefined}
-        isLoading={editable && history.isPending && !history.isError}
-        isError={editable && history.isError}
-        onRetry={() => history.refetch()}
-        onTakeHistory={editable ? () => setTakingHistory(true) : undefined}
-      />
+      <SafetyStrip allergies={scrolledPast ? p.allergies : []} />
 
       {/* Odontogram + balance — side by side, equal height */}
       <div className="grid items-stretch gap-6 lg:grid-cols-3">
@@ -441,14 +435,10 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
         <PatientEditDialog patient={p} onClose={() => setEditingPatient(false)}
           onSaved={() => qc.invalidateQueries({ queryKey: ["patient", patientId] })} />
       )}
-      {/* The questionnaire's only mount point now that the card is gone. Gated on
-          history.data so it opens seeded with the current answers rather than blank —
-          re-confirming an unchanged history is how "I asked again" gets recorded. */}
-      {takingHistory && (
-        <HistoryDialog patientId={patientId} gender={p.gender}
-          current={history.data ?? { answers: {}, recorded: false }} allergies={p.allergies}
-          onClose={() => setTakingHistory(false)}
-          onSaved={() => qc.invalidateQueries({ queryKey: ["medical-history", patientId] })} />
+      {editingAllergies && (
+        <AllergyDialog patientId={patientId} allergies={p.allergies}
+          onClose={() => setEditingAllergies(false)}
+          onSaved={() => qc.invalidateQueries({ queryKey: ["patient", patientId] })} />
       )}
     </div>
   );
@@ -980,7 +970,7 @@ function PrescriptionDialog({ patientId, sessionId, onClose, onSaved }: { patien
       <DialogContent className="max-w-2xl">
         <DialogHeader><DialogTitle>New prescription</DialogTitle></DialogHeader>
         {/* The allergy must be visible while the drug is being chosen, not behind this dialog. */}
-        <PatientSafetyLine patientId={patientId} />
+        <PatientAllergyLine patientId={patientId} />
         <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
           {meds.map((m, i) => (
             <MedLine key={i} index={i} med={m} onChange={(patch) => setMed(i, patch)} onRemove={meds.length > 1 ? () => setMeds((ms) => ms.filter((_, j) => j !== i)) : undefined} />
@@ -1448,7 +1438,7 @@ function NewPlanDialog({ patientId, teeth, onClose, onSaved }: { patientId: stri
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-2xl">
         <DialogHeader><DialogTitle>New treatment plan</DialogTitle></DialogHeader>
-        <PatientSafetyLine patientId={patientId} />
+        <PatientAllergyLine patientId={patientId} />
         <div className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5"><Label>Treatment</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Root canal" /></div>

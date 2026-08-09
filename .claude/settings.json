@@ -132,7 +132,8 @@
       "Bash(awk 'NR>=484' frontend/src/features/dental/ReceptionDentalView.tsx)",
       "Bash(echo \"--- exit $? ---\")",
       "Bash(awk 'NR>=117 && NR<=123 {printf \"%d\\\\t%s\\\\n\", NR, $0}' frontend/src/features/dental/shared/MoveSessionDialog.tsx)",
-      "Bash(grep -rn \"/schedule\\\\`\" src/)"
+      "Bash(grep -rn \"/schedule\\\\`\" src/)",
+      "Bash(scp -q -i ~/.ssh/The-millions /tmp/claude-1000/-home-yadi09-Yaz-project-Clinic-management-system/645e13cd-7bf4-4bdd-bc99-7189bfed4c74/scratchpad/alg.sql themillions@77.68.116.240:/tmp/alg.sql)"
     ],
     "additionalDirectories": [
       "/home/yadi09/Yaz_project/Clinic-management-system/backend/internal/billing/repo/queries",

@@ -234,22 +234,6 @@ export async function uploadDentalImage(patientId: string, file: File, sessionId
   });
 }
 
-// --- medical history (pre-treatment health questionnaire; dentist only) ---
-
-export interface MedicalHistory {
-  answers: Record<string, string>;
-  notes?: string;
-  recorded: boolean;
-  reviewed_at?: string;
-  reviewed_by?: string;
-}
-export function getMedicalHistory(patientId: string) {
-  return apiFetch<MedicalHistory>(`/dental/patients/${patientId}/medical-history`);
-}
-export function saveMedicalHistory(patientId: string, body: { answers: Record<string, string>; notes?: string }) {
-  return apiFetch<MedicalHistory>(`/dental/patients/${patientId}/medical-history`, { method: "PUT", body });
-}
-
 // --- examinations (clinical assessment; dentist only) ---
 //
 // The record that justifies the treatment: why the patient came, what was found on
