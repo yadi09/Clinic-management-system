@@ -175,6 +175,7 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
   // ?visit= makes the cockpit's choice addressable: it survives a refresh, a refetch
   // and the back button, and it is what a chairside hand-off can point at.
   const [params, setParams] = useSearchParams();
+  const todayISO = isoLocal(new Date());
   const pickVisit = (sessionId: string | null) => {
     const next = new URLSearchParams(params);
     if (sessionId) next.set("visit", sessionId); else next.delete("visit");
@@ -186,6 +187,16 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
   const patient = useQuery({ queryKey: ["patient", patientId], queryFn: () => getPatient(patientId) });
   const summary = useQuery({ queryKey: ["dental-summary", patientId], queryFn: () => dentalSummary(patientId) });
   const invalidate = () => invalidateDental(qc, patientId);
+
+  // Resolution replaces filtering. The old code filtered plans by date scope FIRST
+  // and then auto-picked a tab from what survived, so a patient with no session today
+  // showed "In progress 0" and landed on History — the running treatment hidden with
+  // no indication that a filter was responsible.
+  //
+  // Called HERE, with every other hook and above the loading/error returns. React
+  // counts hooks per render: one useMemo below an early return means the loading
+  // render and the loaded render disagree, and the whole page unmounts to white.
+  const resolved = useFocusVisit(summary.data?.plans ?? [], todayISO, params.get("visit"));
 
   // Local, debounced-persisted odontogram (seeded once; local map is the edit source).
   const [teeth, setTeeth] = useState<Record<string, string>>({});
@@ -243,13 +254,6 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
   const owed = num(bal.owed);
   const pct = owed > 0 ? Math.min(100, Math.round((num(bal.paid) / owed) * 100)) : 0;
 
-  // Phase-based navigation: a patient can carry many plans, so group them.
-  const todayISO = isoLocal(new Date());
-  // Resolution replaces filtering. The old code filtered plans by date scope FIRST
-  // and then auto-picked a tab from what survived, so a patient with no session today
-  // showed "In progress 0" and landed on History — the running treatment hidden with
-  // no indication that a filter was responsible.
-  const resolved = useFocusVisit(plans, todayISO, params.get("visit"));
 
   return (
     <div className="space-y-6">
