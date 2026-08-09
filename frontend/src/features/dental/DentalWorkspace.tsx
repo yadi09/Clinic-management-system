@@ -25,6 +25,7 @@ import { ETH_MONTHS, ethiopianDaysInMonth, ethiopianToGregorianISO, formatEthiop
 import { getPatient } from "@/features/patients/api";
 import { PatientEditDialog } from "@/features/patients/components/PatientEditDialog";
 import { PaymentHistoryCard } from "@/features/billing/PaymentHistoryCard";
+import { useScrolledPast } from "@/features/patients/components/StickyAlertBar";
 import { SafetyStrip, PatientSafetyLine } from "@/features/dental/SafetyStrip";
 import { HistoryDialog } from "@/features/dental/HistoryDialog";
 import { ExaminationCard } from "@/features/dental/ExaminationCard";
@@ -180,6 +181,8 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
   const canReschedule = editable || can("appointment.manage");
   const [editingPatient, setEditingPatient] = useState(false);
   const [takingHistory, setTakingHistory] = useState(false);
+  const bannerRef = useRef<HTMLDivElement>(null);
+  const scrolledPast = useScrolledPast(bannerRef);
 
   const patient = useQuery({ queryKey: ["patient", patientId], queryFn: () => getPatient(patientId) });
   const summary = useQuery({ queryKey: ["dental-summary", patientId], queryFn: () => dentalSummary(patientId) });
@@ -279,7 +282,7 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
       </button>
 
       {/* Patient banner: name, allergies (safety), and the unpaid flag when they owe. */}
-      <div className="flex flex-wrap items-center gap-4 rounded-lg bg-brand p-5 text-brand-foreground shadow-card">
+      <div ref={bannerRef} className="flex flex-wrap items-center gap-4 rounded-lg bg-brand p-5 text-brand-foreground shadow-card">
         <Avatar className="h-12 w-12 bg-white/15">
           <AvatarFallback className="bg-transparent text-base text-brand-foreground">{(p.first_name[0] ?? "") + (p.last_name[0] ?? "")}</AvatarFallback>
         </Avatar>
@@ -303,19 +306,31 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
           </p>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          {/* Money used to wear the same red pill as an allergy, in this very row.
-              It now lives with the balance; the banner carries identity only, and
-              every safety signal is in the strip directly below. */}
+          {/* Money is deliberately NOT a red pill here any more: it used to be
+              indistinguishable from an allergy in this very row, which is how staff
+              learn to filter red out. The allergy flag keeps the red. */}
           {bal.overdue && (
             <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-medium">
               Owes {birr(bal.due)}
             </span>
           )}
+          {/* Allergies live on the banner, not only in the strip: they come from the
+              patient record, so they render even when the health-history query fails. */}
+          {p.allergies.length === 0 ? (
+            <span className="rounded-full bg-white/15 px-3 py-1 text-xs">No known allergies</span>
+          ) : (
+            p.allergies.map((a) => (
+              <span key={a.id} className="flex items-center gap-1 rounded-full bg-destructive px-3 py-1 text-xs font-semibold text-destructive-foreground">
+                <AlertTriangle className="h-3.5 w-3.5" /> Allergy: {a.substance}
+              </span>
+            ))
+          )}
         </div>
       </div>
 
       <SafetyStrip
-        allergies={p.allergies}
+        // Shown on the banner while it is visible; the strip takes over on scroll.
+        allergies={scrolledPast ? p.allergies : []}
         history={editable && history.data
           ? { answers: history.data.answers, recorded: history.data.recorded, reviewedAt: history.data.reviewed_at,
               reviewedBy: history.data.reviewed_by, notes: history.data.notes }
