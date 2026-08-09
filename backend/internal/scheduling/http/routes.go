@@ -12,10 +12,12 @@ import (
 func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	appt := rg.Group("/appointments")
 	appt.GET("", httpx.RequirePermission("appointment.manage"), h.List)
+	appt.GET("/followups", httpx.RequirePermission("appointment.manage"), h.ListFollowups)
 	appt.POST("", httpx.RequirePermission("appointment.manage"), h.Book)
 	appt.PUT("/:id", httpx.RequirePermission("appointment.manage"), h.Reschedule)
 	appt.POST("/:id/status", httpx.RequirePermission("appointment.manage"), h.SetStatus)
 	appt.POST("/:id/followup", httpx.RequirePermission("appointment.manage"), h.MarkFollowup)
+	appt.POST("/:id/reassign", httpx.RequirePermission("appointment.manage"), h.Reassign)
 	appt.POST("/:id/check-in", httpx.RequirePermission("queue.manage"), h.CheckIn)
 
 	q := rg.Group("/queue")

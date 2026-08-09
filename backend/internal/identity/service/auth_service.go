@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/reicb/clinicsaas/internal/identity"
 	identitydb "github.com/reicb/clinicsaas/internal/identity/repo/gen"
@@ -114,7 +115,7 @@ func (s *AuthService) Login(ctx context.Context, in identity.LoginInput) (*ident
 		return &identity.LoginResult{MFARequired: true, MFAChallenge: challenge, User: profile}, nil
 	}
 
-	tokens, roles, err := s.issueTokens(ctx, tenantID, user.ID, user.Email, in.UserAgent, in.IP, nil)
+	tokens, roles, err := s.issueTokens(ctx, tenantID, user.ID, user.Email, in.UserAgent, in.IP, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +152,7 @@ func (s *AuthService) VerifyMFA(ctx context.Context, challengeToken, code, userA
 		return nil, identity.UserProfile{}, apperr.Unauthenticated("invalid code")
 	}
 
-	tokens, roles, err := s.issueTokens(ctx, tenantID, user.ID, user.Email, userAgent, ip, nil)
+	tokens, roles, err := s.issueTokens(ctx, tenantID, user.ID, user.Email, userAgent, ip, nil, nil)
 	if err != nil {
 		return nil, identity.UserProfile{}, err
 	}
@@ -181,12 +182,25 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken, userAgent, ip s
 		return nil, apperr.Internal(err)
 	}
 	if sess.RevokedAt != nil {
-		// Token reuse: revoke the whole family as a precaution.
+		// A revoked token was presented. If it had already been rotated (a successor
+		// session exists), this is genuine reuse — likely theft — so revoke the whole
+		// family. If it was revoked intentionally (logout / sign-out-others / password
+		// change) it has no successor, so just reject it and leave other sessions alive.
+		var rotated bool
+		sid := sess.ID
 		_ = s.db.WithTx(ctx, func(tx pgx.Tx) error {
-			return identitydb.New(tx).RevokeAllUserSessions(ctx, identitydb.RevokeAllUserSessionsParams{TenantID: tenantID, UserID: sess.UserID})
+			var e error
+			rotated, e = identitydb.New(tx).SessionRotated(ctx, identitydb.SessionRotatedParams{TenantID: tenantID, ID: &sid})
+			return e
 		})
-		s.emit(ctx, tenantID, sess.UserID, "auth.user.refresh_reuse", nil)
-		return nil, apperr.Unauthenticated("refresh token already used")
+		if rotated {
+			_ = s.db.WithTx(ctx, func(tx pgx.Tx) error {
+				return identitydb.New(tx).RevokeAllUserSessions(ctx, identitydb.RevokeAllUserSessionsParams{TenantID: tenantID, UserID: sess.UserID})
+			})
+			s.emit(ctx, tenantID, sess.UserID, "auth.user.refresh_reuse", nil)
+			return nil, apperr.Unauthenticated("refresh token already used")
+		}
+		return nil, apperr.Unauthenticated("session ended")
 	}
 	if time.Now().After(sess.ExpiresAt) {
 		return nil, apperr.Unauthenticated("refresh token expired")
@@ -210,12 +224,36 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken, userAgent, ip s
 	}
 
 	oldID := sess.ID
-	tokens, _, err := s.issueTokens(ctx, tenantID, sess.UserID, email, userAgent, ip, &oldID)
+	tokens, _, err := s.issueTokens(ctx, tenantID, sess.UserID, email, userAgent, ip, &oldID, sess.ActiveBranchID)
 	if err != nil {
 		return nil, err
 	}
 	s.emit(ctx, tenantID, sess.UserID, "auth.user.refreshed", nil)
 	return tokens, nil
+}
+
+// RevokeOtherSessions signs the user out of every device except the one holding
+// currentRefresh (empty/invalid = sign out everywhere). Returns the count revoked.
+// Backs the "sign out other devices" action and the auto-revoke on password change.
+func (s *AuthService) RevokeOtherSessions(ctx context.Context, tenantID, userID uuid.UUID, currentRefresh string) (int64, error) {
+	ctx = tenancy.WithTenantID(ctx, tenantID)
+	var keep *string
+	if tid, opaque, err := splitRefresh(currentRefresh); err == nil && tid == tenantID {
+		h := auth.HashToken(opaque)
+		keep = &h
+	}
+	var n int64
+	if err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		var e error
+		n, e = identitydb.New(tx).RevokeOtherUserSessions(ctx, identitydb.RevokeOtherUserSessionsParams{TenantID: tenantID, UserID: userID, KeepHash: keep})
+		return e
+	}); err != nil {
+		return 0, apperr.Internal(err)
+	}
+	if n > 0 {
+		s.emit(ctx, tenantID, userID, "auth.user.sessions_revoked", map[string]any{"count": n})
+	}
+	return n, nil
 }
 
 // Logout revokes the session backing the presented refresh token (idempotent).
@@ -242,8 +280,9 @@ func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
 	})
 }
 
-// Me returns the authenticated principal's profile, roles, permissions, flags.
-func (s *AuthService) Me(ctx context.Context, tenantID, userID uuid.UUID) (*identity.MeResult, error) {
+// Me returns the authenticated principal's profile, roles, permissions, the
+// branches they can access, the active branch, and the flags effective for it.
+func (s *AuthService) Me(ctx context.Context, tenantID, userID uuid.UUID, activeBranch *uuid.UUID) (*identity.MeResult, error) {
 	ctx = tenancy.WithTenantID(ctx, tenantID)
 	var res identity.MeResult
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
@@ -260,18 +299,40 @@ func (s *AuthService) Me(ctx context.Context, tenantID, userID uuid.UUID) (*iden
 		if e != nil {
 			return e
 		}
-		flags, e := q.GetTenantFlags(ctx, tenantID)
+		accessible, _, _, allBranches, e := resolveBranchState(ctx, q, tenantID, userID, nil)
 		if e != nil {
 			return e
 		}
-		fm := make(map[string]bool, len(flags))
-		for _, f := range flags {
-			fm[f.Flag] = f.Enabled
+		// Honour the token's active branch only if it is still accessible;
+		// otherwise fall back to the consolidated view / tenant defaults.
+		effective := activeBranch
+		if effective != nil {
+			ok := false
+			for _, b := range accessible {
+				if b.ID == *effective {
+					ok = true
+					break
+				}
+			}
+			if !ok {
+				effective = nil
+			}
+		}
+		fm, e := resolveFlags(ctx, q, tenantID, effective)
+		if e != nil {
+			return e
+		}
+		branches := make([]identity.BranchRef, 0, len(accessible))
+		for _, b := range accessible {
+			branches = append(branches, identity.BranchRef{ID: b.ID, Name: b.Name, Code: b.Code})
 		}
 		res = identity.MeResult{
-			User:        identity.UserProfile{ID: u.ID, TenantID: u.TenantID, Email: u.Email, FullName: u.FullName, Roles: roles},
-			Permissions: perms,
-			Flags:       fm,
+			User:           identity.UserProfile{ID: u.ID, TenantID: u.TenantID, Email: u.Email, FullName: u.FullName, Roles: roles},
+			Permissions:    perms,
+			Flags:          fm,
+			Branches:       branches,
+			ActiveBranchID: effective,
+			AllBranches:    allBranches,
 		}
 		return nil
 	})
@@ -314,7 +375,7 @@ func (s *AuthService) AcceptInvite(ctx context.Context, token, password, userAge
 		if time.Now().After(inv.ExpiresAt) {
 			return apperr.Unauthenticated("invitation expired")
 		}
-		if e := checkUserLimit(ctx, q, tenantID); e != nil {
+		if e := checkUserLimit(ctx, tx, q, tenantID); e != nil {
 			return e
 		}
 		userID = inv.UserID
@@ -340,12 +401,93 @@ func (s *AuthService) AcceptInvite(ctx context.Context, token, password, userAge
 		}
 		return e
 	})
-	tokens, roles, err := s.issueTokens(ctx, tenantID, userID, email, userAgent, ip, nil)
+	tokens, roles, err := s.issueTokens(ctx, tenantID, userID, email, userAgent, ip, nil, nil)
 	if err != nil {
 		return nil, identity.UserProfile{}, err
 	}
 	s.emit(ctx, tenantID, userID, "auth.user.invite_accepted", nil)
 	return tokens, identity.UserProfile{ID: userID, TenantID: tenantID, Email: email, FullName: fullName, Roles: roles}, nil
+}
+
+// ChangePassword lets the signed-in user set a new password after confirming
+// their current one (self-service; no admin permission required).
+func (s *AuthService) ChangePassword(ctx context.Context, tenantID, userID uuid.UUID, current, next string) error {
+	ctx = tenancy.WithTenantID(ctx, tenantID)
+	if len(next) < 8 {
+		return apperr.Validation("the new password must be at least 8 characters")
+	}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := identitydb.New(tx)
+		cred, e := q.GetUserCredentials(ctx, identitydb.GetUserCredentialsParams{TenantID: tenantID, ID: userID})
+		if e != nil {
+			return e
+		}
+		if cred.PasswordHash == nil {
+			return apperr.Validation("no password is set for this account")
+		}
+		if ok, _ := auth.VerifyPassword(current, *cred.PasswordHash); !ok {
+			return apperr.Forbidden("WRONG_PASSWORD", "the current password is incorrect")
+		}
+		hash, e := auth.HashPassword(next)
+		if e != nil {
+			return e
+		}
+		return q.UpdateUserPassword(ctx, identitydb.UpdateUserPasswordParams{TenantID: tenantID, ID: userID, PasswordHash: &hash})
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apperr.NotFound("USER_NOT_FOUND", "user not found")
+		}
+		if ae, ok := apperr.As(err); ok {
+			return ae
+		}
+		return apperr.Internal(err)
+	}
+	s.emit(ctx, tenantID, userID, "auth.user.password_changed", nil)
+	return nil
+}
+
+// ChangeEmail updates the signed-in user's login email after confirming the
+// current password. The email is the login handle, so it must stay unique
+// within the tenant.
+func (s *AuthService) ChangeEmail(ctx context.Context, tenantID, userID uuid.UUID, newEmail, current string) error {
+	ctx = tenancy.WithTenantID(ctx, tenantID)
+	email := strings.ToLower(strings.TrimSpace(newEmail))
+	if email == "" {
+		return apperr.Validation("enter a valid email address")
+	}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := identitydb.New(tx)
+		cred, e := q.GetUserCredentials(ctx, identitydb.GetUserCredentialsParams{TenantID: tenantID, ID: userID})
+		if e != nil {
+			return e
+		}
+		if cred.PasswordHash == nil {
+			return apperr.Validation("no password is set for this account")
+		}
+		if ok, _ := auth.VerifyPassword(current, *cred.PasswordHash); !ok {
+			return apperr.Forbidden("WRONG_PASSWORD", "the current password is incorrect")
+		}
+		if e := q.UpdateUserEmail(ctx, identitydb.UpdateUserEmailParams{TenantID: tenantID, ID: userID, Email: email}); e != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(e, &pgErr) && pgErr.Code == "23505" { // unique_violation
+				return apperr.Conflict("EMAIL_TAKEN", "that email is already in use")
+			}
+			return e
+		}
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apperr.NotFound("USER_NOT_FOUND", "user not found")
+		}
+		if ae, ok := apperr.As(err); ok {
+			return ae
+		}
+		return apperr.Internal(err)
+	}
+	s.emit(ctx, tenantID, userID, "auth.user.email_changed", nil)
+	return nil
 }
 
 // --- helpers ---
@@ -382,8 +524,79 @@ func (s *AuthService) clearFailures(ctx context.Context, tenantID, userID uuid.U
 	})
 }
 
-func (s *AuthService) issueTokens(ctx context.Context, tenantID, userID uuid.UUID, email, userAgent, ip string, rotatedFrom *uuid.UUID) (*identity.TokenPair, []string, error) {
-	var roles, perms []string
+// resolveFlags returns the effective feature flags for a branch: the tenant
+// defaults with any per-branch overrides layered on top. A nil branch (the
+// consolidated "all branches" view) yields the tenant defaults.
+func resolveFlags(ctx context.Context, q *identitydb.Queries, tenantID uuid.UUID, active *uuid.UUID) (map[string]bool, error) {
+	defaults, err := q.GetTenantFlags(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	flags := make(map[string]bool, len(defaults))
+	for _, f := range defaults {
+		flags[f.Flag] = f.Enabled
+	}
+	if active != nil {
+		overrides, err := q.GetBranchFlagOverrides(ctx, identitydb.GetBranchFlagOverridesParams{TenantID: tenantID, BranchID: active})
+		if err != nil {
+			return nil, err
+		}
+		for _, f := range overrides {
+			flags[f.Flag] = f.Enabled
+		}
+	}
+	return flags, nil
+}
+
+// resolveBranchState loads the user's accessible branches (ordered, default
+// first) and picks the active one. tokenBranchIDs is the raw-uuid list embedded
+// in the access token — empty when the user is tenant-wide (all branches).
+// preferred, when non-nil and accessible, is honoured; otherwise the default
+// (first accessible) branch is chosen. active is nil only when no branch exists.
+func resolveBranchState(ctx context.Context, q *identitydb.Queries, tenantID, userID uuid.UUID, preferred *uuid.UUID) (accessible []identitydb.ListActiveBranchesRow, tokenBranchIDs []string, active *uuid.UUID, allBranches bool, err error) {
+	scopes, e := q.GetUserScopes(ctx, identitydb.GetUserScopesParams{TenantID: tenantID, UserID: userID})
+	if e != nil {
+		return nil, nil, nil, false, e
+	}
+	restricted := map[uuid.UUID]bool{}
+	for _, sc := range scopes {
+		if sc.BranchID == nil {
+			allBranches = true
+		} else {
+			restricted[*sc.BranchID] = true
+		}
+	}
+	all, e := q.ListActiveBranches(ctx, tenantID)
+	if e != nil {
+		return nil, nil, nil, false, e
+	}
+	for _, b := range all {
+		if allBranches || restricted[b.ID] {
+			accessible = append(accessible, b)
+			if !allBranches {
+				tokenBranchIDs = append(tokenBranchIDs, b.ID.String())
+			}
+		}
+	}
+	if preferred != nil {
+		for _, b := range accessible {
+			if b.ID == *preferred {
+				bid := b.ID
+				active = &bid
+				break
+			}
+		}
+	}
+	if active == nil && len(accessible) > 0 {
+		bid := accessible[0].ID
+		active = &bid
+	}
+	return accessible, tokenBranchIDs, active, allBranches, nil
+}
+
+func (s *AuthService) issueTokens(ctx context.Context, tenantID, userID uuid.UUID, email, userAgent, ip string, rotatedFrom, preferredBranch *uuid.UUID) (*identity.TokenPair, []string, error) {
+	var roles, perms, tokenBranchIDs []string
+	var active *uuid.UUID
 	flags := map[string]bool{}
 	if err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := identitydb.New(tx)
@@ -394,19 +607,20 @@ func (s *AuthService) issueTokens(ctx context.Context, tenantID, userID uuid.UUI
 		if perms, e = q.GetUserPermissionCodes(ctx, identitydb.GetUserPermissionCodesParams{TenantID: tenantID, UserID: userID}); e != nil {
 			return e
 		}
-		fl, e := q.GetTenantFlags(ctx, tenantID)
-		if e != nil {
+		if _, tokenBranchIDs, active, _, e = resolveBranchState(ctx, q, tenantID, userID, preferredBranch); e != nil {
 			return e
 		}
-		for _, f := range fl {
-			flags[f.Flag] = f.Enabled
-		}
-		return nil
+		flags, e = resolveFlags(ctx, q, tenantID, active)
+		return e
 	}); err != nil {
 		return nil, nil, apperr.Internal(err)
 	}
 
-	access, exp, err := s.tokens.IssueAccess(userID, tenantID, email, roles, perms, flags)
+	activeStr := ""
+	if active != nil {
+		activeStr = active.String()
+	}
+	access, exp, err := s.tokens.IssueAccess(userID, tenantID, email, roles, perms, flags, tokenBranchIDs, activeStr)
 	if err != nil {
 		return nil, nil, apperr.Internal(err)
 	}
@@ -424,6 +638,7 @@ func (s *AuthService) issueTokens(ctx context.Context, tenantID, userID uuid.UUI
 			Ip:               ptr(ip),
 			ExpiresAt:        refreshExp,
 			RotatedFrom:      rotatedFrom,
+			ActiveBranchID:   active,
 		})
 		return e
 	}); err != nil {
@@ -437,6 +652,87 @@ func (s *AuthService) issueTokens(ctx context.Context, tenantID, userID uuid.UUI
 		RefreshToken:     composite,
 		RefreshExpiresAt: refreshExp,
 	}, roles, nil
+}
+
+// SwitchBranch re-issues an access token scoped to a different branch (or the
+// consolidated "all branches" view when target is nil, for tenant-wide users).
+// It validates the target against the user's scopes and remembers the choice on
+// the session so a later silent refresh lands on the same branch.
+func (s *AuthService) SwitchBranch(ctx context.Context, tenantID, userID uuid.UUID, target *uuid.UUID, refreshToken string) (*identity.SwitchResult, error) {
+	ctx = tenancy.WithTenantID(ctx, tenantID)
+	var email string
+	var roles, perms, tokenBranchIDs []string
+	var active *uuid.UUID
+	flags := map[string]bool{}
+	if err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := identitydb.New(tx)
+		u, e := q.GetUserByID(ctx, identitydb.GetUserByIDParams{TenantID: tenantID, ID: userID})
+		if e != nil {
+			return e
+		}
+		email = u.Email
+		if roles, e = q.GetUserRoleCodes(ctx, identitydb.GetUserRoleCodesParams{TenantID: tenantID, UserID: userID}); e != nil {
+			return e
+		}
+		if perms, e = q.GetUserPermissionCodes(ctx, identitydb.GetUserPermissionCodesParams{TenantID: tenantID, UserID: userID}); e != nil {
+			return e
+		}
+		accessible, tbids, _, allBranches, e := resolveBranchState(ctx, q, tenantID, userID, nil)
+		if e != nil {
+			return e
+		}
+		tokenBranchIDs = tbids
+		if target == nil {
+			if !allBranches {
+				return apperr.Forbidden("BRANCH_DENIED", "only clinic-wide roles can view all branches")
+			}
+			active = nil // consolidated view
+		} else {
+			ok := false
+			for _, b := range accessible {
+				if b.ID == *target {
+					ok = true
+					break
+				}
+			}
+			if !ok {
+				return apperr.Forbidden("BRANCH_DENIED", "you don't have access to that branch")
+			}
+			active = target
+		}
+		flags, e = resolveFlags(ctx, q, tenantID, active)
+		return e
+	}); err != nil {
+		if ae, ok := apperr.As(err); ok {
+			return nil, ae
+		}
+		return nil, apperr.Internal(err)
+	}
+
+	activeStr := ""
+	if active != nil {
+		activeStr = active.String()
+	}
+	access, exp, err := s.tokens.IssueAccess(userID, tenantID, email, roles, perms, flags, tokenBranchIDs, activeStr)
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	// Remember a concrete branch on the session so silent refresh stays put.
+	// The "all branches" view is transient and is not persisted.
+	if active != nil && refreshToken != "" {
+		if tid, opaque, e := splitRefresh(refreshToken); e == nil && tid == tenantID {
+			_ = s.db.WithTx(ctx, func(tx pgx.Tx) error {
+				q := identitydb.New(tx)
+				sess, e := q.GetSessionByHash(ctx, identitydb.GetSessionByHashParams{TenantID: tenantID, RefreshTokenHash: auth.HashToken(opaque)})
+				if e != nil {
+					return nil
+				}
+				return q.SetSessionActiveBranch(ctx, identitydb.SetSessionActiveBranchParams{TenantID: tenantID, ID: sess.ID, ActiveBranchID: active})
+			})
+		}
+	}
+	s.emit(ctx, tenantID, userID, "auth.user.switched_branch", map[string]any{"branch": activeStr})
+	return &identity.SwitchResult{AccessToken: access, AccessExpiresAt: exp}, nil
 }
 
 func (s *AuthService) emit(ctx context.Context, tenantID, userID uuid.UUID, eventType string, payload any) {

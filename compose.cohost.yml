@@ -1,0 +1,43 @@
+# Co-host overlay: run ClinicOS alongside another stack on a shared VPS.
+# The base compose.yml already publishes NOTHING to the host, so there is no
+# 80/443 conflict — an external reverse proxy (The Millions' nginx) terminates
+# TLS and proxies to the `web` (Caddy) container over a shared docker network.
+# Usage:
+#   docker compose -p clinicos -f compose.yml -f compose.cohost.yml up -d
+# Then connect the external nginx to this project's network:
+#   docker network connect clinicos_default themillions-nginx-1
+services:
+  postgres:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  migrate:
+    restart: "no"
+
+  api:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  worker:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  web:
+    # SITE_ADDRESS=:80 (plain HTTP inside the docker network); the external nginx
+    # does TLS. No host ports published — reachable only on clinicos_default.
+    environment:
+      SITE_ADDRESS: ":80"
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 128m

@@ -43,6 +43,13 @@ UPDATE encounters SET status = 'closed', closed_at = now(), updated_at = now()
 WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL
 RETURNING id, queue_entry_id;
 
+-- name: ClaimEncounterProvider :exec
+-- Attribute an encounter to a provider when it has none yet — the doctor who
+-- opens (or resumes) the consult becomes its provider. Never overrides an
+-- existing assignment, so it's safe to call on every open.
+UPDATE encounters SET provider_id = @provider_id, updated_at = now()
+WHERE tenant_id = @tenant_id AND id = @id AND provider_id IS NULL AND deleted_at IS NULL;
+
 -- name: GetPatientBanner :one
 SELECT first_name, last_name, mrn, dob, gender, blood_group
 FROM patients
@@ -249,3 +256,22 @@ ON CONFLICT (tenant_id, field_key) DO UPDATE SET
   enabled = EXCLUDED.enabled, required = EXCLUDED.required, sort_order = EXCLUDED.sort_order,
   min_val = EXCLUDED.min_val, low_val = EXCLUDED.low_val, high_val = EXCLUDED.high_val, max_val = EXCLUDED.max_val,
   updated_at = now();
+
+-- name: GetDefaultBranch :one
+-- Fallback branch for imports when the actor has no concrete active branch.
+SELECT id FROM branches
+WHERE tenant_id = @tenant_id AND deleted_at IS NULL AND is_active = true
+ORDER BY created_at LIMIT 1;
+
+-- name: ImportHistoricalEncounter :one
+-- A back-dated, already-closed encounter representing a migrated (paper / old-system)
+-- record. No queue entry; provider is optional (usually unknown for old records).
+INSERT INTO encounters (tenant_id, branch_id, patient_id, provider_id, status, started_at, closed_at, created_by)
+VALUES (@tenant_id, @branch_id, @patient_id, @provider_id, 'closed', @started_at, @started_at, @created_by)
+RETURNING id;
+
+-- name: ImportHistoricalNote :one
+-- The migrated record, stored as a signed SOAP note on the historical encounter.
+INSERT INTO clinical_notes (tenant_id, encounter_id, subjective, objective, assessment, plan, status, signed_by, signed_at, created_by)
+VALUES (@tenant_id, @encounter_id, @subjective, @objective, @assessment, @plan, 'signed', @signed_by, @signed_at, @created_by)
+RETURNING id;

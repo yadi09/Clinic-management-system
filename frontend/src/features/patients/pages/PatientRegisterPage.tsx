@@ -25,6 +25,8 @@ import { AppError } from "@/lib/api-client";
 import { toast } from "@/components/ui/sonner";
 import { createPatient, type Duplicate } from "@/features/patients/api";
 import { patientSchema, type PatientValues } from "@/features/patients/schemas";
+import { EthiopianDateInput } from "@/components/EthiopianDateInput";
+import { formatEthiopian } from "@/lib/ethiopian";
 
 const STEPS = ["Demographics", "Contact & IDs", "Review"];
 const STEP_FIELDS: Path<PatientValues>[][] = [
@@ -113,7 +115,7 @@ export function PatientRegisterPage() {
                     <Input {...register("last_name")} />
                   </Field>
                 </div>
-                <div className="grid gap-4 sm:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Gender">
                     <Controller
                       control={control}
@@ -133,13 +135,17 @@ export function PatientRegisterPage() {
                       )}
                     />
                   </Field>
-                  <Field label="Date of birth" required error={errors.dob?.message}>
-                    <Input type="date" {...register("dob")} />
-                  </Field>
                   <Field label="Blood group">
                     <Input placeholder="O+" {...register("blood_group")} />
                   </Field>
                 </div>
+                <Field label="Date of birth" required error={errors.dob?.message}>
+                  <Controller
+                    control={control}
+                    name="dob"
+                    render={({ field }) => <EthiopianDateInput value={field.value ?? ""} onChange={field.onChange} />}
+                  />
+                </Field>
               </div>
             )}
 
@@ -169,7 +175,7 @@ export function PatientRegisterPage() {
                 <dl className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-md border bg-background p-4 text-sm sm:grid-cols-3">
                   <Review label="Name" value={[v.first_name, v.middle_name, v.last_name].filter(Boolean).join(" ")} />
                   <Review label="Gender" value={v.gender} />
-                  <Review label="Date of birth" value={v.dob} />
+                  <Review label="Date of birth" value={v.dob ? `${v.dob} · ${formatEthiopian(v.dob)} EC` : undefined} />
                   <Review label="Phone" value={v.phone} />
                   <Review label="Email" value={v.email} />
                   <Review label="National ID" value={v.national_id} />

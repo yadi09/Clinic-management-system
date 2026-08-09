@@ -139,15 +139,17 @@ FROM queue_entries q
 JOIN patients p ON p.id = q.patient_id AND p.tenant_id = q.tenant_id
 LEFT JOIN users u ON u.id = q.assigned_provider_id AND u.tenant_id = q.tenant_id
 WHERE q.tenant_id = $1 AND q.department_id = $2 AND q.deleted_at IS NULL
-  AND q.enqueued_at >= $3
-  AND ($4::timestamptz IS NULL OR q.enqueued_at < $4)
-  AND ($5::text IS NULL OR q.stage = $5)
+  AND ($3::uuid IS NULL OR q.branch_id = $3)
+  AND q.enqueued_at >= $4
+  AND ($5::timestamptz IS NULL OR q.enqueued_at < $5)
+  AND ($6::text IS NULL OR q.stage = $6)
 ORDER BY q.priority DESC, q.enqueued_at
 `
 
 type ListQueueParams struct {
 	TenantID     uuid.UUID  `json:"tenant_id"`
 	DepartmentID uuid.UUID  `json:"department_id"`
+	BranchID     *uuid.UUID `json:"branch_id"`
 	Since        time.Time  `json:"since"`
 	Until        *time.Time `json:"until"`
 	Stage        *string    `json:"stage"`
@@ -177,6 +179,7 @@ func (q *Queries) ListQueue(ctx context.Context, arg ListQueueParams) ([]ListQue
 	rows, err := q.db.Query(ctx, listQueue,
 		arg.TenantID,
 		arg.DepartmentID,
+		arg.BranchID,
 		arg.Since,
 		arg.Until,
 		arg.Stage,
@@ -228,13 +231,15 @@ LEFT JOIN departments d ON d.id = q.department_id AND d.tenant_id = q.tenant_id
 WHERE q.tenant_id = $1 AND q.deleted_at IS NULL
   AND q.stage = 'with_doctor' AND q.assigned_provider_id IS NULL
   AND q.state IN ('waiting','called')
-  AND q.enqueued_at >= $2
-  AND ($3::timestamptz IS NULL OR q.enqueued_at < $3)
+  AND ($2::uuid IS NULL OR q.branch_id = $2)
+  AND q.enqueued_at >= $3
+  AND ($4::timestamptz IS NULL OR q.enqueued_at < $4)
 ORDER BY q.priority DESC, q.enqueued_at
 `
 
 type ListUnassignedReadyParams struct {
 	TenantID uuid.UUID  `json:"tenant_id"`
+	BranchID *uuid.UUID `json:"branch_id"`
 	Since    time.Time  `json:"since"`
 	Until    *time.Time `json:"until"`
 }
@@ -261,7 +266,12 @@ type ListUnassignedReadyRow struct {
 // Patients who've cleared triage (stage=with_doctor) and are waiting but not yet
 // assigned to any doctor — the "pick up" pool surfaced on each doctor's My day.
 func (q *Queries) ListUnassignedReady(ctx context.Context, arg ListUnassignedReadyParams) ([]ListUnassignedReadyRow, error) {
-	rows, err := q.db.Query(ctx, listUnassignedReady, arg.TenantID, arg.Since, arg.Until)
+	rows, err := q.db.Query(ctx, listUnassignedReady,
+		arg.TenantID,
+		arg.BranchID,
+		arg.Since,
+		arg.Until,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -307,14 +317,16 @@ JOIN patients p ON p.id = q.patient_id AND p.tenant_id = q.tenant_id
 LEFT JOIN departments d ON d.id = q.department_id AND d.tenant_id = q.tenant_id
 WHERE q.tenant_id = $1 AND q.assigned_provider_id = $2
   AND q.deleted_at IS NULL AND q.state IN ('waiting','called','in_consult')
-  AND q.enqueued_at >= $3
-  AND ($4::timestamptz IS NULL OR q.enqueued_at < $4)
+  AND ($3::uuid IS NULL OR q.branch_id = $3)
+  AND q.enqueued_at >= $4
+  AND ($5::timestamptz IS NULL OR q.enqueued_at < $5)
 ORDER BY q.priority DESC, q.enqueued_at
 `
 
 type ListWorklistParams struct {
 	TenantID           uuid.UUID  `json:"tenant_id"`
 	AssignedProviderID *uuid.UUID `json:"assigned_provider_id"`
+	BranchID           *uuid.UUID `json:"branch_id"`
 	Since              time.Time  `json:"since"`
 	Until              *time.Time `json:"until"`
 }
@@ -342,6 +354,7 @@ func (q *Queries) ListWorklist(ctx context.Context, arg ListWorklistParams) ([]L
 	rows, err := q.db.Query(ctx, listWorklist,
 		arg.TenantID,
 		arg.AssignedProviderID,
+		arg.BranchID,
 		arg.Since,
 		arg.Until,
 	)

@@ -10,6 +10,9 @@ import (
 // Register mounts the platform routes on the versioned group. Login is public;
 // every other route requires a platform access token (platform.admin permission).
 func (h *Handlers) Register(v1 *gin.RouterGroup, tokens *auth.TokenService) {
+	// Public: partner-page lead capture (unauthenticated, rate-limited by v1).
+	v1.POST("/partner/leads", h.CaptureLead)
+
 	p := v1.Group("/platform")
 	p.POST("/auth/login", h.Login)
 
@@ -20,4 +23,12 @@ func (h *Handlers) Register(v1 *gin.RouterGroup, tokens *auth.TokenService) {
 	admin.POST("/clinics/:id/reactivate", h.Reactivate)
 	admin.GET("/clinics/:id/modules", h.GetModules)
 	admin.PUT("/clinics/:id/modules", h.SetModules)
+	admin.GET("/clinics/:id/usage", h.GetClinicUsage)
+	admin.POST("/clinics/:id/plan", h.SetClinicPlan)
+	admin.POST("/clinics/:id/impersonate", h.ImpersonateOwner)
+	admin.GET("/plans", h.ListPlans)
+	admin.POST("/plans", h.CreatePlan)
+	admin.PUT("/plans/:id", h.UpdatePlan)
+	admin.GET("/partner-leads", h.ListLeads)
+	admin.POST("/partner-leads/:id/status", h.SetLeadStatus)
 }

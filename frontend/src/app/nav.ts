@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, UserCog, Settings, CalendarDays, ListChecks, ClipboardCheck, Activity, Stethoscope, Pill, Boxes, BookOpen, ShoppingCart, Gauge, Tags, Truck, ClipboardList, BarChart3, FlaskConical, TestTubes, Inbox, LifeBuoy, BadgeDollarSign, Wallet, ReceiptText, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Users, UserCog, Settings, Settings2, CalendarDays, ListChecks, ClipboardCheck, Activity, Stethoscope, Pill, Boxes, BookOpen, ShoppingCart, Gauge, Tags, Truck, ClipboardList, BarChart3, FlaskConical, TestTubes, Inbox, LifeBuoy, BadgeDollarSign, Wallet, ReceiptText, Landmark, BedDouble, Armchair, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   to: string;
@@ -26,7 +26,16 @@ export const navSections: NavSection[] = [
       { to: "/triage", label: "Triage", icon: Activity, perm: ["triage.manage"] },
       { to: "/queue", label: "Queue", icon: ListChecks, perm: ["queue.manage"] },
       { to: "/worklist", label: "My day", icon: Stethoscope, perm: ["encounter.manage"] },
+      { to: "/chairside", label: "Chairside", icon: Armchair, perm: ["dental.manage"] },
       { to: "/lab/inbox", label: "Results inbox", icon: Inbox, perm: ["lab.order"], badge: "labInbox" },
+    ],
+  },
+  {
+    heading: "Inpatient",
+    items: [
+      { to: "/inpatient/beds", label: "Beds", icon: BedDouble, perm: ["bed.assign"] },
+      { to: "/inpatient/config", label: "Bed setup", icon: Settings2, perm: ["bed.manage"] },
+      { to: "/inpatient/reports", label: "Bed reports", icon: BarChart3, perm: ["bed.manage"] },
     ],
   },
   {
@@ -57,6 +66,10 @@ export const navSections: NavSection[] = [
       { to: "/lab", label: "Lab worklist", icon: FlaskConical, perm: ["lab.process", "lab.validate"] },
       { to: "/lab/catalog", label: "Test catalog", icon: TestTubes, perm: ["lab.manage"] },
     ],
+  },
+  {
+    heading: "Reporting",
+    items: [{ to: "/reporting/dhis2", label: "Ministry report", icon: Landmark, perm: ["clinic.manage"] }],
   },
   {
     heading: "Administration",

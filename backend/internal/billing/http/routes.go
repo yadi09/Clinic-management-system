@@ -32,22 +32,23 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	charge := httpx.RequirePermission("payment.charge")
 	collect := httpx.RequirePermission("payment.collect")
 	b.POST("/charges", charge, h.RaiseCharge)
-	b.POST("/charges/batch", charge, h.RaiseChargeBatch) // reception registers a whole visit at once (guards duplicates)
-	b.GET("/charges/pending", collect, h.PendingCharges) // the cashier worklist
+	b.POST("/charges/batch", charge, h.RaiseChargeBatch)                                                                   // reception registers a whole visit at once (guards duplicates)
+	b.GET("/charges/pending", collect, h.PendingCharges)                                                                   // the cashier worklist
 	b.GET("/charges", httpx.RequireAnyPermission("payment.charge", "payment.collect", "billing.manage"), h.PatientCharges) // ?patient=
 	b.POST("/charges/:id/settle", collect, h.SettleCharge)
 	b.POST("/checkout", collect, h.SettleVisit) // one-click visit checkout (settle all a patient's charges)
 	b.GET("/payments", collect, h.Payments)     // cashier's "Paid today" list (by receipt)
 	b.POST("/refund-visit", mgr, h.RefundVisit) // refund an entire receipt (manager-gated)
 	b.POST("/charges/:id/waive", httpx.RequirePermission("payment.waive"), h.WaiveCharge)
-	b.POST("/charges/:id/void", httpx.RequirePermission("payment.waive"), h.VoidCharge)   // retire a pending charge (mistake / patient left)
-	b.POST("/charges/:id/refund", mgr, h.RefundCharge)                                    // reverse a settled charge (manager-gated)
+	b.POST("/charges/:id/void", httpx.RequirePermission("payment.waive"), h.VoidCharge) // retire a pending charge (mistake / patient left)
+	b.POST("/charges/:id/refund", mgr, h.RefundCharge)                                  // reverse a settled charge (manager-gated)
 	b.GET("/waiver-reasons", httpx.RequireAnyPermission("payment.collect", "payment.waive"), h.WaiverReasons)
 
 	b.GET("/cash", mgr, h.Cash) // owner/manager finance view
 
 	// Cash control (BILL-B): a cashier closes their own drawer; finance sees all.
 	b.GET("/day-close", collect, h.DayClose)
+	b.GET("/day-closes", collect, h.DayCloses)
 	b.POST("/day-close", collect, h.CloseDay)
 	b.GET("/reconciliations", httpx.RequireAnyPermission("payment.collect", "billing.manage"), h.Reconciliations)
 }

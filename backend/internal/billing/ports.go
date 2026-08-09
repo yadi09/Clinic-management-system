@@ -207,6 +207,20 @@ type CloseDayInput struct {
 	Note         string
 }
 
+// DaySummary is one business day on the cashier's close-out overview: what was
+// collected that day and whether it has been closed off (Z-report filed). Days
+// with activity OR an existing closeout are listed, so a forgotten day surfaces.
+type DaySummary struct {
+	BusinessDate  string     `json:"business_date"`
+	ExpectedTotal string     `json:"expected_total"`
+	Count         int        `json:"count"`
+	Closed        bool       `json:"closed"`
+	CountedTotal  string     `json:"counted_total,omitempty"`
+	Variance      string     `json:"variance,omitempty"`
+	Note          string     `json:"note,omitempty"`
+	ClosedAt      *time.Time `json:"closed_at,omitempty"`
+}
+
 // Reconciliation is a stored end-of-day cash closeout.
 type Reconciliation struct {
 	ID            uuid.UUID `json:"-"`
@@ -257,6 +271,9 @@ type Service interface {
 
 	// Cash control (BILL-B): end-of-day drawer reconciliation (Z-report).
 	ExpectedForDay(ctx context.Context, date string) (*ExpectedDay, error)
+	// DayCloses lists each business day in [from,to] with its takings and whether
+	// it has been closed — so an unclosed earlier day can be caught up.
+	DayCloses(ctx context.Context, from, to string) ([]DaySummary, error)
 	CloseDay(ctx context.Context, in CloseDayInput) (*Reconciliation, error)
 	Reconciliations(ctx context.Context, all bool) ([]Reconciliation, error)
 }
@@ -266,6 +283,9 @@ type Service interface {
 // its charge commit atomically. Mirrors the tx-passing of events.Publisher.
 type Charger interface {
 	RaiseChargeTx(ctx context.Context, tx pgx.Tx, in ChargeInput) (uuid.UUID, error)
+	// VoidChargeTx voids a still-pending charge within the caller's tx — e.g. a
+	// module reversing a mistaken collect. Conflict if the charge isn't pending.
+	VoidChargeTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, reason string) error
 	// ChargeStatusTx reports a charge's status ('pending'|'paid'|'waived'|'void')
 	// for a pre-pay gate; returns NotFound if the charge is missing.
 	ChargeStatusTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (string, error)
@@ -276,10 +296,13 @@ type Charger interface {
 }
 
 // IntakeInput routes the default intake charges so advanceIfPaid enqueues on payment.
+// AppointmentID, when set, lets the intake honour a covered follow-up (free within
+// its window): no intake charge is raised and the patient enqueues immediately.
 type IntakeInput struct {
-	PatientID    uuid.UUID
-	BranchID     uuid.UUID
-	DepartmentID uuid.UUID
-	ToTriage     bool
-	ProviderID   *uuid.UUID
+	PatientID     uuid.UUID
+	BranchID      uuid.UUID
+	DepartmentID  uuid.UUID
+	ToTriage      bool
+	ProviderID    *uuid.UUID
+	AppointmentID *uuid.UUID
 }

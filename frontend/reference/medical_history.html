@@ -1,0 +1,1281 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cure Dental Center — Clinical History &amp; Examination</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --blue: #0B5ED7;
+            --cyan: #00AEEF;
+            --ink: #1A1A2E;
+            --muted: #555555;
+            --tint: #EAF4FF;
+            --line: #C9DCF2;
+            --paper: #FFFFFF;
+            --bg: #EEF3F9;
+            --radius: 6px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html {
+            -webkit-text-size-adjust: 100%;
+        }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--ink);
+            font-family: "Inter", Arial, Helvetica, sans-serif;
+            font-size: 14px;
+            line-height: 1.45;
+        }
+
+        .sheet {
+            max-width: 1040px;
+            margin: 24px auto 120px;
+            background: var(--paper);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            padding: 0 0 28px;
+            box-shadow: 0 2px 18px rgba(11, 94, 215, .08);
+        }
+
+        /* Masthead */
+        .masthead {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 16px;
+            align-items: center;
+            padding: 20px 24px 16px;
+            border-bottom: 3px solid var(--blue);
+        }
+
+        .brand-name {
+            font-family: "Poppins", Arial, sans-serif;
+            font-weight: 700;
+            font-size: 22px;
+            letter-spacing: .4px;
+            color: var(--blue);
+            margin: 0;
+        }
+
+        .brand-tag {
+            font-style: italic;
+            color: var(--cyan);
+            font-size: 13px;
+            margin: 2px 0 6px;
+        }
+
+        .brand-meta {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .brand-meta span {
+            padding: 0 6px;
+        }
+
+        .brand-meta span:first-child {
+            padding-left: 0;
+        }
+
+        .doc-title {
+            text-align: right;
+        }
+
+        .doc-title h2 {
+            font-family: "Poppins", Arial, sans-serif;
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: .6px;
+            text-transform: uppercase;
+            margin: 0;
+            color: var(--ink);
+        }
+
+        .doc-title p {
+            margin: 2px 0 0;
+            font-style: italic;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        /* Identity strip */
+        .identity {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            border-bottom: 1px solid var(--line);
+        }
+
+        .identity .cell {
+            border-right: 1px solid var(--line);
+            padding: 8px 12px;
+        }
+
+        .identity .cell:last-child {
+            border-right: none;
+        }
+
+        .identity .row2 .cell:nth-child(3) {
+            grid-column: span 2;
+        }
+
+        .identity-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            border-bottom: 1px solid var(--line);
+        }
+
+        .identity-row:last-child {
+            border-bottom: none;
+        }
+
+        .identity-row .cell {
+            border-right: 1px solid var(--line);
+            padding: 8px 12px;
+        }
+
+        .identity-row .cell:last-child {
+            border-right: none;
+        }
+
+        .span2 {
+            grid-column: span 2;
+        }
+
+        label.field {
+            display: block;
+        }
+
+        .field-label {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: .5px;
+            text-transform: uppercase;
+            color: var(--blue);
+            margin-bottom: 3px;
+        }
+
+        input[type="text"],
+        input[type="date"],
+        textarea,
+        select {
+            width: 100%;
+            font-family: inherit;
+            font-size: 14px;
+            color: var(--ink);
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid var(--line);
+            padding: 3px 0;
+            outline: none;
+        }
+
+        input[type="text"]:focus,
+        input[type="date"]:focus,
+        textarea:focus,
+        select:focus {
+            border-bottom-color: var(--blue);
+            background: var(--tint);
+        }
+
+        textarea {
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            padding: 8px 10px;
+            resize: vertical;
+            min-height: 64px;
+            line-height: 1.5;
+        }
+
+        /* Sections */
+        .section {
+            padding: 0 24px;
+            margin-top: 18px;
+        }
+
+        .section-head {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--blue);
+            color: #FFFFFF;
+            padding: 7px 12px;
+            border-radius: 4px 4px 0 0;
+        }
+
+        .section-num {
+            font-family: "Poppins", Arial, sans-serif;
+            font-weight: 700;
+            font-size: 13px;
+            background: rgba(255, 255, 255, .18);
+            border-radius: 3px;
+            width: 22px;
+            height: 22px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .section-head h3 {
+            margin: 0;
+            font-family: "Poppins", Arial, sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: .8px;
+            text-transform: uppercase;
+        }
+
+        .section-body {
+            border: 1px solid var(--line);
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            padding: 14px 14px 16px;
+        }
+
+        .block {
+            margin-bottom: 14px;
+        }
+
+        .block:last-child {
+            margin-bottom: 0;
+        }
+
+        .block-label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--ink);
+            margin-bottom: 5px;
+        }
+
+        .block-hint {
+            font-weight: 400;
+            color: var(--muted);
+            font-style: italic;
+        }
+
+        /* Check grids */
+        .checks {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px 14px;
+            margin-bottom: 14px;
+        }
+
+        .check {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 9px;
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            cursor: pointer;
+            background: #FFFFFF;
+        }
+
+        .check:hover {
+            background: var(--tint);
+        }
+
+        .check input {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            min-width: 14px;
+            border: 1.5px solid var(--blue);
+            border-radius: 2px;
+            background: #FFFFFF;
+            display: inline-block;
+            position: relative;
+            cursor: pointer;
+            margin: 0;
+        }
+
+        .check input:checked {
+            background: var(--blue);
+        }
+
+        .check input:checked::after {
+            content: "";
+            position: absolute;
+            left: 4px;
+            top: 1px;
+            width: 4px;
+            height: 8px;
+            border: solid #FFFFFF;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
+        }
+
+        .check input:focus-visible {
+            outline: 2px solid var(--cyan);
+            outline-offset: 2px;
+        }
+
+        .check span {
+            font-size: 13px;
+        }
+
+        .check.on {
+            background: var(--tint);
+            border-color: var(--blue);
+        }
+
+        /* Inline option rows */
+        .optionbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px 22px;
+            padding: 10px 12px;
+            background: var(--tint);
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            margin-bottom: 14px;
+        }
+
+        .optionbar .group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .optionbar .group-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--blue);
+            text-transform: uppercase;
+            letter-spacing: .4px;
+        }
+
+        .radio {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .radio input {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            min-width: 14px;
+            margin: 0;
+            border: 1.5px solid var(--blue);
+            border-radius: 50%;
+            background: #FFFFFF;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .radio input:checked::after {
+            content: "";
+            position: absolute;
+            inset: 3px;
+            border-radius: 50%;
+            background: var(--blue);
+        }
+
+        .radio input:focus-visible {
+            outline: 2px solid var(--cyan);
+            outline-offset: 2px;
+        }
+
+        /* Odontogram */
+        .odonto-intro {
+            font-size: 12px;
+            color: var(--muted);
+            margin: 0 0 10px;
+        }
+
+        .odonto-intro strong {
+            color: var(--ink);
+            font-style: normal;
+        }
+
+        .odonto {
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            padding: 12px;
+            background: #FBFDFF;
+        }
+
+        .arch-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            color: var(--blue);
+            text-transform: uppercase;
+            padding: 0 2px 6px;
+        }
+
+        .arch {
+            display: grid;
+            grid-template-columns: repeat(16, 1fr);
+            gap: 4px;
+        }
+
+        .arch.lower {
+            margin-top: 6px;
+        }
+
+        .midline {
+            border-top: 1px dashed var(--line);
+            margin: 8px 0;
+        }
+
+        .tooth {
+            font-family: "Inter", Arial, sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--ink);
+            background: #FFFFFF;
+            border: 1px solid var(--line);
+            border-radius: 50%;
+            aspect-ratio: 1/1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            padding: 0;
+            transition: background .12s ease, color .12s ease, border-color .12s ease;
+        }
+
+        .tooth:hover {
+            border-color: var(--cyan);
+        }
+
+        .tooth[aria-pressed="true"] {
+            background: var(--blue);
+            border-color: var(--blue);
+            color: #FFFFFF;
+            box-shadow: 0 0 0 2px var(--tint);
+        }
+
+        .tooth:focus-visible {
+            outline: 2px solid var(--cyan);
+            outline-offset: 2px;
+        }
+
+        .tooth.q-break {
+            margin-right: 10px;
+        }
+
+        .odonto-readout {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px solid var(--line);
+            font-size: 12px;
+        }
+
+        .odonto-readout .label {
+            font-weight: 600;
+            color: var(--blue);
+            text-transform: uppercase;
+            letter-spacing: .4px;
+        }
+
+        .chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        .chip {
+            background: var(--tint);
+            border: 1px solid var(--line);
+            color: var(--blue);
+            border-radius: 20px;
+            padding: 2px 9px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .empty {
+            color: var(--muted);
+            font-style: italic;
+        }
+
+        /* Treatment table */
+        table.tx {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 8px;
+        }
+
+        table.tx th {
+            background: var(--tint);
+            color: var(--blue);
+            font-size: 11px;
+            letter-spacing: .5px;
+            text-transform: uppercase;
+            text-align: left;
+            padding: 7px 9px;
+            border: 1px solid var(--line);
+        }
+
+        table.tx td {
+            border: 1px solid var(--line);
+            padding: 2px 9px;
+        }
+
+        table.tx td input {
+            border-bottom: none;
+            padding: 7px 0;
+        }
+
+        table.tx col.c1 {
+            width: 90px;
+        }
+
+        table.tx col.c3 {
+            width: 30%;
+        }
+
+        /* Footer + signature */
+        .signature {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0;
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            margin: 18px 24px 0;
+        }
+
+        .signature .cell {
+            padding: 10px 12px;
+            border-right: 1px solid var(--line);
+        }
+
+        .signature .cell:last-child {
+            border-right: none;
+        }
+
+        .sig-line {
+            height: 34px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .docfoot {
+            margin: 18px 24px 0;
+            padding-top: 10px;
+            border-top: 1px solid var(--line);
+            text-align: center;
+            font-size: 11px;
+            color: var(--muted);
+            letter-spacing: .3px;
+        }
+
+        /* Action bar */
+        .actions {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #FFFFFF;
+            border-top: 1px solid var(--line);
+            padding: 10px 20px;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 -2px 14px rgba(26, 26, 46, .08);
+            z-index: 20;
+        }
+
+        .btn {
+            font-family: "Inter", Arial, sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            padding: 9px 18px;
+            border-radius: 4px;
+            border: 1px solid var(--blue);
+            background: #FFFFFF;
+            color: var(--blue);
+            cursor: pointer;
+        }
+
+        .btn:hover {
+            background: var(--tint);
+        }
+
+        .btn-primary {
+            background: var(--blue);
+            color: #FFFFFF;
+        }
+
+        .btn-primary:hover {
+            background: #0A52BD;
+        }
+
+        .btn:focus-visible {
+            outline: 2px solid var(--cyan);
+            outline-offset: 2px;
+        }
+
+        @media (max-width:820px) {
+            .masthead {
+                grid-template-columns: 1fr;
+            }
+
+            .doc-title {
+                text-align: left;
+            }
+
+            .identity-row {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .span2 {
+                grid-column: span 2;
+            }
+
+            .checks {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .signature {
+                grid-template-columns: 1fr;
+            }
+
+            .signature .cell {
+                border-right: none;
+                border-bottom: 1px solid var(--line);
+            }
+
+            .signature .cell:last-child {
+                border-bottom: none;
+            }
+        }
+
+        @media (max-width:540px) {
+            .checks {
+                grid-template-columns: 1fr;
+            }
+
+            .identity-row {
+                grid-template-columns: 1fr;
+            }
+
+            .span2 {
+                grid-column: span 1;
+            }
+
+            .tooth {
+                font-size: 10px;
+            }
+
+            .sheet {
+                margin: 0 0 110px;
+                border-radius: 0;
+                border-left: none;
+                border-right: none;
+            }
+        }
+
+        @media (prefers-reduced-motion:reduce) {
+            * {
+                transition: none !important;
+            }
+        }
+
+        @media print {
+            @page {
+                size: A4;
+                margin: 10mm;
+            }
+
+            body {
+                background: #FFFFFF;
+                font-size: 10.5px;
+            }
+
+            .sheet {
+                margin: 0;
+                border: none;
+                box-shadow: none;
+                max-width: none;
+                padding-bottom: 0;
+            }
+
+            .actions {
+                display: none;
+            }
+
+            .section {
+                page-break-inside: avoid;
+                margin-top: 10px;
+                padding: 0;
+            }
+
+            .section-head {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .check,
+            .optionbar,
+            .chip,
+            table.tx th {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .masthead,
+            .identity-row,
+            .signature,
+            .docfoot {
+                padding-left: 0;
+                padding-right: 0;
+                margin-left: 0;
+                margin-right: 0;
+            }
+
+            textarea {
+                min-height: 52px;
+            }
+
+            .tooth[aria-pressed="true"] {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="sheet">
+
+        <header class="masthead">
+            <div>
+                <h1 class="brand-name">CURE DENTAL CENTER</h1>
+                <p class="brand-tag">Beyond a Smile...</p>
+                <p class="brand-meta"><span>Mexico Square, Addis Ababa</span>|<span>Open 24/7</span>|<span>+251 96 969
+                        3112</span></p>
+            </div>
+            <div class="doc-title">
+                <h2>Clinical History &amp; Examination</h2>
+                <p>(For Doctor's Use)</p>
+            </div>
+        </header>
+
+        <div class="identity-row">
+            <div class="cell"><label class="field"><span class="field-label">Patient Name</span><input type="text"
+                        name="patient_name"></label></div>
+            <div class="cell"><label class="field"><span class="field-label">Age</span><input type="text"
+                        name="age"></label></div>
+            <div class="cell"><label class="field"><span class="field-label">Sex</span><input type="text"
+                        name="sex"></label></div>
+            <div class="cell"><label class="field"><span class="field-label">File No.</span><input type="text"
+                        name="file_no"></label></div>
+        </div>
+        <div class="identity-row">
+            <div class="cell"><label class="field"><span class="field-label">Date</span><input type="date"
+                        name="visit_date"></label></div>
+            <div class="cell"><label class="field"><span class="field-label">Examining Dentist</span><input type="text"
+                        name="dentist"></label></div>
+            <div class="cell span2"><label class="field"><span class="field-label">Vitals (BP / RBS if
+                        taken)</span><input type="text" name="vitals"></label></div>
+        </div>
+
+        <!-- 1 -->
+        <section class="section">
+            <div class="section-head"><span class="section-num">1</span>
+                <h3>Chief Complaint &amp; History of Present Illness</h3>
+            </div>
+            <div class="section-body">
+                <div class="block">
+                    <label class="block-label" for="cc">Chief Complaint <span class="block-hint">(patient's own
+                            words)</span></label>
+                    <textarea id="cc" name="chief_complaint" rows="2"></textarea>
+                </div>
+                <div class="block">
+                    <label class="block-label" for="hpi">History of Present Illness <span class="block-hint">— onset,
+                            site, duration, character, aggravating/relieving factors, prior treatment</span></label>
+                    <textarea id="hpi" name="hpi" rows="4"></textarea>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2 -->
+        <section class="section">
+            <div class="section-head"><span class="section-num">2</span>
+                <h3>Past Dental History</h3>
+            </div>
+            <div class="section-body">
+                <div class="checks">
+                    <label class="check"><input type="checkbox" name="pdh" value="Previous extraction"><span>Previous
+                            extraction</span></label>
+                    <label class="check"><input type="checkbox" name="pdh" value="Previous RCT"><span>Previous
+                            RCT</span></label>
+                    <label class="check"><input type="checkbox" name="pdh" value="Previous filling"><span>Previous
+                            filling</span></label>
+                    <label class="check"><input type="checkbox" name="pdh" value="Previous prosthesis"><span>Previous
+                            prosthesis (denture/bridge)</span></label>
+                    <label class="check"><input type="checkbox" name="pdh"
+                            value="Orthodontic treatment"><span>Orthodontic treatment</span></label>
+                    <label class="check"><input type="checkbox" name="pdh"
+                            value="Periodontal treatment"><span>Periodontal treatment</span></label>
+                    <label class="check"><input type="checkbox" name="pdh" value="Trauma to teeth/jaw"><span>Trauma to
+                            teeth/jaw</span></label>
+                    <label class="check"><input type="checkbox" name="pdh"
+                            value="Adverse reaction to dental Tx"><span>Adverse reaction to dental Tx</span></label>
+                    <label class="check"><input type="checkbox" name="pdh" value="None significant"><span>None
+                            significant</span></label>
+                </div>
+                <div class="block">
+                    <label class="block-label" for="pdh_details">Details / last dental visit / previous dentist</label>
+                    <textarea id="pdh_details" name="pdh_details" rows="2"></textarea>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3 -->
+        <section class="section">
+            <div class="section-head"><span class="section-num">3</span>
+                <h3>Medical History</h3>
+            </div>
+            <div class="section-body">
+                <div class="checks">
+                    <label class="check"><input type="checkbox" name="mh"
+                            value="Hypertension"><span>Hypertension</span></label>
+                    <label class="check"><input type="checkbox" name="mh" value="Diabetes Mellitus"><span>Diabetes
+                            Mellitus</span></label>
+                    <label class="check"><input type="checkbox" name="mh" value="Cardiac Disease"><span>Cardiac
+                            Disease</span></label>
+                    <label class="check"><input type="checkbox" name="mh" value="Asthma / Resp. disease"><span>Asthma /
+                            Resp. disease</span></label>
+                    <label class="check"><input type="checkbox" name="mh" value="Bleeding disorder"><span>Bleeding
+                            disorder</span></label>
+                    <label class="check"><input type="checkbox" name="mh" value="On anticoagulants"><span>On
+                            anticoagulants</span></label>
+                    <label class="check"><input type="checkbox" name="mh" value="Hepatitis B/C"><span>Hepatitis
+                            B/C</span></label>
+                    <label class="check"><input type="checkbox" name="mh" value="HIV status known"><span>HIV status
+                            known</span></label>
+                    <label class="check"><input type="checkbox" name="mh"
+                            value="Tuberculosis"><span>Tuberculosis</span></label>
+                    <label class="check"><input type="checkbox" name="mh" value="Epilepsy"><span>Epilepsy</span></label>
+                    <label class="check"><input type="checkbox" name="mh" value="Renal disease"><span>Renal
+                            disease</span></label>
+                    <label class="check"><input type="checkbox" name="mh" value="Liver disease"><span>Liver
+                            disease</span></label>
+                    <label class="check"><input type="checkbox" name="mh" value="Thyroid disorder"><span>Thyroid
+                            disorder</span></label>
+                    <label class="check"><input type="checkbox" name="mh"
+                            value="Pregnancy"><span>Pregnancy</span></label>
+                    <label class="check"><input type="checkbox" name="mh" value="Drug allergy"><span>Drug
+                            allergy</span></label>
+                </div>
+                <div class="optionbar">
+                    <div class="group">
+                        <span class="group-label">ASA Classification</span>
+                        <label class="radio"><input type="radio" name="asa" value="I"><span>I</span></label>
+                        <label class="radio"><input type="radio" name="asa" value="II"><span>II</span></label>
+                        <label class="radio"><input type="radio" name="asa" value="III"><span>III</span></label>
+                        <label class="radio"><input type="radio" name="asa" value="IV"><span>IV</span></label>
+                    </div>
+                    <div class="group">
+                        <span class="group-label">Medical Consultation Needed</span>
+                        <label class="radio"><input type="radio" name="med_consult" value="Yes"><span>Yes</span></label>
+                        <label class="radio"><input type="radio" name="med_consult" value="No"><span>No</span></label>
+                    </div>
+                </div>
+                <div class="block">
+                    <label class="block-label" for="meds">Current medications, known allergies, relevant lab
+                        values</label>
+                    <textarea id="meds" name="medications" rows="3"></textarea>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4 -->
+        <section class="section">
+            <div class="section-head"><span class="section-num">4</span>
+                <h3>Extraoral Examination</h3>
+            </div>
+            <div class="section-body">
+                <div class="checks">
+                    <label class="check"><input type="checkbox" name="extraoral" value="Facial asymmetry"><span>Facial
+                            asymmetry</span></label>
+                    <label class="check"><input type="checkbox" name="extraoral"
+                            value="Swelling / Lymphadenopathy"><span>Swelling / Lymphadenopathy</span></label>
+                    <label class="check"><input type="checkbox" name="extraoral"
+                            value="TMJ tenderness / clicking"><span>TMJ tenderness / clicking</span></label>
+                    <label class="check"><input type="checkbox" name="extraoral"
+                            value="Mouth opening restricted"><span>Mouth opening restricted</span></label>
+                    <label class="check"><input type="checkbox" name="extraoral" value="Lip competence normal"><span>Lip
+                            competence normal</span></label>
+                    <label class="check"><input type="checkbox" name="extraoral"
+                            value="Within normal limits"><span>Within normal limits</span></label>
+                </div>
+                <div class="block">
+                    <label class="block-label" for="extraoral_findings">Findings</label>
+                    <textarea id="extraoral_findings" name="extraoral_findings" rows="2"></textarea>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5 -->
+        <section class="section">
+            <div class="section-head"><span class="section-num">5</span>
+                <h3>Intraoral Examination</h3>
+            </div>
+            <div class="section-body">
+                <div class="checks">
+                    <label class="check"><input type="checkbox" name="intraoral" value="Soft tissue lesion"><span>Soft
+                            tissue lesion</span></label>
+                    <label class="check"><input type="checkbox" name="intraoral"
+                            value="Gingival inflammation"><span>Gingival inflammation</span></label>
+                    <label class="check"><input type="checkbox" name="intraoral"
+                            value="Periodontal pockets"><span>Periodontal pockets</span></label>
+                    <label class="check"><input type="checkbox" name="intraoral"
+                            value="Calculus / plaque"><span>Calculus / plaque</span></label>
+                    <label class="check"><input type="checkbox" name="intraoral" value="Caries present"><span>Caries
+                            present</span></label>
+                    <label class="check"><input type="checkbox" name="intraoral" value="Missing teeth"><span>Missing
+                            teeth</span></label>
+                    <label class="check"><input type="checkbox" name="intraoral"
+                            value="Fractured tooth/teeth"><span>Fractured tooth/teeth</span></label>
+                    <label class="check"><input type="checkbox" name="intraoral"
+                            value="Malocclusion"><span>Malocclusion</span></label>
+                    <label class="check"><input type="checkbox" name="intraoral"
+                            value="Halitosis"><span>Halitosis</span></label>
+                </div>
+
+                <p class="odonto-intro"><strong>Odontogram (Palmer notation)</strong> — select affected teeth. Each
+                    quadrant numbered 1 (midline) to 8 (third molar); upper row = maxillary arch, lower row = mandibular
+                    arch.</p>
+
+                <div class="odonto">
+                    <div class="arch-label"><span>Right</span><span>Left</span></div>
+                    <div class="arch upper" id="archUpper"></div>
+                    <div class="midline"></div>
+                    <div class="arch lower" id="archLower"></div>
+                    <div class="arch-label" style="padding:6px 2px 0;"><span>Right</span><span>Left</span></div>
+
+                    <div class="odonto-readout">
+                        <span class="label">Selected teeth</span>
+                        <div class="chips" id="toothChips"><span class="empty">None selected</span></div>
+                        <button type="button" class="btn" id="clearTeeth"
+                            style="margin-left:auto;padding:5px 12px;">Clear selection</button>
+                    </div>
+                </div>
+
+                <div class="block" style="margin-top:14px;">
+                    <label class="block-label" for="intraoral_findings">Findings <span class="block-hint">— tooth
+                            number(s), description</span></label>
+                    <textarea id="intraoral_findings" name="intraoral_findings" rows="3"></textarea>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6 -->
+        <section class="section">
+            <div class="section-head"><span class="section-num">6</span>
+                <h3>Investigations</h3>
+            </div>
+            <div class="section-body">
+                <div class="checks">
+                    <label class="check"><input type="checkbox" name="inv" value="Periapical X-ray"><span>Periapical
+                            X-ray</span></label>
+                    <label class="check"><input type="checkbox" name="inv" value="Panoramic (OPG)"><span>Panoramic
+                            (OPG)</span></label>
+                    <label class="check"><input type="checkbox" name="inv" value="Bitewing X-ray"><span>Bitewing
+                            X-ray</span></label>
+                    <label class="check"><input type="checkbox" name="inv" value="Vitality test"><span>Vitality
+                            test</span></label>
+                    <label class="check"><input type="checkbox" name="inv" value="Percussion test"><span>Percussion
+                            test</span></label>
+                    <label class="check"><input type="checkbox" name="inv" value="Lab investigation"><span>Lab
+                            investigation</span></label>
+                </div>
+                <div class="block">
+                    <label class="block-label" for="inv_results">Results</label>
+                    <textarea id="inv_results" name="inv_results" rows="2"></textarea>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7 -->
+        <section class="section">
+            <div class="section-head"><span class="section-num">7</span>
+                <h3>Diagnosis &amp; Treatment Plan</h3>
+            </div>
+            <div class="section-body">
+                <div class="block">
+                    <label class="block-label" for="dx">Provisional Diagnosis</label>
+                    <textarea id="dx" name="diagnosis" rows="2"></textarea>
+                </div>
+                <div class="block">
+                    <label class="block-label" for="plan">Treatment Plan</label>
+                    <textarea id="plan" name="treatment_plan" rows="3"></textarea>
+                </div>
+            </div>
+        </section>
+
+        <!-- 8 -->
+        <section class="section">
+            <div class="section-head"><span class="section-num">8</span>
+                <h3>Treatment Given (This Visit)</h3>
+            </div>
+            <div class="section-body">
+                <div class="checks">
+                    <label class="check"><input type="checkbox" name="tx" value="Scaling / Polishing"><span>Scaling /
+                            Polishing</span></label>
+                    <label class="check"><input type="checkbox" name="tx"
+                            value="Restoration (Filling)"><span>Restoration (Filling)</span></label>
+                    <label class="check"><input type="checkbox" name="tx" value="Root Canal Treatment"><span>Root Canal
+                            Treatment</span></label>
+                    <label class="check"><input type="checkbox" name="tx"
+                            value="Extraction"><span>Extraction</span></label>
+                    <label class="check"><input type="checkbox" name="tx" value="Pulpotomy / Pulpectomy"><span>Pulpotomy
+                            / Pulpectomy</span></label>
+                    <label class="check"><input type="checkbox" name="tx" value="Incision &amp; Drainage"><span>Incision
+                            &amp; Drainage</span></label>
+                    <label class="check"><input type="checkbox" name="tx"
+                            value="Prosthesis (denture/bridge)"><span>Prosthesis (denture/bridge)</span></label>
+                    <label class="check"><input type="checkbox" name="tx"
+                            value="Orthodontic adjustment"><span>Orthodontic adjustment</span></label>
+                    <label class="check"><input type="checkbox" name="tx" value="Fluoride / Sealant"><span>Fluoride /
+                            Sealant</span></label>
+                    <label class="check"><input type="checkbox" name="tx" value="Suturing"><span>Suturing</span></label>
+                    <label class="check"><input type="checkbox" name="tx" value="Impression taken"><span>Impression
+                            taken</span></label>
+                    <label class="check"><input type="checkbox" name="tx" value="Other"><span>Other (specify
+                            below)</span></label>
+                </div>
+
+                <div class="optionbar">
+                    <div class="group">
+                        <span class="group-label">Anesthesia</span>
+                        <label class="radio"><input type="radio" name="anesthesia"
+                                value="None"><span>None</span></label>
+                        <label class="radio"><input type="radio" name="anesthesia"
+                                value="Topical"><span>Topical</span></label>
+                        <label class="radio"><input type="radio" name="anesthesia"
+                                value="Local Infiltration"><span>Local Infiltration</span></label>
+                        <label class="radio"><input type="radio" name="anesthesia" value="Nerve Block"><span>Nerve
+                                Block</span></label>
+                    </div>
+                    <div class="group">
+                        <span class="group-label">Complications</span>
+                        <label class="radio"><input type="radio" name="complications"
+                                value="None"><span>None</span></label>
+                        <label class="radio"><input type="radio" name="complications" value="Yes"><span>Yes (specify
+                                below)</span></label>
+                    </div>
+                </div>
+
+                <table class="tx">
+                    <colgroup>
+                        <col class="c1">
+                        <col class="c2">
+                        <col class="c3">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th scope="col">Tooth #</th>
+                            <th scope="col">Procedure Performed / Material Used</th>
+                            <th scope="col">Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody id="txBody">
+                        <tr>
+                            <td><input type="text" name="tx_tooth"></td>
+                            <td><input type="text" name="tx_procedure"></td>
+                            <td><input type="text" name="tx_notes"></td>
+                        </tr>
+                        <tr>
+                            <td><input type="text" name="tx_tooth"></td>
+                            <td><input type="text" name="tx_procedure"></td>
+                            <td><input type="text" name="tx_notes"></td>
+                        </tr>
+                        <tr>
+                            <td><input type="text" name="tx_tooth"></td>
+                            <td><input type="text" name="tx_procedure"></td>
+                            <td><input type="text" name="tx_notes"></td>
+                        </tr>
+                        <tr>
+                            <td><input type="text" name="tx_tooth"></td>
+                            <td><input type="text" name="tx_procedure"></td>
+                            <td><input type="text" name="tx_notes"></td>
+                        </tr>
+                        <tr>
+                            <td><input type="text" name="tx_tooth"></td>
+                            <td><input type="text" name="tx_procedure"></td>
+                            <td><input type="text" name="tx_notes"></td>
+                        </tr>
+                    </tbody>
+                </table>
+                <button type="button" class="btn" id="addRow" style="padding:6px 14px;margin-bottom:14px;">Add
+                    row</button>
+
+                <div class="block">
+                    <label class="block-label" for="postop">Post-operative instructions given / prescriptions</label>
+                    <textarea id="postop" name="postop" rows="3"></textarea>
+                </div>
+
+                <div class="optionbar" style="background:#FFFFFF;">
+                    <div class="group" style="flex:1;min-width:220px;">
+                        <label class="field" style="width:100%;"><span class="field-label">Next Appointment
+                                Date</span><input type="date" name="next_appointment"></label>
+                    </div>
+                    <div class="group" style="flex:1;min-width:220px;">
+                        <label class="field" style="width:100%;"><span class="field-label">Patient Instructed / Consent
+                                Confirmed</span><input type="text" name="consent"></label>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div class="signature">
+            <div class="cell">
+                <span class="field-label">Dentist Name &amp; Signature</span>
+                <input type="text" name="dentist_signature">
+                <div class="sig-line"></div>
+            </div>
+            <div class="cell">
+                <span class="field-label">Date</span>
+                <input type="date" name="signature_date">
+                <div class="sig-line"></div>
+            </div>
+        </div>
+
+        <p class="docfoot">Cure Dental Center &nbsp;•&nbsp; Mexico Square, Addis Ababa &nbsp;•&nbsp; +251 96 969 3112
+            &nbsp;•&nbsp; Clinical Record — Confidential</p>
+    </div>
+
+    <div class="actions">
+        <button type="button" class="btn btn-primary" id="printBtn">Print / Save as PDF</button>
+        <button type="button" class="btn" id="resetBtn">Clear form</button>
+    </div>
+
+    <script>
+        (function () {
+            var upper = document.getElementById('archUpper');
+            var lower = document.getElementById('archLower');
+            var chips = document.getElementById('toothChips');
+
+            function buildArch(container, rightQ, leftQ) {
+                var i, btn, n;
+                for (i = 8; i >= 1; i--) {
+                    btn = makeTooth(rightQ, i, i === 1);
+                    container.appendChild(btn);
+                }
+                for (n = 1; n <= 8; n++) {
+                    container.appendChild(makeTooth(leftQ, n, false));
+                }
+            }
+
+            function makeTooth(quadrant, number, isMid) {
+                var b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'tooth' + (isMid ? ' q-break' : '');
+                b.textContent = number;
+                b.setAttribute('aria-pressed', 'false');
+                b.setAttribute('data-code', quadrant + number);
+                b.setAttribute('aria-label', quadrant + ' tooth ' + number);
+                b.addEventListener('click', function () {
+                    var on = b.getAttribute('aria-pressed') === 'true';
+                    b.setAttribute('aria-pressed', on ? 'false' : 'true');
+                    render();
+                });
+                return b;
+            }
+
+            function render() {
+                var selected = Array.prototype.slice
+                    .call(document.querySelectorAll('.tooth[aria-pressed="true"]'))
+                    .map(function (t) { return t.getAttribute('data-code'); });
+
+                chips.innerHTML = '';
+                if (selected.length === 0) {
+                    var e = document.createElement('span');
+                    e.className = 'empty';
+                    e.textContent = 'None selected';
+                    chips.appendChild(e);
+                    return;
+                }
+                selected.forEach(function (code) {
+                    var c = document.createElement('span');
+                    c.className = 'chip';
+                    c.textContent = code;
+                    chips.appendChild(c);
+                });
+            }
+
+            buildArch(upper, 'UR', 'UL');
+            buildArch(lower, 'LR', 'LL');
+            render();
+
+            document.getElementById('clearTeeth').addEventListener('click', function () {
+                Array.prototype.forEach.call(document.querySelectorAll('.tooth'), function (t) {
+                    t.setAttribute('aria-pressed', 'false');
+                });
+                render();
+            });
+
+            // Checkbox visual state
+            Array.prototype.forEach.call(document.querySelectorAll('.check input'), function (cb) {
+                cb.addEventListener('change', function () {
+                    cb.parentElement.classList.toggle('on', cb.checked);
+                });
+            });
+
+            // Add treatment row
+            document.getElementById('addRow').addEventListener('click', function () {
+                var body = document.getElementById('txBody');
+                var tr = document.createElement('tr');
+                tr.innerHTML = '<td><input type="text" name="tx_tooth"></td>' +
+                    '<td><input type="text" name="tx_procedure"></td>' +
+                    '<td><input type="text" name="tx_notes"></td>';
+                body.appendChild(tr);
+                tr.querySelector('input').focus();
+            });
+
+            document.getElementById('printBtn').addEventListener('click', function () {
+                window.print();
+            });
+
+            document.getElementById('resetBtn').addEventListener('click', function () {
+                Array.prototype.forEach.call(document.querySelectorAll('input[type="text"], input[type="date"], textarea'), function (el) {
+                    el.value = '';
+                });
+                Array.prototype.forEach.call(document.querySelectorAll('input[type="checkbox"], input[type="radio"]'), function (el) {
+                    el.checked = false;
+                    if (el.type === 'checkbox') { el.parentElement.classList.remove('on'); }
+                });
+                Array.prototype.forEach.call(document.querySelectorAll('.tooth'), function (t) {
+                    t.setAttribute('aria-pressed', 'false');
+                });
+                render();
+                window.scrollTo(0, 0);
+            });
+        })();
+    </script>
+</body>
+
+</html>

@@ -46,6 +46,9 @@ type resourceReq struct {
 	Name         string `json:"name" binding:"required"`
 	Type         string `json:"type" binding:"required"`
 }
+type workspaceReq struct {
+	Slug string `json:"slug" binding:"required"`
+}
 
 // ---- response DTOs (prefixed external IDs) ----
 
@@ -65,7 +68,9 @@ type resourceDTO struct {
 	org.Resource
 }
 
-func branchOut(b org.Branch) branchDTO { return branchDTO{ID: id.Encode(id.PrefixBranch, b.ID), Branch: b} }
+func branchOut(b org.Branch) branchDTO {
+	return branchDTO{ID: id.Encode(id.PrefixBranch, b.ID), Branch: b}
+}
 func departmentOut(d org.Department) departmentDTO {
 	return departmentDTO{ID: id.Encode(id.PrefixDepartment, d.ID), BranchID: id.Encode(id.PrefixBranch, d.BranchID), Department: d}
 }
@@ -101,6 +106,31 @@ func (h *Handlers) SaveClinic(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, cl)
+}
+
+// GetWorkspace handles GET /org/workspace — the tenant's login handle.
+func (h *Handlers) GetWorkspace(c *gin.Context) {
+	ws, err := h.svc.GetWorkspace(c.Request.Context())
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, ws)
+}
+
+// UpdateWorkspace handles PUT /org/workspace — change the login slug.
+func (h *Handlers) UpdateWorkspace(c *gin.Context) {
+	var req workspaceReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("a workspace name is required"))
+		return
+	}
+	ws, err := h.svc.UpdateWorkspace(c.Request.Context(), req.Slug)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, ws)
 }
 
 // ---- settings (flow configuration) ----
@@ -201,6 +231,64 @@ func (h *Handlers) DeleteBranch(c *gin.Context) {
 		return
 	}
 	httpx.NoContent(c)
+}
+
+// BranchUsage handles GET /org/branch-usage — how many branches vs the plan cap.
+func (h *Handlers) BranchUsage(c *gin.Context) {
+	u, err := h.svc.BranchUsage(c.Request.Context())
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, u)
+}
+
+// PlanUsage handles GET /org/plan-usage — the tenant's plan + usage vs caps.
+func (h *Handlers) PlanUsage(c *gin.Context) {
+	u, err := h.svc.PlanUsage(c.Request.Context())
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, u)
+}
+
+// GetBranchModules handles GET /org/branches/:id/modules.
+func (h *Handlers) GetBranchModules(c *gin.Context) {
+	bid, ok := decodeID(c, id.PrefixBranch, "id")
+	if !ok {
+		return
+	}
+	mods, err := h.svc.GetBranchModules(c.Request.Context(), bid)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, mods)
+}
+
+// SetBranchModules handles PUT /org/branches/:id/modules. Body is a map of
+// module → enabled (true/false), or null to clear the override.
+func (h *Handlers) SetBranchModules(c *gin.Context) {
+	bid, ok := decodeID(c, id.PrefixBranch, "id")
+	if !ok {
+		return
+	}
+	var req map[string]*bool
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("expected a map of module to enabled"))
+		return
+	}
+	if err := h.svc.SetBranchModules(c.Request.Context(), bid, req); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	mods, err := h.svc.GetBranchModules(c.Request.Context(), bid)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, mods)
 }
 
 // ---- departments ----

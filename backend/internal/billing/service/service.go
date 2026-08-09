@@ -14,8 +14,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	billingdb "github.com/reicb/clinicsaas/internal/billing/repo/gen"
 	"github.com/reicb/clinicsaas/internal/billing"
+	billingdb "github.com/reicb/clinicsaas/internal/billing/repo/gen"
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
 	"github.com/reicb/clinicsaas/internal/kernel/events"
@@ -287,7 +287,7 @@ func (s *Service) ProvidersForServices(ctx context.Context, serviceIDs []uuid.UU
 	return out, nil
 }
 
-var validSource = map[string]bool{"consultation": true, "service": true, "lab": true, "pharmacy": true, "other": true}
+var validSource = map[string]bool{"consultation": true, "service": true, "lab": true, "pharmacy": true, "bed": true, "dental": true, "other": true}
 
 // RaiseCharge creates a pending charge against a patient (own transaction).
 func (s *Service) RaiseCharge(ctx context.Context, in billing.ChargeInput) (uuid.UUID, error) {
@@ -387,6 +387,18 @@ func (s *Service) RaiseChargeTx(ctx context.Context, tx pgx.Tx, in billing.Charg
 func (s *Service) RaiseIntakeChargesTx(ctx context.Context, tx pgx.Tx, in billing.IntakeInput) (int, error) {
 	tenantID, actor := actorOf(ctx)
 	q := billingdb.New(tx)
+	// A doctor-booked follow-up attended within its window is free: raise no intake
+	// charge so the patient enqueues immediately (same rule as the card-fee Assess).
+	if in.AppointmentID != nil {
+		cov, e := q.GetAppointmentCoverage(ctx, billingdb.GetAppointmentCoverageParams{TenantID: tenantID, ID: *in.AppointmentID})
+		if e != nil && !errors.Is(e, pgx.ErrNoRows) {
+			return 0, e
+		}
+		if e == nil && cov.IsFollowup && cov.FreeUntil != nil && !time.Now().After(*cov.FreeUntil) &&
+			cov.Status != "cancelled" && cov.Status != "no_show" {
+			return 0, nil
+		}
+	}
 	defaults, e := q.ListDefaultServices(ctx, tenantID)
 	if e != nil {
 		return 0, e
@@ -585,6 +597,24 @@ func (s *Service) VoidCharge(ctx context.Context, id uuid.UUID, reason string) e
 		return apperr.Internal(err)
 	}
 	return nil
+}
+
+// VoidChargeTx voids a still-pending charge inside the caller's transaction, so a
+// module (e.g. dental reversing a mistaken collect) can undo a bill atomically.
+func (s *Service) VoidChargeTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, reason string) error {
+	tenantID, actor := actorOf(ctx)
+	if strings.TrimSpace(reason) == "" {
+		reason = "reversed"
+	}
+	q := billingdb.New(tx)
+	row, e := q.VoidCharge(ctx, billingdb.VoidChargeParams{VoidReason: strPtr(reason), VoidedBy: actor, TenantID: tenantID, ID: id})
+	if errors.Is(e, pgx.ErrNoRows) {
+		return apperr.Conflict("NOT_PENDING", "only a pending charge can be voided")
+	}
+	if e != nil {
+		return e
+	}
+	return s.publisher.Publish(ctx, tx, &tenantID, "charge", row.ID, "billing.charge.voided", map[string]any{"charge_id": row.ID, "reason": reason})
 }
 
 // RefundCharge reverses a settled (paid) charge by posting a linked negative entry
@@ -830,6 +860,68 @@ func (s *Service) ExpectedForDay(ctx context.Context, date string) (*billing.Exp
 			return e
 		}
 		return nil
+	})
+	if err != nil {
+		if ae, ok := apperr.As(err); ok {
+			return nil, ae
+		}
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+// DayCloses lists the acting cashier's business days in [from,to] — what each day
+// took and whether it was closed — so a day someone forgot to close still shows up
+// and can be caught up later. Days are UTC-based, matching ExpectedForDay's window.
+func (s *Service) DayCloses(ctx context.Context, from, to string) ([]billing.DaySummary, error) {
+	tenantID, actor := actorOf(ctx)
+	if actor == nil {
+		return nil, apperr.Validation("a cashier is required")
+	}
+	fromDay, err := parseDay(from)
+	if err != nil {
+		return nil, err
+	}
+	toDay, err := parseDay(to)
+	if err != nil {
+		return nil, err
+	}
+	out := []billing.DaySummary{}
+	err = s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		rows, e := tx.Query(ctx,
+			`WITH act AS (
+			   SELECT (settled_at AT TIME ZONE 'UTC')::date AS day, sum(amount)::numeric AS total, count(*)::int AS n
+			   FROM charges
+			   WHERE tenant_id = $1 AND settled_by = $2 AND status = 'paid' AND source <> 'refund'
+			     AND settled_at >= $3::date AND settled_at < ($4::date + INTERVAL '1 day')
+			   GROUP BY 1
+			 ), rec AS (
+			   SELECT business_date AS day, counted_total, variance, coalesce(note,'') AS note, closed_at
+			   FROM cash_reconciliations
+			   WHERE tenant_id = $1 AND cashier_id = $2 AND business_date >= $3::date AND business_date <= $4::date
+			 ), days AS (SELECT day FROM act UNION SELECT day FROM rec)
+			 SELECT d.day::text, coalesce(a.total,0)::text, coalesce(a.n,0),
+			        (r.day IS NOT NULL), coalesce(r.counted_total::text,''), coalesce(r.variance::text,''),
+			        coalesce(r.note,''), r.closed_at
+			 FROM days d
+			 LEFT JOIN act a ON a.day = d.day
+			 LEFT JOIN rec r ON r.day = d.day
+			 ORDER BY d.day DESC`,
+			tenantID, *actor, fromDay, toDay)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var d billing.DaySummary
+			var closedAt *time.Time
+			if e := rows.Scan(&d.BusinessDate, &d.ExpectedTotal, &d.Count, &d.Closed, &d.CountedTotal, &d.Variance, &d.Note, &closedAt); e != nil {
+				return e
+			}
+			d.ClosedAt = closedAt
+			out = append(out, d)
+		}
+		return rows.Err()
 	})
 	if err != nil {
 		if ae, ok := apperr.As(err); ok {

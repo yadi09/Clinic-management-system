@@ -29,6 +29,7 @@ FROM queue_entries q
 JOIN patients p ON p.id = q.patient_id AND p.tenant_id = q.tenant_id
 LEFT JOIN users u ON u.id = q.assigned_provider_id AND u.tenant_id = q.tenant_id
 WHERE q.tenant_id = @tenant_id AND q.department_id = @department_id AND q.deleted_at IS NULL
+  AND (sqlc.narg(branch_id)::uuid IS NULL OR q.branch_id = sqlc.narg(branch_id))
   AND q.enqueued_at >= @since
   AND (sqlc.narg(until)::timestamptz IS NULL OR q.enqueued_at < sqlc.narg(until))
   AND (sqlc.narg(stage)::text IS NULL OR q.stage = sqlc.narg(stage))
@@ -52,6 +53,7 @@ JOIN patients p ON p.id = q.patient_id AND p.tenant_id = q.tenant_id
 LEFT JOIN departments d ON d.id = q.department_id AND d.tenant_id = q.tenant_id
 WHERE q.tenant_id = @tenant_id AND q.assigned_provider_id = @assigned_provider_id
   AND q.deleted_at IS NULL AND q.state IN ('waiting','called','in_consult')
+  AND (sqlc.narg(branch_id)::uuid IS NULL OR q.branch_id = sqlc.narg(branch_id))
   AND q.enqueued_at >= @since
   AND (sqlc.narg(until)::timestamptz IS NULL OR q.enqueued_at < sqlc.narg(until))
 ORDER BY q.priority DESC, q.enqueued_at;
@@ -92,6 +94,7 @@ LEFT JOIN departments d ON d.id = q.department_id AND d.tenant_id = q.tenant_id
 WHERE q.tenant_id = @tenant_id AND q.deleted_at IS NULL
   AND q.stage = 'with_doctor' AND q.assigned_provider_id IS NULL
   AND q.state IN ('waiting','called')
+  AND (sqlc.narg(branch_id)::uuid IS NULL OR q.branch_id = sqlc.narg(branch_id))
   AND q.enqueued_at >= @since
   AND (sqlc.narg(until)::timestamptz IS NULL OR q.enqueued_at < sqlc.narg(until))
 ORDER BY q.priority DESC, q.enqueued_at;

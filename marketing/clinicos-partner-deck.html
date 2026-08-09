@@ -1,0 +1,887 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ClinicOS — Partnership Deck</title>
+<style>
+/* ============================================================================
+   ClinicOS partnership deck.
+   Built from the product's own identity: the deep green that already prints on
+   every ClinicOS receipt and prescription (#14532d), with gold as the money /
+   opportunity accent. System fonts only — this file must present from a laptop
+   in a meeting room with no internet.
+   ========================================================================== */
+:root{
+  --ink:#0B1F16;          /* near-black, green cast */
+  --green:#14532d;        /* ClinicOS brand */
+  --green-deep:#0A3A1E;
+  --green-soft:#E6EFE9;
+  --gold:#C08A2E;         /* opportunity / money */
+  --gold-soft:#F6EEDC;
+  --paper:#F4F7F5;        /* cool near-white, not cream */
+  --card:#FFFFFF;
+  --line:#D9E2DC;
+  --muted:#5C6F64;
+
+  --display:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --body:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+
+  --pad:clamp(24px,5vw,88px);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:var(--body); color:var(--ink); background:var(--paper);
+  -webkit-font-smoothing:antialiased;
+}
+/* Each section is a slide, but the whole thing still scrolls like a site. */
+.deck{height:100dvh;overflow-y:scroll;scroll-snap-type:y mandatory;scroll-behavior:smooth}
+.slide{
+  min-height:100dvh;scroll-snap-align:start;scroll-snap-stop:always;
+  display:flex;flex-direction:column;justify-content:center;
+  padding:var(--pad); padding-right:calc(var(--pad) + 40px);
+  position:relative;
+}
+.inner{width:100%;max-width:1120px;margin:0 auto}
+
+/* Dark slides give the deck rhythm and mark the "argument" beats. */
+.slide.dark{background:var(--green-deep);color:#EAF2EC}
+.slide.dark .kicker{color:#9FC7AC}
+.slide.dark .lede{color:#C9DED1}
+.slide.dark .rule{background:var(--gold)}
+
+/* --- type ------------------------------------------------------------- */
+.kicker{
+  font-family:var(--mono); font-size:12px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--green); display:flex; align-items:center; gap:10px; margin-bottom:18px;
+}
+.kicker .num{
+  display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;
+  background:var(--green);color:#fff;font-size:11px;letter-spacing:0;
+}
+.slide.dark .kicker .num{background:var(--gold);color:#231703}
+h1{
+  font-family:var(--display); font-size:clamp(40px,7.4vw,86px); line-height:.98;
+  letter-spacing:-.03em; font-weight:800; max-width:16ch;
+}
+h2{
+  font-family:var(--display); font-size:clamp(30px,4.6vw,56px); line-height:1.04;
+  letter-spacing:-.025em; font-weight:800; max-width:20ch;
+}
+.lede{font-size:clamp(16px,1.5vw,20px); line-height:1.55; color:var(--muted); max-width:62ch; margin-top:18px}
+.rule{width:64px;height:4px;background:var(--green);border-radius:2px;margin:26px 0}
+
+/* --- cover ------------------------------------------------------------ */
+.cover{background:
+  radial-gradient(1200px 620px at 78% 12%, #EAF3EC 0%, transparent 62%),
+  var(--paper);
+}
+.brandmark{display:flex;align-items:center;gap:12px;margin-bottom:34px}
+.brandmark .dot{
+  width:38px;height:38px;border-radius:11px;background:var(--green);
+  display:grid;place-items:center;color:#fff;font-weight:800;font-size:19px;
+}
+.brandmark span{font-weight:700;letter-spacing:-.02em;font-size:19px}
+.cover .meta{
+  margin-top:44px;display:flex;flex-wrap:wrap;gap:12px 30px;
+  font-family:var(--mono);font-size:12.5px;color:var(--muted);letter-spacing:.02em;
+}
+.cover .meta b{color:var(--ink);font-weight:600}
+
+/* A quiet field of clinics — the deck's subject, not a claim about numbers. */
+.dotfield{position:absolute;inset:0;pointer-events:none;opacity:.5;overflow:hidden}
+.dotfield i{
+  position:absolute;width:6px;height:6px;border-radius:50%;
+  background:var(--green);opacity:.13;
+}
+.dotfield i.on{opacity:.85;background:var(--gold);box-shadow:0 0 0 4px rgba(192,138,46,.14)}
+
+/* --- reusable content blocks ------------------------------------------ */
+.grid{display:grid;gap:20px;margin-top:38px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.g4{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+.card{
+  background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px;
+}
+.slide.dark .card{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14)}
+.card h3{font-size:17px;font-weight:700;letter-spacing:-.01em;margin-bottom:8px}
+.card p{font-size:14.5px;line-height:1.55;color:var(--muted)}
+.slide.dark .card p{color:#B9D2C2}
+
+/* Numbers are the hero of this deck — give them room and tabular figures. */
+.stat{font-family:var(--display);font-size:clamp(38px,5.6vw,68px);font-weight:800;
+  letter-spacing:-.035em;line-height:1;font-variant-numeric:tabular-nums;color:var(--green)}
+.slide.dark .stat{color:var(--gold)}
+.stat-label{margin-top:10px;font-size:13.5px;color:var(--muted);line-height:1.45}
+.slide.dark .stat-label{color:#B9D2C2}
+
+.pill{display:inline-block;padding:5px 12px;border-radius:999px;font-size:12px;font-weight:600;
+  background:var(--green-soft);color:var(--green)}
+.pill.gold{background:var(--gold-soft);color:#8A6318}
+
+/* Placeholder shown until you supply a section's content. */
+.pending{
+  margin-top:34px;border:1px dashed var(--line);border-radius:14px;padding:22px 24px;
+  background:rgba(255,255,255,.55);max-width:62ch;
+}
+.pending b{display:block;font-size:13px;letter-spacing:.04em;text-transform:uppercase;
+  font-family:var(--mono);color:var(--green);margin-bottom:6px}
+.pending p{font-size:14.5px;color:var(--muted);line-height:1.55}
+.slide.dark .pending{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.2)}
+.slide.dark .pending b{color:var(--gold)} .slide.dark .pending p{color:#B9D2C2}
+
+/* --- section 01: the name decoded ------------------------------------- */
+.decode{display:flex;align-items:baseline;gap:2px;font-family:var(--display);
+  font-weight:800;letter-spacing:-.04em;font-size:clamp(46px,8.4vw,104px);line-height:1}
+.decode .os{color:var(--gold);position:relative}
+.decode-key{display:grid;grid-template-columns:auto auto;gap:0 14px;margin-top:14px;
+  font-family:var(--mono);font-size:clamp(13px,1.5vw,17px);letter-spacing:.02em;color:var(--muted)}
+.decode-key .brace{color:var(--gold);font-size:20px;line-height:1}
+.decode-key b{color:var(--ink);font-weight:600}
+
+.arrowline{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-top:34px;
+  font-size:clamp(15px,1.6vw,19px)}
+.arrowline .from{padding:9px 16px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);
+  background:repeating-linear-gradient(45deg,transparent,transparent 6px,rgba(0,0,0,.02) 6px,rgba(0,0,0,.02) 12px)}
+.arrowline .to{padding:9px 16px;border-radius:10px;background:var(--green);color:#fff;font-weight:600}
+.arrowline .arw{color:var(--gold);font-size:24px;line-height:1}
+
+/* --- sections 02/03: the market, drawn ------------------------------- */
+.statrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:28px;margin-top:40px}
+.statrow .s .stat{display:block}
+
+.dotgrid{display:flex;flex-wrap:wrap;gap:5px;margin-top:32px;max-width:760px}
+.dotgrid i{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.16);display:block}
+.dotgrid i.lit{background:var(--gold)}
+.slide:not(.dark) .dotgrid i{background:#CBD8CF}
+.slide:not(.dark) .dotgrid i.lit{background:var(--green)}
+.legend{display:flex;flex-wrap:wrap;gap:10px 26px;margin-top:22px;font-size:13.5px;color:var(--muted)}
+.slide.dark .legend{color:#B9D2C2}
+.legend span{display:flex;align-items:center;gap:8px}
+.legend b{width:10px;height:10px;border-radius:50%;display:inline-block}
+
+.callout{margin-top:34px;border-left:4px solid var(--gold);padding:6px 0 6px 20px;max-width:60ch}
+.callout .big{font-family:var(--display);font-size:clamp(24px,3.2vw,38px);font-weight:800;
+  letter-spacing:-.025em;line-height:1.12}
+.callout p{margin-top:8px;font-size:15px;line-height:1.55;color:var(--muted)}
+.slide.dark .callout p{color:#B9D2C2}
+.footnote{margin-top:26px;font-family:var(--mono);font-size:11.5px;letter-spacing:.03em;color:var(--muted);opacity:.85}
+.slide.dark .footnote{color:#8FB29C}
+
+/* --- section 04: the patient's path through the clinic ---------------- */
+.journey{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;margin-top:34px}
+.journey .step{flex:1 1 150px;background:var(--card);border:1px solid var(--line);
+  border-radius:14px;padding:14px 16px;position:relative}
+.journey .step .n{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--gold);font-weight:700}
+.journey .step h4{font-size:15px;font-weight:700;margin:6px 0 6px;letter-spacing:-.01em}
+.journey .step p{font-size:12.5px;line-height:1.5;color:var(--muted)}
+.journey .chev{display:grid;place-items:center;color:var(--gold);font-size:18px;flex:0 0 auto}
+@media(max-width:860px){.journey .chev{display:none}}
+
+.modline{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px}
+.mod{font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:999px;
+  background:var(--green-soft);color:var(--green);border:1px solid #CBDFD2}
+.slide.dark .mod{background:rgba(255,255,255,.08);color:#DDEBE2;border-color:rgba(255,255,255,.16)}
+
+.hl{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:16px;margin-top:30px}
+.hl .h{border-left:3px solid var(--gold);padding:2px 0 2px 14px}
+.hl .h h4{font-size:14.5px;font-weight:700;letter-spacing:-.01em}
+.hl .h p{font-size:13px;line-height:1.5;color:var(--muted);margin-top:4px}
+.slide.dark .hl .h p{color:#B9D2C2}
+
+/* --- sections 05/06: the field, and the gaps ------------------------- */
+.field{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-top:34px}
+.field .f{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+.field .f .share{font-family:var(--display);font-size:26px;font-weight:800;color:var(--green);
+  letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.field .f h4{font-size:15.5px;font-weight:700;margin:6px 0 6px}
+.field .f p{font-size:13px;line-height:1.55;color:var(--muted)}
+
+.gaps{margin-top:30px;border-top:1px solid rgba(255,255,255,.18)}
+.slide:not(.dark) .gaps{border-top-color:var(--line)}
+.gap{display:grid;grid-template-columns:1fr auto 1fr;gap:18px;align-items:center;
+  padding:13px 0;border-bottom:1px solid rgba(255,255,255,.13)}
+.slide:not(.dark) .gap{border-bottom-color:var(--line)}
+.gap .bad{font-size:14.5px;color:#C9DED1}
+.slide:not(.dark) .gap .bad{color:var(--muted)}
+.gap .arw{color:var(--gold);font-size:17px}
+.gap .good{font-size:14.5px;font-weight:600}
+@media(max-width:760px){.gap{grid-template-columns:1fr;gap:4px}.gap .arw{display:none}}
+
+/* --- section 07: pricing ---------------------------------------------- */
+.plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:18px;margin-top:34px}
+.plan{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px;
+  display:flex;flex-direction:column;position:relative}
+.plan.feature{border-color:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
+.plan .tag{position:absolute;top:-11px;left:24px;background:var(--green);color:#fff;
+  font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  padding:4px 10px;border-radius:999px}
+.plan .who{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--gold);font-weight:700}
+.plan h3{font-size:19px;font-weight:800;letter-spacing:-.02em;margin:8px 0 14px}
+.plan .price{font-family:var(--display);font-size:clamp(28px,3.4vw,40px);font-weight:800;
+  letter-spacing:-.03em;line-height:1;color:var(--green);font-variant-numeric:tabular-nums}
+.plan .per{font-size:13px;color:var(--muted);margin-top:6px}
+.plan .price2{margin-top:10px;font-size:15px;font-weight:700;color:var(--ink)}
+.plan ul{list-style:none;margin:18px 0 0;display:grid;gap:9px}
+.plan li{font-size:13.5px;line-height:1.5;color:var(--muted);padding-left:20px;position:relative}
+.plan li::before{content:"›";position:absolute;left:4px;color:var(--gold);font-weight:700}
+.plan .fit{margin-top:auto;padding-top:18px;font-size:13px;line-height:1.5}
+.plan .fit b{display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);font-family:var(--mono);margin-bottom:4px}
+
+/* --- section 10: the funnel as a chain -------------------------------- */
+.chain{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:30px}
+.chain .link{background:var(--green-soft);border:1px solid #CBDFD2;border-radius:999px;
+  padding:9px 18px;font-size:14.5px;color:var(--green)}
+.chain .link b{font-weight:700}
+.chain .arw{color:var(--gold);font-size:20px;line-height:1}
+.slide.dark .chain .link{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.16);color:#DDEBE2}
+
+/* --- section 11: commission structure + what it's worth --------------- */
+.terms{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-top:30px}
+.term{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.16);
+  border-radius:14px;padding:18px 20px}
+.slide:not(.dark) .term{background:var(--card);border-color:var(--line)}
+.term .pc{font-family:var(--display);font-size:clamp(30px,4vw,44px);font-weight:800;
+  letter-spacing:-.03em;line-height:1;color:var(--gold);font-variant-numeric:tabular-nums}
+.term .when{margin-top:8px;font-size:13.5px;line-height:1.45;color:#C9DED1}
+.slide:not(.dark) .term .when{color:var(--muted)}
+
+.earn{width:100%;border-collapse:collapse;margin-top:28px;font-size:14.5px}
+.earn th{text-align:left;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:#9FC7AC;font-weight:700;padding:0 14px 10px 0;
+  border-bottom:1px solid rgba(255,255,255,.2)}
+.earn td{padding:11px 14px 11px 0;border-bottom:1px solid rgba(255,255,255,.11);color:#DDEBE2}
+.earn td:last-child{text-align:right;font-weight:700;color:var(--gold);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.slide:not(.dark) .earn th{color:var(--muted);border-bottom-color:var(--line)}
+.slide:not(.dark) .earn td{color:var(--ink);border-bottom-color:var(--line)}
+.slide:not(.dark) .earn td:last-child{color:var(--green)}
+
+/* --- section 10: the phased play -------------------------------------- */
+.phases{display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:18px;margin-top:30px}
+.phase{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;
+  position:relative;display:flex;flex-direction:column}
+.phase .badge{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10.5px;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--gold);font-weight:700}
+.phase .badge i{width:22px;height:22px;border-radius:50%;background:var(--gold);color:#231703;
+  display:grid;place-items:center;font-style:normal;font-size:11px;letter-spacing:0}
+.phase h3{font-size:17.5px;font-weight:800;letter-spacing:-.02em;margin:12px 0 4px}
+.phase .sub{font-size:12.5px;color:var(--gold);font-weight:600;margin-bottom:12px}
+.phase ul{list-style:none;display:grid;gap:8px;margin:0}
+.phase li{font-size:13.5px;line-height:1.5;color:var(--muted);padding-left:18px;position:relative}
+.phase li::before{content:"–";position:absolute;left:2px;color:var(--gold)}
+.phase .cost{margin-top:auto;padding-top:14px;font-size:12.5px;color:var(--green);font-weight:600}
+
+/* --- section 12: ticket-size comparison ------------------------------- */
+.compare{margin-top:32px;display:grid;gap:16px;max-width:780px}
+.cmp{display:grid;grid-template-columns:150px 1fr auto;gap:16px;align-items:center}
+.cmp .lbl{font-size:14px;color:#C9DED1}
+.slide:not(.dark) .cmp .lbl{color:var(--muted)}
+.cmp .track{height:30px;background:rgba(255,255,255,.09);border-radius:8px;overflow:hidden}
+.slide:not(.dark) .cmp .track{background:var(--green-soft)}
+.cmp .fill{height:100%;border-radius:8px;background:rgba(255,255,255,.28)}
+.cmp.big .fill{background:var(--gold)}
+.cmp .val{font-family:var(--display);font-weight:800;font-size:17px;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.cmp.big .val{color:var(--gold)}
+@media(max-width:640px){.cmp{grid-template-columns:1fr auto}.cmp .track{grid-column:1/-1}}
+
+.proof{display:inline-flex;align-items:center;gap:9px;margin-top:26px;padding:8px 15px;
+  border-radius:999px;background:rgba(192,138,46,.16);border:1px solid rgba(192,138,46,.4);
+  font-size:13.5px;color:#F0DFBE}
+.proof .dot{width:8px;height:8px;border-radius:50%;background:var(--gold);flex:0 0 auto}
+
+/* --- chrome: progress, rail, hint ------------------------------------- */
+.progress{position:fixed;top:0;left:0;height:3px;background:var(--gold);width:0;z-index:50;
+  transition:width .18s ease}
+.rail{position:fixed;right:14px;top:50%;transform:translateY(-50%);z-index:40;
+  display:flex;flex-direction:column;gap:9px}
+.rail button{
+  width:11px;height:11px;border-radius:50%;border:1.5px solid var(--green);
+  background:transparent;cursor:pointer;padding:0;position:relative;transition:all .16s;
+}
+.rail button[aria-current="true"]{background:var(--green);transform:scale(1.35)}
+.rail button::after{
+  content:attr(data-label);position:absolute;right:22px;top:50%;transform:translateY(-50%);
+  background:var(--ink);color:#fff;font-size:11.5px;white-space:nowrap;padding:5px 9px;
+  border-radius:6px;opacity:0;pointer-events:none;transition:opacity .16s;
+}
+.rail button:hover::after{opacity:1}
+.counter{position:fixed;left:var(--pad);bottom:22px;z-index:40;font-family:var(--mono);
+  font-size:12px;color:var(--muted);letter-spacing:.08em}
+.slide.dark ~ .counter{color:#9FC7AC}
+.hint{position:fixed;right:44px;bottom:22px;z-index:40;font-family:var(--mono);font-size:11.5px;
+  color:var(--muted);letter-spacing:.04em;opacity:.75}
+
+@media (prefers-reduced-motion:reduce){
+  html,.deck{scroll-behavior:auto}
+  *{transition:none!important;animation:none!important}
+}
+@media print{
+  .rail,.hint,.counter,.progress{display:none}
+  .deck{height:auto;overflow:visible}
+  .slide{min-height:auto;page-break-after:always;padding:28mm 20mm}
+}
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+
+<main class="deck" id="deck">
+
+  <!-- ===== COVER ===== -->
+  <section class="slide cover" data-label="Cover">
+    <div class="dotfield" id="dotfield" aria-hidden="true"></div>
+    <div class="inner" style="position:relative">
+      <div class="brandmark"><div class="dot">C</div><span>ClinicOS</span></div>
+      <h1>Clinic software built for how Ethiopian clinics actually work.</h1>
+      <div class="rule"></div>
+      <p class="lede">A partnership proposal for marketing agencies — the market, the product,
+        the commercial model, and how we grow it together.</p>
+      <div class="meta">
+        <span><b>Prepared for</b> &nbsp;Marketing partners</span>
+        <span><b>Product</b> &nbsp;ClinicOS</span>
+        <span><b>Market</b> &nbsp;Ethiopia · Addis Ababa</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 01 ===== -->
+  <section class="slide" data-label="Introduction">
+    <div class="inner">
+      <div class="kicker"><span class="num">01</span> Introduction</div>
+
+      <div class="decode">Clinic<span class="os">OS</span></div>
+      <div class="decode-key">
+        <span class="brace">└</span><span><b>Operating System</b> — the software a clinic runs on, all day, every day.</span>
+      </div>
+
+      <p class="lede" style="margin-top:26px">
+        ClinicOS is built for Ethiopian clinics: one system for reception, the consulting room,
+        the cashier and the owner — instead of a drawer of registers and a pile of receipt books.
+      </p>
+
+      <div class="arrowline">
+        <span class="from">Paper registers, cards &amp; receipt books</span>
+        <span class="arw">→</span>
+        <span class="to">One digital record</span>
+      </div>
+
+      <div class="grid g3">
+        <div class="card">
+          <h3>Runs the whole clinic</h3>
+          <p>Patients, appointments, consultations, prescriptions, lab, pharmacy, billing and
+          reports — connected, not separate books that never agree.</p>
+        </div>
+        <div class="card">
+          <h3>Made for Ethiopia</h3>
+          <p>Ethiopian calendar, ETB, local payment habits, and the way clinics here actually
+          move a patient from the front desk to the doctor to the cashier.</p>
+        </div>
+        <div class="card">
+          <h3>Paper in, digital out</h3>
+          <p>Existing patients come across with their old card numbers and history intact — a
+          clinic switches without losing the records it already has.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 02 ===== -->
+  <section class="slide dark" data-label="Market size">
+    <div class="inner">
+      <div class="kicker"><span class="num">02</span> The opportunity</div>
+      <h2>A market of thousands — concentrated in one city.</h2>
+
+      <div class="statrow">
+        <div class="s">
+          <span class="stat">3,000+</span>
+          <div class="stat-label">private clinics in Ethiopia</div>
+        </div>
+        <div class="s">
+          <span class="stat">~2,000</span>
+          <div class="stat-label">of them in Addis Ababa</div>
+        </div>
+        <div class="s">
+          <span class="stat">2 in 3</span>
+          <div class="stat-label">clinics are inside one city — reachable on foot, by one field team</div>
+        </div>
+      </div>
+
+      <div class="callout">
+        <div class="big">The whole addressable market fits inside a day's drive.</div>
+        <p>This is unusual, and it is the reason a direct, in-person sales motion works here.
+        No national logistics problem to solve before the first hundred clinics.</p>
+      </div>
+
+      <div class="footnote">Internal market estimate.</div>
+    </div>
+  </section>
+
+  <!-- ===== 03 ===== -->
+  <section class="slide" data-label="Adoption gap">
+    <div class="inner">
+      <div class="kicker"><span class="num">03</span> The gap</div>
+      <h2>Four out of five still run on paper.</h2>
+
+      <div class="statrow" style="margin-top:32px">
+        <div class="s">
+          <span class="stat">15–20%</span>
+          <div class="stat-label">use any clinic management software today</div>
+        </div>
+        <div class="s">
+          <span class="stat" style="color:var(--gold)">80%+</span>
+          <div class="stat-label">have no system at all — registers, cards and receipt books</div>
+        </div>
+        <div class="s">
+          <span class="stat" style="color:var(--gold)">~1,600</span>
+          <div class="stat-label">paper-based clinics in Addis Ababa alone</div>
+        </div>
+      </div>
+
+      <div class="dotgrid" id="dotgrid" aria-hidden="true"></div>
+      <div class="legend">
+        <span><b style="background:var(--green)"></b> Using software</span>
+        <span><b style="background:#CBD8CF"></b> Still on paper</span>
+        <span>Each dot ≈ 10 clinics</span>
+      </div>
+
+      <div class="callout">
+        <div class="big">We are not fighting for share. We are opening the market.</div>
+        <p>The competition is not another product — it is the exercise book. That changes the
+        pitch, the objections, and the kind of marketing that works.</p>
+      </div>
+
+      <div class="footnote">Internal market estimate.</div>
+    </div>
+  </section>
+
+  <!-- ===== 04 ===== -->
+  <section class="slide" data-label="What it does">
+    <div class="inner">
+      <div class="kicker"><span class="num">04</span> The product</div>
+      <h2>One system, from the front desk to the owner's report.</h2>
+
+      <div class="journey">
+        <div class="step"><div class="n">01</div><h4>Reception</h4>
+          <p>Register or find the patient, take the card fee, send them to a doctor or triage.</p></div>
+        <div class="chev">›</div>
+        <div class="step"><div class="n">02</div><h4>Triage</h4>
+          <p>Vitals on a form the clinic configures itself, with its own normal ranges.</p></div>
+        <div class="chev">›</div>
+        <div class="step"><div class="n">03</div><h4>Consultation</h4>
+          <p>Notes, diagnosis, prescription — with voice dictation and an AI second opinion.</p></div>
+        <div class="chev">›</div>
+        <div class="step"><div class="n">04</div><h4>Lab &amp; pharmacy</h4>
+          <p>Orders, results, stock and dispensing — paid before they're handed over.</p></div>
+        <div class="chev">›</div>
+        <div class="step"><div class="n">05</div><h4>Cashier</h4>
+          <p>Every charge lands in one queue. Receipts, refunds, end-of-day cash count.</p></div>
+        <div class="chev">›</div>
+        <div class="step"><div class="n">06</div><h4>Owner</h4>
+          <p>Revenue by service, by branch, by day — and the monthly report to the Ministry.</p></div>
+      </div>
+
+      <div class="modline">
+        <span class="mod">Patients</span><span class="mod">Appointments</span><span class="mod">Queue</span>
+        <span class="mod">Triage</span><span class="mod">Consultation</span><span class="mod">Prescriptions</span>
+        <span class="mod">Laboratory</span><span class="mod">Pharmacy &amp; stock</span><span class="mod">Billing &amp; cashier</span>
+        <span class="mod">Finance</span><span class="mod">Inpatient beds</span><span class="mod">Maternity</span>
+        <span class="mod">Dental</span><span class="mod">Multi-branch</span><span class="mod">Staff &amp; roles</span>
+      </div>
+
+      <div class="hl">
+        <div class="h"><h4>Ethiopian calendar throughout</h4>
+          <p>Every date shown in ዓ.ም alongside the Gregorian one — not a translation layer bolted on.</p></div>
+        <div class="h"><h4>One-click Ministry reporting</h4>
+          <p>The month's top diagnoses pushed straight to the national DHIS2 system.</p></div>
+        <div class="h"><h4>Specialised, not generic</h4>
+          <p>A dental clinic gets a tooth chart and treatment plans; a maternity clinic gets pregnancy dating.</p></div>
+        <div class="h"><h4>Brings the paper across</h4>
+          <p>Old registers import in bulk — patients keep the card number they've always had.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 05 ===== -->
+  <section class="slide" data-label="The field">
+    <div class="inner">
+      <div class="kicker"><span class="num">05</span> The field</div>
+      <h2>What clinics run on today</h2>
+
+      <div class="field">
+        <div class="f"><div class="share">80%+</div>
+          <h4>Paper</h4>
+          <p>Patient cards, exercise-book registers, carbon receipt books. Cheap, familiar,
+          and impossible to search, total up or report from.</p></div>
+        <div class="f"><div class="share">Some</div>
+          <h4>Excel &amp; notebooks</h4>
+          <p>A spreadsheet for revenue, another for patients. Breaks the moment two people
+          need it at once, and nobody can say which copy is current.</p></div>
+        <div class="f"><div class="share">Few</div>
+          <h4>Imported international software</h4>
+          <p>Licensed from abroad and priced in dollars. Gregorian-only dates, support in a
+          different time zone, and features built for a market that isn't this one.</p></div>
+        <div class="f"><div class="share">Few</div>
+          <h4>One-off custom builds</h4>
+          <p>Commissioned once from a developer who has since moved on. Works until it
+          doesn't — no updates, no owner, no way back.</p></div>
+        <div class="f"><div class="share">Rare</div>
+          <h4>Hospital-grade HMIS</h4>
+          <p>Built for hospitals with an IT department. Too heavy, too expensive and too
+          slow to deploy for a clinic with six staff.</p></div>
+      </div>
+
+      <div class="footnote">Categories, not named vendors — send me the specific products you want called out and I'll name them.</div>
+    </div>
+  </section>
+
+  <!-- ===== 06 ===== -->
+  <section class="slide dark" data-label="Their gaps">
+    <div class="inner">
+      <div class="kicker"><span class="num">06</span> Where they fall short</div>
+      <h2>Every gap is a reason a clinic says yes.</h2>
+
+      <div class="gaps">
+        <div class="gap"><span class="bad">Gregorian dates only — staff convert in their heads</span>
+          <span class="arw">→</span><span class="good">Ethiopian calendar everywhere, shown beside the Gregorian date</span></div>
+        <div class="gap"><span class="bad">Priced in dollars, sold on a hospital budget</span>
+          <span class="arw">→</span><span class="good">Priced in birr, in plans sized for a real clinic</span></div>
+        <div class="gap"><span class="bad">Built for hospitals — most of it never gets used</span>
+          <span class="arw">→</span><span class="good">Modules switched on per clinic: lab, pharmacy, beds, dental, maternity</span></div>
+        <div class="gap"><span class="bad">No Ministry reporting — compiled by hand each month</span>
+          <span class="arw">→</span><span class="good">The month's diagnoses pushed to DHIS2 in one click</span></div>
+        <div class="gap"><span class="bad">Support in another country, in another language</span>
+          <span class="arw">→</span><span class="good">Local setup, training and support — in person when it matters</span></div>
+        <div class="gap"><span class="bad">"We'd lose the records we already have"</span>
+          <span class="arw">→</span><span class="good">Old registers imported in bulk; patients keep their card numbers</span></div>
+        <div class="gap"><span class="bad">Generic software that treats every clinic the same</span>
+          <span class="arw">→</span><span class="good">A dental clinic gets a tooth chart, not a hidden menu item</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 07 ===== -->
+  <section class="slide" data-label="Pricing">
+    <div class="inner">
+      <div class="kicker"><span class="num">07</span> Pricing</div>
+      <h2>Three ways a clinic can buy it.</h2>
+      <p class="lede">Same product in every case. What changes is where it runs, and who carries
+        the responsibility for keeping it running.</p>
+
+      <div class="plans">
+        <div class="plan feature">
+          <span class="tag">Most clinics</span>
+          <div class="who">Model A</div>
+          <h3>Managed subscription</h3>
+          <div class="price">5,000 – 10,000</div>
+          <div class="per">ETB per month · set by clinic size</div>
+          <ul>
+            <li>We host it, run it and keep it updated</li>
+            <li>Backups, security and support included</li>
+            <li>No server, no IT person needed</li>
+            <li>Nothing to pay up front</li>
+          </ul>
+          <div class="fit"><b>Best for</b>A clinic that wants the software to just work, and never think about it.</div>
+        </div>
+
+        <div class="plan">
+          <div class="who">Model B</div>
+          <h3>Installed + subscription</h3>
+          <div class="price">20,000</div>
+          <div class="per">ETB one-time installation</div>
+          <div class="price2">+ 3,000 ETB / month</div>
+          <ul>
+            <li>Runs on the clinic's own server</li>
+            <li>Their data stays in their building</li>
+            <li>We handle licensing, updates and support</li>
+            <li>Low cost to start</li>
+          </ul>
+          <div class="fit"><b>Best for</b>A clinic that wants its data in-house, but not the maintenance.</div>
+        </div>
+
+        <div class="plan">
+          <div class="who">Model C</div>
+          <h3>One-time purchase</h3>
+          <div class="price">70,000 – 130,000</div>
+          <div class="per">ETB once · no monthly fee</div>
+          <ul>
+            <li>Installed on their server, theirs outright</li>
+            <li>No recurring cost at all</li>
+            <li>We install, train and remain available to help</li>
+            <li>The clinic operates and owns it</li>
+          </ul>
+          <div class="fit"><b>Best for</b>A clinic that prefers to pay once from capital budget rather than monthly.</div>
+        </div>
+      </div>
+
+      <div class="footnote">Ranges reflect clinic size — staff numbers, branches and which modules are switched on.</div>
+    </div>
+  </section>
+
+  <!-- ===== 08 ===== -->
+  <section class="slide" data-label="Implementation">
+    <div class="inner">
+      <div class="kicker"><span class="num">08</span> Delivery</div>
+      <h2>How a clinic gets started</h2>
+      <div class="pending"><b>Awaiting your notes</b>
+        <p>Onboarding, data migration, training, support.</p></div>
+    </div>
+  </section>
+
+  <!-- ===== 09 ===== -->
+  <section class="slide" data-label="Buying models">
+    <div class="inner">
+      <div class="kicker"><span class="num">09</span> Buying models</div>
+      <h2>Three ways to buy</h2>
+      <div class="pending"><b>Awaiting your numbers</b>
+        <p>Subscription · one-time&nbsp;+&nbsp;subscription · one-time only.</p></div>
+    </div>
+  </section>
+
+  <!-- ===== 10 ===== -->
+  <section class="slide" data-label="Go to market">
+    <div class="inner">
+      <div class="kicker"><span class="num">10</span> Marketing strategy</div>
+      <h2>We don't ask clinics to buy. We ask them to help.</h2>
+      <p class="lede">A clinic owner has a ready answer for a salesperson. They have no answer
+        prepared for <em>"we've built something for clinics like yours — would you tell us what
+        you think of it?"</em> That one change of question is the whole strategy.</p>
+
+      <div class="chain">
+        <span class="link"><b>Ask</b> for feedback</span><span class="arw">→</span>
+        <span class="link"><b>Build</b> the room</span><span class="arw">→</span>
+        <span class="link"><b>Let them</b> ask us</span>
+      </div>
+
+      <div class="phases">
+        <div class="phase">
+          <span class="badge"><i>1</i> Get in the door</span>
+          <h3>Feedback, not a pitch</h3>
+          <div class="sub">Interns &amp; commission-only reps</div>
+          <ul>
+            <li>Each rep visits 15–50 clinics in person</li>
+            <li>They ask for an opinion on the platform — they never ask for a sale</li>
+            <li>They collect contacts: the owner, the doctors, the nurses</li>
+            <li>No pressure means no rejection, so the door stays open</li>
+          </ul>
+          <div class="cost">Cost: one-time payment per rep — no salaries, no ad spend</div>
+        </div>
+
+        <div class="phase">
+          <span class="badge"><i>2</i> Build the room</span>
+          <h3>A Telegram group of clinics</h3>
+          <div class="sub">From ~50 clinics onward</div>
+          <ul>
+            <li>Every contact collected joins the channel and group</li>
+            <li>We demo the platform there and ask what they'd change</li>
+            <li>They are advisors, not leads — and advisors get invested</li>
+            <li>A clinic that helped shape it asks to use it, unprompted</li>
+          </ul>
+          <div class="cost">An owned audience — no algorithm, no ad budget</div>
+        </div>
+
+        <div class="phase">
+          <span class="badge"><i>3</i> Turn on content</span>
+          <h3>Clips first, campaigns later</h3>
+          <div class="sub">Once the room is full</div>
+          <ul>
+            <li>Short clips captured during the demos we're already doing</li>
+            <li>Posted as Telegram stories and into the group</li>
+            <li>Only then a dedicated push on Facebook and TikTok</li>
+            <li>Content is a by-product of phase 2, not a production line</li>
+          </ul>
+          <div class="cost">Nothing is filmed until there's an audience to film for</div>
+        </div>
+      </div>
+
+      <div class="callout">
+        <div class="big">By the time we mention price, they've been using the product for weeks.</div>
+        <p>This inverts the usual cost curve: no advertising spend until we already have the
+        room, and no video production until the demos are producing the footage for free.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 11 ===== -->
+  <section class="slide dark" data-label="Partnership">
+    <div class="inner">
+      <div class="kicker"><span class="num">11</span> Working together</div>
+      <h2>You bring the clinic. We split what it pays.</h2>
+      <p class="lede">Option 1 of three — the pure profit share. No retainer, no fixed fee:
+        the agency earns on performance, and earns most on the sale itself.</p>
+
+      <div class="terms">
+        <div class="term"><div class="pc">80%</div>
+          <div class="when">of the <b>first month's</b> subscription — the sign-up bonus</div></div>
+        <div class="term"><div class="pc">20%</div>
+          <div class="when">of <b>every month after</b>, for a full year</div></div>
+        <div class="term"><div class="pc">20%</div>
+          <div class="when">of any <b>one-time</b> setup or purchase payment</div></div>
+      </div>
+
+      <table class="earn">
+        <thead><tr><th>What the clinic buys</th><th>Agency earns in year one</th></tr></thead>
+        <tbody>
+          <tr><td>Managed subscription · 5,000 ETB / month</td><td>15,000 ETB</td></tr>
+          <tr><td>Managed subscription · 10,000 ETB / month</td><td>30,000 ETB</td></tr>
+          <tr><td>Installed · 20,000 setup + 3,000 / month</td><td>13,000 ETB</td></tr>
+          <tr><td>One-time purchase · 70,000 – 130,000 ETB</td><td>14,000 – 26,000 ETB</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout">
+        <div class="big">20 clinics in a year is 300,000 – 600,000 ETB.</div>
+        <p>And there are roughly 1,600 paper-based clinics in Addis alone. The ceiling is not
+        the market — it is how fast we can reach it together.</p>
+      </div>
+
+      <div class="footnote">Commission runs for twelve months per clinic. Options 2 (smaller share + monthly retainer) and 3 (retainer only) — figures to be confirmed.</div>
+    </div>
+  </section>
+
+  <!-- ===== 12 ===== -->
+  <section class="slide" data-label="What's next">
+    <div class="inner">
+      <div class="kicker"><span class="num">12</span> Future opportunity</div>
+      <h2>Clinics are the first market. Not the last.</h2>
+      <p class="lede">The same team and the same platform are building a manufacturing ERP —
+        the system a factory runs its production, stock, orders and costing on.</p>
+
+      <div class="proof"><span class="dot"></span> First client already in build</div>
+
+      <div class="compare">
+        <div class="cmp">
+          <span class="lbl">A clinic pays</span>
+          <span class="track"><span class="fill" style="width:20%"></span></span>
+          <span class="val">5,000 – 10,000 / mo</span>
+        </div>
+        <div class="cmp big">
+          <span class="lbl">A factory pays</span>
+          <span class="track"><span class="fill" style="width:100%"></span></span>
+          <span class="val">50,000 / mo</span>
+        </div>
+      </div>
+
+      <div class="statrow" style="margin-top:36px">
+        <div class="s">
+          <span class="stat">5,000+</span>
+          <div class="stat-label">manufacturing companies in Ethiopia</div>
+        </div>
+        <div class="s">
+          <span class="stat">10×</span>
+          <div class="stat-label">the monthly ticket of a clinic — one factory is worth five to ten of them</div>
+        </div>
+        <div class="s">
+          <span class="stat" style="color:var(--gold)">12M</span>
+          <div class="stat-label">ETB a year from just 20 factories</div>
+        </div>
+      </div>
+
+      <div class="callout">
+        <div class="big">Same partnership. Ten times the ticket.</div>
+        <p>An agency that comes in on clinics is positioned for manufacturing the moment it
+        opens — the same commission structure, on deals ten times the size.</p>
+      </div>
+
+      <div class="footnote">Manufacturing ERP in development · commission terms for this product to be agreed separately.</div>
+    </div>
+  </section>
+
+</main>
+
+<nav class="rail" id="rail" aria-label="Slides"></nav>
+<div class="counter" id="counter">01 / 12</div>
+<div class="hint">← → to move · F for fullscreen</div>
+
+<script>
+(function () {
+  var deck = document.getElementById('deck');
+  var slides = Array.prototype.slice.call(deck.querySelectorAll('.slide'));
+  var rail = document.getElementById('rail');
+  var progress = document.getElementById('progress');
+  var counter = document.getElementById('counter');
+  var current = 0;
+
+  // Side rail — one dot per slide, labelled on hover.
+  slides.forEach(function (s, i) {
+    var b = document.createElement('button');
+    b.setAttribute('data-label', (i === 0 ? '' : String(i).padStart(2, '0') + '  ') + s.dataset.label);
+    b.setAttribute('aria-label', 'Go to ' + s.dataset.label);
+    b.onclick = function () { go(i); };
+    rail.appendChild(b);
+  });
+  var dots = Array.prototype.slice.call(rail.children);
+
+  function go(i) {
+    current = Math.max(0, Math.min(slides.length - 1, i));
+    slides[current].scrollIntoView({ behavior: 'smooth' });
+  }
+  function paint() {
+    dots.forEach(function (d, i) { d.setAttribute('aria-current', i === current ? 'true' : 'false'); });
+    progress.style.width = ((current) / (slides.length - 1) * 100) + '%';
+    counter.textContent = String(current + 1).padStart(2, '0') + ' / ' + String(slides.length).padStart(2, '0');
+    counter.style.color = slides[current].classList.contains('dark') ? '#9FC7AC' : '';
+  }
+
+  // Track the slide actually in view, so scrolling and clicking agree.
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { current = slides.indexOf(e.target); paint(); }
+      });
+    }, { root: deck, threshold: 0.55 });
+    slides.forEach(function (s) { io.observe(s); });
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); go(current + 1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp') { e.preventDefault(); go(current - 1); }
+    else if (e.key === 'Home') { e.preventDefault(); go(0); }
+    else if (e.key === 'End') { e.preventDefault(); go(slides.length - 1); }
+    else if (e.key === 'f' || e.key === 'F') {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+    }
+  });
+
+  // Cover texture: a field of clinics. Deliberately makes no claim about ratios —
+  // the real adoption figures get their own visual once you supply them.
+  var field = document.getElementById('dotfield');
+  if (field) {
+    var n = 150, html = '';
+    for (var i = 0; i < n; i++) {
+      var lit = Math.random() < 0.06 ? ' on' : '';
+      html += '<i class="' + lit.trim() + '" style="left:' + (Math.random() * 100).toFixed(2) +
+              '%;top:' + (Math.random() * 100).toFixed(2) + '%"></i>';
+    }
+    field.innerHTML = html;
+  }
+
+  // Section 03's signature: 3,000 clinics drawn at 1 dot ≈ 10 clinics, with the
+  // ~17% that use software lit. The lit dots are spread evenly rather than
+  // clustered, so the eye reads the proportion instead of a pattern.
+  var grid = document.getElementById('dotgrid');
+  if (grid) {
+    var TOTAL = 300, LIT = Math.round(TOTAL * 0.17), out = '';
+    var step = TOTAL / LIT, next = 0;
+    for (var d = 0; d < TOTAL; d++) {
+      var lit = d >= Math.round(next);
+      if (lit) next += step;
+      out += '<i class="' + (lit ? 'lit' : '') + '"></i>';
+    }
+    grid.innerHTML = out;
+  }
+
+  paint();
+})();
+</script>
+</body>
+</html>

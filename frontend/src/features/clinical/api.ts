@@ -184,12 +184,20 @@ export interface UploadTarget {
 export function signReferralUpload(referralId: string, body: { filename: string; type: string }) {
   return apiFetch<UploadTarget>(`/lab-referrals/${referralId}/result/sign`, { method: "POST", body });
 }
-/** Upload a file directly to the storage provider (Cloudinary) using a signed target. */
+/** Upload a file directly to the storage provider using a signed target. Handles
+ *  both a presigned PUT (R2/S3 — raw body) and a presigned POST (Cloudinary — form).
+ *  For PUT there is no response body; the server resolves a fresh URL from the key
+ *  when the referral is next read. */
 export async function uploadToTarget(target: UploadTarget, file: File): Promise<ReferralFile> {
+  if ((target.method || "POST").toUpperCase() === "PUT") {
+    const res = await fetch(target.url, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+    if (!res.ok) throw new Error("Upload failed");
+    return { key: target.key, url: "", name: file.name, mime: file.type };
+  }
   const fd = new FormData();
-  Object.entries(target.fields).forEach(([k, v]) => fd.append(k, v));
+  Object.entries(target.fields ?? {}).forEach(([k, v]) => fd.append(k, v));
   fd.append("file", file);
-  const res = await fetch(target.url, { method: target.method || "POST", body: fd });
+  const res = await fetch(target.url, { method: "POST", body: fd });
   if (!res.ok) throw new Error("Upload failed");
   const j = await res.json();
   return { key: j.public_id ?? target.key, url: j.secure_url ?? j.url, name: file.name, mime: file.type };
@@ -206,6 +214,30 @@ export interface HistoryItem {
 /** Past encounters for the patient (timeline). */
 export function listHistory(patientId: string) {
   return apiFetch<HistoryItem[]>(`/encounters?patient=${patientId}`);
+}
+
+// ---- AI clinical co-pilot ("ClinicOS Assist") ----
+export interface Differential {
+  condition: string;
+  why: string;
+  likelihood: string; // high | moderate | low
+}
+export interface ManagementItem {
+  suggestion: string;
+  caution?: string;
+}
+export interface AssistResult {
+  differentials: Differential[];
+  red_flags: string[];
+  workup: string[];
+  management: ManagementItem[];
+  questions: string[];
+  summary?: string;
+  model?: string;
+}
+/** Run the decision-support co-pilot over the encounter (current context + past history). */
+export function runAssist(encounterId: string) {
+  return apiFetch<AssistResult>(`/encounters/${encounterId}/assist`, { method: "POST" });
 }
 
 export interface CatalogEntry {

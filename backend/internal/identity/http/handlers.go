@@ -8,10 +8,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/reicb/clinicsaas/internal/identity"
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
 	"github.com/reicb/clinicsaas/internal/kernel/httpx"
+	"github.com/reicb/clinicsaas/internal/kernel/id"
 )
 
 const refreshCookieName = "refresh_token"
@@ -147,12 +149,107 @@ func (h *Handlers) Me(c *gin.Context) {
 		httpx.Fail(c, apperr.Unauthenticated("authentication required"))
 		return
 	}
-	res, err := h.svc.Me(c.Request.Context(), p.TenantID, p.UserID)
+	res, err := h.svc.Me(c.Request.Context(), p.TenantID, p.UserID, p.ActiveBranchID)
 	if err != nil {
 		httpx.Fail(c, err)
 		return
 	}
-	httpx.OK(c, meResponse{User: toUserDTO(res.User), Permissions: res.Permissions, Flags: res.Flags})
+	httpx.OK(c, toMeResponse(res))
+}
+
+// SwitchBranch handles POST /auth/switch-branch — re-issue the access token for a
+// different branch the user can access (branch_id "all" = consolidated view).
+func (h *Handlers) SwitchBranch(c *gin.Context) {
+	p, ok := httpx.PrincipalFrom(c)
+	if !ok {
+		httpx.Fail(c, apperr.Unauthenticated("authentication required"))
+		return
+	}
+	var req switchBranchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("branch_id is required"))
+		return
+	}
+	var target *uuid.UUID
+	if req.BranchID != "" && req.BranchID != "all" {
+		bid, err := id.Decode(id.PrefixBranch, req.BranchID)
+		if err != nil {
+			httpx.Fail(c, apperr.Validation("invalid branch"))
+			return
+		}
+		target = &bid
+	}
+	raw, _ := c.Cookie(refreshCookieName)
+	res, err := h.svc.SwitchBranch(c.Request.Context(), p.TenantID, p.UserID, target, raw)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, tokenResponse{
+		AccessToken: res.AccessToken,
+		TokenType:   "Bearer",
+		ExpiresIn:   int(time.Until(res.AccessExpiresAt).Seconds()),
+	})
+}
+
+// ChangePassword handles POST /auth/password for the signed-in user.
+func (h *Handlers) ChangePassword(c *gin.Context) {
+	p, ok := httpx.PrincipalFrom(c)
+	if !ok {
+		httpx.Fail(c, apperr.Unauthenticated("authentication required"))
+		return
+	}
+	var req changePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("a current password and a new password of at least 8 characters are required"))
+		return
+	}
+	if err := h.svc.ChangePassword(c.Request.Context(), p.TenantID, p.UserID, req.CurrentPassword, req.NewPassword); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	// A password change signs the user out on every other device (best-effort);
+	// the current device keeps its session.
+	if raw, e := c.Cookie(refreshCookieName); e == nil && raw != "" {
+		_, _ = h.svc.RevokeOtherSessions(c.Request.Context(), p.TenantID, p.UserID, raw)
+	}
+	httpx.NoContent(c)
+}
+
+// SignOutOtherDevices handles POST /auth/sessions/logout-others — revoke every
+// session for the user except the caller's current one.
+func (h *Handlers) SignOutOtherDevices(c *gin.Context) {
+	p, ok := httpx.PrincipalFrom(c)
+	if !ok {
+		httpx.Fail(c, apperr.Unauthenticated("authentication required"))
+		return
+	}
+	raw, _ := c.Cookie(refreshCookieName)
+	n, err := h.svc.RevokeOtherSessions(c.Request.Context(), p.TenantID, p.UserID, raw)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"revoked": n})
+}
+
+// ChangeEmail handles POST /auth/email for the signed-in user.
+func (h *Handlers) ChangeEmail(c *gin.Context) {
+	p, ok := httpx.PrincipalFrom(c)
+	if !ok {
+		httpx.Fail(c, apperr.Unauthenticated("authentication required"))
+		return
+	}
+	var req changeEmailRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("a valid new email and your current password are required"))
+		return
+	}
+	if err := h.svc.ChangeEmail(c.Request.Context(), p.TenantID, p.UserID, req.NewEmail, req.CurrentPassword); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
 }
 
 func (h *Handlers) setRefreshCookie(c *gin.Context, t *identity.TokenPair) {

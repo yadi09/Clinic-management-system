@@ -15,13 +15,20 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	g.GET("/clinic", h.GetClinic)
 	g.PUT("/clinic", manage, h.SaveClinic)
 
+	g.GET("/workspace", h.GetWorkspace)
+	g.PUT("/workspace", manage, h.UpdateWorkspace)
+
 	g.GET("/settings", h.GetSettings)
 	g.PUT("/settings", manage, h.SaveSettings)
 
+	g.GET("/branch-usage", h.BranchUsage)
+	g.GET("/plan-usage", h.PlanUsage)
 	g.GET("/branches", h.ListBranches)
 	g.POST("/branches", manage, h.CreateBranch)
 	g.PUT("/branches/:id", manage, h.UpdateBranch)
 	g.DELETE("/branches/:id", manage, h.DeleteBranch)
+	g.GET("/branches/:id/modules", manage, h.GetBranchModules)
+	g.PUT("/branches/:id/modules", manage, h.SetBranchModules)
 
 	g.GET("/departments", h.ListDepartments)
 	g.POST("/departments", manage, h.CreateDepartment)

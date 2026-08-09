@@ -633,6 +633,25 @@ func (h *Handlers) DayClose(c *gin.Context) {
 	httpx.OK(c, out)
 }
 
+// DayCloses handles GET /billing/day-closes?from=&to= — each business day's takings
+// and close status, so an unclosed earlier day can be caught up. Defaults to the
+// last 30 days.
+func (h *Handlers) DayCloses(c *gin.Context) {
+	from, to := c.Query("from"), c.Query("to")
+	if to == "" {
+		to = time.Now().UTC().Format("2006-01-02")
+	}
+	if from == "" {
+		from = time.Now().UTC().AddDate(0, 0, -30).Format("2006-01-02")
+	}
+	out, err := h.svc.DayCloses(c.Request.Context(), from, to)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
 // CloseDay handles POST /billing/day-close — record the counted drawer (Z-report).
 func (h *Handlers) CloseDay(c *gin.Context) {
 	var req struct {

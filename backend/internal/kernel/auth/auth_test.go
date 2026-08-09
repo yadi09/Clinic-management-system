@@ -57,7 +57,7 @@ func TestEncryptDecryptSecret(t *testing.T) {
 func TestAccessTokenIssueParse(t *testing.T) {
 	ts := NewTokenService([]byte("0123456789abcdef0123456789abcdef"), "clinicsaas", time.Minute)
 	uid, tid := uuid.New(), uuid.New()
-	tok, exp, err := ts.IssueAccess(uid, tid, "a@b.c", []string{"doctor"}, []string{"patient.read"}, map[string]bool{"laboratory": true})
+	tok, exp, err := ts.IssueAccess(uid, tid, "a@b.c", []string{"doctor"}, []string{"patient.read"}, map[string]bool{"laboratory": true}, []string{uuid.NewString()}, uuid.NewString())
 	if err != nil {
 		t.Fatalf("issue: %v", err)
 	}

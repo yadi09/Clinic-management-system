@@ -16,6 +16,7 @@ import (
 
 // PatientInput is the create/update payload (DOB as YYYY-MM-DD).
 type PatientInput struct {
+	MRN              string // optional: preserve an existing card ID on import; blank = auto-generate
 	FirstName        string
 	MiddleName       string
 	LastName         string
@@ -63,6 +64,81 @@ type Summary struct {
 	Email      string    `json:"email,omitempty"`
 }
 
+// --- legacy spreadsheet import (bulk) ---
+
+// ImportRow is one raw row from a legacy register, exactly as it appeared in the
+// spreadsheet. Every field is an unparsed string: cleaning, date detection and
+// duplicate matching are the importer's job, so one clinic's formatting quirks
+// can't reach the database.
+type ImportRow struct {
+	RowNumber int    // 1-based line in the source file, for the failure report
+	MRN       string // optional legacy card ID
+	Name      string // full name, split into first/middle/last
+	Phone     string
+	Gender    string // Male | M | female | …
+	Age       string // years at the time of the visit
+	VisitDate string // dd/mm/yyyy, dd-mm-yyyy, yyyy-mm-dd, dd\mm\yyyy or an Excel serial
+}
+
+// OnDuplicate decides what happens when a row matches an existing patient.
+const (
+	DuplicateSkip   = "skip"
+	DuplicateUpdate = "update"
+)
+
+// Calendars a legacy sheet's dates may be written in.
+const (
+	CalendarEthiopian = "ethiopian"
+	CalendarGregorian = "gregorian"
+)
+
+// ImportOptions tunes a run. DryRun validates everything and reports exactly what
+// would happen without writing a single row.
+type ImportOptions struct {
+	DryRun      bool
+	OnDuplicate string // skip (default) | update
+	// Calendar the source sheet's dates are written in — ethiopian (default, the
+	// local norm) or gregorian. Dates are always STORED as Gregorian.
+	Calendar string
+}
+
+// Row outcomes.
+const (
+	OutcomeImported  = "imported"
+	OutcomeUpdated   = "updated"
+	OutcomeDuplicate = "duplicate"
+	OutcomeFailed    = "failed"
+)
+
+// ImportRowResult is the per-row verdict — the raw values are echoed back so the
+// UI can build a "fix these and re-upload" CSV without re-reading the file.
+type ImportRowResult struct {
+	RowNumber int    `json:"row_number"`
+	Name      string `json:"name"`
+	Phone     string `json:"phone"`
+	Gender    string `json:"gender"`
+	Age       string `json:"age"`
+	VisitDate string `json:"visit_date"`
+	Outcome   string `json:"outcome"`
+	Reason    string `json:"reason,omitempty"`  // why it failed / which patient it matched
+	MRN       string `json:"mrn,omitempty"`     // card ID of the created/matched patient
+	Warning   string `json:"warning,omitempty"` // imported, but something was assumed
+}
+
+// ImportReport is the summary shown after a run (and after a dry run).
+type ImportReport struct {
+	Total         int               `json:"total"`
+	Imported      int               `json:"imported"`
+	Updated       int               `json:"updated"`
+	Duplicates    int               `json:"duplicates"`
+	Failed        int               `json:"failed"`
+	MissingPhone  int               `json:"missing_phone"`
+	MissingGender int               `json:"missing_gender"`
+	EstimatedDOB  int               `json:"estimated_dob"`
+	DryRun        bool              `json:"dry_run"`
+	Rows          []ImportRowResult `json:"rows"`
+}
+
 // Duplicate is a likely-duplicate match surfaced on create (FR-PAT-03).
 type Duplicate struct {
 	ID         uuid.UUID `json:"-"`
@@ -71,6 +147,13 @@ type Duplicate struct {
 	DOB        string    `json:"dob"`
 	Phone      string    `json:"phone,omitempty"`
 	NationalID string    `json:"national_id,omitempty"`
+}
+
+// SearchFilter narrows a patient search. Zero values mean "no filter", so an
+// unfiltered search behaves exactly as before.
+type SearchFilter struct {
+	Query  string
+	Gender string // male | female | other | unknown; "" = any
 }
 
 // SearchResult is a paginated patient list.
@@ -100,14 +183,14 @@ type Condition struct {
 }
 
 type Attachment struct {
-	ID        uuid.UUID `json:"-"`
-	Type      string    `json:"type"`
-	StorageKey string   `json:"-"`
-	URL       string    `json:"url"`
-	Filename  string    `json:"filename"`
-	MimeType  string    `json:"mime_type"`
-	SizeBytes int64     `json:"size_bytes"`
-	CreatedAt time.Time `json:"created_at"`
+	ID         uuid.UUID `json:"-"`
+	Type       string    `json:"type"`
+	StorageKey string    `json:"-"`
+	URL        string    `json:"url"`
+	Filename   string    `json:"filename"`
+	MimeType   string    `json:"mime_type"`
+	SizeBytes  int64     `json:"size_bytes"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type Guardian struct {
@@ -149,8 +232,13 @@ type Service interface {
 	Create(ctx context.Context, in PatientInput) (*Patient, []Duplicate, error)
 	Update(ctx context.Context, id uuid.UUID, in PatientInput) (*Patient, error)
 	Get(ctx context.Context, id uuid.UUID) (*Profile, error)
-	Search(ctx context.Context, q string, page, pageSize int) (*SearchResult, error)
+	Search(ctx context.Context, f SearchFilter, page, pageSize int) (*SearchResult, error)
 	Delete(ctx context.Context, id uuid.UUID) error
+
+	// ImportPatients bulk-loads a legacy register. Each row is validated and written
+	// in its own transaction: a bad row is reported and skipped, never rolling back
+	// the rows that succeeded.
+	ImportPatients(ctx context.Context, rows []ImportRow, opts ImportOptions) (*ImportReport, error)
 
 	AddAllergy(ctx context.Context, patientID uuid.UUID, in AllergyInput) (uuid.UUID, error)
 	RemoveAllergy(ctx context.Context, patientID, id uuid.UUID) error

@@ -41,3 +41,9 @@ WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
 -- name: SetPasswordAndActivate :exec
 UPDATE users SET password_hash = @password_hash, status = 'active', updated_at = now()
 WHERE tenant_id = @tenant_id AND id = @id;
+
+-- name: SoftDeleteUser :exec
+-- Remove a staff member (soft-delete; the row is retained but hidden from
+-- listings and login, which both filter deleted_at IS NULL).
+UPDATE users SET deleted_at = now(), updated_at = now()
+WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;

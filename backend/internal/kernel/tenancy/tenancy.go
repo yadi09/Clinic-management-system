@@ -34,6 +34,28 @@ type Principal struct {
 	Permissions []string        `json:"permissions,omitempty"`
 	Scopes      []Scope         `json:"scopes,omitempty"`
 	Flags       map[string]bool `json:"flags,omitempty"`
+	// BranchIDs are the branches this user may access. Empty means tenant-wide
+	// (all branches). ActiveBranchID is the branch the session is working in; nil
+	// means the consolidated "all branches" view (only valid for tenant-wide users).
+	BranchIDs      []uuid.UUID `json:"branch_ids,omitempty"`
+	ActiveBranchID *uuid.UUID  `json:"active_branch_id,omitempty"`
+}
+
+// IsAllBranches reports whether the principal has tenant-wide access (no branch
+// restriction), in which case it can view/switch across every branch.
+func (p *Principal) IsAllBranches() bool { return len(p.BranchIDs) == 0 }
+
+// CanAccessBranch reports whether the principal may operate in the given branch.
+func (p *Principal) CanAccessBranch(id uuid.UUID) bool {
+	if p.IsAllBranches() {
+		return true
+	}
+	for _, b := range p.BranchIDs {
+		if b == id {
+			return true
+		}
+	}
+	return false
 }
 
 // HasRole reports whether the principal holds the given role code.

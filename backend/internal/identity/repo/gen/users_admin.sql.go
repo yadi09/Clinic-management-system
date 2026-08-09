@@ -165,6 +165,23 @@ func (q *Queries) SetPasswordAndActivate(ctx context.Context, arg SetPasswordAnd
 	return err
 }
 
+const softDeleteUser = `-- name: SoftDeleteUser :exec
+UPDATE users SET deleted_at = now(), updated_at = now()
+WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+`
+
+type SoftDeleteUserParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+// Remove a staff member (soft-delete; the row is retained but hidden from
+// listings and login, which both filter deleted_at IS NULL).
+func (q *Queries) SoftDeleteUser(ctx context.Context, arg SoftDeleteUserParams) error {
+	_, err := q.db.Exec(ctx, softDeleteUser, arg.TenantID, arg.ID)
+	return err
+}
+
 const updateUserStatus = `-- name: UpdateUserStatus :exec
 UPDATE users SET status = $1, updated_at = now()
 WHERE tenant_id = $2 AND id = $3 AND deleted_at IS NULL

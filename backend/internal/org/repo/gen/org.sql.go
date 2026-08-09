@@ -12,6 +12,17 @@ import (
 	"github.com/google/uuid"
 )
 
+const countBranches = `-- name: CountBranches :one
+SELECT count(*) FROM branches WHERE tenant_id = $1 AND deleted_at IS NULL
+`
+
+func (q *Queries) CountBranches(ctx context.Context, tenantID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countBranches, tenantID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createBranch = `-- name: CreateBranch :one
 INSERT INTO branches (tenant_id, clinic_id, name, code, address, phone, opening_hours, created_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
@@ -128,6 +139,21 @@ func (q *Queries) CreateResource(ctx context.Context, arg CreateResourceParams) 
 	return id, err
 }
 
+const deleteBranchModule = `-- name: DeleteBranchModule :exec
+DELETE FROM feature_flags WHERE tenant_id = $1 AND branch_id = $2 AND flag = $3
+`
+
+type DeleteBranchModuleParams struct {
+	TenantID uuid.UUID  `json:"tenant_id"`
+	BranchID *uuid.UUID `json:"branch_id"`
+	Flag     string     `json:"flag"`
+}
+
+func (q *Queries) DeleteBranchModule(ctx context.Context, arg DeleteBranchModuleParams) error {
+	_, err := q.db.Exec(ctx, deleteBranchModule, arg.TenantID, arg.BranchID, arg.Flag)
+	return err
+}
+
 const getBranch = `-- name: GetBranch :one
 SELECT id, clinic_id, name, code, address, phone, opening_hours, is_active
 FROM branches
@@ -164,6 +190,56 @@ func (q *Queries) GetBranch(ctx context.Context, arg GetBranchParams) (GetBranch
 		&i.IsActive,
 	)
 	return i, err
+}
+
+const getBranchLimit = `-- name: GetBranchLimit :one
+SELECT p.branch_limit
+FROM subscriptions s JOIN plans p ON p.id = s.plan_id
+WHERE s.tenant_id = $1
+ORDER BY s.created_at DESC
+LIMIT 1
+`
+
+// The tenant's plan branch cap (NULL = unlimited). No subscription row ⇒ no rows.
+func (q *Queries) GetBranchLimit(ctx context.Context, tenantID uuid.UUID) (*int32, error) {
+	row := q.db.QueryRow(ctx, getBranchLimit, tenantID)
+	var branch_limit *int32
+	err := row.Scan(&branch_limit)
+	return branch_limit, err
+}
+
+const getBranchModuleOverrides = `-- name: GetBranchModuleOverrides :many
+SELECT flag, enabled FROM feature_flags WHERE tenant_id = $1 AND branch_id = $2
+`
+
+type GetBranchModuleOverridesParams struct {
+	TenantID uuid.UUID  `json:"tenant_id"`
+	BranchID *uuid.UUID `json:"branch_id"`
+}
+
+type GetBranchModuleOverridesRow struct {
+	Flag    string `json:"flag"`
+	Enabled bool   `json:"enabled"`
+}
+
+func (q *Queries) GetBranchModuleOverrides(ctx context.Context, arg GetBranchModuleOverridesParams) ([]GetBranchModuleOverridesRow, error) {
+	rows, err := q.db.Query(ctx, getBranchModuleOverrides, arg.TenantID, arg.BranchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetBranchModuleOverridesRow{}
+	for rows.Next() {
+		var i GetBranchModuleOverridesRow
+		if err := rows.Scan(&i.Flag, &i.Enabled); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getClinic = `-- name: GetClinic :one
@@ -228,6 +304,35 @@ func (q *Queries) GetClinicSettings(ctx context.Context, tenantID uuid.UUID) (Ge
 		&i.DoctorAssignment,
 	)
 	return i, err
+}
+
+const getTenantModuleDefaults = `-- name: GetTenantModuleDefaults :many
+SELECT flag, enabled FROM feature_flags WHERE tenant_id = $1 AND branch_id IS NULL
+`
+
+type GetTenantModuleDefaultsRow struct {
+	Flag    string `json:"flag"`
+	Enabled bool   `json:"enabled"`
+}
+
+func (q *Queries) GetTenantModuleDefaults(ctx context.Context, tenantID uuid.UUID) ([]GetTenantModuleDefaultsRow, error) {
+	rows, err := q.db.Query(ctx, getTenantModuleDefaults, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetTenantModuleDefaultsRow{}
+	for rows.Next() {
+		var i GetTenantModuleDefaultsRow
+		if err := rows.Scan(&i.Flag, &i.Enabled); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listBranches = `-- name: ListBranches :many
@@ -522,6 +627,30 @@ func (q *Queries) UpdateDepartment(ctx context.Context, arg UpdateDepartmentPara
 		arg.Specialty,
 		arg.TenantID,
 		arg.ID,
+	)
+	return err
+}
+
+const upsertBranchModule = `-- name: UpsertBranchModule :exec
+INSERT INTO feature_flags (tenant_id, flag, enabled, source, branch_id)
+VALUES ($1, $2, $3, 'override', $4)
+ON CONFLICT (tenant_id, flag, branch_id) WHERE branch_id IS NOT NULL
+DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = now()
+`
+
+type UpsertBranchModuleParams struct {
+	TenantID uuid.UUID  `json:"tenant_id"`
+	Flag     string     `json:"flag"`
+	Enabled  bool       `json:"enabled"`
+	BranchID *uuid.UUID `json:"branch_id"`
+}
+
+func (q *Queries) UpsertBranchModule(ctx context.Context, arg UpsertBranchModuleParams) error {
+	_, err := q.db.Exec(ctx, upsertBranchModule,
+		arg.TenantID,
+		arg.Flag,
+		arg.Enabled,
+		arg.BranchID,
 	)
 	return err
 }

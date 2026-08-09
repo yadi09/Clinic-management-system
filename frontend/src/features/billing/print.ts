@@ -102,6 +102,107 @@ export function printVisitReceipt(o: {
   openAndPrint(no, body);
 }
 
+/**
+ * Patient statement of account — an A4 document, not a till slip.
+ *
+ * A receipt proves one payment; a statement answers "what has this patient been
+ * charged, what have they paid, and what is still owed?". Dental treatment runs
+ * over months in instalments, so patients (and the employers/insurers who
+ * reimburse them) routinely ask for exactly this on paper.
+ *
+ * Cancelled bills are deliberately excluded: no money ever moved, and listing
+ * them makes an official document look like the patient owes more than they do.
+ */
+export function printStatement(o: {
+  clinic: string;
+  clinicContact?: string;
+  patient: string;
+  mrn?: string;
+  phone?: string;
+  currency: string;
+  lines: { date: string; description: string; status: string; amount: string }[];
+  charged: string;
+  paid: string;
+  refunded: string;
+  outstanding: string;
+  issuedBy?: string;
+}) {
+  const money = (v: string) => `${esc(o.currency)} ${Number(v || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const rows = o.lines
+    .map(
+      (l) => `<tr>
+        <td class="nw">${esc(l.date)}</td>
+        <td>${esc(l.description)}</td>
+        <td class="nw">${esc(l.status)}</td>
+        <td class="r nw">${money(l.amount)}</td>
+      </tr>`,
+    )
+    .join("");
+  const when = new Date().toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+  const body = `
+    <div class="head">
+      <div>
+        <h1>${esc(o.clinic)}</h1>
+        ${o.clinicContact ? `<div class="muted">${esc(o.clinicContact)}</div>` : ""}
+        <div class="tag">Statement of account</div>
+      </div>
+      <div class="r muted">
+        <div><b>Issued</b> ${esc(when)}</div>
+        ${o.issuedBy ? `<div>by ${esc(o.issuedBy)}</div>` : ""}
+      </div>
+    </div>
+    <div class="rule"></div>
+    <table class="meta">
+      <tr>
+        <td><span class="muted">Patient</span><br/><b>${esc(o.patient)}</b></td>
+        <td><span class="muted">Card / MRN</span><br/>${esc(o.mrn || "—")}</td>
+        <td><span class="muted">Phone</span><br/>${esc(o.phone || "—")}</td>
+      </tr>
+    </table>
+    <table class="lines">
+      <thead><tr><th class="nw">Date</th><th>Description</th><th class="nw">Status</th><th class="r nw">Amount</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="4" class="muted">No billing activity.</td></tr>`}</tbody>
+    </table>
+    <table class="totals">
+      <tr><td>Total charged</td><td class="r">${money(o.charged)}</td></tr>
+      <tr><td>Total paid</td><td class="r">${money(o.paid)}</td></tr>
+      ${Number(o.refunded || 0) > 0 ? `<tr><td>Refunded</td><td class="r">− ${money(o.refunded)}</td></tr>` : ""}
+      <tr class="grand"><td>Balance outstanding</td><td class="r">${money(o.outstanding)}</td></tr>
+    </table>
+    <div class="foot">
+      <div class="muted">This statement reflects charges recorded at the clinic as of the issue date.
+      Amounts still to be scheduled on an ongoing treatment plan are not included until billed.</div>
+      <div class="sign"><div class="line"></div>Signature &amp; stamp</div>
+    </div>`;
+  const w = window.open("", "_blank", "width=820,height=1000");
+  if (!w) return;
+  w.document.write(`<!doctype html><html><head><title>Statement — ${esc(o.patient)}</title><style>
+    @page{margin:16mm}
+    *{box-sizing:border-box}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111;margin:0;font-size:12.5px}
+    h1{font-size:19px;margin:0}
+    .muted{color:#666;font-size:11px}
+    .r{text-align:right} .nw{white-space:nowrap}
+    .head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+    .tag{margin-top:6px;display:inline-block;text-transform:uppercase;letter-spacing:.08em;font-size:10px;font-weight:700;color:#14532d}
+    .rule{height:3px;background:#14532d;margin:10px 0 14px}
+    table{width:100%;border-collapse:collapse}
+    .meta td{padding:0 12px 12px 0;vertical-align:top;width:33%}
+    .lines th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#666;border-bottom:1px solid #ddd;padding:6px 8px 6px 0}
+    .lines td{padding:6px 8px 6px 0;border-bottom:1px solid #f0f0f0;vertical-align:top}
+    .totals{margin-top:14px;margin-left:auto;width:auto;min-width:280px}
+    .totals td{padding:4px 0}
+    .totals td:last-child{padding-left:28px}
+    .totals .grand td{border-top:2px solid #14532d;font-weight:700;font-size:14px;padding-top:8px}
+    .foot{display:flex;justify-content:space-between;gap:32px;margin-top:36px;align-items:flex-end}
+    .foot .muted{max-width:60%}
+    .sign{text-align:center;font-size:10px;color:#666}
+    .sign .line{border-top:1px solid #333;width:190px;margin-bottom:4px}
+  </style></head><body>${body}
+  <script>window.onload=function(){window.print();}<\/script></body></html>`);
+  w.document.close();
+}
+
 export function printZReport(o: {
   clinic: string;
   cashier: string;

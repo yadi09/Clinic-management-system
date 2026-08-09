@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, AlertCircle, CheckCircle2, Clock, UserCheck } from "lucide-react";
+import { Activity, AlertCircle, Baby, CheckCircle2, Clock, UserCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 import { Button } from "@/components/ui/button";
@@ -12,8 +12,10 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
 import { listBranches, listDepartments, listProviders } from "@/features/admin/api";
+import { useAuth } from "@/app/auth-context";
 import { getVisit, getVitalFields, recordVitals, vitalFlag, type VitalsBody, type VitalField } from "@/features/clinical/api";
 import { assignProvider, listQueue, type QueueEntry } from "@/features/scheduling/api";
+import { PregnancyDatingDialog } from "@/features/maternity/PregnancyCalculator";
 import { DateRangeFilter, windowFor, type DateWindow } from "@/components/ui/date-range-filter";
 import { DictateButton } from "@/features/clinical/components/DictateButton";
 
@@ -23,16 +25,19 @@ function waitMins(iso: string) {
 
 export function TriagePage() {
   const qc = useQueryClient();
+  const { activeBranchId, flagOn } = useAuth();
   const branches = useQuery({ queryKey: ["branches"], queryFn: listBranches });
   const departments = useQuery({ queryKey: ["departments"], queryFn: listDepartments });
   const [dept, setDept] = useState("");
+  // Default (and re-default on branch switch) to a department in the active branch.
   useEffect(() => {
-    if (!dept && departments.data?.length) setDept(departments.data[0].id);
-  }, [departments.data, dept]);
+    const list = (departments.data ?? []).filter((d) => !activeBranchId || d.branch_id === activeBranchId);
+    if (list.length && !list.some((d) => d.id === dept)) setDept(list[0].id);
+  }, [departments.data, activeBranchId, dept]);
 
   const [win, setWin] = useState<DateWindow>(() => windowFor("today"));
 
-  const branchId = branches.data?.[0]?.id;
+  const branchId = activeBranchId ?? branches.data?.[0]?.id;
   const queue = useQuery({
     queryKey: ["triage", dept, win.from, win.to],
     queryFn: () => listQueue(dept, "triage", win),
@@ -50,6 +55,7 @@ export function TriagePage() {
   });
 
   const [vitalsFor, setVitalsFor] = useState<QueueEntry | null>(null);
+  const [datingFor, setDatingFor] = useState<string | null>(null);
   const [tab, setTab] = useState<"awaiting" | "ready" | "assigned">("awaiting");
 
   const entries = queue.data ?? [];
@@ -75,7 +81,7 @@ export function TriagePage() {
             <Select value={dept} onValueChange={setDept}>
               <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
               <SelectContent>
-                {(departments.data ?? []).map((d) => (
+                {(departments.data ?? []).filter((d) => !activeBranchId || d.branch_id === activeBranchId).map((d) => (
                   <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                 ))}
               </SelectContent>
@@ -126,6 +132,11 @@ export function TriagePage() {
               <Button variant={e.has_vitals ? "ghost" : "default"} size="sm" onClick={() => setVitalsFor(e)}>
                 <Activity className="h-4 w-4" /> {e.has_vitals ? "Edit vitals" : "Record vitals"}
               </Button>
+              {flagOn("maternity") && (
+                <Button variant="outline" size="sm" onClick={() => setDatingFor(e.patient_id)}>
+                  <Baby className="h-4 w-4" /> Dating
+                </Button>
+              )}
               {e.has_vitals && <AssignControl queueId={e.id} onAssigned={refresh} />}
             </div>
           </Card>
@@ -141,6 +152,9 @@ export function TriagePage() {
           onOpenChange={(o) => !o && setVitalsFor(null)}
           onSaved={() => { setVitalsFor(null); setTab("ready"); refresh(); }}
         />
+      )}
+      {datingFor && (
+        <PregnancyDatingDialog patientId={datingFor} open onOpenChange={(o) => !o && setDatingFor(null)} onSaved={refresh} />
       )}
     </div>
   );

@@ -59,6 +59,11 @@ func (s *Service) Book(ctx context.Context, in scheduling.BookInput) (*schedulin
 		return nil, apperr.Validation("a start time is required")
 	}
 	ends := in.StartsAt.Add(time.Duration(dur) * time.Minute)
+	// A follow-up is owned by the doctor who ordered it; default that to the actor.
+	orderedBy := in.OrderedBy
+	if in.IsFollowup && orderedBy == nil {
+		orderedBy = actor
+	}
 
 	var row schedulingdb.CreateAppointmentRow
 	if err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
@@ -66,29 +71,40 @@ func (s *Service) Book(ctx context.Context, in scheduling.BookInput) (*schedulin
 		row, e = schedulingdb.New(tx).CreateAppointment(ctx, schedulingdb.CreateAppointmentParams{
 			TenantID: tenantID, BranchID: in.BranchID, DepartmentID: in.DepartmentID, PatientID: in.PatientID,
 			ProviderID: in.ProviderID, ResourceID: in.ResourceID, StartsAt: in.StartsAt, EndsAt: ends,
-			Reason: strPtr(in.Reason), CreatedBy: actor,
+			Reason: strPtr(in.Reason), IsFollowup: in.IsFollowup, FreeUntil: in.FreeUntil,
+			OrderedBy: orderedBy, OriginEncounterID: in.OriginEncounterID, CreatedBy: actor,
 		})
 		if e != nil {
 			return e
 		}
-		return s.publisher.Publish(ctx, tx, &tenantID, "appointment", row.ID, "scheduling.appointment.booked",
-			map[string]any{"appointment_id": row.ID, "patient_id": in.PatientID, "provider_id": in.ProviderID, "starts_at": in.StartsAt})
+		event := "scheduling.appointment.booked"
+		if in.IsFollowup {
+			event = "scheduling.followup.booked"
+		}
+		return s.publisher.Publish(ctx, tx, &tenantID, "appointment", row.ID, event,
+			map[string]any{"appointment_id": row.ID, "patient_id": in.PatientID, "provider_id": in.ProviderID, "starts_at": in.StartsAt, "is_followup": in.IsFollowup})
 	}); err != nil {
 		return nil, mapBookErr(err)
 	}
 	return &scheduling.Appointment{
 		ID: row.ID, PatientID: in.PatientID, ProviderID: in.ProviderID, DepartmentID: in.DepartmentID,
-		ResourceID: in.ResourceID, StartsAt: row.StartsAt, EndsAt: row.EndsAt, Status: row.Status, Reason: in.Reason,
+		ResourceID: in.ResourceID, OrderedBy: orderedBy, OriginEncounterID: in.OriginEncounterID,
+		StartsAt: row.StartsAt, EndsAt: row.EndsAt, Status: row.Status, Reason: in.Reason, IsFollowup: in.IsFollowup, FreeUntil: in.FreeUntil,
 	}, nil
 }
 
 // List returns appointments in [from, to) for a branch, optionally one provider.
 func (s *Service) List(ctx context.Context, branchID uuid.UUID, from, to time.Time, providerID *uuid.UUID) ([]scheduling.Appointment, error) {
 	tenantID, _ := actorOf(ctx)
+	// Branch isolation: a user scoped to a concrete active branch only ever sees
+	// that branch's appointments, regardless of the branch requested by the client.
+	if ab := activeBranchOf(ctx); ab != nil {
+		branchID = *ab
+	}
 	var out []scheduling.Appointment
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		rows, e := schedulingdb.New(tx).ListAppointments(ctx, schedulingdb.ListAppointmentsParams{
-			TenantID: tenantID, BranchID: branchID, FromTs: from, ToTs: to, ProviderID: providerID,
+			TenantID: tenantID, BranchID: branchID, FromTs: from, ToTs: to, ProviderID: providerID, OnlyFollowup: false,
 		})
 		if e != nil {
 			return e
@@ -96,9 +112,97 @@ func (s *Service) List(ctx context.Context, branchID uuid.UUID, from, to time.Ti
 		for _, r := range rows {
 			out = append(out, scheduling.Appointment{
 				ID: r.ID, PatientID: r.PatientID, ProviderID: r.ProviderID, DepartmentID: r.DepartmentID,
-				ResourceID: r.ResourceID, StartsAt: r.StartsAt, EndsAt: r.EndsAt, Status: r.Status, Reason: deref(r.Reason),
+				ResourceID: r.ResourceID, OrderedBy: r.OrderedBy, OriginEncounterID: r.OriginEncounterID,
+				StartsAt: r.StartsAt, EndsAt: r.EndsAt, Status: r.Status, Reason: deref(r.Reason),
 				IsFollowup: r.IsFollowup, FreeUntil: r.FreeUntil,
-				PatientName: r.FirstName + " " + r.LastName, MRN: r.Mrn, ProviderName: r.ProviderName, DepartmentName: deref(r.DepartmentName),
+				PatientName: r.FirstName + " " + r.LastName, MRN: r.Mrn, ProviderName: r.ProviderName, ProviderActive: r.ProviderActive,
+				OrderedByName: deref(r.OrderedByName), DepartmentName: deref(r.DepartmentName),
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+// ListForPatient returns one patient's appointments across the whole date range —
+// the patient's own schedule, rather than a day on the clinic's calendar.
+//
+// Unlike List this is NOT branch-scoped by default: a patient's history belongs to
+// the patient, and a clinic with two branches should still see one timeline. A user
+// pinned to a single branch stays pinned, so branch isolation is never weakened.
+func (s *Service) ListForPatient(ctx context.Context, patientID uuid.UUID, from, to time.Time) ([]scheduling.Appointment, error) {
+	tenantID, _ := actorOf(ctx)
+	branch := activeBranchOf(ctx) // nil = "all branches" scope
+	out := []scheduling.Appointment{}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		rows, e := tx.Query(ctx,
+			`SELECT a.id, a.patient_id, a.provider_id, a.department_id, a.resource_id,
+			        a.starts_at, a.ends_at, a.status, coalesce(a.reason,''), a.is_followup, a.free_until,
+			        a.ordered_by, a.origin_encounter_id,
+			        p.first_name, coalesce(p.last_name,''), p.mrn,
+			        u.full_name, (u.status = 'active'),
+			        coalesce(ob.full_name,''), coalesce(d.name,'')
+			 FROM appointments a
+			 JOIN patients p ON p.id = a.patient_id AND p.tenant_id = a.tenant_id
+			 JOIN users u ON u.id = a.provider_id AND u.tenant_id = a.tenant_id
+			 LEFT JOIN users ob ON ob.id = a.ordered_by AND ob.tenant_id = a.tenant_id
+			 LEFT JOIN departments d ON d.id = a.department_id AND d.tenant_id = a.tenant_id
+			 WHERE a.tenant_id = $1 AND a.patient_id = $2 AND a.deleted_at IS NULL
+			   AND a.starts_at >= $3 AND a.starts_at < $4
+			   AND ($5::uuid IS NULL OR a.branch_id = $5)
+			 ORDER BY a.starts_at`,
+			tenantID, patientID, from, to, branch)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var a scheduling.Appointment
+			var first, last string
+			if e := rows.Scan(&a.ID, &a.PatientID, &a.ProviderID, &a.DepartmentID, &a.ResourceID,
+				&a.StartsAt, &a.EndsAt, &a.Status, &a.Reason, &a.IsFollowup, &a.FreeUntil,
+				&a.OrderedBy, &a.OriginEncounterID,
+				&first, &last, &a.MRN, &a.ProviderName, &a.ProviderActive,
+				&a.OrderedByName, &a.DepartmentName); e != nil {
+				return e
+			}
+			a.PatientName = strings.TrimSpace(first + " " + last)
+			out = append(out, a)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+// ListFollowups returns follow-up appointments in [from, to) for the follow-up
+// lens. Branch isolation matches List: a branch-scoped user only sees their branch.
+func (s *Service) ListFollowups(ctx context.Context, branchID uuid.UUID, from, to time.Time) ([]scheduling.Appointment, error) {
+	tenantID, _ := actorOf(ctx)
+	if ab := activeBranchOf(ctx); ab != nil {
+		branchID = *ab
+	}
+	var out []scheduling.Appointment
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		rows, e := schedulingdb.New(tx).ListFollowups(ctx, schedulingdb.ListFollowupsParams{
+			TenantID: tenantID, BranchID: branchID, FromTs: from, ToTs: to,
+		})
+		if e != nil {
+			return e
+		}
+		for _, r := range rows {
+			out = append(out, scheduling.Appointment{
+				ID: r.ID, PatientID: r.PatientID, ProviderID: r.ProviderID, DepartmentID: r.DepartmentID,
+				ResourceID: r.ResourceID, OrderedBy: r.OrderedBy, OriginEncounterID: r.OriginEncounterID,
+				StartsAt: r.StartsAt, EndsAt: r.EndsAt, Status: r.Status, Reason: deref(r.Reason),
+				IsFollowup: r.IsFollowup, FreeUntil: r.FreeUntil,
+				PatientName: r.FirstName + " " + r.LastName, MRN: r.Mrn, ProviderName: r.ProviderName, ProviderActive: r.ProviderActive,
+				OrderedByName: deref(r.OrderedByName), DepartmentName: deref(r.DepartmentName),
 			})
 		}
 		return nil
@@ -181,6 +285,32 @@ func (s *Service) MarkFollowup(ctx context.Context, id uuid.UUID, freeUntil time
 	return nil
 }
 
+// ReassignProvider hands a follow-up (or any appointment) to a covering doctor:
+// it changes who attends (provider_id) while leaving ordered_by intact, so the
+// record still shows who ordered it. A time clash with the new provider's schedule
+// is rejected by the DB exclusion constraint (APPOINTMENT_CONFLICT).
+func (s *Service) ReassignProvider(ctx context.Context, id, providerID uuid.UUID, note string) error {
+	tenantID, actor := actorOf(ctx)
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := schedulingdb.New(tx)
+		row, e := q.ReassignAppointmentProvider(ctx, schedulingdb.ReassignAppointmentProviderParams{
+			ProviderID: providerID, TenantID: tenantID, ID: id,
+		})
+		if e != nil {
+			return e
+		}
+		return s.publisher.Publish(ctx, tx, &tenantID, "appointment", id, "scheduling.appointment.reassigned",
+			map[string]any{"appointment_id": id, "patient_id": row.PatientID, "provider_id": providerID, "ordered_by": row.OrderedBy, "reassigned_by": actor, "note": note})
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return apperr.NotFound("APPOINTMENT_NOT_FOUND", "appointment not found")
+	}
+	if err != nil {
+		return mapBookErr(err)
+	}
+	return nil
+}
+
 // CheckIn marks an appointment checked-in and enqueues the patient (FR-QUE-01).
 // Routing: to triage (nurse assigns later) or straight to a doctor (the chosen
 // provider, defaulting to the appointment's booked provider).
@@ -216,6 +346,7 @@ func (s *Service) CheckIn(ctx context.Context, id uuid.UUID, in scheduling.Check
 		// (no default fee) enqueue immediately.
 		raised, e := s.billing.RaiseIntakeChargesTx(ctx, tx, billing.IntakeInput{
 			PatientID: appt.PatientID, BranchID: appt.BranchID, DepartmentID: *appt.DepartmentID, ToTriage: in.ToTriage, ProviderID: prov,
+			AppointmentID: &id,
 		})
 		if e != nil {
 			return e
@@ -306,7 +437,7 @@ func (s *Service) ListQueue(ctx context.Context, departmentID uuid.UUID, stage s
 	}
 	var out []scheduling.QueueEntry
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		rows, e := schedulingdb.New(tx).ListQueue(ctx, schedulingdb.ListQueueParams{TenantID: tenantID, DepartmentID: departmentID, Since: from, Until: until, Stage: st})
+		rows, e := schedulingdb.New(tx).ListQueue(ctx, schedulingdb.ListQueueParams{TenantID: tenantID, BranchID: activeBranchOf(ctx), DepartmentID: departmentID, Since: from, Until: until, Stage: st})
 		if e != nil {
 			return e
 		}
@@ -335,7 +466,7 @@ func (s *Service) ListUnassigned(ctx context.Context, from time.Time, until *tim
 	}
 	var out []scheduling.WorklistEntry
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		rows, e := schedulingdb.New(tx).ListUnassignedReady(ctx, schedulingdb.ListUnassignedReadyParams{TenantID: tenantID, Since: from, Until: until})
+		rows, e := schedulingdb.New(tx).ListUnassignedReady(ctx, schedulingdb.ListUnassignedReadyParams{TenantID: tenantID, BranchID: activeBranchOf(ctx), Since: from, Until: until})
 		if e != nil {
 			return e
 		}
@@ -363,7 +494,7 @@ func (s *Service) ListWorklist(ctx context.Context, providerID uuid.UUID, from t
 	}
 	var out []scheduling.WorklistEntry
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		rows, e := schedulingdb.New(tx).ListWorklist(ctx, schedulingdb.ListWorklistParams{TenantID: tenantID, AssignedProviderID: &providerID, Since: from, Until: until})
+		rows, e := schedulingdb.New(tx).ListWorklist(ctx, schedulingdb.ListWorklistParams{TenantID: tenantID, AssignedProviderID: &providerID, BranchID: activeBranchOf(ctx), Since: from, Until: until})
 		if e != nil {
 			return e
 		}
@@ -474,6 +605,16 @@ func actorOf(ctx context.Context) (uuid.UUID, *uuid.UUID) {
 	}
 	tid, _ := tenancy.TenantIDFromContext(ctx)
 	return tid, nil
+}
+
+// activeBranchOf returns the branch the request is scoped to, or nil for the
+// consolidated "all branches" view (clinic-wide users). Branch-scoped reads pass
+// this so operational data (queues, appointments) never leaks across branches.
+func activeBranchOf(ctx context.Context) *uuid.UUID {
+	if p, ok := tenancy.PrincipalFromContext(ctx); ok {
+		return p.ActiveBranchID
+	}
+	return nil
 }
 
 func strPtr(s string) *string {

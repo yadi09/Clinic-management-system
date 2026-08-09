@@ -62,6 +62,10 @@ var BasePermissions = []struct{ Code, Desc string }{
 	{"lab.manage", "Manage the lab test catalog"},
 	{"settings.manage", "Manage tenant/branch settings"},
 	{"audit.read", "View audit logs"},
+	{"bed.manage", "Configure wards/beds and view bed reports"},
+	{"bed.assign", "Admit, discharge and transfer patients between beds"},
+	{"dental.manage", "Manage the tooth chart, treatment plan, dental visits and dental bills"},
+	{"dental.read", "View the tooth chart, treatment plans, session dates and dental balance (front desk)"},
 }
 
 // BusinessFlags are the default feature flags for a Business-tier tenant.
@@ -73,15 +77,33 @@ var BusinessFlags = map[string]bool{
 	"insurance":        false,
 	"telemedicine":     false,
 	"hr":               false,
+	"maternity":        false,
+	"inpatient":        false,
+	"dental":           false,
+}
+
+// ClinicPresets map a clinic type to the flag overrides that specialization
+// implies. Applied on top of BusinessFlags at provisioning, then overridden by
+// any explicit caller choices. A dental clinic runs the dental workspace and
+// turns off the general-medical satellites (lab/pharmacy/inventory) it doesn't use.
+var ClinicPresets = map[string]map[string]bool{
+	"dental": {
+		"dental":     true,
+		"laboratory": false,
+		"pharmacy":   false,
+		"inventory":  false,
+		"maternity":  false,
+		"inpatient":  false,
+	},
 }
 
 // RoleGrants is the canonical permission set per operational role.
 var RoleGrants = map[string][]string{
-	"branch_manager":   {"patient.create", "patient.read", "patient.update", "patient.search", "appointment.manage", "queue.manage", "triage.manage", "payment.charge", "payment.collect", "payment.waive", "billing.manage", "user.read"},
-	"receptionist":     {"patient.create", "patient.read", "patient.update", "patient.search", "appointment.manage", "queue.manage", "payment.charge"},
-	"doctor":           {"patient.read", "patient.search", "encounter.manage", "prescription.create", "queue.manage", "appointment.manage", "lab.order"},
-	"nurse":            {"patient.read", "patient.search", "triage.manage", "queue.manage"},
-	"cashier":          {"payment.charge", "payment.collect", "payment.waive", "patient.read", "patient.search"},
+	"branch_manager":   {"patient.create", "patient.read", "patient.update", "patient.search", "appointment.manage", "queue.manage", "triage.manage", "payment.charge", "payment.collect", "payment.waive", "billing.manage", "user.read", "bed.manage", "bed.assign", "dental.read"},
+	"receptionist":     {"patient.create", "patient.read", "patient.update", "patient.search", "appointment.manage", "queue.manage", "payment.charge", "bed.assign", "dental.read"},
+	"doctor":           {"patient.read", "patient.search", "encounter.manage", "prescription.create", "queue.manage", "appointment.manage", "lab.order", "bed.assign", "dental.manage", "dental.read"},
+	"nurse":            {"patient.read", "patient.search", "triage.manage", "queue.manage", "bed.assign"},
+	"cashier":          {"payment.charge", "payment.collect", "payment.waive", "patient.read", "patient.search", "dental.read"},
 	"pharmacist":       {"patient.read", "patient.search", "pharmacy.read", "pharmacy.dispense", "pharmacy.stock", "pharmacy.sell"},
 	"pharmacy_manager": {"patient.read", "patient.search", "pharmacy.read", "pharmacy.dispense", "pharmacy.stock", "pharmacy.sell", "pharmacy.manage"},
 	"lab_technician":   {"patient.read", "patient.search", "lab.process"},
@@ -96,7 +118,9 @@ type Params struct {
 	OwnerName         string
 	OwnerPasswordHash string          // pre-hashed (Argon2id)
 	OwnerStatus       string          // "active" (seed/provision) — invited owners may differ later
-	Flags             map[string]bool // optional module-entitlement overrides (merged over BusinessFlags)
+	ClinicType        string          // "general" (default) | "dental" — applies a flag preset
+	PlanCode          string          // subscription plan code (default "business")
+	Flags             map[string]bool // optional module-entitlement overrides (merged over BusinessFlags + preset)
 }
 
 // Result returns the created ids so callers can layer more on (demo staff, catalogs).
@@ -122,13 +146,30 @@ func BootstrapTenant(ctx context.Context, tx pgx.Tx, p Params) (Result, error) {
 	if p.OwnerStatus == "" {
 		p.OwnerStatus = "active"
 	}
+	if p.ClinicType == "" {
+		p.ClinicType = "general"
+	}
 
-	// Plan (global) + permission catalogue.
+	// Plan (global) + permission catalogue. Ensure the baseline 'business' plan
+	// exists (idempotent seed), then resolve the requested plan by code (sample
+	// plans are seeded by migration 00036); fall back to business when unknown.
+	var businessID uuid.UUID
 	if err := tx.QueryRow(ctx,
 		`INSERT INTO plans (code, name, branch_limit, user_limit, storage_gb, audit_retention_days, price_monthly)
 		 VALUES ('business','Business',10,100,500,1095,0)
-		 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name RETURNING id`).Scan(&res.PlanID); err != nil {
+		 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name RETURNING id`).Scan(&businessID); err != nil {
 		return res, fmt.Errorf("plan: %w", err)
+	}
+	res.PlanID = businessID
+	if code := p.PlanCode; code != "" && code != "business" {
+		// Only accept a plan scoped to this clinic's type (or a universal 'all' plan);
+		// otherwise keep the business fallback.
+		var pid uuid.UUID
+		if e := tx.QueryRow(ctx,
+			`SELECT id FROM plans WHERE code = $1 AND clinic_type IN ('all', $2)`,
+			code, p.ClinicType).Scan(&pid); e == nil {
+			res.PlanID = pid
+		}
 	}
 	for _, perm := range BasePermissions {
 		if _, err := tx.Exec(ctx,
@@ -140,10 +181,10 @@ func BootstrapTenant(ctx context.Context, tx pgx.Tx, p Params) (Result, error) {
 
 	// Tenant.
 	if err := tx.QueryRow(ctx,
-		`INSERT INTO tenants (name, slug, status, plan_id, onboarded_at)
-		 VALUES ($1, $2, 'active', $3, now())
-		 ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, status = 'active'
-		 RETURNING id`, p.Name, p.Slug, res.PlanID).Scan(&res.TenantID); err != nil {
+		`INSERT INTO tenants (name, slug, status, plan_id, clinic_type, onboarded_at)
+		 VALUES ($1, $2, 'active', $3, $4, now())
+		 ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, status = 'active', clinic_type = EXCLUDED.clinic_type
+		 RETURNING id`, p.Name, p.Slug, res.PlanID, p.ClinicType).Scan(&res.TenantID); err != nil {
 		return res, fmt.Errorf("tenant: %w", err)
 	}
 
@@ -159,11 +200,18 @@ func BootstrapTenant(ctx context.Context, tx pgx.Tx, p Params) (Result, error) {
 		return res, fmt.Errorf("billing account: %w", err)
 	}
 
-	// Feature flags (module entitlements): BusinessFlags defaults, overridden by any
-	// caller-supplied choices for known flags.
+	// Feature flags (module entitlements): BusinessFlags defaults, then the clinic
+	// type's preset, then any caller-supplied choices for known flags (each layer
+	// wins over the previous). This is how a dental clinic gets the dental module on
+	// and its unused general-medical satellites off out of the box.
 	flags := map[string]bool{}
 	for k, v := range BusinessFlags {
 		flags[k] = v
+	}
+	for k, v := range ClinicPresets[p.ClinicType] {
+		if _, known := BusinessFlags[k]; known {
+			flags[k] = v
+		}
 	}
 	for k, v := range p.Flags {
 		if _, known := BusinessFlags[k]; known {
@@ -172,8 +220,11 @@ func BootstrapTenant(ctx context.Context, tx pgx.Tx, p Params) (Result, error) {
 	}
 	for flag, enabled := range flags {
 		if _, err := tx.Exec(ctx,
+			// Tenant-default flags carry no branch_id, so target the partial unique
+			// index (tenant_id, flag) WHERE branch_id IS NULL (branch overrides use a
+			// separate partial index — see migration 00026).
 			`INSERT INTO feature_flags (tenant_id, flag, enabled, source) VALUES ($1,$2,$3,'plan')
-			 ON CONFLICT (tenant_id, flag) DO UPDATE SET enabled = EXCLUDED.enabled`,
+			 ON CONFLICT (tenant_id, flag) WHERE branch_id IS NULL DO UPDATE SET enabled = EXCLUDED.enabled`,
 			res.TenantID, flag, enabled); err != nil {
 			return res, fmt.Errorf("flag %s: %w", flag, err)
 		}
@@ -268,19 +319,29 @@ func BootstrapTenant(ctx context.Context, tx pgx.Tx, p Params) (Result, error) {
 		return res, fmt.Errorf("department lookup: %w", e)
 	}
 
-	// Default intake services (so the billing gate works out of the box).
-	for _, s := range []struct {
+	// Default intake services. A general clinic charges Registration + Consultation
+	// on every visit (both default → auto-selected at reception). A dental clinic
+	// bills through the treatment plan instead, so reception should NOT force a
+	// per-visit charge: seed a single optional Registration/Visit fee (not default)
+	// and no Consultation.
+	type svc struct {
 		Code, Name string
 		Price      string
-	}{
-		{"REG", "Registration fee", "50"},
-		{"CONSULT", "Consultation", "200"},
-	} {
+		IsDefault  bool
+	}
+	services := []svc{
+		{"REG", "Registration fee", "50", true},
+		{"CONSULT", "Consultation", "200", true},
+	}
+	if p.ClinicType == "dental" {
+		services = []svc{{"REG", "Registration / visit fee", "100", false}}
+	}
+	for _, s := range services {
 		if _, err := tx.Exec(ctx,
 			`INSERT INTO service_items (tenant_id, code, name, category, price, is_default)
-			 VALUES ($1,$2,$3,'general',$4,true)
+			 VALUES ($1,$2,$3,'general',$4,$5)
 			 ON CONFLICT (tenant_id, lower(code)) WHERE deleted_at IS NULL DO NOTHING`,
-			res.TenantID, s.Code, s.Name, s.Price); err != nil {
+			res.TenantID, s.Code, s.Name, s.Price, s.IsDefault); err != nil {
 			return res, fmt.Errorf("default service %s: %w", s.Code, err)
 		}
 	}

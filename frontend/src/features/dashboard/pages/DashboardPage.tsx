@@ -29,7 +29,7 @@ export function DashboardPage() {
   const canSearch = can("patient.search") || can("patient.read");
 
   const patients = useQuery({
-    queryKey: ["patients", "", 1],
+    queryKey: ["patients", "", 1, 1],
     queryFn: () => searchPatients("", 1, 1),
     enabled: canSearch,
   });

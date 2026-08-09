@@ -1,12 +1,26 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { CalendarPlus, ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeftRight,
+  CalendarClock,
+  CalendarPlus,
+  ChevronLeft,
+  ChevronRight,
+  MoreHorizontal,
+  Repeat2,
+  Stethoscope,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,219 +29,714 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "@/components/ui/sonner";
+import { AppError } from "@/lib/api-client";
 import { useAuth } from "@/app/auth-context";
-import { listBranches } from "@/features/admin/api";
+import { listBranches, listProviders } from "@/features/admin/api";
 import {
   checkInAppointment,
   listAppointments,
+  listFollowups,
+  reassignProvider,
   setAppointmentStatus,
   type Appointment,
 } from "@/features/scheduling/api";
 import { BookingDialog } from "@/features/scheduling/components/BookingDialog";
+import { listDentalSessions, type DentalSessionCal } from "@/features/dental/api";
+import { ETH_MONTHS, formatEthiopian, formatEthiopianRange, toEthiopian } from "@/lib/ethiopian";
+
+type View = "day" | "week" | "month" | "followups";
 
 function statusVariant(s: string): "default" | "brand" | "success" | "warning" | "destructive" | "outline" {
   return ({ booked: "default", confirmed: "brand", checked_in: "success", completed: "outline", cancelled: "destructive", no_show: "warning" } as const)[s] ?? "default";
 }
+/** Left border colour for calendar event blocks, by status. */
+function eventAccent(s: string) {
+  return ({ booked: "border-l-slate-400", confirmed: "border-l-primary", checked_in: "border-l-emerald-500", completed: "border-l-slate-300", cancelled: "border-l-rose-400", no_show: "border-l-amber-500" } as Record<string, string>)[s] ?? "border-l-slate-400";
+}
 const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const fmtDay = (iso: string) => new Date(iso).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+const fmtShort = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const mondayOf = (d: Date) => addDays(startOfDay(d), -((d.getDay() + 6) % 7));
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+// Dental treatment session: a visually distinct layer from appointments, coloured
+// by money state so the doctor spots owed/paid at a glance.
+function sessOwes(s: DentalSessionCal) { return (s.status === "done" || s.pay_later) && s.payment !== "paid"; }
+function sessAccent(s: DentalSessionCal) {
+  if (s.payment === "paid") return "border-l-emerald-500 bg-emerald-50";
+  if (sessOwes(s)) return "border-l-rose-500 bg-rose-50";
+  if (s.payment === "billed") return "border-l-amber-500 bg-amber-50";
+  return "border-l-violet-500 bg-violet-50";
+}
+/** Compact treatment-session chip for month/week cells. Static (div) in month cells. */
+function SessionChip({ s, onOpen }: { s: DentalSessionCal; onOpen?: (pid: string) => void }) {
+  const inner = (
+    <>
+      <Stethoscope className="h-2.5 w-2.5 shrink-0 text-violet-600" />
+      <span className="truncate font-medium text-brand">{s.patient_name}</span>
+      <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">S{s.seq}/{s.session_count}</span>
+    </>
+  );
+  const cls = `flex items-center gap-1 truncate rounded border-l-2 px-1 py-0.5 text-[11px] ${sessAccent(s)}`;
+  const title = `${s.title} — session ${s.seq}/${s.session_count} · ${s.patient_name}${sessOwes(s) ? " · owes" : ""}`;
+  return onOpen
+    ? <button type="button" title={title} className={`${cls} w-full text-left hover:shadow-sm`} onClick={(e) => { e.stopPropagation(); onOpen(s.patient_id); }}>{inner}</button>
+    : <div title={title} className={cls}>{inner}</div>;
+}
+
+const isActive = (s: string) => s !== "cancelled" && s !== "completed" && s !== "no_show";
+/** A handed-off follow-up: the ordering doctor differs from who now attends. */
+const handedOff = (a: Appointment) => a.is_followup && !!a.ordered_by && a.ordered_by !== a.provider_id;
 
 export function AppointmentsPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { can } = useAuth();
-  const [view, setView] = useState<"day" | "week">("day");
+  const { can, flagOn, activeBranchId } = useAuth();
+  const [view, setView] = useState<View>("week");
   const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
+  const [providerFilter, setProviderFilter] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Appointment | null>(null);
+  const [reassign, setReassign] = useState<Appointment | null>(null);
 
   const branches = useQuery({ queryKey: ["branches"], queryFn: listBranches });
-  const branchId = branches.data?.[0]?.id ?? "";
+  const branchId = activeBranchId ?? branches.data?.[0]?.id ?? "";
+  const providers = useQuery({ queryKey: ["providers"], queryFn: listProviders });
 
-  const { from, to, days } = useMemo(() => {
+  const { from, to, weekDays, monthDays } = useMemo(() => {
     if (view === "day") {
       const f = startOfDay(anchor);
-      const t = new Date(f.getTime() + 86400000);
-      return { from: f, to: t, days: [f] };
+      return { from: f, to: addDays(f, 1), weekDays: [], monthDays: [] };
     }
-    const start = startOfDay(anchor);
-    start.setDate(start.getDate() - ((start.getDay() + 6) % 7)); // Monday
-    const ds = Array.from({ length: 7 }, (_, i) => new Date(start.getTime() + i * 86400000));
-    return { from: start, to: new Date(start.getTime() + 7 * 86400000), days: ds };
+    if (view === "week") {
+      const start = mondayOf(anchor);
+      return { from: start, to: addDays(start, 7), weekDays: Array.from({ length: 7 }, (_, i) => addDays(start, i)), monthDays: [] };
+    }
+    // month — 6-week grid starting on the Monday of the week containing the 1st
+    const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+    const gridStart = mondayOf(first);
+    const md = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
+    return { from: gridStart, to: addDays(gridStart, 42), weekDays: [], monthDays: md };
   }, [view, anchor]);
 
   const appts = useQuery({
     queryKey: ["appointments", branchId, from.toISOString(), to.toISOString()],
     queryFn: () => listAppointments(branchId, from.toISOString(), to.toISOString()),
-    enabled: !!branchId,
+    enabled: !!branchId && view !== "followups",
+  });
+  const followups = useQuery({
+    queryKey: ["followups", branchId],
+    queryFn: () => listFollowups(branchId),
+    enabled: !!branchId && view === "followups",
   });
 
-  const byDay = useMemo(() => {
-    const m: Record<string, Appointment[]> = {};
-    for (const a of appts.data ?? []) (m[dayKey(new Date(a.starts_at))] ??= []).push(a);
-    return m;
-  }, [appts.data]);
+  const items = useMemo(() => {
+    const list = appts.data ?? [];
+    return providerFilter === "all" ? list : list.filter((a) => a.provider_id === providerFilter);
+  }, [appts.data, providerFilter]);
 
+  // Dental treatment sessions overlaid on the calendar (clinic-wide, follow-up visits).
+  const dentalOn = flagOn("dental") && (can("dental.manage") || can("appointment.manage"));
+  const calSessions = useQuery({
+    queryKey: ["dental-cal", from.toISOString(), to.toISOString()],
+    queryFn: () => listDentalSessions(dayKey(from), dayKey(addDays(to, -1))),
+    enabled: dentalOn && view !== "followups",
+  });
+  const fuFrom = dayKey(addDays(startOfDay(new Date()), -30));
+  const fuTo = dayKey(addDays(startOfDay(new Date()), 120));
+  const fuSessions = useQuery({
+    queryKey: ["dental-fu", fuFrom, fuTo],
+    queryFn: () => listDentalSessions(fuFrom, fuTo),
+    enabled: dentalOn && view === "followups",
+  });
+  const sessByDay = useMemo(() => {
+    const m: Record<string, DentalSessionCal[]> = {};
+    for (const s of calSessions.data ?? []) (m[s.scheduled_date] ??= []).push(s);
+    return m;
+  }, [calSessions.data]);
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["appointments"] });
+    qc.invalidateQueries({ queryKey: ["followups"] });
+  };
   const checkIn = useMutation({
     mutationFn: (id: string) => checkInAppointment(id),
-    onSuccess: (r) => {
-      toast.success(r.gated ? "Checked in — billed; patient joins the queue once payment is collected." : "Checked in — added to queue");
-      qc.invalidateQueries({ queryKey: ["appointments"] });
-    },
-    onError: () => toast.error("Check-in failed"),
+    onSuccess: (r) => { toast.success(r.gated ? "Checked in — billed; joins the queue once payment is collected." : "Checked in — added to queue."); invalidate(); },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Check-in failed"),
   });
-  const cancel = useMutation({
-    mutationFn: (id: string) => setAppointmentStatus(id, "cancelled"),
-    onSuccess: () => {
-      toast.success("Appointment cancelled");
-      qc.invalidateQueries({ queryKey: ["appointments"] });
-    },
+  const status = useMutation({
+    mutationFn: ({ id, s }: { id: string; s: string }) => setAppointmentStatus(id, s),
+    onSuccess: (_r, v) => { toast.success(({ cancelled: "Appointment cancelled", completed: "Marked completed", no_show: "Marked no-show", confirmed: "Confirmed" } as Record<string, string>)[v.s] ?? "Updated"); invalidate(); },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not update"),
   });
 
   const shift = (n: number) => {
-    const d = new Date(anchor);
-    d.setDate(d.getDate() + n * (view === "day" ? 1 : 7));
-    setAnchor(startOfDay(d));
+    if (view === "month") setAnchor(startOfDay(new Date(anchor.getFullYear(), anchor.getMonth() + n, 1)));
+    else setAnchor(addDays(anchor, n * (view === "week" ? 7 : 1)));
   };
 
   const label =
-    view === "day"
-      ? anchor.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })
-      : `${days[0].toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${days[6].toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+    view === "week"
+      ? `${weekDays[0]?.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${weekDays[6]?.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })} · ${formatEthiopianRange(from, to)}`
+      : view === "month"
+        ? `${anchor.toLocaleDateString(undefined, { month: "long", year: "numeric" })} · ${formatEthiopianRange(new Date(anchor.getFullYear(), anchor.getMonth(), 1), new Date(anchor.getFullYear(), anchor.getMonth() + 1, 1))}`
+        : view === "followups"
+          ? "Follow-ups needing attention and coming up"
+          : `${anchor.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })} · ${formatEthiopian(anchor)}`;
+
+  const dayItems = useMemo(() => items.filter((a) => dayKey(new Date(a.starts_at)) === dayKey(anchor)), [items, anchor]);
+
+  const actions: Actions = {
+    onCheckIn: (id) => checkIn.mutate(id),
+    onReassign: (a) => setReassign(a),
+    onReschedule: (a) => { setEditing(a); setDialogOpen(true); },
+    onStatus: (id, s) => status.mutate({ id, s }),
+    onOpenPatient: (pid) => navigate(`/patients/${pid}`),
+    onOpenDay: (d) => { setAnchor(startOfDay(d)); setView("day"); },
+    canQueue: can("queue.manage"),
+  };
 
   return (
-    <div className="space-y-6">
+    <div className="flex h-[calc(100dvh-8rem)] min-h-[560px] flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1>Appointments</h1>
           <p className="text-sm text-muted-foreground">{label}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex rounded-md border bg-card p-0.5">
-            {(["day", "week"] as const).map((v) => (
+            {(["day", "week", "month", "followups"] as const).map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
-                className={`rounded px-3 py-1 text-sm font-medium capitalize ${view === v ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                className={`rounded px-3 py-1 text-sm font-medium capitalize ${view === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
-                {v}
+                {v === "followups" ? "Follow-ups" : v}
               </button>
             ))}
           </div>
-          <Button variant="outline" size="icon" onClick={() => shift(-1)}><ChevronLeft /></Button>
-          <Button variant="outline" size="sm" onClick={() => setAnchor(startOfDay(new Date()))}>Today</Button>
-          <Button variant="outline" size="icon" onClick={() => shift(1)}><ChevronRight /></Button>
+          {view !== "followups" && (providers.data?.length ?? 0) > 1 && (
+            <Select value={providerFilter} onValueChange={setProviderFilter}>
+              <SelectTrigger className="w-[170px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All providers</SelectItem>
+                {(providers.data ?? []).map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {view !== "followups" && (
+            <>
+              <Button variant="outline" size="icon" onClick={() => shift(-1)}><ChevronLeft /></Button>
+              <Button variant="outline" size="sm" onClick={() => setAnchor(startOfDay(new Date()))}>Today</Button>
+              <Button variant="outline" size="icon" onClick={() => shift(1)}><ChevronRight /></Button>
+            </>
+          )}
           {can("appointment.manage") && branchId && (
-            <Button onClick={() => { setEditing(null); setDialogOpen(true); }}>
-              <CalendarPlus /> Book
-            </Button>
+            <Button onClick={() => { setEditing(null); setDialogOpen(true); }}><CalendarPlus /> Book</Button>
           )}
         </div>
       </div>
 
-      {!branchId && !branches.isLoading ? (
-        <Card className="p-10 text-center text-sm text-muted-foreground">Add a branch in Settings to start booking.</Card>
-      ) : appts.isLoading ? (
-        <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}</div>
-      ) : view === "day" ? (
-        <DayAgenda
-          items={byDay[dayKey(anchor)] ?? []}
-          onCheckIn={(id) => checkIn.mutate(id)}
-          onCancel={(id) => cancel.mutate(id)}
-          onReschedule={(a) => { setEditing(a); setDialogOpen(true); }}
-          onOpenPatient={(pid) => navigate(`/patients/${pid}`)}
-        />
-      ) : (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-7">
-          {days.map((d) => (
-            <Card key={dayKey(d)} className="min-h-[120px] p-3">
-              <p className="mb-2 text-xs font-semibold text-muted-foreground">
-                {d.toLocaleDateString(undefined, { weekday: "short" })} {d.getDate()}
-              </p>
-              <div className="space-y-1.5">
-                {(byDay[dayKey(d)] ?? []).map((a) => (
-                  <div key={a.id} className="rounded-md bg-secondary px-2 py-1 text-xs">
-                    <span className="font-semibold text-brand">{fmtTime(a.starts_at)}</span> {a.patient_name}
-                  </div>
-                ))}
-                {!(byDay[dayKey(d)] ?? []).length && <p className="text-xs text-muted-foreground">—</p>}
-              </div>
-            </Card>
-          ))}
+      {dentalOn && view !== "followups" && (
+        <div className="-mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded border-l-2 border-l-primary bg-secondary/70" /> Appointment</span>
+          <span className="flex items-center gap-1"><Repeat2 className="h-3 w-3 text-primary" /> Follow-up visit</span>
+          <span className="flex items-center gap-1"><Stethoscope className="h-3 w-3 text-violet-600" /> Treatment session</span>
+          <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded border-l-2 border-l-rose-500 bg-rose-50" /> owes</span>
+          <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded border-l-2 border-l-emerald-500 bg-emerald-50" /> paid</span>
         </div>
       )}
 
+      <div className="min-h-0 flex-1">
+        {!branchId && !branches.isLoading ? (
+          <Card className="flex h-full items-center justify-center p-10 text-center text-sm text-muted-foreground">Add a branch in Settings to start booking.</Card>
+        ) : view === "followups" ? (
+          <div className="h-full space-y-8 overflow-y-auto pr-1">
+            {dentalOn && <DentalSessionsLens q={fuSessions} actions={actions} />}
+            <FollowupsLens q={followups} actions={actions} />
+          </div>
+        ) : appts.isLoading ? (
+          <Card className="flex h-full flex-col gap-2 p-4">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</Card>
+        ) : view === "day" ? (
+          <DayLanes items={dayItems} sessions={sessByDay[dayKey(anchor)] ?? []} providers={providers.data ?? []} filter={providerFilter} actions={actions} />
+        ) : view === "week" ? (
+          <WeekTimeGrid days={weekDays} items={items} sessByDay={sessByDay} actions={actions} />
+        ) : (
+          <MonthGrid days={monthDays} monthIndex={anchor.getMonth()} items={items} sessByDay={sessByDay} actions={actions} />
+        )}
+      </div>
+
       {branchId && (
-        <BookingDialog
-          open={dialogOpen}
-          onOpenChange={setDialogOpen}
-          branchId={branchId}
-          defaultDate={dayKey(anchor)}
-          existing={editing}
-          onSaved={() => qc.invalidateQueries({ queryKey: ["appointments"] })}
-        />
+        <BookingDialog open={dialogOpen} onOpenChange={setDialogOpen} branchId={branchId} defaultDate={dayKey(anchor)} existing={editing} onSaved={invalidate} />
       )}
+      <ReassignDialog appt={reassign} onOpenChange={(o) => !o && setReassign(null)} providers={providers.data ?? []} onDone={invalidate} />
     </div>
   );
 }
 
-function DayAgenda({
-  items,
-  onCheckIn,
-  onCancel,
-  onReschedule,
-  onOpenPatient,
-}: {
-  items: Appointment[];
+type Actions = {
   onCheckIn: (id: string) => void;
-  onCancel: (id: string) => void;
+  onReassign: (a: Appointment) => void;
   onReschedule: (a: Appointment) => void;
+  onStatus: (id: string, s: string) => void;
   onOpenPatient: (pid: string) => void;
-}) {
-  if (items.length === 0) {
-    return <Card className="p-12 text-center text-sm text-muted-foreground">No appointments scheduled.</Card>;
+  onOpenDay: (d: Date) => void;
+  canQueue: boolean;
+};
+
+/** Coverage chip for a follow-up: attended / covered until date / cover expired. */
+function CoverageBadge({ a }: { a: Appointment }) {
+  if (!a.is_followup) return null;
+  if (a.status === "completed") return <Badge variant="outline">attended</Badge>;
+  if (a.free_until && new Date(a.free_until) < new Date()) return <Badge variant="warning">cover expired</Badge>;
+  if (a.free_until) return <Badge variant="success">covered → {fmtShort(a.free_until)}</Badge>;
+  return <Badge variant="success">covered</Badge>;
+}
+
+function ApptMenu({ a, actions }: { a: Appointment; actions: Actions }) {
+  const active = isActive(a.status);
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger className="rounded-md p-1.5 hover:bg-accent" onClick={(e) => e.stopPropagation()}><MoreHorizontal className="h-4 w-4" /></DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {active && a.status !== "checked_in" && actions.canQueue && <DropdownMenuItem onSelect={() => actions.onCheckIn(a.id)}>Check in</DropdownMenuItem>}
+        {active && <DropdownMenuItem onSelect={() => actions.onReassign(a)}>Reassign doctor</DropdownMenuItem>}
+        {active && <DropdownMenuItem onSelect={() => actions.onReschedule(a)}>Reschedule</DropdownMenuItem>}
+        {active && a.status !== "confirmed" && a.status !== "checked_in" && <DropdownMenuItem onSelect={() => actions.onStatus(a.id, "confirmed")}>Confirm</DropdownMenuItem>}
+        {active && <DropdownMenuSeparator />}
+        {active && <DropdownMenuItem onSelect={() => actions.onStatus(a.id, "completed")}>Mark completed</DropdownMenuItem>}
+        {active && <DropdownMenuItem onSelect={() => actions.onStatus(a.id, "no_show")}>Mark no-show</DropdownMenuItem>}
+        {active && <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => actions.onStatus(a.id, "cancelled")}>Cancel</DropdownMenuItem>}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function ApptCard({ a, actions }: { a: Appointment; actions: Actions }) {
+  return (
+    <div className={`rounded-lg border border-l-4 bg-background p-3 shadow-sm ${eventAccent(a.status)}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold tabular-nums text-brand">{fmtTime(a.starts_at)}<span className="font-normal text-muted-foreground"> – {fmtTime(a.ends_at)}</span></div>
+          <button className="mt-0.5 block truncate font-medium text-brand hover:underline" onClick={() => actions.onOpenPatient(a.patient_id)}>{a.patient_name}</button>
+          <div className="truncate text-xs text-muted-foreground">{a.mrn}{a.reason ? ` · ${a.reason}` : ""}</div>
+        </div>
+        <ApptMenu a={a} actions={actions} />
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <Badge variant={statusVariant(a.status)}>{a.status.replace(/_/g, " ")}</Badge>
+        {a.is_followup && <Badge variant="brand"><Repeat2 className="mr-1 h-3 w-3" /> follow-up</Badge>}
+        <CoverageBadge a={a} />
+        {!a.provider_active && <Badge variant="warning"><AlertTriangle className="mr-1 h-3 w-3" /> needs handoff</Badge>}
+      </div>
+      {handedOff(a) && a.ordered_by_name && <p className="mt-1.5 text-xs text-muted-foreground">Ordered by {a.ordered_by_name} · handled by {a.provider_name}</p>}
+    </div>
+  );
+}
+
+function DayLanes({ items, sessions, providers, filter, actions }: { items: Appointment[]; sessions: DentalSessionCal[]; providers: { id: string; full_name: string }[]; filter: string; actions: Actions }) {
+  const lanes = useMemo(() => {
+    const byProvider = new Map<string, Appointment[]>();
+    for (const a of items) (byProvider.get(a.provider_id) ?? byProvider.set(a.provider_id, []).get(a.provider_id)!).push(a);
+    const nameOf = (id: string) => providers.find((p) => p.id === id)?.full_name ?? items.find((a) => a.provider_id === id)?.provider_name ?? "Provider";
+    return [...byProvider.entries()]
+      .map(([id, list]) => ({ id, name: nameOf(id), list: list.sort((a, b) => a.starts_at.localeCompare(b.starts_at)), inactive: list.some((a) => !a.provider_active) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [items, providers]);
+
+  if (items.length === 0 && sessions.length === 0) {
+    return <Card className="flex h-full items-center justify-center p-12 text-center text-sm text-muted-foreground">{filter === "all" ? "No appointments or treatment sessions for this day." : "No appointments for this provider today."}</Card>;
   }
   return (
-    <Card className="divide-y">
-      {items.map((a) => {
-        const active = a.status !== "cancelled" && a.status !== "completed" && a.status !== "no_show";
-        return (
-          <div key={a.id} className="flex items-center gap-4 p-4">
-            <div className="w-28 shrink-0 tabular-nums">
-              <div className="font-semibold text-brand">{fmtTime(a.starts_at)}</div>
-              <div className="text-xs text-muted-foreground">{fmtTime(a.ends_at)}</div>
+    <div className="flex h-full gap-4 overflow-x-auto pb-2">
+      {sessions.length > 0 && (
+        <Card className="flex w-[300px] shrink-0 flex-col border-l-4 border-l-violet-500 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2 border-b pb-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <Stethoscope className="h-4 w-4 shrink-0 text-violet-600" />
+              <span className="truncate font-semibold text-brand">Treatment sessions</span>
+            </div>
+            <span className="shrink-0 text-xs text-muted-foreground">{sessions.length}</span>
+          </div>
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+            {sessions.map((s) => <SessionDayCard key={s.session_id} s={s} onOpen={actions.onOpenPatient} />)}
+          </div>
+        </Card>
+      )}
+      {lanes.map((lane) => (
+        <Card key={lane.id} className="flex w-[300px] shrink-0 flex-col p-3">
+          <div className="mb-2 flex items-center justify-between gap-2 border-b pb-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate font-semibold text-brand">{lane.name}</span>
+              {lane.inactive && <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />}
+            </div>
+            <span className="shrink-0 text-xs text-muted-foreground">{lane.list.length}</span>
+          </div>
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+            {lane.list.map((a) => <ApptCard key={a.id} a={a} actions={actions} />)}
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+const HOUR_PX = 52;
+/** Assigns overlapping events to side-by-side sub-columns (interval partitioning). */
+function packColumns(list: Appointment[]): Map<string, { col: number; cols: number }> {
+  const sorted = [...list].sort((a, b) => a.starts_at.localeCompare(b.starts_at) || a.ends_at.localeCompare(b.ends_at));
+  const res = new Map<string, { col: number; cols: number }>();
+  let cluster: Appointment[] = [];
+  let clusterEnd = "";
+  const flush = () => {
+    const colEnds: string[] = [];
+    for (const ev of cluster) {
+      let placed = -1;
+      for (let c = 0; c < colEnds.length; c++) if (colEnds[c] <= ev.starts_at) { colEnds[c] = ev.ends_at; placed = c; break; }
+      if (placed < 0) { colEnds.push(ev.ends_at); placed = colEnds.length - 1; }
+      res.set(ev.id, { col: placed, cols: 0 });
+    }
+    for (const ev of cluster) res.get(ev.id)!.cols = colEnds.length;
+    cluster = []; clusterEnd = "";
+  };
+  for (const ev of sorted) {
+    if (cluster.length && ev.starts_at >= clusterEnd) flush();
+    cluster.push(ev);
+    if (ev.ends_at > clusterEnd) clusterEnd = ev.ends_at;
+  }
+  if (cluster.length) flush();
+  return res;
+}
+
+function WeekTimeGrid({ days, items, sessByDay, actions }: { days: Date[]; items: Appointment[]; sessByDay: Record<string, DentalSessionCal[]>; actions: Actions }) {
+  const hasSessions = days.some((d) => (sessByDay[dayKey(d)] ?? []).length > 0);
+  const { startHour, endHour, byDay } = useMemo(() => {
+    let min = 8, max = 18;
+    const map: Record<string, Appointment[]> = {};
+    for (const a of items) {
+      (map[dayKey(new Date(a.starts_at))] ??= []).push(a);
+      min = Math.min(min, new Date(a.starts_at).getHours());
+      const e = new Date(a.ends_at);
+      max = Math.max(max, e.getMinutes() > 0 ? e.getHours() + 1 : e.getHours());
+    }
+    return { startHour: Math.max(0, min), endHour: Math.min(24, Math.max(max, min + 4)), byDay: map };
+  }, [items]);
+  const hours = Array.from({ length: endHour - startHour }, (_, i) => startHour + i);
+  const gridH = hours.length * HOUR_PX;
+  const todayKey = dayKey(new Date());
+  const minsFromStart = (iso: string) => { const d = new Date(iso); return (d.getHours() - startHour) * 60 + d.getMinutes(); };
+
+  return (
+    <Card className="flex h-full flex-col overflow-hidden">
+      {/* day headers */}
+      <div className="grid shrink-0 border-b" style={{ gridTemplateColumns: "56px repeat(7, 1fr)" }}>
+        <div className="border-r" />
+        {days.map((d) => {
+          const today = dayKey(d) === todayKey;
+          const e = toEthiopian(d);
+          return (
+            <button key={dayKey(d)} onClick={() => actions.onOpenDay(d)} className={`border-r py-2 text-center last:border-r-0 hover:bg-accent ${today ? "bg-primary/5" : ""}`}>
+              <div className="text-xs text-muted-foreground">{d.toLocaleDateString(undefined, { weekday: "short" })}</div>
+              <div className={`text-lg font-semibold leading-tight tabular-nums ${today ? "text-primary" : "text-brand"}`}>{d.getDate()}</div>
+              <div className="text-[10px] leading-tight text-muted-foreground">{e.day} {ETH_MONTHS[e.month - 1]}</div>
+            </button>
+          );
+        })}
+      </div>
+      {/* all-day treatment sessions (no time-of-day) */}
+      {hasSessions && (
+        <div className="grid shrink-0 border-b bg-muted/20" style={{ gridTemplateColumns: "56px repeat(7, 1fr)" }}>
+          <div className="flex items-center justify-end border-r px-1 py-1 text-right text-[10px] uppercase tracking-wide text-muted-foreground">Sessions</div>
+          {days.map((d) => (
+            <div key={dayKey(d)} className="space-y-0.5 border-r p-1 last:border-r-0">
+              {(sessByDay[dayKey(d)] ?? []).map((s) => <SessionChip key={s.session_id} s={s} onOpen={actions.onOpenPatient} />)}
+            </div>
+          ))}
+        </div>
+      )}
+      {/* scrollable time grid */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="grid" style={{ gridTemplateColumns: "56px repeat(7, 1fr)", height: gridH }}>
+          {/* hour gutter */}
+          <div className="relative border-r">
+            {hours.map((h, i) => (
+              <div key={h} className="absolute right-1 -translate-y-1/2 text-[11px] tabular-nums text-muted-foreground" style={{ top: i * HOUR_PX }}>
+                {i === 0 ? "" : `${String(h).padStart(2, "0")}:00`}
+              </div>
+            ))}
+          </div>
+          {/* day columns */}
+          {days.map((d) => {
+            const list = byDay[dayKey(d)] ?? [];
+            const packed = packColumns(list);
+            const today = dayKey(d) === todayKey;
+            return (
+              <div key={dayKey(d)} className={`relative border-r last:border-r-0 ${today ? "bg-primary/[0.03]" : ""}`}>
+                {hours.map((_, i) => <div key={i} className="absolute inset-x-0 border-t border-border/60" style={{ top: i * HOUR_PX }} />)}
+                {list.map((a) => {
+                  const p = packed.get(a.id)!;
+                  const top = (minsFromStart(a.starts_at) / 60) * HOUR_PX;
+                  const dur = (new Date(a.ends_at).getTime() - new Date(a.starts_at).getTime()) / 60000;
+                  const h = Math.max((dur / 60) * HOUR_PX, 22);
+                  const gap = 2;
+                  return (
+                    <button
+                      key={a.id}
+                      onClick={() => actions.onOpenPatient(a.patient_id)}
+                      title={`${fmtTime(a.starts_at)} ${a.patient_name}${a.reason ? " · " + a.reason : ""}`}
+                      className={`absolute overflow-hidden rounded-md border border-l-[3px] bg-card px-1.5 py-1 text-left text-xs shadow-sm hover:z-10 hover:shadow ${eventAccent(a.status)}`}
+                      style={{ top: top + 1, height: h - 2, left: `calc(${(p.col / p.cols) * 100}% + ${gap}px)`, width: `calc(${100 / p.cols}% - ${gap * 2}px)` }}
+                    >
+                      <div className="flex items-center gap-0.5 font-semibold text-brand">
+                        {a.is_followup && <Repeat2 className="h-3 w-3 shrink-0 text-primary" />}
+                        <span className="truncate">{a.patient_name}</span>
+                      </div>
+                      <div className="tabular-nums text-muted-foreground">{fmtTime(a.starts_at)}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function MonthGrid({ days, monthIndex, items, sessByDay, actions }: { days: Date[]; monthIndex: number; items: Appointment[]; sessByDay: Record<string, DentalSessionCal[]>; actions: Actions }) {
+  const byDay = useMemo(() => {
+    const m: Record<string, Appointment[]> = {};
+    for (const a of items) (m[dayKey(new Date(a.starts_at))] ??= []).push(a);
+    for (const k of Object.keys(m)) m[k].sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+    return m;
+  }, [items]);
+  const todayKey = dayKey(new Date());
+
+  return (
+    <Card className="flex h-full flex-col overflow-hidden">
+      <div className="grid shrink-0 grid-cols-7 border-b">
+        {WEEKDAYS.map((w) => <div key={w} className="py-2 text-center text-xs font-semibold text-muted-foreground">{w}</div>)}
+      </div>
+      <div className="grid min-h-0 flex-1 grid-cols-7 grid-rows-6">
+        {days.map((d) => {
+          const list = byDay[dayKey(d)] ?? [];
+          const sess = sessByDay[dayKey(d)] ?? [];
+          const inMonth = d.getMonth() === monthIndex;
+          const today = dayKey(d) === todayKey;
+          const e = toEthiopian(d);
+          const apptShown = Math.min(list.length, sess.length ? 2 : 4);
+          const sessShown = Math.min(sess.length, 2);
+          const more = (list.length - apptShown) + (sess.length - sessShown);
+          return (
+            <button
+              key={dayKey(d)}
+              onClick={() => actions.onOpenDay(d)}
+              className={`flex min-h-0 flex-col border-b border-r p-1.5 text-left transition-colors hover:bg-accent [&:nth-child(7n)]:border-r-0 ${inMonth ? "" : "bg-muted/30"}`}
+            >
+              <div className="mb-1 flex items-center justify-between gap-1">
+                <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold tabular-nums ${today ? "bg-primary text-primary-foreground" : inMonth ? "text-brand" : "text-muted-foreground"}`}>{d.getDate()}</span>
+                <span className={`truncate text-[10px] font-medium ${e.day === 1 ? "text-primary" : "text-muted-foreground"}`}>{e.day === 1 ? ETH_MONTHS[e.month - 1] : e.day}</span>
+              </div>
+              <div className="min-h-0 flex-1 space-y-0.5 overflow-hidden">
+                {list.slice(0, apptShown).map((a) => (
+                  <div key={a.id} className={`flex items-center gap-1 truncate rounded border-l-2 bg-secondary/70 px-1 py-0.5 text-[11px] ${eventAccent(a.status)}`}>
+                    {a.is_followup && <Repeat2 className="h-2.5 w-2.5 shrink-0 text-primary" />}
+                    <span className="font-semibold tabular-nums text-brand">{fmtTime(a.starts_at)}</span>
+                    <span className="truncate text-muted-foreground">{a.patient_name}</span>
+                  </div>
+                ))}
+                {sess.slice(0, sessShown).map((s) => <SessionChip key={s.session_id} s={s} />)}
+                {more > 0 && <div className="px-1 text-[10px] font-medium text-primary">+{more} more</div>}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+function FollowupsLens({ q, actions }: { q: { data?: Appointment[]; isLoading: boolean }; actions: Actions }) {
+  const groups = useMemo(() => {
+    const now = new Date();
+    const endToday = startOfDay(addDays(now, 1));
+    const startToday = startOfDay(now);
+    const needsHandoff: Appointment[] = [], overdue: Appointment[] = [], dueToday: Appointment[] = [], upcoming: Appointment[] = [];
+    for (const a of q.data ?? []) {
+      if (!isActive(a.status)) continue;
+      const s = new Date(a.starts_at);
+      if (!a.provider_active) needsHandoff.push(a);
+      else if (s < startToday && a.status !== "checked_in") overdue.push(a);
+      else if (s < endToday) dueToday.push(a);
+      else upcoming.push(a);
+    }
+    return { needsHandoff, overdue, dueToday, upcoming };
+  }, [q.data]);
+
+  if (q.isLoading) return <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>;
+  const total = groups.needsHandoff.length + groups.overdue.length + groups.dueToday.length + groups.upcoming.length;
+  if (total === 0) return <Card className="flex h-full items-center justify-center p-12 text-center text-sm text-muted-foreground">No follow-ups on the books. When a doctor books one, it shows up here.</Card>;
+
+  return (
+    <div className="space-y-6">
+      <LensSection title="Needs handoff" hint="The booked doctor is no longer active — reassign to a covering doctor." tone="warning" items={groups.needsHandoff} actions={actions} />
+      <LensSection title="Overdue" hint="The follow-up date has passed and the patient hasn't checked in." tone="danger" items={groups.overdue} actions={actions} />
+      <LensSection title="Due today" tone="brand" items={groups.dueToday} actions={actions} />
+      <LensSection title="Upcoming" tone="muted" items={groups.upcoming} actions={actions} />
+    </div>
+  );
+}
+
+function LensSection({ title, hint, tone, items, actions }: { title: string; hint?: string; tone: "warning" | "danger" | "brand" | "muted"; items: Appointment[]; actions: Actions }) {
+  if (items.length === 0) return null;
+  const dot = { warning: "bg-amber-500", danger: "bg-destructive", brand: "bg-primary", muted: "bg-muted-foreground" }[tone];
+  return (
+    <section>
+      <div className="mb-2 flex items-baseline gap-2">
+        <span className={`h-2 w-2 rounded-full ${dot}`} />
+        <h2 className="text-h3">{title}</h2>
+        <span className="text-sm text-muted-foreground">{items.length}</span>
+        {hint && <span className="hidden text-xs text-muted-foreground sm:inline">· {hint}</span>}
+      </div>
+      <Card className="divide-y">
+        {items.map((a) => (
+          <div key={a.id} className="flex flex-wrap items-center gap-3 p-3">
+            <div className="w-24 shrink-0">
+              <div className="text-sm font-semibold text-brand">{fmtDay(a.starts_at)}</div>
+              <div className="text-xs tabular-nums text-muted-foreground">{fmtTime(a.starts_at)}</div>
             </div>
             <div className="min-w-0 flex-1">
-              <button className="font-medium text-brand hover:underline" onClick={() => onOpenPatient(a.patient_id)}>
-                {a.patient_name}
-              </button>
-              <div className="text-sm text-muted-foreground">
-                {a.provider_name}
-                {a.department_name ? ` · ${a.department_name}` : ""}
-                {a.reason ? ` · ${a.reason}` : ""}
-              </div>
+              <button className="block truncate font-medium text-brand hover:underline" onClick={() => actions.onOpenPatient(a.patient_id)}>{a.patient_name}</button>
+              <div className="truncate text-xs text-muted-foreground">{handedOff(a) && a.ordered_by_name ? `Ordered by ${a.ordered_by_name} · ` : ""}{a.provider_name}{a.reason ? ` · ${a.reason}` : ""}</div>
             </div>
-            <Badge variant={statusVariant(a.status)}>{a.status.replace(/_/g, " ")}</Badge>
-            <DropdownMenu>
-              <DropdownMenuTrigger className="rounded-md p-2 hover:bg-accent">
-                <MoreHorizontal className="h-4 w-4" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {active && a.status !== "checked_in" && (
-                  <DropdownMenuItem onSelect={() => onCheckIn(a.id)}>Check in</DropdownMenuItem>
-                )}
-                {active && <DropdownMenuItem onSelect={() => onReschedule(a)}>Reschedule</DropdownMenuItem>}
-                {active && <DropdownMenuSeparator />}
-                {active && (
-                  <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => onCancel(a.id)}>
-                    Cancel
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <div className="flex items-center gap-1.5"><CoverageBadge a={a} />{!a.provider_active && <Badge variant="warning">handoff</Badge>}</div>
+            <div className="flex gap-1.5">
+              <Button size="sm" variant="outline" onClick={() => actions.onReassign(a)}><ArrowLeftRight className="h-3.5 w-3.5" /> Reassign</Button>
+              <Button size="sm" variant="ghost" onClick={() => actions.onReschedule(a)}><CalendarClock className="h-3.5 w-3.5" /> Rebook</Button>
+            </div>
           </div>
-        );
-      })}
-    </Card>
+        ))}
+      </Card>
+    </section>
+  );
+}
+
+const etb = (v: string) => `${Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 })} ETB`;
+function sessPayBadge(s: DentalSessionCal) {
+  if (sessOwes(s)) return <Badge variant="destructive">owes</Badge>;
+  if (s.payment === "paid") return <Badge variant="success">paid</Badge>;
+  if (s.payment === "billed") return <Badge variant="warning">at cashier</Badge>;
+  return <Badge variant="outline">unpaid</Badge>;
+}
+
+/** Day-view treatment-session card (mirrors ApptCard). */
+function SessionDayCard({ s, onOpen }: { s: DentalSessionCal; onOpen: (pid: string) => void }) {
+  return (
+    <div className={`rounded-lg border border-l-4 bg-background p-3 shadow-sm ${sessAccent(s).split(" ")[0]}`}>
+      <button className="block truncate font-medium text-brand hover:underline" onClick={() => onOpen(s.patient_id)}>{s.patient_name}</button>
+      <div className="truncate text-xs text-muted-foreground">{s.title} · session {s.seq}/{s.session_count}{s.procedure ? ` · ${s.procedure}` : ""}{s.tooth ? ` (${s.tooth})` : ""}</div>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <Badge variant="outline" className="capitalize">{s.status}</Badge>
+        {sessPayBadge(s)}
+        <span className="text-xs tabular-nums text-muted-foreground">{etb(s.amount_due)}</span>
+      </div>
+    </div>
+  );
+}
+
+/** Follow-ups view: treatment sessions bucketed overdue / due today / upcoming. */
+function DentalSessionsLens({ q, actions }: { q: { data?: DentalSessionCal[]; isLoading: boolean }; actions: Actions }) {
+  const groups = useMemo(() => {
+    const today = dayKey(new Date());
+    const overdue: DentalSessionCal[] = [], dueToday: DentalSessionCal[] = [], upcoming: DentalSessionCal[] = [];
+    for (const s of q.data ?? []) {
+      if (s.scheduled_date < today) { if (!(s.status === "done" && s.payment === "paid")) overdue.push(s); }
+      else if (s.scheduled_date === today) dueToday.push(s);
+      else upcoming.push(s);
+    }
+    return { overdue, dueToday, upcoming };
+  }, [q.data]);
+  if (q.isLoading) return <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>;
+  const total = groups.overdue.length + groups.dueToday.length + groups.upcoming.length;
+  if (total === 0) return null;
+  return (
+    <div className="space-y-6">
+      <div className="flex items-baseline gap-2"><Stethoscope className="h-4 w-4 shrink-0 text-violet-600" /><h2 className="text-h3">Treatment sessions</h2><span className="text-sm text-muted-foreground">{total}</span></div>
+      <SessionLensSection title="Overdue" tone="danger" items={groups.overdue} onOpen={actions.onOpenPatient} />
+      <SessionLensSection title="Due today" tone="brand" items={groups.dueToday} onOpen={actions.onOpenPatient} />
+      <SessionLensSection title="Upcoming" tone="muted" items={groups.upcoming} onOpen={actions.onOpenPatient} />
+    </div>
+  );
+}
+function SessionLensSection({ title, tone, items, onOpen }: { title: string; tone: "danger" | "brand" | "muted"; items: DentalSessionCal[]; onOpen: (pid: string) => void }) {
+  if (items.length === 0) return null;
+  const dot = { danger: "bg-destructive", brand: "bg-primary", muted: "bg-muted-foreground" }[tone];
+  return (
+    <section>
+      <div className="mb-2 flex items-baseline gap-2"><span className={`h-2 w-2 rounded-full ${dot}`} /><h3 className="font-semibold">{title}</h3><span className="text-sm text-muted-foreground">{items.length}</span></div>
+      <Card className="divide-y">
+        {items.map((s) => (
+          <div key={s.session_id} className="flex flex-wrap items-center gap-3 p-3">
+            <div className="w-24 shrink-0">
+              <div className="text-sm font-semibold tabular-nums text-brand">{s.scheduled_date}</div>
+              <div className="text-xs tabular-nums text-muted-foreground">S{s.seq}/{s.session_count}</div>
+            </div>
+            <div className="min-w-0 flex-1">
+              <button className="block truncate font-medium text-brand hover:underline" onClick={() => onOpen(s.patient_id)}>{s.patient_name}</button>
+              <div className="truncate text-xs text-muted-foreground">{s.title}{s.procedure ? ` · ${s.procedure}` : ""}{s.tooth ? ` (${s.tooth})` : ""}</div>
+            </div>
+            <div className="flex items-center gap-1.5"><Badge variant="outline" className="capitalize">{s.status}</Badge>{sessPayBadge(s)}<span className="text-xs tabular-nums text-muted-foreground">{etb(s.amount_due)}</span></div>
+          </div>
+        ))}
+      </Card>
+    </section>
+  );
+}
+
+function ReassignDialog({ appt, onOpenChange, providers, onDone }: { appt: Appointment | null; onOpenChange: (o: boolean) => void; providers: { id: string; full_name: string }[]; onDone: () => void }) {
+  const [provider, setProvider] = useState("");
+  const [note, setNote] = useState("");
+  const mut = useMutation({
+    mutationFn: () => reassignProvider(appt!.id, provider, note || undefined),
+    onSuccess: () => { toast.success("Follow-up handed off"); onOpenChange(false); setProvider(""); setNote(""); onDone(); },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not reassign"),
+  });
+  return (
+    <Dialog open={!!appt} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Reassign to another doctor</DialogTitle></DialogHeader>
+        {appt && (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              {appt.patient_name} · {fmtDay(appt.starts_at)} {fmtTime(appt.starts_at)}. Currently with {appt.provider_name}
+              {appt.is_followup && appt.ordered_by_name ? `, ordered by ${appt.ordered_by_name}` : ""}. The order stays credited to whoever booked it.
+            </p>
+            <div className="space-y-1.5">
+              <Label>Hand to</Label>
+              <Select value={provider} onValueChange={setProvider}>
+                <SelectTrigger><SelectValue placeholder="Choose a doctor…" /></SelectTrigger>
+                <SelectContent>
+                  {providers.filter((p) => p.id !== appt.provider_id).map((p) => <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Note <span className="text-muted-foreground">(optional)</span></Label>
+              <Textarea rows={2} placeholder="e.g. Dr. Alem is on leave this week" value={note} onChange={(e) => setNote(e.target.value)} />
+            </div>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button disabled={!provider} loading={mut.isPending} onClick={() => mut.mutate()}>Reassign</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

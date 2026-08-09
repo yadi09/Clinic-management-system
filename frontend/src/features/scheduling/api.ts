@@ -9,6 +9,8 @@ export interface Appointment {
   provider_id: string;
   department_id?: string | null;
   resource_id?: string | null;
+  ordered_by?: string | null;
+  origin_encounter_id?: string | null;
   starts_at: string;
   ends_at: string;
   status: string;
@@ -18,6 +20,8 @@ export interface Appointment {
   patient_name: string;
   mrn: string;
   provider_name: string;
+  provider_active: boolean;
+  ordered_by_name?: string;
   department_name?: string;
 }
 
@@ -63,12 +67,33 @@ export interface BookBody {
   starts_at: string; // RFC3339
   duration_min: number;
   reason?: string;
+  is_followup?: boolean;
+  free_until?: string; // RFC3339
+  origin_encounter_id?: string;
 }
 
 export function listAppointments(branchId: string, fromISO: string, toISO: string, providerId?: string) {
   const p = new URLSearchParams({ branch: branchId, from: fromISO, to: toISO });
   if (providerId) p.set("provider", providerId);
   return apiFetch<Appointment[]>(`/appointments?${p.toString()}`);
+}
+/** Follow-up appointments in a window — powers the follow-ups lens (due/upcoming/overdue). */
+/** One patient's own appointments across a date range — not a day on the clinic
+ *  calendar. Branch is implied by the caller's scope, so none is sent. */
+export function listPatientAppointments(patientId: string, fromISO: string, toISO: string) {
+  const q = new URLSearchParams({ patient: patientId, from: fromISO, to: toISO });
+  return apiFetch<Appointment[]>(`/appointments?${q.toString()}`);
+}
+
+export function listFollowups(branchId: string, fromISO?: string, toISO?: string) {
+  const p = new URLSearchParams({ branch: branchId });
+  if (fromISO) p.set("from", fromISO);
+  if (toISO) p.set("to", toISO);
+  return apiFetch<Appointment[]>(`/appointments/followups?${p.toString()}`);
+}
+/** Hand a follow-up to a covering doctor (changes who attends; keeps who ordered it). */
+export function reassignProvider(id: string, providerId: string, note?: string) {
+  return apiFetch<void>(`/appointments/${id}/reassign`, { method: "POST", body: { provider_id: providerId, note } });
 }
 export function bookAppointment(body: BookBody) {
   return apiFetch<Appointment>("/appointments", { method: "POST", body });

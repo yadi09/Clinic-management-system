@@ -12,6 +12,25 @@ import (
 	"github.com/google/uuid"
 )
 
+const claimEncounterProvider = `-- name: ClaimEncounterProvider :exec
+UPDATE encounters SET provider_id = $1, updated_at = now()
+WHERE tenant_id = $2 AND id = $3 AND provider_id IS NULL AND deleted_at IS NULL
+`
+
+type ClaimEncounterProviderParams struct {
+	ProviderID *uuid.UUID `json:"provider_id"`
+	TenantID   uuid.UUID  `json:"tenant_id"`
+	ID         uuid.UUID  `json:"id"`
+}
+
+// Attribute an encounter to a provider when it has none yet — the doctor who
+// opens (or resumes) the consult becomes its provider. Never overrides an
+// existing assignment, so it's safe to call on every open.
+func (q *Queries) ClaimEncounterProvider(ctx context.Context, arg ClaimEncounterProviderParams) error {
+	_, err := q.db.Exec(ctx, claimEncounterProvider, arg.ProviderID, arg.TenantID, arg.ID)
+	return err
+}
+
 const clearPrimaryDiagnoses = `-- name: ClearPrimaryDiagnoses :exec
 UPDATE diagnoses SET is_primary = false
 WHERE tenant_id = $1 AND encounter_id = $2 AND is_primary AND deleted_at IS NULL
@@ -504,6 +523,20 @@ func (q *Queries) GetCatalogEntry(ctx context.Context, arg GetCatalogEntryParams
 	return i, err
 }
 
+const getDefaultBranch = `-- name: GetDefaultBranch :one
+SELECT id FROM branches
+WHERE tenant_id = $1 AND deleted_at IS NULL AND is_active = true
+ORDER BY created_at LIMIT 1
+`
+
+// Fallback branch for imports when the actor has no concrete active branch.
+func (q *Queries) GetDefaultBranch(ctx context.Context, tenantID uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getDefaultBranch, tenantID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getEncounter = `-- name: GetEncounter :one
 SELECT id, branch_id, department_id, patient_id, queue_entry_id, provider_id, status, started_at, closed_at
 FROM encounters
@@ -716,6 +749,73 @@ func (q *Queries) GetQueueEntryForEncounter(ctx context.Context, arg GetQueueEnt
 		&i.AssignedProviderID,
 	)
 	return i, err
+}
+
+const importHistoricalEncounter = `-- name: ImportHistoricalEncounter :one
+INSERT INTO encounters (tenant_id, branch_id, patient_id, provider_id, status, started_at, closed_at, created_by)
+VALUES ($1, $2, $3, $4, 'closed', $5, $5, $6)
+RETURNING id
+`
+
+type ImportHistoricalEncounterParams struct {
+	TenantID   uuid.UUID  `json:"tenant_id"`
+	BranchID   uuid.UUID  `json:"branch_id"`
+	PatientID  uuid.UUID  `json:"patient_id"`
+	ProviderID *uuid.UUID `json:"provider_id"`
+	StartedAt  time.Time  `json:"started_at"`
+	CreatedBy  *uuid.UUID `json:"created_by"`
+}
+
+// A back-dated, already-closed encounter representing a migrated (paper / old-system)
+// record. No queue entry; provider is optional (usually unknown for old records).
+func (q *Queries) ImportHistoricalEncounter(ctx context.Context, arg ImportHistoricalEncounterParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, importHistoricalEncounter,
+		arg.TenantID,
+		arg.BranchID,
+		arg.PatientID,
+		arg.ProviderID,
+		arg.StartedAt,
+		arg.CreatedBy,
+	)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const importHistoricalNote = `-- name: ImportHistoricalNote :one
+INSERT INTO clinical_notes (tenant_id, encounter_id, subjective, objective, assessment, plan, status, signed_by, signed_at, created_by)
+VALUES ($1, $2, $3, $4, $5, $6, 'signed', $7, $8, $9)
+RETURNING id
+`
+
+type ImportHistoricalNoteParams struct {
+	TenantID    uuid.UUID  `json:"tenant_id"`
+	EncounterID uuid.UUID  `json:"encounter_id"`
+	Subjective  *string    `json:"subjective"`
+	Objective   *string    `json:"objective"`
+	Assessment  *string    `json:"assessment"`
+	Plan        *string    `json:"plan"`
+	SignedBy    *uuid.UUID `json:"signed_by"`
+	SignedAt    *time.Time `json:"signed_at"`
+	CreatedBy   *uuid.UUID `json:"created_by"`
+}
+
+// The migrated record, stored as a signed SOAP note on the historical encounter.
+func (q *Queries) ImportHistoricalNote(ctx context.Context, arg ImportHistoricalNoteParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, importHistoricalNote,
+		arg.TenantID,
+		arg.EncounterID,
+		arg.Subjective,
+		arg.Objective,
+		arg.Assessment,
+		arg.Plan,
+		arg.SignedBy,
+		arg.SignedAt,
+		arg.CreatedBy,
+	)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const listDiagnosesByEncounter = `-- name: ListDiagnosesByEncounter :many

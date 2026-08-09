@@ -12,19 +12,25 @@ import (
 )
 
 const assignUserRole = `-- name: AssignUserRole :exec
-INSERT INTO user_role_scopes (tenant_id, user_id, role_id)
-VALUES ($1, $2, $3)
+INSERT INTO user_role_scopes (tenant_id, user_id, role_id, branch_id)
+VALUES ($1, $2, $3, $4)
 ON CONFLICT (user_id, role_id, branch_id, department_id) DO NOTHING
 `
 
 type AssignUserRoleParams struct {
-	TenantID uuid.UUID `json:"tenant_id"`
-	UserID   uuid.UUID `json:"user_id"`
-	RoleID   uuid.UUID `json:"role_id"`
+	TenantID uuid.UUID  `json:"tenant_id"`
+	UserID   uuid.UUID  `json:"user_id"`
+	RoleID   uuid.UUID  `json:"role_id"`
+	BranchID *uuid.UUID `json:"branch_id"`
 }
 
 func (q *Queries) AssignUserRole(ctx context.Context, arg AssignUserRoleParams) error {
-	_, err := q.db.Exec(ctx, assignUserRole, arg.TenantID, arg.UserID, arg.RoleID)
+	_, err := q.db.Exec(ctx, assignUserRole,
+		arg.TenantID,
+		arg.UserID,
+		arg.RoleID,
+		arg.BranchID,
+	)
 	return err
 }
 

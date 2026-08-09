@@ -26,10 +26,24 @@ export function isMfaChallenge(r: LoginResponse): r is MfaChallenge {
   return (r as MfaChallenge).mfa_required === true;
 }
 
+export interface BranchRef {
+  id: string;
+  name: string;
+  code: string;
+}
+
 export interface MeResponse {
   user: UserDTO;
   permissions: string[];
   flags: Record<string, boolean>;
+  branches: BranchRef[];
+  active_branch_id?: string | null;
+  all_branches: boolean;
+}
+
+/** Re-issue the access token scoped to a branch ("all" = consolidated view). */
+export function switchBranchApi(branchId: string) {
+  return apiFetch<TokenResponse>("/auth/switch-branch", { method: "POST", body: { branch_id: branchId }, retry: false });
 }
 
 export function loginApi(body: { workspace: string; email: string; password: string }) {
@@ -46,4 +60,18 @@ export function meApi() {
 
 export function logoutApi() {
   return apiFetch<void>("/auth/logout", { method: "POST", auth: false, retry: false });
+}
+
+// Self-service account changes for the signed-in user. Both confirm the current
+// password server-side.
+export function changePasswordApi(body: { current_password: string; new_password: string }) {
+  return apiFetch<void>("/auth/password", { method: "POST", body });
+}
+export function changeEmailApi(body: { new_email: string; current_password: string }) {
+  return apiFetch<void>("/auth/email", { method: "POST", body });
+}
+
+/** Sign out of every other device, keeping the current session. Returns the count revoked. */
+export function signOutOtherDevicesApi() {
+  return apiFetch<{ revoked: number }>("/auth/sessions/logout-others", { method: "POST" });
 }

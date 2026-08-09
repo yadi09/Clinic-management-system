@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/reicb/clinicsaas/internal/kernel/ai"
 	"github.com/reicb/clinicsaas/internal/kernel/auth"
 	"github.com/reicb/clinicsaas/internal/kernel/config"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
@@ -29,18 +30,26 @@ import (
 	billingservice "github.com/reicb/clinicsaas/internal/billing/service"
 	clinicalhttp "github.com/reicb/clinicsaas/internal/clinical/http"
 	clinicalservice "github.com/reicb/clinicsaas/internal/clinical/service"
+	dentalhttp "github.com/reicb/clinicsaas/internal/dental/http"
+	dentalservice "github.com/reicb/clinicsaas/internal/dental/service"
 	identityhttp "github.com/reicb/clinicsaas/internal/identity/http"
 	identityservice "github.com/reicb/clinicsaas/internal/identity/service"
+	inpatienthttp "github.com/reicb/clinicsaas/internal/inpatient/http"
+	inpatientservice "github.com/reicb/clinicsaas/internal/inpatient/service"
 	labhttp "github.com/reicb/clinicsaas/internal/lab/http"
 	labservice "github.com/reicb/clinicsaas/internal/lab/service"
+	maternityhttp "github.com/reicb/clinicsaas/internal/maternity/http"
+	maternityservice "github.com/reicb/clinicsaas/internal/maternity/service"
 	orghttp "github.com/reicb/clinicsaas/internal/org/http"
 	orgservice "github.com/reicb/clinicsaas/internal/org/service"
 	patienthttp "github.com/reicb/clinicsaas/internal/patient/http"
 	patientservice "github.com/reicb/clinicsaas/internal/patient/service"
-	platformhttp "github.com/reicb/clinicsaas/internal/platform/http"
-	platformservice "github.com/reicb/clinicsaas/internal/platform/service"
 	pharmacyhttp "github.com/reicb/clinicsaas/internal/pharmacy/http"
 	pharmacyservice "github.com/reicb/clinicsaas/internal/pharmacy/service"
+	platformhttp "github.com/reicb/clinicsaas/internal/platform/http"
+	platformservice "github.com/reicb/clinicsaas/internal/platform/service"
+	reportinghttp "github.com/reicb/clinicsaas/internal/reporting/http"
+	reportingservice "github.com/reicb/clinicsaas/internal/reporting/service"
 	schedulinghttp "github.com/reicb/clinicsaas/internal/scheduling/http"
 	schedulingservice "github.com/reicb/clinicsaas/internal/scheduling/service"
 )
@@ -63,7 +72,7 @@ func main() {
 	}
 	defer db.Close()
 
-	store := buildStorage(cfg)
+	store := buildStorage(cfg, log)
 	log.Info("storage provider", "name", store.Name())
 
 	tokens := auth.NewTokenService(cfg.JWTSecret, cfg.JWTIssuer, cfg.AccessTokenTTL)
@@ -98,7 +107,14 @@ func main() {
 	// are gated on payment (no free bypass of the cashier).
 	schedulingHandlers := schedulinghttp.NewHandlers(schedulingservice.NewService(db, publisher, billingSvc), db)
 	transcriber := transcribe.New(cfg.Transcription.DeepgramAPIKey, cfg.Transcription.Model, cfg.Transcription.Language)
-	clinicalHandlers := clinicalhttp.NewHandlers(clinicalservice.NewService(db, publisher), transcriber, store)
+	assistant := ai.New(cfg.AI.APIKey, cfg.AI.Model, cfg.AI.BaseURL)
+	clinicalHandlers := clinicalhttp.NewHandlers(clinicalservice.NewService(db, publisher), transcriber, assistant, store)
+	// DHIS2 (Ministry of Health) reporting — each clinic connects its own DHIS2
+	// account in Settings; the token is stored encrypted with the MFA key.
+	reportingHandlers := reportinghttp.NewHandlers(reportingservice.NewService(db, cfg.MFAEncKey))
+	maternityHandlers := maternityhttp.NewHandlers(maternityservice.NewService(db, publisher))
+	inpatientHandlers := inpatienthttp.NewHandlers(inpatientservice.NewService(db, publisher, billingSvc))
+	dentalHandlers := dentalhttp.NewHandlers(dentalservice.NewService(db, publisher, billingSvc, store))
 	// Lab & pharmacy bill through billing (Charger) so revenue reaches the cashier.
 	pharmacyHandlers := pharmacyhttp.NewHandlers(pharmacyservice.NewService(db, publisher, billingSvc))
 	labHandlers := labhttp.NewHandlers(labservice.NewService(db, publisher, billingSvc))
@@ -117,7 +133,7 @@ func main() {
 		}
 	}
 
-	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, pharmacyHandlers, labHandlers, platformHandlers)
+	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, reportingHandlers, maternityHandlers, inpatientHandlers, dentalHandlers, pharmacyHandlers, labHandlers, platformHandlers)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -154,6 +170,10 @@ func newRouter(
 	schedulingHandlers *schedulinghttp.Handlers,
 	billingHandlers *billinghttp.Handlers,
 	clinicalHandlers *clinicalhttp.Handlers,
+	reportingHandlers *reportinghttp.Handlers,
+	maternityHandlers *maternityhttp.Handlers,
+	inpatientHandlers *inpatienthttp.Handlers,
+	dentalHandlers *dentalhttp.Handlers,
 	pharmacyHandlers *pharmacyhttp.Handlers,
 	labHandlers *labhttp.Handlers,
 	platformHandlers *platformhttp.Handlers,
@@ -186,7 +206,7 @@ func newRouter(
 	// Versioned API.
 	v1 := r.Group("/api/v1")
 	v1.Use(httpx.RateLimit(limiter))
-	identityHandlers.RegisterPublic(v1)                  // /auth/login, /auth/refresh, /auth/mfa, /auth/logout
+	identityHandlers.RegisterPublic(v1) // /auth/login, /auth/refresh, /auth/mfa, /auth/logout
 	if platformHandlers != nil {
 		platformHandlers.Register(v1, tokens) // /platform/auth/login (public) + /platform/clinics (platform.admin)
 	}
@@ -197,6 +217,10 @@ func newRouter(
 	schedulingHandlers.RegisterProtected(protected)      // /appointments/..., /queue/..., /worklist
 	billingHandlers.RegisterProtected(protected)         // /billing/card/...
 	clinicalHandlers.RegisterProtected(protected)        // /visits/..., /encounters/..., /diagnosis-*
+	reportingHandlers.RegisterProtected(protected)       // /reporting/dhis2/...
+	maternityHandlers.RegisterProtected(protected)       // /dating/preview, /patients/:id/dating[/history]
+	inpatientHandlers.RegisterProtected(protected)       // /inpatient/wards, /beds, /board, /admissions, /report
+	dentalHandlers.RegisterProtected(protected)          // /dental/patients/:id/{chart,treatments,visits,summary,charge}, /dental/outstanding
 	pharmacyHandlers.RegisterProtected(protected)        // /pharmacy/...
 	labHandlers.RegisterProtected(protected)             // /lab/...
 
@@ -223,7 +247,27 @@ func connectWithRetry(ctx context.Context, url string, attempts int, delay time.
 	return nil, lastErr
 }
 
-func buildStorage(cfg config.Config) storage.Provider {
+// buildStorage picks the object-storage backend. STORAGE_PROVIDER forces a choice
+// ("r2"/"cloudinary"); otherwise it auto-selects R2 when configured, then
+// Cloudinary, then a noop that errors on upload.
+func buildStorage(cfg config.Config, log *slog.Logger) storage.Provider {
+	switch cfg.StorageProvider {
+	case "r2":
+		if r2, err := storage.NewR2(cfg.R2.AccountID, cfg.R2.AccessKey, cfg.R2.SecretKey, cfg.R2.Bucket); err == nil {
+			return r2
+		} else {
+			log.Error("R2 storage configured but failed to init; falling back", "err", err)
+		}
+	case "cloudinary":
+		if cfg.Cloudinary.Configured() {
+			return storage.NewCloudinary(cfg.Cloudinary.CloudName, cfg.Cloudinary.APIKey, cfg.Cloudinary.APISecret, cfg.Cloudinary.UploadFolder)
+		}
+	}
+	if cfg.R2.Configured() {
+		if r2, err := storage.NewR2(cfg.R2.AccountID, cfg.R2.AccessKey, cfg.R2.SecretKey, cfg.R2.Bucket); err == nil {
+			return r2
+		}
+	}
 	if cfg.Cloudinary.Configured() {
 		return storage.NewCloudinary(cfg.Cloudinary.CloudName, cfg.Cloudinary.APIKey, cfg.Cloudinary.APISecret, cfg.Cloudinary.UploadFolder)
 	}

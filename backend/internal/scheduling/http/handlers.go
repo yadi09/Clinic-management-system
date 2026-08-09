@@ -36,7 +36,7 @@ func (h *Handlers) Book(c *gin.Context) {
 		httpx.Fail(c, apperr.Validation("branch_id, patient_id, provider_id and starts_at are required"))
 		return
 	}
-	in := scheduling.BookInput{DurationMin: req.DurationMin, Reason: req.Reason}
+	in := scheduling.BookInput{DurationMin: req.DurationMin, Reason: req.Reason, IsFollowup: req.IsFollowup}
 	var ok bool
 	if in.BranchID, ok = decodeID(c, id.PrefixBranch, req.BranchID); !ok {
 		return
@@ -52,6 +52,17 @@ func (h *Handlers) Book(c *gin.Context) {
 	}
 	if in.ResourceID, ok = decodeOpt(c, id.PrefixResource, req.ResourceID); !ok {
 		return
+	}
+	if in.OriginEncounterID, ok = decodeOpt(c, id.PrefixEncounter, req.OriginEncounterID); !ok {
+		return
+	}
+	if req.FreeUntil != "" {
+		fu, err := time.Parse(time.RFC3339, req.FreeUntil)
+		if err != nil {
+			httpx.Fail(c, apperr.Validation("free_until must be RFC3339"))
+			return
+		}
+		in.FreeUntil = &fu
 	}
 	ts, err := time.Parse(time.RFC3339, req.StartsAt)
 	if err != nil {
@@ -69,6 +80,26 @@ func (h *Handlers) Book(c *gin.Context) {
 
 // List handles GET /appointments?branch=&from=&to=&provider=.
 func (h *Handlers) List(c *gin.Context) {
+	// ?patient= switches this from "a day on the clinic calendar" to "one patient's
+	// own schedule" — no branch needed, and the range is whatever the caller asks for.
+	if raw := c.Query("patient"); raw != "" {
+		pid, ok := decodeID(c, id.PrefixPatient, raw)
+		if !ok {
+			return
+		}
+		from, to := dayRange(c.Query("from"), c.Query("to"))
+		appts, err := h.svc.ListForPatient(c.Request.Context(), pid, from, to)
+		if err != nil {
+			httpx.Fail(c, err)
+			return
+		}
+		out := make([]appointmentDTO, 0, len(appts))
+		for _, a := range appts {
+			out = append(out, toAppointmentDTO(a))
+		}
+		httpx.OK(c, out)
+		return
+	}
 	branchID, ok := decodeID(c, id.PrefixBranch, c.Query("branch"))
 	if !ok {
 		return
@@ -195,6 +226,57 @@ func (h *Handlers) MarkFollowup(c *gin.Context) {
 		return
 	}
 	httpx.NoContent(c)
+}
+
+// Reassign handles POST /appointments/:id/reassign — hand the appointment to a
+// covering doctor (changes who attends; keeps who ordered it).
+func (h *Handlers) Reassign(c *gin.Context) {
+	aid, ok := decodeID(c, id.PrefixAppointment, c.Param("id"))
+	if !ok {
+		return
+	}
+	var req reassignRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("provider_id is required"))
+		return
+	}
+	provider, ok := decodeID(c, id.PrefixUser, req.ProviderID)
+	if !ok {
+		return
+	}
+	if err := h.svc.ReassignProvider(c.Request.Context(), aid, provider, req.Note); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+// ListFollowups handles GET /appointments/followups?branch=&from=&to= — the
+// follow-up lens (due / upcoming / overdue / needs-handoff). Defaults to a window
+// spanning the last 30 days through the next 90 when from/to are omitted.
+func (h *Handlers) ListFollowups(c *gin.Context) {
+	branchID, ok := decodeID(c, id.PrefixBranch, c.Query("branch"))
+	if !ok {
+		return
+	}
+	from := time.Now().AddDate(0, 0, -30)
+	if f, err := time.Parse(time.RFC3339, c.Query("from")); err == nil {
+		from = f
+	}
+	to := time.Now().AddDate(0, 0, 90)
+	if t, err := time.Parse(time.RFC3339, c.Query("to")); err == nil {
+		to = t
+	}
+	appts, err := h.svc.ListFollowups(c.Request.Context(), branchID, from, to)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out := make([]appointmentDTO, 0, len(appts))
+	for _, a := range appts {
+		out = append(out, toAppointmentDTO(a))
+	}
+	httpx.OK(c, out)
 }
 
 // WalkIn handles POST /queue/walk-in.

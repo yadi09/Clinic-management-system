@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -16,8 +16,24 @@ export function ServiceCatalogPage() {
   const qc = useQueryClient();
   const services = useQuery({ queryKey: ["services-all"], queryFn: () => listServices(false) });
   const [editing, setEditing] = useState<ServiceItem | null>(null);
+  const [assigning, setAssigning] = useState<ServiceItem | null>(null);
   const [creating, setCreating] = useState(false);
-  const refresh = () => qc.invalidateQueries({ queryKey: ["services-all"] });
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["services-all"] });
+    qc.invalidateQueries({ queryKey: ["service-provider-counts"] });
+  };
+
+  const svcList = services.data ?? [];
+  // How many staff provide each service — powers the "Providers" column so a
+  // manager sees at a glance which services can't be sent straight to a doctor.
+  const counts = useQuery({
+    queryKey: ["service-provider-counts", svcList.map((s) => s.id).join(",")],
+    enabled: svcList.length > 0,
+    queryFn: async () => {
+      const entries = await Promise.all(svcList.map(async (s) => [s.id, (await getServiceProviders(s.id)).length] as const));
+      return Object.fromEntries(entries) as Record<string, number>;
+    },
+  });
 
   const toggle = useMutation({
     mutationFn: (s: ServiceItem) => setServiceActive(s.id, !s.is_active),
@@ -45,6 +61,10 @@ export function ServiceCatalogPage() {
         <Button onClick={() => setCreating(true)}><Plus className="h-4 w-4" /> New service</Button>
       </div>
 
+      <div className="rounded-md border border-primary/20 bg-primary/5 px-4 py-2.5 text-sm text-muted-foreground">
+        <span className="font-medium text-foreground">Providers</span> are the staff who perform each service. Reception can only send a patient <span className="font-medium text-foreground">straight to a doctor</span> for staff assigned here — use the <span className="font-medium text-foreground">Providers</span> column to assign them.
+      </div>
+
       <Card className="overflow-hidden">
         <table className="w-full text-sm">
           <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -53,18 +73,35 @@ export function ServiceCatalogPage() {
               <th className="font-medium">Service</th>
               <th className="font-medium">Category</th>
               <th className="font-medium">Price</th>
+              <th className="font-medium">Providers</th>
               <th className="font-medium">Available</th>
               <th className="font-medium">Default</th>
               <th className="p-3 font-medium"></th>
             </tr>
           </thead>
           <tbody>
-            {(services.data ?? []).map((s) => (
+            {svcList.map((s) => {
+              const n = counts.data?.[s.id];
+              return (
               <tr key={s.id} className="group border-b last:border-0">
                 <td className="p-3 font-mono text-xs text-muted-foreground">{s.code}</td>
                 <td className="font-medium">{s.name}</td>
                 <td className="text-muted-foreground capitalize">{s.category}</td>
                 <td className="font-mono">{s.currency} {s.price}</td>
+                <td>
+                  <button
+                    onClick={() => setAssigning(s)}
+                    title="Assign the staff who provide this service"
+                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${
+                      n === undefined ? "border-slate-200 bg-slate-50 text-muted-foreground"
+                      : n === 0 ? "border-rose-200 bg-rose-50 text-rose-700"
+                      : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    }`}
+                  >
+                    <Users className="h-3 w-3" />
+                    {n === undefined ? "…" : n === 0 ? "None — assign" : `${n} staff`}
+                  </button>
+                </td>
                 <td>
                   <button
                     onClick={() => toggle.mutate(s)}
@@ -84,12 +121,13 @@ export function ServiceCatalogPage() {
                 </td>
                 <td className="p-3">
                   <div className="flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100">
+                    <button onClick={() => setAssigning(s)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Assign staff"><Users className="h-4 w-4" /></button>
                     <button onClick={() => setEditing(s)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit"><Pencil className="h-4 w-4" /></button>
                     <button onClick={() => { if (window.confirm(`Remove "${s.name}"?`)) del.mutate(s.id); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive" title="Delete"><Trash2 className="h-4 w-4" /></button>
                   </div>
                 </td>
               </tr>
-            ))}
+            );})}
           </tbody>
         </table>
         {(services.data?.length ?? 0) === 0 && <p className="p-10 text-center text-sm text-muted-foreground">No services yet — add the ones your clinic bills for.</p>}
@@ -97,7 +135,51 @@ export function ServiceCatalogPage() {
 
       <ServiceDialog open={creating} onOpenChange={setCreating} onDone={refresh} />
       <ServiceDialog svc={editing ?? undefined} open={!!editing} onOpenChange={(o) => !o && setEditing(null)} onDone={refresh} />
+      <AssignStaffDialog svc={assigning ?? undefined} open={!!assigning} onOpenChange={(o) => !o && setAssigning(null)} onDone={refresh} />
     </div>
+  );
+}
+
+function AssignStaffDialog({ svc, open, onOpenChange, onDone }: { svc?: ServiceItem; open: boolean; onOpenChange: (v: boolean) => void; onDone: () => void }) {
+  const [staff, setStaff] = useState<Record<string, boolean>>({});
+  const users = useQuery({ queryKey: ["users"], queryFn: listUsers, enabled: open });
+
+  useEffect(() => {
+    if (open && svc) {
+      getServiceProviders(svc.id).then((ids) => setStaff(Object.fromEntries(ids.map((i) => [i, true])))).catch(() => setStaff({}));
+    }
+  }, [open, svc]);
+
+  const mut = useMutation({
+    mutationFn: () => setServiceProviders(svc!.id, Object.keys(staff).filter((k) => staff[k])),
+    onSuccess: () => { toast.success("Providers updated"); onOpenChange(false); onDone(); },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not save"),
+  });
+
+  const active = (users.data ?? []).filter((u) => u.status === "active");
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Assign staff{svc ? ` — ${svc.name}` : ""}</DialogTitle></DialogHeader>
+        <p className="text-xs text-muted-foreground">
+          Tick the staff who provide this service. Reception can send a patient <span className="font-medium text-foreground">straight to a doctor</span> only for people ticked here.
+        </p>
+        <div className="max-h-64 space-y-1 overflow-auto rounded-md border p-1">
+          {active.map((u) => (
+            <label key={u.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
+              <input type="checkbox" checked={!!staff[u.id]} onChange={(e) => setStaff({ ...staff, [u.id]: e.target.checked })} />
+              <span className="flex-1">{u.full_name}</span>
+              <span className="text-xs capitalize text-muted-foreground">{(u.roles?.[0] ?? "").replace(/_/g, " ")}</span>
+            </label>
+          ))}
+          {active.length === 0 && <p className="px-2 py-3 text-xs text-muted-foreground">No active staff yet — invite them in Settings → Users first.</p>}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button loading={mut.isPending} onClick={() => mut.mutate()}>Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

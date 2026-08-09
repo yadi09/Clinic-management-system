@@ -75,6 +75,7 @@ export interface Profile extends Patient {
 }
 
 export interface PatientFormValues {
+  mrn?: string; // existing card ID on import; blank = auto-generate
   first_name: string;
   middle_name?: string;
   last_name: string;
@@ -87,8 +88,18 @@ export interface PatientFormValues {
   blood_group?: string;
 }
 
-export async function searchPatients(q: string, page: number, pageSize: number): Promise<{ items: PatientSummary[]; meta: Meta }> {
+/** Optional narrowing for the patient list. Omitted fields mean "no filter". */
+export interface PatientFilters {
+  gender?: string; // male | female | other | unknown
+}
+export async function searchPatients(
+  q: string,
+  page: number,
+  pageSize: number,
+  f: PatientFilters = {},
+): Promise<{ items: PatientSummary[]; meta: Meta }> {
   const params = new URLSearchParams({ q, page: String(page), page_size: String(pageSize) });
+  if (f.gender) params.set("gender", f.gender);
   return apiList<PatientSummary>(`/patients?${params.toString()}`);
 }
 
@@ -113,6 +124,67 @@ export async function createPatient(values: PatientFormValues, force = false): P
 
 export function updatePatient(id: string, values: PatientFormValues): Promise<Patient> {
   return apiFetch<Patient>(`/patients/${id}`, { method: "PUT", body: values });
+}
+
+/** Import a migrated (paper / old-system) record as a back-dated historical visit.
+ *  History is split into SOAP sections; at least one must be non-empty. */
+export interface HistoryImport {
+  date?: string;
+  subjective?: string; // History (HPI, past/family/personal)
+  objective?: string; // Examination findings
+  assessment?: string; // Diagnosis / assessment
+  plan?: string; // Treatment / plan
+}
+export function importHistory(patientId: string, body: HistoryImport) {
+  return apiFetch<{ encounter_id: string }>("/history-import", { method: "POST", body: { patient_id: patientId, ...body } });
+}
+
+// --- legacy register bulk import ---
+
+/** One raw spreadsheet row. Values are sent unparsed — the server cleans, converts
+ *  dates and matches duplicates, so every clinic's formatting is handled in one place. */
+export interface ImportRowInput {
+  row_number: number;
+  mrn?: string;
+  name: string;
+  phone?: string;
+  gender?: string;
+  age?: string;
+  visit_date?: string;
+}
+export type ImportOutcome = "imported" | "updated" | "duplicate" | "failed";
+export interface ImportRowResult {
+  row_number: number;
+  name: string;
+  phone: string;
+  gender: string;
+  age: string;
+  visit_date: string;
+  outcome: ImportOutcome;
+  reason?: string;
+  mrn?: string;
+  warning?: string;
+}
+export interface ImportReport {
+  total: number;
+  imported: number;
+  updated: number;
+  duplicates: number;
+  failed: number;
+  missing_phone: number;
+  missing_gender: number;
+  estimated_dob: number;
+  dry_run: boolean;
+  rows: ImportRowResult[];
+}
+export function importPatients(body: {
+  rows: ImportRowInput[];
+  dry_run?: boolean;
+  on_duplicate?: "skip" | "update";
+  /** Calendar the sheet's dates are written in. Dates are always stored Gregorian. */
+  calendar?: "ethiopian" | "gregorian";
+}) {
+  return apiFetch<ImportReport>("/patients/import", { method: "POST", body });
 }
 
 export function addAllergy(patientId: string, body: { substance: string; reaction?: string; severity: string }) {

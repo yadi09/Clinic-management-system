@@ -104,6 +104,30 @@ func (q *Queries) GetUserByID(ctx context.Context, arg GetUserByIDParams) (GetUs
 	return i, err
 }
 
+const getUserCredentials = `-- name: GetUserCredentials :one
+SELECT id, email, password_hash FROM users
+WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+`
+
+type GetUserCredentialsParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+type GetUserCredentialsRow struct {
+	ID           uuid.UUID `json:"id"`
+	Email        string    `json:"email"`
+	PasswordHash *string   `json:"password_hash"`
+}
+
+// Current credentials for self-service email/password changes (needs the hash).
+func (q *Queries) GetUserCredentials(ctx context.Context, arg GetUserCredentialsParams) (GetUserCredentialsRow, error) {
+	row := q.db.QueryRow(ctx, getUserCredentials, arg.TenantID, arg.ID)
+	var i GetUserCredentialsRow
+	err := row.Scan(&i.ID, &i.Email, &i.PasswordHash)
+	return i, err
+}
+
 const incrementFailedLogin = `-- name: IncrementFailedLogin :one
 UPDATE users
 SET failed_attempts = failed_attempts + 1, updated_at = now()
@@ -160,5 +184,37 @@ func (q *Queries) SetUserMFA(ctx context.Context, arg SetUserMFAParams) error {
 		arg.MfaEnabled,
 		arg.MfaSecret,
 	)
+	return err
+}
+
+const updateUserEmail = `-- name: UpdateUserEmail :exec
+UPDATE users SET email = $1, updated_at = now()
+WHERE tenant_id = $2 AND id = $3 AND deleted_at IS NULL
+`
+
+type UpdateUserEmailParams struct {
+	Email    string    `json:"email"`
+	TenantID uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+}
+
+func (q *Queries) UpdateUserEmail(ctx context.Context, arg UpdateUserEmailParams) error {
+	_, err := q.db.Exec(ctx, updateUserEmail, arg.Email, arg.TenantID, arg.ID)
+	return err
+}
+
+const updateUserPassword = `-- name: UpdateUserPassword :exec
+UPDATE users SET password_hash = $1, updated_at = now()
+WHERE tenant_id = $2 AND id = $3 AND deleted_at IS NULL
+`
+
+type UpdateUserPasswordParams struct {
+	PasswordHash *string   `json:"password_hash"`
+	TenantID     uuid.UUID `json:"tenant_id"`
+	ID           uuid.UUID `json:"id"`
+}
+
+func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {
+	_, err := q.db.Exec(ctx, updateUserPassword, arg.PasswordHash, arg.TenantID, arg.ID)
 	return err
 }

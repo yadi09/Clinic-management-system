@@ -1,0 +1,17 @@
+# Public marketing site (clinicos.cc apex) — a tiny static Caddy container,
+# self-signed origin behind Cloudflare (Full). Own host port :8444, no 80/443.
+services:
+  marketing:
+    image: caddy:2-alpine
+    restart: always
+    volumes:
+      - ./marketing:/srv:ro
+      - ./infra/Caddyfile.marketing:/etc/caddy/Caddyfile:ro
+      - ./infra/origin.crt:/etc/caddy/origin.crt:ro
+      - ./infra/origin.key:/etc/caddy/origin.key:ro
+    ports:
+      - "8444:443"
+    deploy:
+      resources:
+        limits:
+          memory: 64m

@@ -13,8 +13,8 @@ import (
 )
 
 const createSession = `-- name: CreateSession :one
-INSERT INTO sessions (tenant_id, user_id, refresh_token_hash, user_agent, ip, expires_at, rotated_from)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO sessions (tenant_id, user_id, refresh_token_hash, user_agent, ip, expires_at, rotated_from, active_branch_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING id
 `
 
@@ -26,6 +26,7 @@ type CreateSessionParams struct {
 	Ip               *string    `json:"ip"`
 	ExpiresAt        time.Time  `json:"expires_at"`
 	RotatedFrom      *uuid.UUID `json:"rotated_from"`
+	ActiveBranchID   *uuid.UUID `json:"active_branch_id"`
 }
 
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (uuid.UUID, error) {
@@ -37,6 +38,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (u
 		arg.Ip,
 		arg.ExpiresAt,
 		arg.RotatedFrom,
+		arg.ActiveBranchID,
 	)
 	var id uuid.UUID
 	err := row.Scan(&id)
@@ -44,7 +46,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (u
 }
 
 const getSessionByHash = `-- name: GetSessionByHash :one
-SELECT id, tenant_id, user_id, expires_at, revoked_at
+SELECT id, tenant_id, user_id, expires_at, revoked_at, active_branch_id
 FROM sessions
 WHERE tenant_id = $1 AND refresh_token_hash = $2
 `
@@ -55,11 +57,12 @@ type GetSessionByHashParams struct {
 }
 
 type GetSessionByHashRow struct {
-	ID        uuid.UUID  `json:"id"`
-	TenantID  uuid.UUID  `json:"tenant_id"`
-	UserID    uuid.UUID  `json:"user_id"`
-	ExpiresAt time.Time  `json:"expires_at"`
-	RevokedAt *time.Time `json:"revoked_at"`
+	ID             uuid.UUID  `json:"id"`
+	TenantID       uuid.UUID  `json:"tenant_id"`
+	UserID         uuid.UUID  `json:"user_id"`
+	ExpiresAt      time.Time  `json:"expires_at"`
+	RevokedAt      *time.Time `json:"revoked_at"`
+	ActiveBranchID *uuid.UUID `json:"active_branch_id"`
 }
 
 func (q *Queries) GetSessionByHash(ctx context.Context, arg GetSessionByHashParams) (GetSessionByHashRow, error) {
@@ -71,6 +74,7 @@ func (q *Queries) GetSessionByHash(ctx context.Context, arg GetSessionByHashPara
 		&i.UserID,
 		&i.ExpiresAt,
 		&i.RevokedAt,
+		&i.ActiveBranchID,
 	)
 	return i, err
 }
@@ -90,6 +94,28 @@ func (q *Queries) RevokeAllUserSessions(ctx context.Context, arg RevokeAllUserSe
 	return err
 }
 
+const revokeOtherUserSessions = `-- name: RevokeOtherUserSessions :execrows
+UPDATE sessions SET revoked_at = now()
+WHERE tenant_id = $1 AND user_id = $2 AND revoked_at IS NULL
+  AND ($3::text IS NULL OR refresh_token_hash <> $3)
+`
+
+type RevokeOtherUserSessionsParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	UserID   uuid.UUID `json:"user_id"`
+	KeepHash *string   `json:"keep_hash"`
+}
+
+// Revoke every session for the user except the one holding keep_hash (the current
+// device). A NULL keep_hash revokes all. Used on password change + "sign out other devices".
+func (q *Queries) RevokeOtherUserSessions(ctx context.Context, arg RevokeOtherUserSessionsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeOtherUserSessions, arg.TenantID, arg.UserID, arg.KeepHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const revokeSession = `-- name: RevokeSession :exec
 UPDATE sessions SET revoked_at = now()
 WHERE tenant_id = $1 AND id = $2 AND revoked_at IS NULL
@@ -102,5 +128,41 @@ type RevokeSessionParams struct {
 
 func (q *Queries) RevokeSession(ctx context.Context, arg RevokeSessionParams) error {
 	_, err := q.db.Exec(ctx, revokeSession, arg.TenantID, arg.ID)
+	return err
+}
+
+const sessionRotated = `-- name: SessionRotated :one
+SELECT EXISTS(SELECT 1 FROM sessions WHERE tenant_id = $1 AND rotated_from = $2) AS rotated
+`
+
+type SessionRotatedParams struct {
+	TenantID uuid.UUID  `json:"tenant_id"`
+	ID       *uuid.UUID `json:"id"`
+}
+
+// True if this session has a successor (it was revoked by refresh rotation). This
+// distinguishes genuine token reuse (a rotated token replayed) from an intentional
+// revocation (logout / sign-out-others / password change), so the latter doesn't
+// nuke the user's other live sessions.
+func (q *Queries) SessionRotated(ctx context.Context, arg SessionRotatedParams) (bool, error) {
+	row := q.db.QueryRow(ctx, sessionRotated, arg.TenantID, arg.ID)
+	var rotated bool
+	err := row.Scan(&rotated)
+	return rotated, err
+}
+
+const setSessionActiveBranch = `-- name: SetSessionActiveBranch :exec
+UPDATE sessions SET active_branch_id = $3
+WHERE tenant_id = $1 AND id = $2
+`
+
+type SetSessionActiveBranchParams struct {
+	TenantID       uuid.UUID  `json:"tenant_id"`
+	ID             uuid.UUID  `json:"id"`
+	ActiveBranchID *uuid.UUID `json:"active_branch_id"`
+}
+
+func (q *Queries) SetSessionActiveBranch(ctx context.Context, arg SetSessionActiveBranchParams) error {
+	_, err := q.db.Exec(ctx, setSessionActiveBranch, arg.TenantID, arg.ID, arg.ActiveBranchID)
 	return err
 }

@@ -44,9 +44,17 @@ type Config struct {
 	LockoutDuration time.Duration
 	MFAEncKey       []byte // 32 bytes (AES-256) for at-rest TOTP secret encryption
 
-	Cloudinary CloudinaryConfig
+	// StorageProvider selects the object-storage backend: "r2" | "cloudinary" |
+	// "" (auto: r2 if configured, else cloudinary, else noop).
+	StorageProvider string
+	Cloudinary      CloudinaryConfig
+	R2              R2Config
 
 	Transcription TranscriptionConfig
+
+	AI AIConfig
+
+	DHIS2 DHIS2Config
 
 	RateLimitRPS   float64
 	RateLimitBurst int
@@ -63,6 +71,30 @@ type TranscriptionConfig struct {
 // Configured reports whether a Deepgram key is present.
 func (t TranscriptionConfig) Configured() bool { return t.DeepgramAPIKey != "" }
 
+// AIConfig holds credentials for the clinical decision-support co-pilot ("ClinicOS
+// Assist") — an OpenAI-compatible chat API (NVIDIA build by default). When the API
+// key is empty the Assist endpoint is disabled.
+type AIConfig struct {
+	APIKey  string
+	Model   string
+	BaseURL string
+}
+
+// Configured reports whether an AI co-pilot key is present.
+func (a AIConfig) Configured() bool { return a.APIKey != "" }
+
+// DHIS2Config holds the credentials for the DHIS2 (Ministry of Health) reporting
+// showcase. Token is a Personal Access Token the clinic owner creates in DHIS2;
+// an empty token disables the push. The token is never logged and never placed
+// in a URL.
+type DHIS2Config struct {
+	Token   string
+	BaseURL string
+}
+
+// Configured reports whether a DHIS2 token is present.
+func (d DHIS2Config) Configured() bool { return d.Token != "" }
+
 // CloudinaryConfig holds the Cloudinary storage-provider credentials.
 type CloudinaryConfig struct {
 	CloudName    string
@@ -74,6 +106,19 @@ type CloudinaryConfig struct {
 // Configured reports whether Cloudinary credentials are present.
 func (c CloudinaryConfig) Configured() bool {
 	return c.CloudName != "" && c.APIKey != "" && c.APISecret != ""
+}
+
+// R2Config holds the Cloudflare R2 (S3-compatible) storage credentials.
+type R2Config struct {
+	AccountID string // Cloudflare account id → endpoint <account>.r2.cloudflarestorage.com
+	AccessKey string
+	SecretKey string
+	Bucket    string
+}
+
+// Configured reports whether R2 credentials are present.
+func (c R2Config) Configured() bool {
+	return c.AccountID != "" && c.AccessKey != "" && c.SecretKey != "" && c.Bucket != ""
 }
 
 // IsProd reports whether the environment is production.
@@ -93,16 +138,32 @@ func Load() (Config, error) {
 		DatabaseURL:         os.Getenv("DATABASE_URL"),
 		PlatformDatabaseURL: os.Getenv("PLATFORM_DATABASE_URL"),
 		JWTIssuer:           getenv("JWT_ISSUER", "clinicsaas"),
+		StorageProvider:     strings.ToLower(strings.TrimSpace(os.Getenv("STORAGE_PROVIDER"))),
 		Cloudinary: CloudinaryConfig{
 			CloudName:    os.Getenv("CLOUDINARY_CLOUD_NAME"),
 			APIKey:       os.Getenv("CLOUDINARY_API_KEY"),
 			APISecret:    os.Getenv("CLOUDINARY_API_SECRET"),
 			UploadFolder: getenv("CLOUDINARY_UPLOAD_FOLDER", "clinic"),
 		},
+		R2: R2Config{
+			AccountID: os.Getenv("R2_ACCOUNT_ID"),
+			AccessKey: os.Getenv("R2_ACCESS_KEY_ID"),
+			SecretKey: os.Getenv("R2_SECRET_ACCESS_KEY"),
+			Bucket:    os.Getenv("R2_BUCKET"),
+		},
 		Transcription: TranscriptionConfig{
 			DeepgramAPIKey: os.Getenv("DEEPGRAM_API_KEY"),
 			Model:          getenv("DEEPGRAM_MODEL", "nova-3"),
 			Language:       getenv("DEEPGRAM_LANGUAGE", "en"),
+		},
+		AI: AIConfig{
+			APIKey:  getenv("NVIDIA_API_KEY", os.Getenv("AI_API_KEY")),
+			Model:   getenv("AI_MODEL", "meta/llama-3.3-70b-instruct"),
+			BaseURL: getenv("AI_BASE_URL", "https://integrate.api.nvidia.com/v1"),
+		},
+		DHIS2: DHIS2Config{
+			Token:   os.Getenv("DHIS2_TOKEN"),
+			BaseURL: getenv("DHIS2_BASE_URL", "https://dhis.moh.gov.et"),
 		},
 	}
 
@@ -147,8 +208,8 @@ func Load() (Config, error) {
 		if strings.Contains(string(cfg.JWTSecret), "dev-only") {
 			fail("JWT_SECRET is a dev placeholder in production")
 		}
-		if !cfg.Cloudinary.Configured() {
-			fail("Cloudinary must be configured in production")
+		if !cfg.Cloudinary.Configured() && !cfg.R2.Configured() {
+			fail("an object-storage provider (Cloudinary or R2) must be configured in production")
 		}
 	}
 

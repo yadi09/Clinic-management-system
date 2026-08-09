@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { ShieldCheck } from "lucide-react";
@@ -21,11 +21,11 @@ export function PlatformLoginPage() {
     onError: (e) => setError(e instanceof Error ? e.message : "Login failed"),
   });
 
-  // Already signed in → go straight to the console.
-  if (platformToken.get()) {
-    navigate("/platform");
-    return null;
-  }
+  // Already signed in → go straight to the console (redirect in an effect, never
+  // during render — a render-phase navigate leaves the page stuck blank).
+  useEffect(() => {
+    if (platformToken.get()) navigate("/platform", { replace: true });
+  }, [navigate]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-950 px-4 text-zinc-100">

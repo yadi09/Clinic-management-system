@@ -11,10 +11,47 @@ import (
 	"github.com/google/uuid"
 )
 
+const getBranchFlagOverrides = `-- name: GetBranchFlagOverrides :many
+SELECT flag, enabled
+FROM feature_flags
+WHERE tenant_id = $1 AND branch_id = $2
+`
+
+type GetBranchFlagOverridesParams struct {
+	TenantID uuid.UUID  `json:"tenant_id"`
+	BranchID *uuid.UUID `json:"branch_id"`
+}
+
+type GetBranchFlagOverridesRow struct {
+	Flag    string `json:"flag"`
+	Enabled bool   `json:"enabled"`
+}
+
+// Per-branch flag overrides for one branch; applied over the tenant defaults.
+func (q *Queries) GetBranchFlagOverrides(ctx context.Context, arg GetBranchFlagOverridesParams) ([]GetBranchFlagOverridesRow, error) {
+	rows, err := q.db.Query(ctx, getBranchFlagOverrides, arg.TenantID, arg.BranchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetBranchFlagOverridesRow{}
+	for rows.Next() {
+		var i GetBranchFlagOverridesRow
+		if err := rows.Scan(&i.Flag, &i.Enabled); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getTenantFlags = `-- name: GetTenantFlags :many
 SELECT flag, enabled
 FROM feature_flags
-WHERE tenant_id = $1
+WHERE tenant_id = $1 AND branch_id IS NULL
 `
 
 type GetTenantFlagsRow struct {
@@ -22,6 +59,7 @@ type GetTenantFlagsRow struct {
 	Enabled bool   `json:"enabled"`
 }
 
+// Tenant-wide default flags (branch overrides are layered on top of these).
 func (q *Queries) GetTenantFlags(ctx context.Context, tenantID uuid.UUID) ([]GetTenantFlagsRow, error) {
 	rows, err := q.db.Query(ctx, getTenantFlags, tenantID)
 	if err != nil {
@@ -102,6 +140,81 @@ func (q *Queries) GetUserRoleCodes(ctx context.Context, arg GetUserRoleCodesPara
 			return nil, err
 		}
 		items = append(items, code)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getUserScopes = `-- name: GetUserScopes :many
+SELECT r.code AS role_code, urs.branch_id, urs.department_id
+FROM user_role_scopes urs
+JOIN roles r ON r.id = urs.role_id AND r.tenant_id = urs.tenant_id
+WHERE urs.tenant_id = $1 AND urs.user_id = $2
+ORDER BY r.code
+`
+
+type GetUserScopesParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	UserID   uuid.UUID `json:"user_id"`
+}
+
+type GetUserScopesRow struct {
+	RoleCode     string     `json:"role_code"`
+	BranchID     *uuid.UUID `json:"branch_id"`
+	DepartmentID *uuid.UUID `json:"department_id"`
+}
+
+// Every (role, branch, department) scope for a user. A NULL branch_id means the
+// assignment is tenant-wide (access to all branches).
+func (q *Queries) GetUserScopes(ctx context.Context, arg GetUserScopesParams) ([]GetUserScopesRow, error) {
+	rows, err := q.db.Query(ctx, getUserScopes, arg.TenantID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetUserScopesRow{}
+	for rows.Next() {
+		var i GetUserScopesRow
+		if err := rows.Scan(&i.RoleCode, &i.BranchID, &i.DepartmentID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listActiveBranches = `-- name: ListActiveBranches :many
+SELECT id, name, code
+FROM branches
+WHERE tenant_id = $1 AND deleted_at IS NULL AND is_active = true
+ORDER BY created_at
+`
+
+type ListActiveBranchesRow struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+	Code string    `json:"code"`
+}
+
+// Active branches for the tenant, oldest first (the first is the default branch).
+func (q *Queries) ListActiveBranches(ctx context.Context, tenantID uuid.UUID) ([]ListActiveBranchesRow, error) {
+	rows, err := q.db.Query(ctx, listActiveBranches, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActiveBranchesRow{}
+	for rows.Next() {
+		var i ListActiveBranchesRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.Code); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

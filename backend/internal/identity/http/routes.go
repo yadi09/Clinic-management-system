@@ -21,6 +21,12 @@ func (h *Handlers) RegisterPublic(rg *gin.RouterGroup) {
 // must already have RequireAuth applied). Staff management is permission-gated.
 func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	rg.GET("/auth/me", h.Me)
+	rg.POST("/auth/switch-branch", h.SwitchBranch)
+	// Self-service account changes for the signed-in user (no admin permission;
+	// both confirm the current password server-side).
+	rg.POST("/auth/password", h.ChangePassword)
+	rg.POST("/auth/email", h.ChangeEmail)
+	rg.POST("/auth/sessions/logout-others", h.SignOutOtherDevices)
 
 	rg.GET("/roles", httpx.RequirePermission("user.read"), h.ListRoles)
 	// Assignable clinicians for the triage/reception "assign doctor" pickers — usable
@@ -31,5 +37,7 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	u.GET("", httpx.RequirePermission("user.read"), h.ListUsers)
 	u.POST("", httpx.RequirePermission("user.invite"), h.InviteUser)
 	u.POST("/:id/status", httpx.RequirePermission("user.update"), h.UpdateUserStatus)
+	u.POST("/:id/name", httpx.RequirePermission("user.update"), h.UpdateUserName)
+	u.DELETE("/:id", httpx.RequirePermission("user.update"), h.DeleteUser)
 	u.PUT("/:id/roles", httpx.RequirePermission("role.assign"), h.AssignRoles)
 }

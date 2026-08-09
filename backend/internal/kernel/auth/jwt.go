@@ -22,7 +22,12 @@ type AccessClaims struct {
 	Roles       []string        `json:"roles,omitempty"`
 	Permissions []string        `json:"perms,omitempty"`
 	Flags       map[string]bool `json:"flags,omitempty"`
-	Type        string          `json:"typ"`
+	// Branches lists the branch ids this user may access. Empty means tenant-wide
+	// (all branches). ActiveBranch is the branch the session is currently working
+	// in; empty means the consolidated "all branches" view (tenant-wide users only).
+	Branches     []string `json:"brs,omitempty"`
+	ActiveBranch string   `json:"abr,omitempty"`
+	Type         string   `json:"typ"`
 }
 
 // ErrInvalidToken is returned when an access token is missing/invalid/expired.
@@ -41,7 +46,9 @@ func NewTokenService(secret []byte, issuer string, accessTTL time.Duration) *Tok
 }
 
 // IssueAccess signs an access token for the user and returns it with its expiry.
-func (ts *TokenService) IssueAccess(userID, tenantID uuid.UUID, email string, roles, permissions []string, flags map[string]bool) (string, time.Time, error) {
+// branches are the accessible branch ids (empty = tenant-wide); activeBranch is
+// the branch the session is working in (empty = consolidated all-branches view).
+func (ts *TokenService) IssueAccess(userID, tenantID uuid.UUID, email string, roles, permissions []string, flags map[string]bool, branches []string, activeBranch string) (string, time.Time, error) {
 	now := time.Now()
 	exp := now.Add(ts.accessTTL)
 	claims := AccessClaims{
@@ -53,12 +60,14 @@ func (ts *TokenService) IssueAccess(userID, tenantID uuid.UUID, email string, ro
 			ExpiresAt: jwt.NewNumericDate(exp),
 			ID:        uuid.NewString(),
 		},
-		TenantID:    tenantID.String(),
-		Email:       email,
-		Roles:       roles,
-		Permissions: permissions,
-		Flags:       flags,
-		Type:        "access",
+		TenantID:     tenantID.String(),
+		Email:        email,
+		Roles:        roles,
+		Permissions:  permissions,
+		Flags:        flags,
+		Branches:     branches,
+		ActiveBranch: activeBranch,
+		Type:         "access",
 	}
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signed, err := tok.SignedString(ts.secret)

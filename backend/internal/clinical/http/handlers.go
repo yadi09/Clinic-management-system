@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/reicb/clinicsaas/internal/clinical"
+	"github.com/reicb/clinicsaas/internal/kernel/ai"
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
 	"github.com/reicb/clinicsaas/internal/kernel/httpx"
 	"github.com/reicb/clinicsaas/internal/kernel/id"
@@ -26,12 +27,13 @@ import (
 type Handlers struct {
 	svc         clinical.Service
 	transcriber *transcribe.Client // voice dictation (nil/unconfigured = disabled)
+	assist      *ai.Client         // clinical decision-support co-pilot (nil/unconfigured = disabled)
 	store       storage.Provider   // signed direct-upload for lab-result attachments
 }
 
 // NewHandlers constructs clinical HTTP handlers.
-func NewHandlers(svc clinical.Service, transcriber *transcribe.Client, store storage.Provider) *Handlers {
-	return &Handlers{svc: svc, transcriber: transcriber, store: store}
+func NewHandlers(svc clinical.Service, transcriber *transcribe.Client, assist *ai.Client, store storage.Provider) *Handlers {
+	return &Handlers{svc: svc, transcriber: transcriber, assist: assist, store: store}
 }
 
 // ---- requests ----
@@ -262,7 +264,36 @@ func catalogOut(e clinical.CatalogEntry) catalogEntryDTO {
 	return catalogEntryDTO{ID: id.Encode(id.PrefixDiagCatalog, e.ID), CategoryID: id.Encode(id.PrefixDiagCategory, e.CategoryID), CatalogEntry: e}
 }
 
-func workspaceOut(ws *clinical.Workspace) workspaceDTO {
+// freshFileURLs rewrites each stored result-file's url from its storage key, so
+// links stay valid with providers that serve via short-lived presigned URLs (R2).
+// Files with no key (older Cloudinary rows) are left as-is.
+func (h *Handlers) freshFileURLs(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return raw
+	}
+	var files []map[string]any
+	if err := json.Unmarshal(raw, &files); err != nil {
+		return raw
+	}
+	changed := false
+	for _, f := range files {
+		if key, ok := f["key"].(string); ok && key != "" {
+			if u := h.store.URL(key); u != "" {
+				f["url"] = u
+				changed = true
+			}
+		}
+	}
+	if !changed {
+		return raw
+	}
+	if out, err := json.Marshal(files); err == nil {
+		return out
+	}
+	return raw
+}
+
+func (h *Handlers) workspaceOut(ws *clinical.Workspace) workspaceDTO {
 	out := workspaceDTO{
 		EncounterID:  id.Encode(id.PrefixEncounter, ws.EncounterID),
 		Status:       ws.Status,
@@ -285,6 +316,7 @@ func workspaceOut(ws *clinical.Workspace) workspaceDTO {
 	}
 	out.LabReferrals = make([]labReferralDTO, 0, len(ws.LabReferrals))
 	for _, r := range ws.LabReferrals {
+		r.ResultFiles = h.freshFileURLs(r.ResultFiles)
 		out.LabReferrals = append(out.LabReferrals, labReferralDTO{ID: id.Encode(id.PrefixLabReferral, r.ID), LabReferral: r})
 	}
 	return out
@@ -309,7 +341,7 @@ func (h *Handlers) OpenEncounter(c *gin.Context) {
 		httpx.Fail(c, err)
 		return
 	}
-	httpx.OK(c, workspaceOut(ws))
+	httpx.OK(c, h.workspaceOut(ws))
 }
 
 // History handles GET /encounters?patient= — the patient's past encounters.
@@ -331,6 +363,36 @@ func (h *Handlers) History(c *gin.Context) {
 	httpx.OK(c, out)
 }
 
+// ImportHistory handles POST /history-import — store a migrated (paper/old-system)
+// record as a back-dated historical encounter for a patient.
+func (h *Handlers) ImportHistory(c *gin.Context) {
+	var req struct {
+		PatientID  string `json:"patient_id"`
+		Date       string `json:"date"`
+		Subjective string `json:"subjective"`
+		Objective  string `json:"objective"`
+		Assessment string `json:"assessment"`
+		Plan       string `json:"plan"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("patient_id and at least one history section are required"))
+		return
+	}
+	pid, err := id.Decode(id.PrefixPatient, req.PatientID)
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("invalid patient"))
+		return
+	}
+	encID, err := h.svc.ImportHistory(c.Request.Context(), clinical.HistoryImportInput{
+		PatientID: pid, Date: req.Date, Subjective: req.Subjective, Objective: req.Objective, Assessment: req.Assessment, Plan: req.Plan,
+	})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.Created(c, gin.H{"encounter_id": id.Encode(id.PrefixEncounter, encID)})
+}
+
 // GetWorkspace handles GET /encounters/:id.
 func (h *Handlers) GetWorkspace(c *gin.Context) {
 	encID, ok := decodeParam(c, id.PrefixEncounter, "id")
@@ -342,7 +404,7 @@ func (h *Handlers) GetWorkspace(c *gin.Context) {
 		httpx.Fail(c, err)
 		return
 	}
-	httpx.OK(c, workspaceOut(ws))
+	httpx.OK(c, h.workspaceOut(ws))
 }
 
 // SaveNote handles PUT /encounters/:id/note.

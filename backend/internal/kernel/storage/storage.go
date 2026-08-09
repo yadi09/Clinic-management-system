@@ -34,3 +34,12 @@ type Provider interface {
 	// Delete removes a stored object.
 	Delete(ctx context.Context, key string) error
 }
+
+// Sizer is an optional capability: a provider that can report the real stored
+// size of an object (bytes). Used to meter actual usage after a direct upload,
+// so a client can't under-report its size to dodge the storage quota. Providers
+// that can't (e.g. noop) simply don't implement it and the caller falls back to
+// the client-declared size.
+type Sizer interface {
+	Size(ctx context.Context, key string) (int64, error)
+}

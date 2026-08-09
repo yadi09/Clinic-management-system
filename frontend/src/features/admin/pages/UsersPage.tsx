@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, UserPlus } from "lucide-react";
 
@@ -14,7 +14,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/app/auth-context";
 import { AppError } from "@/lib/api-client";
-import { assignRoles, inviteUser, listRoles, listUsers, updateUserStatus, type InviteResult, type UserListItem } from "@/features/admin/api";
+import { assignRoles, deleteUser, inviteUser, listRoles, listUsers, updateUserName, updateUserStatus, type InviteResult, type UserListItem } from "@/features/admin/api";
 
 function statusVariant(s: string): "success" | "warning" | "destructive" | "default" {
   if (s === "active") return "success";
@@ -24,7 +24,7 @@ function statusVariant(s: string): "success" | "warning" | "destructive" | "defa
 }
 
 export function UsersPage() {
-  const { can } = useAuth();
+  const { can, user: me } = useAuth();
   const qc = useQueryClient();
   const canInvite = can("user.invite");
   const canUpdate = can("user.update");
@@ -33,6 +33,8 @@ export function UsersPage() {
   const users = useQuery({ queryKey: ["users"], queryFn: listUsers });
   const invalidate = () => qc.invalidateQueries({ queryKey: ["users"] });
   const [editing, setEditing] = useState<UserListItem | null>(null);
+  const [renaming, setRenaming] = useState<UserListItem | null>(null);
+  const [deleting, setDeleting] = useState<UserListItem | null>(null);
 
   const statusMut = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) => updateUserStatus(id, status),
@@ -40,6 +42,16 @@ export function UsersPage() {
       toast.success("Staff updated");
       invalidate();
     },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteUser(id),
+    onSuccess: () => {
+      toast.success("Staff member removed");
+      setDeleting(null);
+      invalidate();
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not remove the staff member"),
   });
 
   return (
@@ -82,6 +94,11 @@ export function UsersPage() {
                   {(canUpdate || canAssign) && (
                     <TableCell>
                       <div className="flex items-center gap-3">
+                        {canUpdate && (
+                          <button className="text-xs text-primary hover:underline" onClick={() => setRenaming(u)}>
+                            Edit name
+                          </button>
+                        )}
                         {canAssign && (
                           <button className="text-xs text-primary hover:underline" onClick={() => setEditing(u)}>
                             Edit roles
@@ -97,6 +114,11 @@ export function UsersPage() {
                             Reactivate
                           </button>
                         )}
+                        {canUpdate && u.id !== me?.id && (
+                          <button className="text-xs text-destructive hover:underline" onClick={() => setDeleting(u)}>
+                            Delete
+                          </button>
+                        )}
                       </div>
                     </TableCell>
                   )}
@@ -107,26 +129,74 @@ export function UsersPage() {
         )}
       </Card>
 
+      <EditNameDialog user={renaming} onClose={() => setRenaming(null)} onSaved={() => { setRenaming(null); invalidate(); }} />
       <EditRolesDialog user={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); invalidate(); }} />
+
+      <Dialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Remove staff member</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Remove <span className="font-medium text-foreground">{deleting?.full_name}</span> ({deleting?.email})? They'll be signed out and lose access. You can re-invite them later.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleting(null)}>Cancel</Button>
+            <Button variant="destructive" loading={deleteMut.isPending} onClick={() => deleting && deleteMut.mutate(deleting.id)}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
+function EditNameDialog({ user, onClose, onSaved }: { user: UserListItem | null; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState("");
+  const [forUser, setForUser] = useState<string | null>(null);
+  // Seed the field whenever a different user is opened.
+  if (user && forUser !== user.id) {
+    setForUser(user.id);
+    setName(user.full_name);
+  }
+  const mut = useMutation({
+    mutationFn: () => updateUserName(user!.id, name.trim()),
+    onSuccess: () => { toast.success("Name updated"); onSaved(); },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not update the name"),
+  });
+  return (
+    <Dialog open={!!user} onOpenChange={(o) => { if (!o) { setForUser(null); onClose(); } }}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Edit name{user ? ` — ${user.email}` : ""}</DialogTitle></DialogHeader>
+        <div className="space-y-1.5">
+          <Label>Full name</Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && name.trim() && mut.mutate()} />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => { setForUser(null); onClose(); }}>Cancel</Button>
+          <Button disabled={!name.trim() || name.trim() === user?.full_name} loading={mut.isPending} onClick={() => mut.mutate()}>Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function EditRolesDialog({ user, onClose, onSaved }: { user: UserListItem | null; onClose: () => void; onSaved: () => void }) {
+  const { branches } = useAuth();
   const [selected, setSelected] = useState<string[]>([]);
+  const [branchSel, setBranchSel] = useState<string[]>([]);
   const roles = useQuery({ queryKey: ["roles"], queryFn: listRoles, enabled: !!user });
   // Reset selection whenever a different user is opened.
   const [forUser, setForUser] = useState<string | null>(null);
   if (user && forUser !== user.id) {
     setForUser(user.id);
     setSelected(user.roles);
+    setBranchSel([]);
   }
   const mut = useMutation({
-    mutationFn: () => assignRoles(user!.id, selected),
+    mutationFn: () => assignRoles(user!.id, selected, branchSel),
     onSuccess: () => { toast.success("Roles updated"); onSaved(); },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not update roles"),
   });
   const toggle = (code: string) => setSelected((s) => (s.includes(code) ? s.filter((c) => c !== code) : [...s, code]));
+  const toggleBranch = (id: string) => setBranchSel((s) => (s.includes(id) ? s.filter((b) => b !== id) : [...s, id]));
   return (
     <Dialog open={!!user} onOpenChange={(o) => { if (!o) { setForUser(null); onClose(); } }}>
       <DialogContent>
@@ -153,6 +223,24 @@ function EditRolesDialog({ user, onClose, onSaved }: { user: UserListItem | null
             ))}
           </div>
         </div>
+        {branches.length > 1 && (
+          <div className="space-y-1.5">
+            <Label>Branches</Label>
+            <p className="text-xs text-muted-foreground">Which branches this staff member works in. Leave empty for all branches.</p>
+            <div className="flex flex-wrap gap-2">
+              {branches.map((b) => (
+                <button
+                  key={b.id}
+                  type="button"
+                  onClick={() => toggleBranch(b.id)}
+                  className={"rounded-full border px-3 py-1 text-xs transition-colors " + (branchSel.includes(b.id) ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent")}
+                >
+                  {b.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={() => { setForUser(null); onClose(); }}>Cancel</Button>
           <Button disabled={selected.length === 0} loading={mut.isPending} onClick={() => mut.mutate()}>Save roles</Button>
@@ -170,20 +258,29 @@ function InviteDialog({ onInvited }: { onInvited: () => void }) {
   const [result, setResult] = useState<InviteResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const roles = useQuery({ queryKey: ["roles"], queryFn: listRoles, enabled: open });
+  const { branches, activeBranchId } = useAuth();
+  const [branchSel, setBranchSel] = useState<string[]>([]);
+  // Default new staff to the branch the admin is currently working in.
+  useEffect(() => {
+    if (open) setBranchSel(activeBranchId && branches.length > 1 ? [activeBranchId] : []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const mut = useMutation({
-    mutationFn: () => inviteUser({ email, full_name: fullName, roles: selected }),
+    mutationFn: () => inviteUser({ email, full_name: fullName, roles: selected, branch_ids: branchSel }),
     onSuccess: (res) => {
       setResult(res);
       setEmail("");
       setFullName("");
       setSelected([]);
+      setBranchSel([]);
       onInvited();
     },
     onError: (e) => setError(e instanceof AppError ? e.message : "Could not invite user."),
   });
 
   const toggle = (code: string) => setSelected((s) => (s.includes(code) ? s.filter((c) => c !== code) : [...s, code]));
+  const toggleBranch = (id: string) => setBranchSel((s) => (s.includes(id) ? s.filter((b) => b !== id) : [...s, id]));
   const close = () => {
     setResult(null);
     setError(null);
@@ -258,6 +355,24 @@ function InviteDialog({ onInvited }: { onInvited: () => void }) {
                 ))}
               </div>
             </div>
+            {branches.length > 1 && (
+              <div className="space-y-1.5">
+                <Label>Branches</Label>
+                <p className="text-xs text-muted-foreground">Which branches this staff member works in. Leave empty for all branches.</p>
+                <div className="flex flex-wrap gap-2">
+                  {branches.map((b) => (
+                    <button
+                      key={b.id}
+                      type="button"
+                      onClick={() => toggleBranch(b.id)}
+                      className={"rounded-full border px-3 py-1 text-xs transition-colors " + (branchSel.includes(b.id) ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent")}
+                    >
+                      {b.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <DialogFooter>
               <Button variant="outline" onClick={close}>
                 Cancel

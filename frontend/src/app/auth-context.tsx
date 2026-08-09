@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { tokenStore } from "@/lib/token";
 import { trySilentRefresh } from "@/lib/api-client";
-import { logoutApi, meApi, type UserDTO } from "@/features/auth/api";
+import { logoutApi, meApi, switchBranchApi, type BranchRef, type UserDTO } from "@/features/auth/api";
 import { can as canPerm, hasRole as hasRoleFn, isFlagOn } from "@/lib/rbac";
 
 type Status = "loading" | "authenticated" | "unauthenticated";
@@ -11,11 +11,17 @@ interface AuthState {
   user: UserDTO | null;
   permissions: string[];
   flags: Record<string, boolean>;
+  branches: BranchRef[];
+  activeBranchId: string | null;
+  activeBranch: BranchRef | null;
+  allBranches: boolean;
   can: (permission: string) => boolean;
   hasRole: (role: string) => boolean;
   flagOn: (flag: string) => boolean;
   signIn: (accessToken: string, user: UserDTO) => Promise<void>;
   signOut: () => Promise<void>;
+  refresh: () => Promise<void>;
+  switchBranch: (branchId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -25,13 +31,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserDTO | null>(null);
   const [permissions, setPermissions] = useState<string[]>([]);
   const [flags, setFlags] = useState<Record<string, boolean>>({});
+  const [branches, setBranches] = useState<BranchRef[]>([]);
+  const [activeBranchId, setActiveBranchId] = useState<string | null>(null);
+  const [allBranches, setAllBranches] = useState(false);
 
   const loadMe = async () => {
     const me = await meApi();
     setUser(me.user);
     setPermissions(me.permissions ?? []);
     setFlags(me.flags ?? {});
+    setBranches(me.branches ?? []);
+    setActiveBranchId(me.active_branch_id ?? null);
+    setAllBranches(me.all_branches ?? false);
     setStatus("authenticated");
+  };
+
+  // Switch the session to a different branch ("all" = consolidated view). The
+  // server re-issues an access token scoped to that branch; then we reload /me
+  // so permissions, flags, and the active branch reflect the new scope.
+  const switchBranch = async (branchId: string) => {
+    const res = await switchBranchApi(branchId);
+    tokenStore.set(res.access_token);
+    await loadMe();
   };
 
   // On boot, restore the session from the refresh cookie.
@@ -89,6 +110,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setPermissions([]);
       setFlags({});
+      setBranches([]);
+      setActiveBranchId(null);
+      setAllBranches(false);
       setStatus("unauthenticated");
     }
   };
@@ -98,11 +122,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     permissions,
     flags,
+    branches,
+    activeBranchId,
+    activeBranch: branches.find((b) => b.id === activeBranchId) ?? null,
+    allBranches,
     can: (p) => canPerm(permissions, p),
     hasRole: (r) => hasRoleFn(user?.roles, r),
     flagOn: (f) => isFlagOn(flags, f),
     signIn,
     signOut,
+    refresh: loadMe,
+    switchBranch,
   };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

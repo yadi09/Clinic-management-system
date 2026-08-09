@@ -75,7 +75,20 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<{ da
 
   if (res.status === 204) return { data: undefined as T };
   const text = await res.text();
-  const json = text ? JSON.parse(text) : {};
+  let json: { error?: { code?: string; message?: string; request_id?: string; details?: Record<string, string> }; data?: unknown; meta?: Meta } = {};
+  if (text) {
+    try {
+      json = JSON.parse(text);
+    } catch {
+      // Body isn't JSON — almost always a proxy/gateway error page (HTML) on a
+      // 5xx. Surface a clean message instead of a raw "Unexpected token '<'".
+      const msg =
+        res.status >= 500
+          ? "The server had trouble with that request. Please try again in a moment."
+          : "The server returned an unexpected response.";
+      throw new AppError(res.status || 502, "UPSTREAM_ERROR", msg);
+    }
+  }
   if (!res.ok) {
     const e = json?.error ?? {};
     throw new AppError(res.status, e.code ?? "ERROR", e.message ?? "Request failed", e.request_id, e.details, json);

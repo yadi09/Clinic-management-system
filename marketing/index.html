@@ -1,0 +1,878 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ClinicOS — the clinic system built for Ethiopia</title>
+<meta name="description" content="ClinicOS runs the real flow of an Ethiopian clinic — reception, triage, the doctor's room, pharmacy, lab and the cashier — in one place, in ETB. See every patient and every birr." />
+<meta property="og:title" content="ClinicOS — run your whole clinic from one screen" />
+<meta property="og:description" content="Reception to the last birr, in one place. Built for Ethiopian clinics." />
+<meta property="og:type" content="website" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;450;500;600;700&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --ink:#0E2233; --brand:#1F4E79; --brand-2:#2C6AA0; --teal:#148F77; --teal-2:#1BB394;
+  --bg:#FBFDFE; --panel:#FFFFFF; --line:#E4EBF1; --line-2:#EEF3F7; --muted:#57697A;
+  --gold:#B9822B; --rose:#C0392B;
+  --band:#0E2233;
+  --r:16px; --r-sm:10px;
+  --shadow:0 1px 2px rgba(16,42,67,.04), 0 8px 30px -14px rgba(16,42,67,.18);
+  --shadow-lg:0 30px 70px -30px rgba(16,42,67,.45);
+  --disp:"Space Grotesk", "Inter", system-ui, sans-serif;
+  --body:"Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --maxw:1160px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:inherit;text-decoration:none}
+h1,h2,h3{font-family:var(--disp);font-weight:700;letter-spacing:-.02em;line-height:1.05;margin:0}
+p{margin:0}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+.eyebrow{font-family:var(--disp);font-weight:600;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--teal)}
+.btn{display:inline-flex;align-items:center;gap:8px;font-family:var(--body);font-weight:600;font-size:15.5px;border-radius:11px;padding:13px 22px;cursor:pointer;border:1px solid transparent;transition:transform .12s ease, box-shadow .2s ease, background .15s ease;white-space:nowrap}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--teal);color:#fff;box-shadow:0 10px 24px -10px rgba(20,143,119,.7)}
+.btn-primary:hover{background:var(--teal-2)}
+.btn-ghost{background:transparent;color:var(--brand);border-color:var(--line)}
+.btn-ghost:hover{border-color:var(--brand);background:#fff}
+.btn-lg{padding:16px 28px;font-size:16.5px}
+.btn-onDark{background:#fff;color:var(--brand)}
+.btn-onDark:hover{background:#eef4fa}
+
+/* ---- nav ---- */
+.nav{position:sticky;top:0;z-index:50;background:rgba(251,253,254,.82);backdrop-filter:saturate(1.4) blur(12px);border-bottom:1px solid transparent;transition:border-color .2s}
+.nav.scrolled{border-color:var(--line)}
+.nav-in{display:flex;align-items:center;gap:26px;height:66px}
+.logo{display:flex;align-items:center;gap:10px;font-family:var(--disp);font-weight:700;font-size:20px;letter-spacing:-.02em;color:var(--ink)}
+.logo .mark{width:32px;height:32px;border-radius:9px;background:var(--brand);display:grid;place-items:center;flex-shrink:0}
+.nav-links{display:flex;gap:26px;margin-left:8px}
+.nav-links a{font-size:15px;color:var(--muted);font-weight:500}
+.nav-links a:hover{color:var(--ink)}
+.nav-cta{margin-left:auto;display:flex;align-items:center;gap:10px}
+@media(max-width:820px){.nav-links{display:none}}
+
+/* ---- hero ---- */
+.hero{position:relative;padding:72px 0 40px;overflow:hidden}
+.hero-grid{display:grid;grid-template-columns:1.02fr 1fr;gap:48px;align-items:center}
+@media(max-width:960px){.hero-grid{grid-template-columns:1fr;gap:34px}.hero{padding:44px 0 20px}}
+.h1{font-size:clamp(38px,5.4vw,66px)}
+.h1 .grad{background:linear-gradient(96deg,var(--brand),var(--teal));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{font-size:19.5px;color:var(--muted);margin-top:20px;max-width:36ch}
+.hero-cta{display:flex;gap:12px;margin-top:30px;flex-wrap:wrap}
+.hero-trust{display:flex;gap:18px;flex-wrap:wrap;margin-top:24px;color:var(--muted);font-size:14px}
+.hero-trust span{display:inline-flex;align-items:center;gap:7px}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--teal)}
+
+/* pulse line */
+.pulse{display:block;width:210px;height:30px;margin:22px 0 0}
+.pulse path{fill:none;stroke:var(--teal);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;
+  stroke-dasharray:420;stroke-dashoffset:420;animation:draw 3.2s ease-in-out infinite}
+@keyframes draw{0%{stroke-dashoffset:420}55%{stroke-dashoffset:0}100%{stroke-dashoffset:-420}}
+
+/* ---- app frame (shared) ---- */
+.frame{background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-lg);overflow:hidden}
+.frame-bar{display:flex;align-items:center;gap:7px;padding:11px 14px;background:#f4f7fa;border-bottom:1px solid var(--line)}
+.frame-bar i{width:11px;height:11px;border-radius:50%;background:#d6dee6;display:block}
+.frame-bar .url{margin-left:10px;font-size:12px;color:var(--muted);font-family:var(--body);background:#fff;border:1px solid var(--line);border-radius:6px;padding:3px 12px}
+.frame-body{position:relative}
+
+/* miniature app UI primitives (recreations) */
+.app{display:flex;font-size:12.5px;color:var(--ink);background:#F2F7FB;min-height:340px}
+.app-rail{width:52px;background:var(--brand);flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px 0}
+.app-rail .lg{width:26px;height:26px;border-radius:7px;background:#fff;display:grid;place-items:center;margin-bottom:6px}
+.app-rail .ic{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:#9fbdd8;font-size:14px}
+.app-rail .ic.on{background:#fff;color:var(--brand)}
+.app-main{flex:1;padding:16px 18px;min-width:0}
+.app-h{font-family:var(--disp);font-weight:700;font-size:16px;color:var(--brand)}
+.app-sub{color:var(--muted);font-size:11.5px;margin-top:1px}
+.card2{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#fff}
+.seg b{padding:8px 14px;font-weight:600;font-size:12px;color:var(--muted)}
+.seg b.on{background:var(--teal);color:#fff}
+.pill{display:inline-block;border-radius:999px;padding:2px 10px;font-size:10.5px;font-weight:600;border:1px solid var(--line)}
+.pill.tealp{background:#e6f6f1;border-color:#bfe6da;color:#0c7a63}
+.pill.goldp{background:#faf1df;border-color:#ecd7ab;color:var(--gold)}
+.money{font-family:var(--disp);font-weight:700}
+
+/* highlight + cursor + callout */
+.spot{position:absolute;border:2px solid var(--teal);border-radius:10px;box-shadow:0 0 0 6px rgba(20,143,119,.14);opacity:0;pointer-events:none}
+.cursor{position:absolute;width:22px;height:22px;z-index:6;pointer-events:none;filter:drop-shadow(0 3px 5px rgba(16,42,67,.35));opacity:0}
+.callout{position:absolute;z-index:7;background:var(--ink);color:#fff;font-family:var(--body);font-size:11.5px;font-weight:500;padding:6px 11px;border-radius:8px;box-shadow:0 8px 22px -8px rgba(16,42,67,.6);opacity:0;max-width:190px;pointer-events:none}
+.callout::after{content:"";position:absolute;bottom:-5px;left:16px;width:9px;height:9px;background:var(--ink);transform:rotate(45deg)}
+
+/* ---- sections ---- */
+section{position:relative}
+.sec{padding:88px 0}
+@media(max-width:720px){.sec{padding:56px 0}}
+.sec-head{max-width:640px}
+.sec-head h2{font-size:clamp(28px,3.6vw,42px);margin-top:12px}
+.sec-head p{color:var(--muted);font-size:18px;margin-top:14px}
+
+/* problem band (dark) */
+.band{background:radial-gradient(1200px 500px at 80% -10%, #16406a 0%, var(--band) 60%);color:#dbe7f0}
+.band .eyebrow{color:var(--teal-2)}
+.band h2{color:#fff;font-size:clamp(28px,3.8vw,44px)}
+.pains{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:44px}
+@media(max-width:820px){.pains{grid-template-columns:1fr}}
+.pain{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:22px}
+.pain .pn{font-family:var(--disp);font-weight:700;color:#fff;font-size:18px;margin:12px 0 6px}
+.pain p{color:#a9c0d2;font-size:15px}
+.pain .ico{width:40px;height:40px;border-radius:10px;background:rgba(27,179,148,.15);color:var(--teal-2);display:grid;place-items:center}
+
+/* journey */
+.journey{display:flex;align-items:stretch;gap:0;margin-top:52px;position:relative}
+@media(max-width:900px){.journey{flex-direction:column;gap:14px}}
+.step{flex:1;text-align:center;padding:0 12px;position:relative}
+.step .num{width:44px;height:44px;border-radius:12px;background:#fff;border:1px solid var(--line);display:grid;place-items:center;margin:0 auto 14px;font-family:var(--disp);font-weight:700;color:var(--brand);box-shadow:var(--shadow);position:relative;z-index:2}
+.step h3{font-size:17px}
+.step p{color:var(--muted);font-size:14px;margin-top:6px}
+.jline{position:absolute;top:22px;left:8%;right:8%;height:2px;background:linear-gradient(90deg,var(--line),var(--teal),var(--line));z-index:1}
+@media(max-width:900px){.jline{display:none}}
+.step .steptag{display:inline-block;font-size:10.5px;font-weight:600;color:#0c7a63;background:#e6f6f1;border:1px solid #bfe6da;border-radius:999px;padding:1px 9px;margin-top:8px}
+.jnote{max-width:840px;margin:46px auto 0;background:#fff;border:1px solid var(--line);border-radius:16px;padding:22px 26px;display:flex;gap:16px;align-items:flex-start;box-shadow:var(--shadow)}
+.jnote .ico{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#eaf1f8,#e6f6f1);display:grid;place-items:center;flex-shrink:0;font-size:19px}
+.jnote .txt{font-size:15.5px;color:var(--muted);line-height:1.62}
+.jnote .txt b{color:var(--ink);font-weight:700}
+.jnote .txt strong{color:var(--teal);font-weight:700}
+/* clinic-type switcher */
+.types-tabs{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:44px 0 6px}
+.ttab{background:#fff;border:1px solid var(--line);border-radius:999px;padding:9px 17px;font-family:var(--body);font-weight:600;font-size:14px;color:var(--muted);cursor:pointer;transition:.15s}
+.ttab:hover{border-color:#c9d7e2}
+.ttab.on{background:var(--brand);color:#fff;border-color:var(--brand);box-shadow:0 8px 20px -12px rgba(31,78,121,.7)}
+.flow-wrap{margin-top:28px}
+.type-note{text-align:center;color:var(--muted);font-size:15px;margin-top:22px;max-width:640px;margin-left:auto;margin-right:auto}
+.type-note b{color:var(--ink)}
+/* org / multi-branch view */
+.org{max-width:840px;margin:0 auto}
+.org-top{text-align:center;margin-bottom:6px}
+.org-top .node{display:inline-flex;align-items:center;gap:9px;background:var(--brand);color:#fff;border-radius:13px;padding:11px 20px;font-family:var(--disp);font-weight:600;box-shadow:var(--shadow)}
+.org-stem{width:2px;height:20px;background:var(--line);margin:0 auto}
+.org-branches{display:grid;gap:12px}
+.branch{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 18px;box-shadow:var(--shadow);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.branch .bname{font-family:var(--disp);font-weight:600;color:var(--brand);min-width:130px;display:flex;align-items:center;gap:8px}
+.branch .depts{display:flex;gap:7px;flex-wrap:wrap}
+.dchip{font-size:12px;font-weight:600;color:var(--ink);background:#eef4fa;border:1px solid #dbe7f1;border-radius:8px;padding:4px 10px}
+.dchip.mod{background:#e6f6f1;border-color:#bfe6da;color:#0c7a63}
+.branch.add{border-style:dashed;box-shadow:none;background:transparent}
+.branch.add .bname{color:var(--muted)}
+
+/* ---- tour ---- */
+.tour{margin-top:48px;display:grid;grid-template-columns:236px 1fr;gap:26px;align-items:start}
+@media(max-width:900px){.tour{grid-template-columns:1fr;gap:18px}}
+.tour-tabs{display:flex;flex-direction:column;gap:8px}
+@media(max-width:900px){.tour-tabs{flex-direction:row;overflow-x:auto;padding-bottom:4px}}
+.tab{text-align:left;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 15px;cursor:pointer;transition:.16s;font-family:var(--body);min-width:180px}
+.tab:hover{border-color:#c9d7e2}
+.tab.on{border-color:var(--teal);background:#f4fbf9;box-shadow:0 8px 24px -14px rgba(20,143,119,.5)}
+.tab .tk{font-family:var(--disp);font-weight:600;font-size:15px;color:var(--ink);display:flex;align-items:center;gap:8px}
+.tab .td{color:var(--muted);font-size:12.5px;margin-top:3px}
+.tab .bar{height:2.5px;background:var(--line-2);border-radius:2px;margin-top:11px;overflow:hidden}
+.tab .bar i{display:block;height:100%;width:0;background:var(--teal)}
+.tab.on .bar i{width:100%;transition:width 8s linear}
+.tab .tk .n{width:22px;height:22px;border-radius:6px;background:#eef3f7;color:var(--muted);display:grid;place-items:center;font-size:12px}
+.tab.on .tk .n{background:var(--teal);color:#fff}
+
+.stage{position:relative}
+.chapter{display:none}
+.chapter.active{display:block}
+.stage-cap{margin-top:14px;background:#fff;border:1px solid var(--line);border-left:3px solid var(--teal);border-radius:0 12px 12px 0;padding:12px 16px;font-size:14.5px;color:var(--ink);min-height:44px}
+.stage-cap b{color:var(--teal)}
+
+/* waveform (voice) */
+.wave{display:inline-flex;align-items:center;gap:3px;height:16px}
+.wave i{width:3px;height:5px;background:var(--teal);border-radius:2px;animation:wv 900ms ease-in-out infinite}
+.wave i:nth-child(2){animation-delay:.12s}.wave i:nth-child(3){animation-delay:.24s}.wave i:nth-child(4){animation-delay:.36s}.wave i:nth-child(5){animation-delay:.48s}.wave i:nth-child(6){animation-delay:.6s}
+@keyframes wv{0%,100%{height:5px}50%{height:15px}}
+.mic{width:34px;height:34px;border-radius:50%;background:var(--teal);color:#fff;display:grid;place-items:center;font-size:15px}
+.typed{color:var(--ink)}
+.typed .cw{opacity:0}
+
+/* outcomes */
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:48px}
+@media(max-width:820px){.grid3{grid-template-columns:1fr}}
+.oc{background:#fff;border:1px solid var(--line);border-radius:16px;padding:26px;box-shadow:var(--shadow);transition:transform .18s ease, box-shadow .2s}
+.oc:hover{transform:translateY(-4px);box-shadow:0 24px 50px -26px rgba(16,42,67,.35)}
+.oc .ico{width:46px;height:46px;border-radius:12px;background:linear-gradient(135deg,#eaf1f8,#e6f6f1);color:var(--brand);display:grid;place-items:center;margin-bottom:16px}
+.oc h3{font-size:19px}
+.oc p{color:var(--muted);font-size:15px;margin-top:8px}
+
+/* why */
+.why{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-top:44px}
+@media(max-width:720px){.why{grid-template-columns:1fr}}
+.wr{display:flex;gap:16px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:22px}
+.wr .ico{width:42px;height:42px;border-radius:11px;flex-shrink:0;display:grid;place-items:center;background:#eef4fa;color:var(--brand)}
+.wr h3{font-size:17px}.wr p{color:var(--muted);font-size:14.5px;margin-top:5px}
+
+/* founding */
+.founding{background:linear-gradient(120deg,var(--brand),#123a5f);color:#fff;border-radius:24px;padding:52px;position:relative;overflow:hidden}
+@media(max-width:720px){.founding{padding:32px 24px}}
+.founding .eyebrow{color:var(--teal-2)}
+.founding h2{color:#fff;font-size:clamp(26px,3.4vw,38px);margin-top:12px;max-width:22ch}
+.founding p{color:#b9cee0;font-size:17px;margin-top:14px;max-width:52ch}
+.f-perks{display:flex;gap:22px;flex-wrap:wrap;margin:26px 0 30px}
+.f-perks span{display:inline-flex;align-items:center;gap:9px;font-size:15px;color:#dceaf5}
+.f-perks .ck{color:var(--teal-2)}
+
+/* faq */
+.faq{margin-top:40px;max-width:800px}
+.q{border-bottom:1px solid var(--line)}
+.q summary{list-style:none;cursor:pointer;padding:20px 4px;font-family:var(--disp);font-weight:600;font-size:18px;display:flex;justify-content:space-between;gap:16px;align-items:center}
+.q summary::-webkit-details-marker{display:none}
+.q summary .pm{color:var(--teal);font-size:22px;transition:transform .2s;flex-shrink:0}
+.q[open] summary .pm{transform:rotate(45deg)}
+.q p{color:var(--muted);font-size:15.5px;padding:0 4px 22px}
+
+/* final cta */
+.final{text-align:center;padding:90px 0}
+.final h2{font-size:clamp(30px,4vw,50px)}
+.final p{color:var(--muted);font-size:19px;margin:16px auto 0;max-width:44ch}
+.final .hero-cta{justify-content:center}
+
+/* footer */
+footer{background:var(--band);color:#9fb3c4;padding:52px 0 30px;font-size:14.5px}
+footer a{color:#c7d6e3}footer a:hover{color:#fff}
+.foot-grid{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
+.foot-grid .logo{color:#fff}
+.foot-links{display:flex;gap:40px;flex-wrap:wrap}
+.foot-col b{color:#fff;font-family:var(--disp);font-size:14px;display:block;margin-bottom:10px}
+.foot-col a{display:block;margin:6px 0}
+.foot-note{border-top:1px solid rgba(255,255,255,.1);margin-top:34px;padding-top:20px;font-size:13px;color:#7d94a6;display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
+
+/* reveal */
+.reveal{opacity:0;transform:translateY(22px);transition:opacity .7s cubic-bezier(.2,.7,.2,1), transform .7s cubic-bezier(.2,.7,.2,1)}
+.reveal.in{opacity:1;transform:none}
+
+/* marquee feature sections */
+.marquee{display:grid;grid-template-columns:1.05fr 1fr;gap:46px;align-items:center}
+.marquee.rev > .mq-media{order:-1}
+@media(max-width:900px){.marquee{grid-template-columns:1fr;gap:28px}.marquee.rev > .mq-media{order:0}}
+.badge-live,.badge-dev{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:3px 11px;border-radius:999px;font-family:var(--body)}
+.badge-live{background:#e6f6f1;color:#0c7a63;border:1px solid #bfe6da}
+.badge-dev{background:#fbf3e6;color:var(--gold);border:1px solid #ecd7ab}
+.marks{list-style:none;padding:0;margin:22px 0 0}
+.marks li{margin:18px 0;color:var(--muted);font-size:15.5px;line-height:1.62}
+.marks li b{color:var(--ink)}
+.marks li .lead-badge{margin-bottom:7px;display:inline-flex}
+.band-soft{background:#f3f8fb}
+/* AI assist mock */
+.assist{background:radial-gradient(400px 200px at 100% 0%, #16406a, #0E2233);color:#dbe7f0;border-radius:12px;padding:15px 16px}
+.assist .ah{display:flex;align-items:center;gap:7px;font-family:var(--disp);font-weight:600;color:#fff;font-size:13px}
+.assist .al{color:#9fb9cf;font-size:10.5px;margin:11px 0 3px;text-transform:uppercase;letter-spacing:.05em}
+.asug{margin:9px 0}
+.asug span{font-size:12px;color:#eaf2f8}
+.asug .trk{height:5px;background:rgba(255,255,255,.12);border-radius:3px;margin-top:5px;overflow:hidden}
+.asug .trk i{display:block;height:100%;background:var(--teal-2)}
+.aflag{margin-top:13px;background:rgba(201,130,46,.16);border:1px solid rgba(201,130,46,.42);color:#f2cf94;border-radius:9px;padding:9px 11px;font-size:11.5px;line-height:1.5}
+/* ministry report mock */
+.rrow{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--line-2);font-size:12.5px}
+.rrow b{font-family:var(--disp)}
+.dhis{font-family:var(--body);font-size:11px;color:var(--muted);display:inline-flex;align-items:center;gap:6px}
+
+@media (prefers-reduced-motion: reduce){
+  .pulse path,.wave i{animation:none;stroke-dashoffset:0}
+  .cursor{display:none!important}
+  .spot,.callout{opacity:1!important;animation:none!important}
+  .reveal{opacity:1;transform:none;transition:none}
+  html{scroll-behavior:auto}
+  .typed .cw{opacity:1!important}
+}
+:focus-visible{outline:3px solid var(--teal);outline-offset:2px;border-radius:6px}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<div class="nav" id="nav">
+  <div class="wrap nav-in">
+    <a class="logo" href="#top">
+      <span class="mark"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2-6 4 12 2-6h6"/></svg></span>
+      ClinicOS
+    </a>
+    <nav class="nav-links">
+      <a href="#tour">See it work</a>
+      <a href="#journey">How it works</a>
+      <a href="#why">Why ClinicOS</a>
+      <a href="#founding">Early access</a>
+    </nav>
+    <div class="nav-cta">
+      <a href="https://app.clinicos.cc" class="btn btn-ghost" style="padding:9px 16px;font-size:14.5px">Sign in</a>
+      <a href="#book" class="btn btn-primary" style="padding:10px 18px;font-size:14.5px">Book a demo</a>
+    </div>
+  </div>
+</div>
+
+<span id="top"></span>
+<!-- HERO -->
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="eyebrow">Clinic management · built for Ethiopia</span>
+      <h1 class="h1" style="margin-top:16px">See your whole clinic — from the front desk to the <span class="grad">last birr</span>.</h1>
+      <p class="lead">ClinicOS runs the real flow of an Ethiopian clinic — reception, triage, the doctor's room, pharmacy, lab and the cashier — in one place, in ETB, on hardware you already have.</p>
+      <svg class="pulse" viewBox="0 0 210 30" aria-hidden="true"><path d="M2 15h40l8-11 10 22 7-16 6 11h30l7-7 8 7h67"/></svg>
+      <div class="hero-cta">
+        <a href="#book" class="btn btn-primary btn-lg">Book a demo</a>
+        <a href="#tour" class="btn btn-ghost btn-lg">Watch it work ↓</a>
+      </div>
+      <div class="hero-trust">
+        <span><i class="dot"></i> Early access — we set it up for you</span>
+        <span><i class="dot"></i> Your data stays yours</span>
+      </div>
+    </div>
+
+    <!-- hero live frame: the owner's dashboard, alive -->
+    <div class="reveal in">
+      <div class="frame" role="img" aria-label="ClinicOS owner dashboard showing today's revenue, the live queue and alerts">
+        <div class="frame-bar"><i></i><i></i><i></i><span class="url">app.clinicos.cc</span></div>
+        <div class="frame-body">
+          <div class="app">
+            <div class="app-rail">
+              <div class="lg"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1F4E79" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2-6 4 12 2-6h6"/></svg></div>
+              <div class="ic on">▦</div><div class="ic">♟</div><div class="ic">≣</div><div class="ic">⊕</div><div class="ic">₿</div>
+            </div>
+            <div class="app-main">
+              <div class="app-h">Your day</div>
+              <div class="app-sub">Bethel Clinic · Wed, live</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-top:13px">
+                <div class="card2"><div style="color:var(--muted);font-size:10.5px">Revenue today</div><div class="money" style="font-size:19px;color:var(--brand);margin-top:3px">ETB 14,250</div><div class="pill tealp" style="margin-top:6px">▲ on track</div></div>
+                <div class="card2"><div style="color:var(--muted);font-size:10.5px">In the queue</div><div class="money" style="font-size:19px;margin-top:3px">8</div><div style="color:var(--muted);font-size:10.5px;margin-top:6px">3 waiting · 5 seen</div></div>
+                <div class="card2"><div style="color:var(--muted);font-size:10.5px">Low stock</div><div class="money" style="font-size:19px;color:var(--gold);margin-top:3px">2</div><div class="pill goldp" style="margin-top:6px">reorder soon</div></div>
+              </div>
+              <div class="card2" style="margin-top:9px">
+                <div style="color:var(--muted);font-size:10.5px;margin-bottom:9px">This week</div>
+                <div style="display:flex;align-items:flex-end;gap:8px;height:56px">
+                  <div style="flex:1;height:40%;background:#dbe7f1;border-radius:4px"></div>
+                  <div style="flex:1;height:62%;background:#dbe7f1;border-radius:4px"></div>
+                  <div style="flex:1;height:50%;background:#dbe7f1;border-radius:4px"></div>
+                  <div style="flex:1;height:78%;background:var(--teal);border-radius:4px"></div>
+                  <div style="flex:1;height:66%;background:#dbe7f1;border-radius:4px"></div>
+                  <div style="flex:1;height:90%;background:#dbe7f1;border-radius:4px"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- PROBLEM BAND -->
+<section class="band sec">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="eyebrow">The real problem</span>
+      <h2>You can't run what you can't see.</h2>
+      <p style="color:#a9c0d2">Most clinics don't lose money to one big thing. They lose it to a hundred small ones — untracked, unseen, every single day.</p>
+    </div>
+    <div class="pains">
+      <div class="pain reveal">
+        <div class="ico">💸</div>
+        <div class="pn">Money leaks, quietly</div>
+        <p>A consult here, a pharmacy sale there, a lab test no one charged for. By month-end the numbers never quite add up — and you can't say why.</p>
+      </div>
+      <div class="pain reveal">
+        <div class="ico">🌀</div>
+        <div class="pn">Reception runs on memory</div>
+        <p>Paper cards, a queue in someone's head, patients waiting and asking. One busy morning and the whole front desk is guessing.</p>
+      </div>
+      <div class="pain reveal">
+        <div class="ico">🙈</div>
+        <div class="pn">Blind when you step out</div>
+        <p>The moment you leave the clinic, you're flying blind. How many patients today? How much came in? You find out tomorrow, maybe.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- JOURNEY -->
+<section class="sec" id="journey">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="eyebrow">How it works</span>
+      <h2>One patient, one flow — shaped to your clinic.</h2>
+      <p>ClinicOS is built around the way clinics in Ethiopia actually run — and it reshapes to yours. From a single specialty room to a multi-branch hospital, pick a type below and watch the flow adapt.</p>
+    </div>
+    <div class="types reveal" id="typesRoot">
+      <div class="types-tabs" role="tablist" aria-label="Choose a clinic type">
+        <button class="ttab on" data-t="general" role="tab">General clinic</button>
+        <button class="ttab" data-t="specialty" role="tab">Specialty</button>
+        <button class="ttab" data-t="dental" role="tab">Dental</button>
+        <button class="ttab" data-t="derma" role="tab">Dermatology</button>
+        <button class="ttab" data-t="hospital" role="tab">Multi-branch · Hospital</button>
+      </div>
+      <div class="flow-wrap" id="flowWrap">
+        <div class="journey">
+          <div class="jline"></div>
+          <div class="step"><div class="num">1</div><h3>Reception</h3><p>Register &amp; take the fee.</p></div>
+          <div class="step"><div class="num">2</div><h3>Triage</h3><span class="steptag">optional</span><p>Vitals, flagged if off-range.</p></div>
+          <div class="step"><div class="num">3</div><h3>Doctor</h3><p>Notes · diagnosis · voice.</p></div>
+          <div class="step"><div class="num">4</div><h3>Pharmacy · Lab</h3><span class="steptag">if you have them</span><p>Dispensed &amp; paid first.</p></div>
+          <div class="step"><div class="num">5</div><h3>Cashier</h3><p>Every charge lands here.</p></div>
+        </div>
+      </div>
+      <div class="type-note" id="typeNote"><b>General clinic.</b> The full journey, triage included.</div>
+    </div>
+    <div class="jnote reveal">
+      <div class="ico">🔧</div>
+      <div class="txt"><b>Built to bend.</b> Every clinic in Ethiopia runs a little differently — so this flow is yours to shape. Turn triage on or off, send patients straight to the doctor, run with or without an in-house pharmacy or lab, name your own departments and services. <strong>ClinicOS fits your structure — not the other way around.</strong></div>
+    </div>
+  </div>
+</section>
+
+<!-- TOUR -->
+<section class="sec" id="tour" style="background:linear-gradient(180deg,#fff, #f3f8fb)">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="eyebrow">See it work</span>
+      <h2>Watch a patient move through your clinic.</h2>
+      <p>This is the real product. Pick a moment — it plays itself.</p>
+    </div>
+
+    <div class="tour reveal" id="tourRoot">
+      <div class="tour-tabs" role="tablist" aria-label="Product tour chapters">
+        <button class="tab on" data-k="reception" role="tab" aria-selected="true">
+          <span class="tk"><span class="n">1</span> Reception</span>
+          <span class="td">Register &amp; route in seconds</span>
+          <span class="bar"><i></i></span>
+        </button>
+        <button class="tab" data-k="consult" role="tab" aria-selected="false">
+          <span class="tk"><span class="n">2</span> Consultation</span>
+          <span class="td">Dictate the note by voice</span>
+          <span class="bar"><i></i></span>
+        </button>
+        <button class="tab" data-k="pharmacy" role="tab" aria-selected="false">
+          <span class="tk"><span class="n">3</span> Pharmacy</span>
+          <span class="td">Dispense, priced &amp; paid</span>
+          <span class="bar"><i></i></span>
+        </button>
+        <button class="tab" data-k="day" role="tab" aria-selected="false">
+          <span class="tk"><span class="n">4</span> Your day</span>
+          <span class="td">The whole clinic at a glance</span>
+          <span class="bar"><i></i></span>
+        </button>
+      </div>
+
+      <div class="stage">
+        <div class="frame">
+          <div class="frame-bar"><i></i><i></i><i></i><span class="url">app.clinicos.cc</span></div>
+          <div class="frame-body">
+
+            <!-- CH: RECEPTION -->
+            <div class="chapter active" data-k="reception">
+              <div class="app">
+                <div class="app-rail"><div class="lg"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1F4E79" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2-6 4 12 2-6h6"/></svg></div><div class="ic on">≣</div><div class="ic">♟</div><div class="ic">⊕</div><div class="ic">₿</div></div>
+                <div class="app-main">
+                  <div class="app-h">New patient</div>
+                  <div class="app-sub">Almaz Tesfaye · MRN 000482</div>
+                  <div style="margin-top:14px;color:var(--muted);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Next step</div>
+                  <div class="seg" id="rc-seg" style="margin-top:8px"><b>Triage first</b><b class="on">Straight to doctor</b></div>
+                  <div class="card2" style="margin-top:14px;display:flex;justify-content:space-between;align-items:center">
+                    <div><div style="color:var(--muted);font-size:10.5px">Collect payment</div><div style="font-size:11.5px;margin-top:2px">Consultation · Cash</div></div>
+                    <div class="money" id="rc-amt" style="font-size:17px;color:var(--brand)">ETB 250.00</div>
+                  </div>
+                  <button class="seg" id="rc-btn" style="margin-top:12px;border:none"><b class="on" style="background:var(--teal);border-radius:9px">✓ Register &amp; collect</b></button>
+                </div>
+              </div>
+              <div class="cursor" data-c="reception"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 2l6 16 2.5-6.5L19 9z" fill="#fff" stroke="#0E2233" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+              <div class="spot" data-s="reception"></div>
+              <div class="callout" data-o="reception">Route to the doctor — one tap</div>
+            </div>
+
+            <!-- CH: CONSULT + VOICE -->
+            <div class="chapter" data-k="consult">
+              <div class="app">
+                <div class="app-rail"><div class="lg"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1F4E79" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2-6 4 12 2-6h6"/></svg></div><div class="ic">≣</div><div class="ic on">♟</div><div class="ic">⊕</div><div class="ic">₿</div></div>
+                <div class="app-main">
+                  <div style="display:flex;justify-content:space-between;align-items:center">
+                    <div><div class="app-h">Consultation</div><div class="app-sub">Almaz Tesfaye · 34 · F</div></div>
+                    <span class="pill" style="border-color:#f0d4b0;background:#fbf3e6;color:var(--gold)">⚠ Penicillin allergy</span>
+                  </div>
+                  <div class="card2" style="margin-top:13px">
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                      <div style="color:var(--muted);font-size:11px;font-weight:600">Note · Subjective</div>
+                      <div style="display:flex;align-items:center;gap:8px" id="cs-micwrap">
+                        <span class="wave" id="cs-wave" style="opacity:0"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+                        <span class="mic" id="cs-mic">🎙</span>
+                      </div>
+                    </div>
+                    <div class="typed" id="cs-text" style="margin-top:10px;font-size:12.5px;line-height:1.7;min-height:48px">
+                      <span class="cw">3-day history of sore throat and fever. </span><span class="cw">No cough. Difficulty swallowing since yesterday.</span><span id="cs-caret" style="display:inline-block;width:2px;height:14px;background:var(--teal);vertical-align:-2px;margin-left:1px;opacity:0"></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="cursor" data-c="consult"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 2l6 16 2.5-6.5L19 9z" fill="#fff" stroke="#0E2233" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+              <div class="spot" data-s="consult"></div>
+              <div class="callout" data-o="consult">Speak — it writes the note for you</div>
+            </div>
+
+            <!-- CH: PHARMACY -->
+            <div class="chapter" data-k="pharmacy">
+              <div class="app">
+                <div class="app-rail"><div class="lg"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1F4E79" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2-6 4 12 2-6h6"/></svg></div><div class="ic">≣</div><div class="ic">♟</div><div class="ic on">⊕</div><div class="ic">₿</div></div>
+                <div class="app-main">
+                  <div class="app-h">Dispense queue</div>
+                  <div class="app-sub">2 prescriptions waiting</div>
+                  <div class="card2" id="ph-row" style="margin-top:13px;display:flex;justify-content:space-between;align-items:center">
+                    <div><div style="font-weight:600;font-size:12.5px">R-1042 · Almaz Tesfaye</div><div style="color:var(--muted);font-size:11px;margin-top:2px">Amoxicillin 500mg · 2 items</div></div>
+                    <span class="pill" id="ph-status" style="border-color:#cbd8e3;color:var(--muted)">ready</span>
+                  </div>
+                  <div class="card2" style="margin-top:9px;opacity:.55;display:flex;justify-content:space-between;align-items:center">
+                    <div><div style="font-weight:600;font-size:12.5px">R-1041 · Dawit Bekele</div><div style="color:var(--muted);font-size:11px;margin-top:2px">Paracetamol · 1 item</div></div>
+                    <span class="pill goldp">awaiting payment</span>
+                  </div>
+                </div>
+              </div>
+              <div class="cursor" data-c="pharmacy"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 2l6 16 2.5-6.5L19 9z" fill="#fff" stroke="#0E2233" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+              <div class="spot" data-s="pharmacy"></div>
+              <div class="callout" data-o="pharmacy">Priced &amp; paid before it leaves the shelf</div>
+            </div>
+
+            <!-- CH: YOUR DAY -->
+            <div class="chapter" data-k="day">
+              <div class="app">
+                <div class="app-rail"><div class="lg"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1F4E79" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2-6 4 12 2-6h6"/></svg></div><div class="ic on">▦</div><div class="ic">♟</div><div class="ic">⊕</div><div class="ic">₿</div></div>
+                <div class="app-main">
+                  <div class="app-h">Your day</div>
+                  <div class="app-sub">Bethel Clinic · live</div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-top:13px">
+                    <div class="card2"><div style="color:var(--muted);font-size:10.5px">Revenue today</div><div class="money" id="day-rev" style="font-size:18px;color:var(--brand);margin-top:3px">ETB 14,250</div></div>
+                    <div class="card2"><div style="color:var(--muted);font-size:10.5px">Patients</div><div class="money" style="font-size:18px;margin-top:3px">37</div></div>
+                    <div class="card2"><div style="color:var(--muted);font-size:10.5px">In queue</div><div class="money" style="font-size:18px;margin-top:3px">8</div></div>
+                  </div>
+                  <div class="card2" style="margin-top:9px"><div style="color:var(--muted);font-size:10.5px;margin-bottom:9px">Revenue this week</div>
+                    <div style="display:flex;align-items:flex-end;gap:8px;height:52px">
+                      <div style="flex:1;height:40%;background:#dbe7f1;border-radius:4px"></div><div style="flex:1;height:62%;background:#dbe7f1;border-radius:4px"></div><div style="flex:1;height:50%;background:#dbe7f1;border-radius:4px"></div><div style="flex:1;height:78%;background:var(--teal);border-radius:4px"></div><div style="flex:1;height:66%;background:#dbe7f1;border-radius:4px"></div><div style="flex:1;height:90%;background:#dbe7f1;border-radius:4px"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="cursor" data-c="day"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 2l6 16 2.5-6.5L19 9z" fill="#fff" stroke="#0E2233" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+              <div class="spot" data-s="day"></div>
+              <div class="callout" data-o="day">Your whole clinic — even from your phone</div>
+            </div>
+
+          </div>
+        </div>
+        <div class="stage-cap" id="stageCap"><b>Reception.</b> Register a walk-in, take the fee, and send them straight to the doctor — in seconds.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MARQUEE: VOICE + AI CO-PILOT -->
+<section class="sec">
+  <div class="wrap marquee">
+    <div class="reveal">
+      <span class="eyebrow">The doctor's room</span>
+      <h2 style="font-size:clamp(28px,3.6vw,42px);margin-top:12px">Doctors speak. ClinicOS writes — and helps them think.</h2>
+      <p style="color:var(--muted);font-size:18px;margin-top:14px">No keyboard between the doctor and the patient. Just talk — the record fills itself, and a quiet second opinion is right there when it helps.</p>
+      <ul class="marks">
+        <li><span class="badge-live lead-badge">● Live now</span><br><b>Voice to note.</b> Tap the mic and speak. The consultation note writes itself, in the doctor's own words — no typing, nothing lost, eyes on the patient.</li>
+        <li><span class="badge-dev lead-badge">In development</span><br><b>A clinical co-pilot.</b> As symptoms and history go in, ClinicOS Assist suggests the likely conditions, <b>flags danger signs</b>, and recommends what to check next — cross-checked against the patient's allergies. A second opinion in the room. The doctor always decides.</li>
+      </ul>
+    </div>
+    <div class="mq-media reveal in">
+      <div class="frame">
+        <div class="frame-bar"><i></i><i></i><i></i><span class="url">app.clinicos.cc</span></div>
+        <div class="frame-body" style="padding:15px;background:#F2F7FB;display:grid;grid-template-columns:1.25fr 1fr;gap:12px">
+          <div class="card2">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="color:var(--muted);font-size:11px;font-weight:600">Note · dictated</span>
+              <span class="mic" style="width:26px;height:26px;font-size:12px">🎙</span>
+            </div>
+            <p style="font-size:12px;line-height:1.75;margin-top:9px;color:var(--ink)">3-day history of sore throat and fever. Difficulty swallowing since yesterday. No cough.</p>
+            <span class="pill" style="margin-top:10px;border-color:#f0d4b0;background:#fbf3e6;color:var(--gold)">⚠ Penicillin allergy</span>
+          </div>
+          <div class="assist">
+            <div class="ah"><span style="color:var(--teal-2)">✦</span> ClinicOS Assist</div>
+            <div class="al">Likely conditions</div>
+            <div class="asug"><span>Acute pharyngitis</span><div class="trk"><i style="width:80%"></i></div></div>
+            <div class="asug"><span>Tonsillitis</span><div class="trk"><i style="width:52%"></i></div></div>
+            <div class="asug"><span>Strep throat</span><div class="trk"><i style="width:34%"></i></div></div>
+            <div class="aflag">⚠ Ask about breathing difficulty — rule out airway compromise.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MARQUEE: MINISTRY / DHIS2 REPORTING (the killer feature) -->
+<section class="sec band-soft">
+  <div class="wrap marquee rev">
+    <div class="reveal">
+      <span class="eyebrow">Compliance, gone</span>
+      <div style="margin-top:12px"><span class="badge-dev">In development · with founding clinics</span></div>
+      <h2 style="font-size:clamp(28px,3.6vw,42px);margin-top:14px">Your monthly Ministry report — filed for you.</h2>
+      <p style="color:var(--muted);font-size:18px;margin-top:14px">Every clinic owes the Ministry of Health a monthly report. Miss the deadline and there are penalties. ClinicOS already has every diagnosis and every visit — so it does the report for you.</p>
+      <ul class="marks">
+        <li><b>It compiles itself.</b> Your top-10 diseases and monthly figures, built straight from the records you already entered — no re-typing into a government portal.</li>
+        <li><b>It files itself.</b> Submitted directly to the national platform, <span style="color:var(--brand);font-weight:600">dhis2.moh.gov.et</span> — automatically each month, or reviewed and sent in one click.</li>
+        <li><b>Deadlines stop being your problem.</b> No month-end scramble, no penalty risk, no data-entry evening.</li>
+      </ul>
+      <div class="hero-cta" style="margin-top:26px"><a href="#book" class="btn btn-primary">See how it works</a></div>
+    </div>
+    <div class="mq-media reveal in">
+      <div class="frame">
+        <div class="frame-bar"><i></i><i></i><i></i><span class="url">app.clinicos.cc/reports</span></div>
+        <div class="frame-body" style="padding:16px;background:#F2F7FB">
+          <div class="card2">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+              <div><div style="font-family:var(--disp);font-weight:600;font-size:14px">Monthly Ministry report</div><div style="color:var(--muted);font-size:11px;margin-top:2px">June 2026 · Bethel Clinic</div></div>
+              <span class="pill tealp">Submitted ✓ Jul 2</span>
+            </div>
+            <div style="color:var(--muted);font-size:10px;margin:14px 0 4px;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Top diagnoses this month</div>
+            <div class="rrow"><span>Acute upper-respiratory infection</span><b>142</b></div>
+            <div class="rrow"><span>Malaria</span><b>88</b></div>
+            <div class="rrow"><span>Gastroenteritis</span><b>61</b></div>
+            <div class="rrow"><span>Hypertension</span><b>44</b></div>
+            <div class="rrow" style="opacity:.55;border-bottom:none"><span>+ 6 more</span><b>›</b></div>
+            <div style="display:flex;align-items:center;gap:12px;margin-top:14px">
+              <span class="seg" style="border:none"><b class="on" style="background:var(--teal);border-radius:9px">↑ Submit to DHIS2</b></span>
+              <span class="dhis">◷ or auto-file on the 1st</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- OUTCOMES -->
+<section class="sec">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="eyebrow">What you get</span>
+      <h2>Not more paperwork. Less.</h2>
+    </div>
+    <div class="grid3">
+      <div class="oc reveal"><div class="ico">💰</div><h3>Every birr, accounted for</h3><p>Consultations, pharmacy, and lab all bill to one cashier. Money can't leave without being charged.</p></div>
+      <div class="oc reveal"><div class="ico">⚡</div><h3>Reception that runs itself</h3><p>A live queue, not a paper pile. Patients are registered, routed, and paid in seconds.</p></div>
+      <div class="oc reveal"><div class="ico">🎙️</div><h3>Speak, don't type</h3><p>Doctors dictate the note by voice — and a clinical co-pilot suggests likely conditions and flags danger signs as they go.</p></div>
+      <div class="oc reveal"><div class="ico">📊</div><h3>Your clinic, from anywhere</h3><p>Revenue, patients, stock and staff — live, on your phone, whether you're in the building or not.</p></div>
+      <div class="oc reveal"><div class="ico">🏛️</div><h3>Ministry report, filed for you</h3><p>Your monthly top-10 diseases compiled and submitted to the national platform (dhis2.moh.gov.et) — automatically. No more deadline scramble.</p></div>
+      <div class="oc reveal"><div class="ico">🔒</div><h3>Your data stays yours</h3><p>Each clinic's records are isolated and private. It's your clinic's data — not ours, not anyone else's.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- WHY -->
+<section class="sec" id="why" style="background:#f3f8fb">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="eyebrow">Why ClinicOS</span>
+      <h2>Foreign systems don't fit. This one was made to.</h2>
+      <p>Built here, for how clinics here actually work — not adapted from something meant for somewhere else.</p>
+    </div>
+    <div class="why">
+      <div class="wr reveal"><div class="ico">🇪🇹</div><div><h3>Made for Ethiopia</h3><p>Prices in ETB. The walk-in-pays flow, the card and free-follow-up rules, triage-first — the way your clinic already runs.</p></div></div>
+      <div class="wr reveal"><div class="ico">💻</div><div><h3>Runs on what you have</h3><p>One modest server, ordinary internet. No expensive hardware, no per-seat surprises.</p></div></div>
+      <div class="wr reveal"><div class="ico">🤝</div><div><h3>We set it up for you</h3><p>We load your services, your staff, your catalog — and train your team. You don't start from a blank screen.</p></div></div>
+      <div class="wr reveal"><div class="ico">🛡️</div><div><h3>Private by design</h3><p>Strong isolation between clinics and roles. Staff see only what their job needs.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- FOUNDING -->
+<section class="sec" id="founding">
+  <div class="wrap">
+    <div class="founding reveal">
+      <svg class="pulse" style="margin:0 0 6px" viewBox="0 0 210 30" aria-hidden="true"><path d="M2 15h40l8-11 10 22 7-16 6 11h30l7-7 8 7h67" stroke="#1BB394"/></svg>
+      <span class="eyebrow">Founding clinics · limited</span>
+      <h2>We're onboarding a small number of founding clinics now.</h2>
+      <p>Come in early and you get founding pricing, a system we shape around how your clinic actually works, and hands-on setup from the people who built it.</p>
+      <div class="f-perks">
+        <span><span class="ck">✓</span> Founding price, locked</span>
+        <span><span class="ck">✓</span> We migrate &amp; set you up</span>
+        <span><span class="ck">✓</span> A direct line to the team</span>
+      </div>
+      <a href="#book" class="btn btn-onDark btn-lg">Claim a founding spot</a>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="sec" style="background:#f3f8fb">
+  <div class="wrap">
+    <div class="sec-head reveal"><span class="eyebrow">Questions</span><h2>The things owners ask us first.</h2></div>
+    <div class="faq reveal">
+      <details class="q"><summary>I already have a system. Why switch? <span class="pm">+</span></summary><p>If your current system tells you exactly how much came in today, what's leaking, and what's happening while you're away — keep it. Most don't. ClinicOS is built for that visibility, in ETB, around your real flow. Try it on a few clinics; the numbers make the case.</p></details>
+      <details class="q"><summary>Is my patient data safe? <span class="pm">+</span></summary><p>Each clinic's data is isolated and private, and staff only see what their role needs. It's your clinic's data — we don't sell it, share it, or mix it with anyone else's.</p></details>
+      <details class="q"><summary>What if the internet goes down? <span class="pm">+</span></summary><p>ClinicOS runs on a server you control, so it's resilient to patchy connections. We'll walk you through the setup that fits your clinic during onboarding.</p></details>
+      <details class="q"><summary>Do I need expensive hardware? <span class="pm">+</span></summary><p>No. It runs on one modest server and ordinary computers or tablets your staff already use.</p></details>
+      <details class="q"><summary>Will my staff be able to use it? <span class="pm">+</span></summary><p>Yes — it follows the way your clinic already works, so it's familiar on day one. And we train your team as part of setup.</p></details>
+    </div>
+  </div>
+</section>
+
+<!-- FINAL CTA -->
+<section class="final" id="book">
+  <div class="wrap">
+    <span class="eyebrow">Ready when you are</span>
+    <h2>See ClinicOS running your clinic.</h2>
+    <p>Book a 20-minute demo. We'll show it on your kind of clinic — reception to the last birr.</p>
+    <div class="hero-cta">
+      <a href="https://wa.me/251988538381?text=I%27d%20like%20a%20ClinicOS%20demo" class="btn btn-primary btn-lg">Book on WhatsApp</a>
+      <a href="mailto:yadamzerterefe09@gmail.com?subject=ClinicOS%20demo" class="btn btn-ghost btn-lg">Email us</a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div style="max-width:300px">
+        <a class="logo" href="#top"><span class="mark"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2-6 4 12 2-6h6"/></svg></span>ClinicOS</a>
+        <p style="margin-top:14px;color:#9fb3c4;font-size:14px">The clinic system built for Ethiopia — reception to the last birr, in one place.</p>
+      </div>
+      <div class="foot-links">
+        <div class="foot-col"><b>Product</b><a href="#tour">See it work</a><a href="#journey">How it works</a><a href="#why">Why ClinicOS</a></div>
+        <div class="foot-col"><b>Get started</b><a href="#book">Book a demo</a><a href="#founding">Founding clinics</a><a href="https://app.clinicos.cc">Sign in</a></div>
+        <div class="foot-col"><b>Talk to us</b><a href="mailto:yadamzerterefe09@gmail.com">yadamzerterefe09@gmail.com</a><a href="https://wa.me/251988538381">WhatsApp: +251 98 853 8381</a></div>
+      </div>
+    </div>
+    <div class="foot-note"><span>© <span id="yr"></span> ClinicOS. Built in Ethiopia.</span><span>Early access — features are actively being added.</span></div>
+  </div>
+</footer>
+
+<script>
+document.getElementById('yr').textContent = new Date().getFullYear();
+const nav = document.getElementById('nav');
+addEventListener('scroll', () => nav.classList.toggle('scrolled', scrollY > 8), {passive:true});
+
+// reveal on scroll
+const io = new IntersectionObserver((es)=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}}),{threshold:.14});
+document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+
+// ---- product tour ----
+(function(){
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const root = document.getElementById('tourRoot');
+  const tabs = [...root.querySelectorAll('.tab')];
+  const chapters = [...root.querySelectorAll('.chapter')];
+  const cap = document.getElementById('stageCap');
+  const CAPS = {
+    reception:'<b>Reception.</b> Register a walk-in, take the fee, and send them straight to the doctor — in seconds.',
+    consult:'<b>Consultation.</b> The doctor taps the mic and speaks — no typing. The note writes itself, and the allergy warning is already on screen.',
+    pharmacy:'<b>Pharmacy.</b> The prescription is here the moment it\'s signed — priced, paid, and dispensed without a paper slip.',
+    day:'<b>Your day.</b> Revenue, patients and stock, live in one place — so you can run the clinic even when you\'re not in it.'
+  };
+  let idx = 0, timer = null;
+  const DUR = 8000;
+
+  function play(i){
+    idx = (i+chapters.length)%chapters.length;
+    const k = tabs[idx].dataset.k;
+    tabs.forEach((t,j)=>{t.classList.toggle('on',j===idx);t.setAttribute('aria-selected',j===idx);
+      const bar=t.querySelector('.bar i'); bar.style.transition='none'; bar.style.width='0';});
+    chapters.forEach(c=>c.classList.toggle('active', c.dataset.k===k));
+    cap.innerHTML = CAPS[k];
+    if(!reduce){
+      // restart the active tab's progress bar
+      const bar = tabs[idx].querySelector('.bar i');
+      requestAnimationFrame(()=>{bar.style.transition='width '+DUR+'ms linear'; bar.style.width='100%';});
+      runScene(k);
+    }
+  }
+  function next(){ play(idx+1); }
+  function schedule(){ clearTimeout(timer); if(!reduce) timer=setTimeout(next, DUR); }
+
+  // per-chapter choreography: move cursor -> click -> highlight + callout -> effect
+  function runScene(k){
+    const ch = chapters.find(c=>c.dataset.k===k);
+    const cur = ch.querySelector('.cursor'), spot = ch.querySelector('.spot'), out = ch.querySelector('.callout');
+    // reset
+    [cur,spot,out].forEach(el=>{el.style.transition='none';el.style.opacity='0';});
+    const at=(el,x,y)=>{el.style.left=x+'px';el.style.top=y+'px';};
+    // coordinates are within the frame-body (relative)
+    const scenes = {
+      reception:()=>{ at(cur,120,60); place(spot,64,120,190,34); place(out,64,86,null,null);
+        seq([[cur,()=>{cur.style.transition='left 1s cubic-bezier(.4,0,.2,1),top 1s';cur.style.opacity='1';at(cur,232,150);},0],
+             [spot,()=>{spot.style.transition='opacity .3s';spot.style.opacity='1';},1000],
+             [out,()=>{out.style.transition='opacity .3s,top .3s';out.style.opacity='1';},1150],
+             [cur,()=>{clickPulse(ch);},1500]]); },
+      consult:()=>{ const mic=ch.querySelector('#cs-mic'), wave=ch.querySelector('#cs-wave'), caret=ch.querySelector('#cs-caret'), words=[...ch.querySelectorAll('#cs-text .cw')];
+        words.forEach(w=>w.style.opacity='0'); wave.style.opacity='0';
+        at(cur,90,50); place(out, 150, 74, null,null);
+        seq([[cur,()=>{cur.style.transition='left .9s,top .9s';cur.style.opacity='1';at(cur,300,88);},0],
+             [mic,()=>{clickPulse(ch);mic.style.transition='transform .2s';mic.style.transform='scale(1.12)';wave.style.transition='opacity .3s';wave.style.opacity='1';},900],
+             [out,()=>{out.style.transition='opacity .3s';out.style.opacity='1';},1050],
+             [caret,()=>{caret.style.opacity='1';typeWords(words,1600);},1500],
+             [mic,()=>{mic.style.transform='scale(1)';wave.style.opacity='0';caret.style.opacity='0';},1600+1900]]); },
+      pharmacy:()=>{ const row=ch.querySelector('#ph-row'), st=ch.querySelector('#ph-status');
+        st.textContent='ready'; st.className='pill'; st.style.cssText='border-color:#cbd8e3;color:var(--muted)';
+        at(cur,110,50); place(spot,64,64,320,52); place(out,64,30,null,null);
+        seq([[cur,()=>{cur.style.transition='left 1s,top 1s';cur.style.opacity='1';at(cur,300,96);},0],
+             [spot,()=>{spot.style.transition='opacity .3s';spot.style.opacity='1';out.style.transition='opacity .3s';out.style.opacity='1';},1000],
+             [row,()=>{clickPulse(ch);},1400],
+             [st,()=>{st.textContent='✓ dispensed';st.style.cssText='background:#e6f6f1;border-color:#bfe6da;color:#0c7a63';},1700]]); },
+      day:()=>{ const rev=ch.querySelector('#day-rev');
+        at(cur,120,60); place(spot,64,64,120,52); place(out,64,30,null,null);
+        seq([[cur,()=>{cur.style.transition='left 1s,top 1s';cur.style.opacity='1';at(cur,150,96);},0],
+             [spot,()=>{spot.style.transition='opacity .3s';spot.style.opacity='1';out.style.transition='opacity .3s';out.style.opacity='1';},1000],
+             [rev,()=>{countUp(rev,14250,15400,900);},1300]]); }
+    };
+    (scenes[k]||(()=>{}))();
+  }
+  function place(el,x,y,w,h){el.style.left=x+'px';el.style.top=y+'px';if(w)el.style.width=w+'px';if(h)el.style.height=h+'px';}
+  function seq(steps){steps.forEach(([el,fn,d])=>setTimeout(fn,d));}
+  function clickPulse(ch){const c=ch.querySelector('.cursor');c.animate([{transform:'scale(1)'},{transform:'scale(.8)'},{transform:'scale(1)'}],{duration:260});}
+  function typeWords(words,start){words.forEach((w,i)=>setTimeout(()=>{w.style.transition='opacity .25s';w.style.opacity='1';}, i*850));}
+  function countUp(el,from,to,ms){const t0=performance.now();(function step(t){const p=Math.min(1,(t-t0)/ms);const v=Math.round(from+(to-from)*p);el.textContent='ETB '+v.toLocaleString();if(p<1)requestAnimationFrame(step);})(t0);}
+
+  tabs.forEach((t,i)=>t.addEventListener('click',()=>{play(i);schedule();}));
+  // start when the tour scrolls into view
+  const start = new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting){play(0);schedule();start.disconnect();}});},{threshold:.3});
+  start.observe(root);
+  // auto-advance loop
+  (function loop(){ /* handled by schedule/next chain */ })();
+  const _next = next; next = function(){_next();schedule();};
+})();
+
+// ---- clinic-type switcher (structure flexibility) ----
+(function(){
+  const root = document.getElementById('typesRoot'); if(!root) return;
+  const wrap = document.getElementById('flowWrap');
+  const note = document.getElementById('typeNote');
+  const tabs = [...root.querySelectorAll('.ttab')];
+  const TYPES = {
+    general:{steps:[['Reception','Register & take the fee.'],['Triage','Vitals, flagged if off-range.','optional'],['Doctor','Notes · diagnosis · voice.'],['Pharmacy · Lab','Dispensed & paid first.','if you have them'],['Cashier','Every charge lands here.']],note:'<b>General clinic.</b> The full journey, triage included.'},
+    specialty:{steps:[['Reception','Register & take the fee.'],['Specialist','Consult & procedure.'],['Cashier','Billed per service.']],note:'<b>Specialty clinic</b> (eye, ENT, ortho…). Straight to the specialist — no triage, no in-house pharmacy needed.'},
+    dental:{steps:[['Reception','Register & take the fee.'],['Dentist','Exam & chair-side work.'],['Procedure','Priced per treatment.'],['Cashier','Pay on the way out.']],note:'<b>Dental clinic.</b> Procedure-based and billed by treatment — pharmacy optional.'},
+    derma:{steps:[['Reception','Register & take the fee.'],['Dermatologist','Consult & assess.'],['Procedure · Lab','Minor procedures, skin tests.'],['Cashier','Settle at the desk.']],note:'<b>Dermatology.</b> Consults, minor procedures and skin tests — configured to fit.'},
+    hospital:{org:true,note:'<b>Multi-branch &amp; hospitals.</b> Add branches and departments as you grow — each branch runs its own queue, staff and services, all under one ClinicOS.'}
+  };
+  function flow(steps){
+    const items = steps.map((s,i)=>`<div class="step"><div class="num">${i+1}</div><h3>${s[0]}</h3>${s[2]?`<span class="steptag">${s[2]}</span>`:''}<p>${s[1]}</p></div>`).join('');
+    return `<div class="journey"><div class="jline"></div>${items}</div>`;
+  }
+  function org(){
+    return `<div class="org">
+      <div class="org-top"><span class="node">🏥 Your organization</span></div>
+      <div class="org-stem"></div>
+      <div class="org-branches">
+        <div class="branch"><span class="bname">📍 Bole branch</span><div class="depts"><span class="dchip">General Medicine</span><span class="dchip">Pediatrics</span><span class="dchip mod">Pharmacy</span><span class="dchip mod">Lab</span><span class="dchip">Cashier</span></div></div>
+        <div class="branch"><span class="bname">📍 Piassa branch</span><div class="depts"><span class="dchip">Dental</span><span class="dchip">Dermatology</span><span class="dchip">Cashier</span></div></div>
+        <div class="branch add"><span class="bname">＋ Add branch</span><div class="depts"><span class="dchip" style="background:none;border-style:dashed;color:var(--muted)">…as you grow</span></div></div>
+      </div>
+    </div>`;
+  }
+  function render(t){
+    const d = TYPES[t];
+    wrap.style.opacity=0;
+    setTimeout(()=>{ wrap.innerHTML = d.org ? org() : flow(d.steps); note.innerHTML = d.note; wrap.style.transition='opacity .25s'; wrap.style.opacity=1; }, 130);
+  }
+  tabs.forEach(b=>b.addEventListener('click',()=>{
+    tabs.forEach(x=>x.classList.toggle('on',x===b));
+    render(b.dataset.t);
+  }));
+})();
+</script>
+</body>
+</html>

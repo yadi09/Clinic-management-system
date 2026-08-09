@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { Plus, Pencil, Trash2, ShieldCheck, Building2, MapPin, Workflow, Stethoscope, ClipboardList, Pill, type LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,16 +10,29 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/app/auth-context";
+import { changeEmailApi, changePasswordApi, signOutOtherDevicesApi } from "@/features/auth/api";
 import {
+  branchUsage,
   createBranch,
   createDepartment,
+  deleteBranch,
+  deleteDepartment,
+  getBranchModules,
   getClinic,
   getSettings,
+  getWorkspace,
   listBranches,
   listDepartments,
   saveClinic,
   saveSettings,
+  setBranchModules,
+  planUsage,
+  updateBranch,
+  updateDepartment,
+  updateWorkspace,
+  type Branch,
   type ClinicSettings,
+  type Department,
 } from "@/features/admin/api";
 import {
   createAllergen,
@@ -28,6 +41,7 @@ import {
   createDrug,
   deleteAllergen,
   deleteCatalogEntry,
+  deleteCategory,
   deleteDrug,
   getVitalFields,
   listAllergens,
@@ -35,176 +49,628 @@ import {
   saveVitalFields,
   searchCatalog,
   searchDrugs,
+  updateCatalogEntry,
+  updateCategory,
   updateDrug,
+  type CatalogEntry,
+  type DiagnosisCategory,
   type Drug,
   type VitalField,
 } from "@/features/clinical/api";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
+type SectionKey = "account" | "profile" | "locations" | "flow" | "vitals" | "diagnoses" | "drugs";
+const SECTIONS: { group: string; items: { key: SectionKey; label: string; icon: LucideIcon }[] }[] = [
+  {
+    group: "General",
+    items: [
+      { key: "account", label: "Account & security", icon: ShieldCheck },
+      { key: "profile", label: "Clinic profile", icon: Building2 },
+      { key: "locations", label: "Branches & departments", icon: MapPin },
+    ],
+  },
+  { group: "Patient flow", items: [{ key: "flow", label: "Visit flow", icon: Workflow }] },
+  {
+    group: "Clinical library",
+    items: [
+      { key: "vitals", label: "Vitals form", icon: Stethoscope },
+      { key: "diagnoses", label: "Diagnosis catalog", icon: ClipboardList },
+      { key: "drugs", label: "Drugs & allergens", icon: Pill },
+    ],
+  },
+];
+
+// Branch/department management is temporarily hidden — flip to true to bring the
+// "Branches & departments" settings tab back. (Multi-branch is on hold for now.)
+const BRANCHES_ENABLED = false;
+
 export function SettingsPage() {
   const { can } = useAuth();
   const manage = can("clinic.manage");
+  const [active, setActive] = useState<SectionKey>("account");
+
+  return (
+    <div className="space-y-6">
+      <h1>Settings</h1>
+      <div className="flex flex-col gap-6 lg:flex-row">
+        {/* Section rail */}
+        <nav className="shrink-0 lg:w-56">
+          {SECTIONS.map((g) => (
+            <div key={g.group} className="mb-2">
+              <p className="px-3 pb-1 pt-3 text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">{g.group}</p>
+              {g.items.filter((it) => it.key !== "locations" || BRANCHES_ENABLED).map((it) => (
+                <button
+                  key={it.key}
+                  onClick={() => setActive(it.key)}
+                  className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm ${
+                    active === it.key ? "bg-accent font-semibold text-brand" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  <it.icon className="h-4 w-4 shrink-0" />
+                  {it.label}
+                </button>
+              ))}
+            </div>
+          ))}
+        </nav>
+
+        {/* Active pane */}
+        <div className="min-w-0 flex-1">
+          {active === "account" && <AccountSecurityCard />}
+          {active === "profile" && (
+            <div className="space-y-6">
+              <ClinicProfileCard manage={manage} />
+              <PlanUsageCard />
+            </div>
+          )}
+          {active === "locations" && <LocationsCard manage={manage} />}
+          {active === "flow" && <FlowSettingsCard manage={manage} />}
+          {active === "vitals" && <VitalsFormCard manage={manage} />}
+          {active === "diagnoses" && <DiagnosisCatalogCard manage={manage} />}
+          {active === "drugs" && <DrugLibraryCard manage={manage} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ClinicProfileCard({ manage }: { manage: boolean }) {
   const qc = useQueryClient();
-
   const clinic = useQuery({ queryKey: ["clinic"], queryFn: getClinic, retry: false });
-  const branches = useQuery({ queryKey: ["branches"], queryFn: listBranches });
-  const departments = useQuery({ queryKey: ["departments"], queryFn: listDepartments });
-
   const [clinicName, setClinicName] = useState("");
   useEffect(() => {
     if (clinic.data?.name) setClinicName(clinic.data.name);
   }, [clinic.data?.name]);
 
-  const saveClinicMut = useMutation({
+  const save = useMutation({
     mutationFn: () => saveClinic({ name: clinicName }),
     onSuccess: () => {
       toast.success("Clinic profile saved");
       qc.invalidateQueries({ queryKey: ["clinic"] });
     },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not save the clinic profile"),
   });
 
-  const [branchName, setBranchName] = useState("");
-  const [branchCode, setBranchCode] = useState("");
-  const addBranchMut = useMutation({
-    mutationFn: () => createBranch({ name: branchName, code: branchCode }),
-    onSuccess: () => {
-      toast.success("Branch added");
-      setBranchName("");
-      setBranchCode("");
-      qc.invalidateQueries({ queryKey: ["branches"] });
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Clinic profile</CardTitle>
+        <CardDescription>The clinic name shown across the workspace, on printed prescriptions, and on lab requests.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex max-w-md items-end gap-3">
+          <div className="flex-1 space-y-1.5">
+            <Label>Name</Label>
+            <Input value={clinicName} onChange={(e) => setClinicName(e.target.value)} disabled={!manage} />
+          </div>
+          {manage && (
+            <Button onClick={() => save.mutate()} disabled={!clinicName || clinicName === clinic.data?.name} loading={save.isPending}>
+              Save
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function fmtBytes(n: number) {
+  if (n < 1024) return `${n} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let v = n / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+function UsageBar({ label, used, limit, bytes }: { label: string; used: number; limit: number; bytes?: boolean }) {
+  const unlimited = limit < 0;
+  const fmt = (n: number) => (bytes ? fmtBytes(n) : n.toLocaleString());
+  const pct = unlimited || limit === 0 ? 0 : Math.min(100, Math.round((used / limit) * 100));
+  const near = !unlimited && pct >= 90;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-baseline justify-between text-sm">
+        <span className="font-medium">{label}</span>
+        <span className="text-muted-foreground tabular-nums">{fmt(used)}{unlimited ? "" : ` / ${fmt(limit)}`}</span>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+        <div className={`h-full rounded-full transition-all ${near ? "bg-destructive" : "bg-primary"}`} style={{ width: unlimited ? "0%" : `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function PlanUsageCard() {
+  const q = useQuery({ queryKey: ["plan-usage"], queryFn: planUsage, retry: false });
+  const u = q.data;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Plan &amp; usage{u ? ` — ${u.plan_name}` : ""}</CardTitle>
+        <CardDescription>Your subscription limits. Patient images and files are compressed automatically; contact your provider to change your plan.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {!u ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : (
+          <>
+            <UsageBar label="Patients" used={u.patients.used} limit={u.patients.limit} />
+            <UsageBar label="Storage" used={u.storage.used} limit={u.storage.limit} bytes />
+            <UsageBar label="Staff" used={u.users.used} limit={u.users.limit} />
+            <UsageBar label="Branches" used={u.branches.used} limit={u.branches.limit} />
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function AccountSecurityCard() {
+  const { user, refresh } = useAuth();
+  const qc = useQueryClient();
+  const ws = useQuery({ queryKey: ["workspace"], queryFn: getWorkspace, retry: false });
+
+  // --- email ---
+  const [newEmail, setNewEmail] = useState("");
+  const [emailPw, setEmailPw] = useState("");
+  const emailMut = useMutation({
+    mutationFn: () => changeEmailApi({ new_email: newEmail.trim(), current_password: emailPw }),
+    onSuccess: async () => {
+      toast.success("Email updated — sign in with it next time");
+      setNewEmail("");
+      setEmailPw("");
+      await refresh();
     },
-    onError: () => toast.error("Could not add branch (code may be taken)"),
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not update the email"),
   });
 
-  const [deptName, setDeptName] = useState("");
-  const [deptBranch, setDeptBranch] = useState("");
-  const [deptSpecialty, setDeptSpecialty] = useState("");
-  const addDeptMut = useMutation({
-    mutationFn: () => createDepartment({ branch_id: deptBranch, name: deptName, specialty: deptSpecialty }),
+  // --- password ---
+  const [curPw, setCurPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const mismatch = confirmPw.length > 0 && newPw !== confirmPw;
+  const pwMut = useMutation({
+    mutationFn: () => changePasswordApi({ current_password: curPw, new_password: newPw }),
     onSuccess: () => {
-      toast.success("Department added");
-      setDeptName("");
-      setDeptSpecialty("");
-      qc.invalidateQueries({ queryKey: ["departments"] });
+      toast.success("Password updated — other devices have been signed out");
+      setCurPw("");
+      setNewPw("");
+      setConfirmPw("");
     },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not update the password"),
+  });
+
+  // --- sign out other devices ---
+  const signOutMut = useMutation({
+    mutationFn: () => signOutOtherDevicesApi(),
+    onSuccess: (r) =>
+      toast.success(r.revoked > 0 ? `Signed out ${r.revoked} other device${r.revoked === 1 ? "" : "s"}` : "No other devices were signed in"),
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not sign out other devices"),
+  });
+
+  // --- workspace ---
+  const [slug, setSlug] = useState("");
+  useEffect(() => {
+    if (ws.data?.slug) setSlug(ws.data.slug);
+  }, [ws.data?.slug]);
+  const wsMut = useMutation({
+    mutationFn: () => updateWorkspace({ slug: slug.trim().toLowerCase() }),
+    onSuccess: (d) => {
+      toast.success("Workspace updated");
+      qc.setQueryData(["workspace"], d);
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not update the workspace"),
   });
 
   return (
     <div className="space-y-6">
-      <h1>Clinic settings</h1>
-
       <Card>
         <CardHeader>
-          <CardTitle>Clinic profile</CardTitle>
-          <CardDescription>The clinic name shown across the workspace.</CardDescription>
+          <CardTitle>Email</CardTitle>
+          <CardDescription>The address you sign in with. Confirm your current password to change it.</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="flex max-w-md items-end gap-3">
-            <div className="flex-1 space-y-1.5">
-              <Label>Name</Label>
-              <Input value={clinicName} onChange={(e) => setClinicName(e.target.value)} disabled={!manage} />
+        <CardContent className="space-y-4">
+          <div className="text-sm text-muted-foreground">
+            Current: <span className="font-medium text-foreground">{user?.email ?? "—"}</span>
+          </div>
+          <div className="grid max-w-md gap-3">
+            <div className="space-y-1.5">
+              <Label>New email</Label>
+              <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="you@clinic.com" autoComplete="off" />
             </div>
-            {manage && (
-              <Button onClick={() => saveClinicMut.mutate()} disabled={!clinicName} loading={saveClinicMut.isPending}>
-                Save
+            <div className="space-y-1.5">
+              <Label>Current password</Label>
+              <Input type="password" value={emailPw} onChange={(e) => setEmailPw(e.target.value)} autoComplete="current-password" />
+            </div>
+            <div>
+              <Button onClick={() => emailMut.mutate()} disabled={!newEmail.trim() || !emailPw || newEmail.trim() === user?.email} loading={emailMut.isPending}>
+                Update email
               </Button>
-            )}
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      <FlowSettingsCard manage={manage} />
-
-      <VitalsFormCard manage={manage} />
-
       <Card>
         <CardHeader>
-          <CardTitle>Branches</CardTitle>
-          <CardDescription>Physical locations of the clinic.</CardDescription>
+          <CardTitle>Password</CardTitle>
+          <CardDescription>Use at least 8 characters. Changing it signs you out on all other devices; you stay signed in here.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <ul className="space-y-2">
-            {(branches.data ?? []).map((b) => (
-              <li key={b.id} className="flex items-center justify-between rounded-md border bg-background p-2.5 text-sm">
-                <span>
-                  <span className="font-medium">{b.name}</span>{" "}
-                  <span className="font-mono text-xs text-muted-foreground">{b.code}</span>
-                </span>
-                <Badge variant={b.is_active ? "success" : "outline"}>{b.is_active ? "active" : "inactive"}</Badge>
-              </li>
-            ))}
-            {branches.data?.length === 0 && <p className="text-sm text-muted-foreground">No branches yet.</p>}
-          </ul>
-          {manage && (
-            <div className="flex flex-wrap items-end gap-3 border-t pt-4">
-              <div className="space-y-1.5">
-                <Label>Name</Label>
-                <Input value={branchName} onChange={(e) => setBranchName(e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Code</Label>
-                <Input value={branchCode} onChange={(e) => setBranchCode(e.target.value)} />
-              </div>
-              <Button onClick={() => addBranchMut.mutate()} disabled={!branchName || !branchCode} loading={addBranchMut.isPending}>
-                <Plus /> Add branch
+        <CardContent>
+          <div className="grid max-w-md gap-3">
+            <div className="space-y-1.5">
+              <Label>Current password</Label>
+              <Input type="password" value={curPw} onChange={(e) => setCurPw(e.target.value)} autoComplete="current-password" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>New password</Label>
+              <Input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} autoComplete="new-password" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Confirm new password</Label>
+              <Input type="password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} autoComplete="new-password" />
+              {mismatch && <p className="text-xs text-destructive">The new passwords don't match.</p>}
+            </div>
+            <div>
+              <Button onClick={() => pwMut.mutate()} disabled={!curPw || newPw.length < 8 || mismatch} loading={pwMut.isPending}>
+                Update password
               </Button>
             </div>
-          )}
+          </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Departments</CardTitle>
-          <CardDescription>Specialty units within a branch.</CardDescription>
+          <CardTitle>Active sessions</CardTitle>
+          <CardDescription>Left yourself signed in on a shared or lost device? Sign out everywhere except here.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button variant="outline" onClick={() => signOutMut.mutate()} loading={signOutMut.isPending}>
+            Sign out all other devices
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Workspace</CardTitle>
+          <CardDescription>Your clinic's sign-in handle — what your whole team types in the “Workspace” field at login.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <ul className="space-y-2">
-            {(departments.data ?? []).map((d) => (
-              <li key={d.id} className="rounded-md border bg-background p-2.5 text-sm">
-                <span className="font-medium">{d.name}</span>
-                {d.specialty ? <span className="text-muted-foreground"> · {d.specialty}</span> : null}
-              </li>
+          <div className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-muted-foreground">
+            Changing this changes the sign-in handle for <span className="font-medium text-foreground">everyone</span> in the clinic. Use lowercase letters, numbers, and hyphens (3–40 characters).
+          </div>
+          <div className="flex max-w-md items-end gap-3">
+            <div className="flex-1 space-y-1.5">
+              <Label>Workspace</Label>
+              <Input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="my-clinic" autoCapitalize="none" autoCorrect="off" />
+            </div>
+            <Button onClick={() => wsMut.mutate()} disabled={!slug.trim() || slug.trim().toLowerCase() === ws.data?.slug} loading={wsMut.isPending}>
+              Update
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function LocationsCard({ manage }: { manage: boolean }) {
+  const qc = useQueryClient();
+  const branches = useQuery({ queryKey: ["branches"], queryFn: listBranches });
+  const departments = useQuery({ queryKey: ["departments"], queryFn: listDepartments });
+  const usage = useQuery({ queryKey: ["branch-usage"], queryFn: branchUsage });
+  const atLimit = usage.data?.limit != null && usage.data.used >= usage.data.limit;
+
+  const [selected, setSelected] = useState("");
+  useEffect(() => {
+    const list = branches.data ?? [];
+    if (list.length > 0 && !list.some((b) => b.id === selected)) setSelected(list[0].id);
+  }, [branches.data, selected]);
+  const current = (branches.data ?? []).find((b) => b.id === selected);
+  const depts = (departments.data ?? []).filter((d) => d.branch_id === selected);
+
+  const [branchDialog, setBranchDialog] = useState<Branch | "new" | null>(null);
+  const [deptDialog, setDeptDialog] = useState<Department | "new" | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: "branch" | "dept"; id: string; name: string } | null>(null);
+
+  const delBranch = useMutation({
+    mutationFn: (id: string) => deleteBranch(id),
+    onSuccess: () => {
+      toast.success("Branch deleted");
+      setConfirm(null);
+      setSelected("");
+      qc.invalidateQueries({ queryKey: ["branches"] });
+      qc.invalidateQueries({ queryKey: ["branch-usage"] });
+      qc.invalidateQueries({ queryKey: ["departments"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not delete the branch"),
+  });
+  const delDept = useMutation({
+    mutationFn: (id: string) => deleteDepartment(id),
+    onSuccess: () => {
+      toast.success("Department deleted");
+      setConfirm(null);
+      qc.invalidateQueries({ queryKey: ["departments"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not delete the department"),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+        <div>
+          <CardTitle>Branches &amp; departments</CardTitle>
+          <CardDescription>Pick a branch, then add, edit, or remove the departments inside it.</CardDescription>
+        </div>
+        {manage && (
+          <div className="flex flex-col items-end gap-1">
+            <Button size="sm" variant="outline" onClick={() => setBranchDialog("new")} disabled={atLimit}>
+              <Plus /> Add branch
+            </Button>
+            {usage.data && (
+              <span className="text-xs text-muted-foreground">
+                {usage.data.used}
+                {usage.data.limit != null ? ` of ${usage.data.limit}` : ""} branch{usage.data.used === 1 ? "" : "es"} used
+              </span>
+            )}
+          </div>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {/* Branch switcher */}
+        {(branches.data?.length ?? 0) === 0 ? (
+          <p className="text-sm text-muted-foreground">No branches yet. Add your first branch to start.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {(branches.data ?? []).map((b) => (
+              <button
+                key={b.id}
+                onClick={() => setSelected(b.id)}
+                className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm ${
+                  selected === b.id ? "border-brand bg-brand/5 font-semibold text-brand" : "text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                {b.name}
+                <span className="font-mono text-xs opacity-70">{b.code}</span>
+                {!b.is_active && <Badge variant="outline">inactive</Badge>}
+              </button>
             ))}
-            {departments.data?.length === 0 && <p className="text-sm text-muted-foreground">No departments yet.</p>}
-          </ul>
-          {manage && (branches.data?.length ?? 0) > 0 && (
-            <div className="flex flex-wrap items-end gap-3 border-t pt-4">
-              <div className="w-48 space-y-1.5">
-                <Label>Branch</Label>
-                <Select value={deptBranch} onValueChange={setDeptBranch}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(branches.data ?? []).map((b) => (
-                      <SelectItem key={b.id} value={b.id}>
-                        {b.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Name</Label>
-                <Input value={deptName} onChange={(e) => setDeptName(e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Specialty</Label>
-                <Input value={deptSpecialty} onChange={(e) => setDeptSpecialty(e.target.value)} />
-              </div>
-              <Button onClick={() => addDeptMut.mutate()} disabled={!deptBranch || !deptName} loading={addDeptMut.isPending}>
+          </div>
+        )}
+
+        {/* Selected branch: toolbar + departments */}
+        {current && (
+          <div className="space-y-3 border-t pt-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm">
+                Departments in <span className="font-semibold text-brand">{current.name}</span>
+              </p>
+              {manage && (
+                <div className="flex items-center gap-1">
+                  <Button size="sm" variant="ghost" onClick={() => setBranchDialog(current)}>
+                    <Pencil /> Edit branch
+                  </Button>
+                  <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setConfirm({ kind: "branch", id: current.id, name: current.name })}>
+                    <Trash2 /> Delete
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            <ul className="space-y-2">
+              {depts.map((d) => (
+                <li key={d.id} className="flex items-center justify-between gap-3 rounded-md border bg-background p-2.5 text-sm">
+                  <span>
+                    <span className="font-medium">{d.name}</span>
+                    {d.specialty ? <span className="text-muted-foreground"> · {d.specialty}</span> : null}
+                  </span>
+                  {manage && (
+                    <div className="flex shrink-0 gap-2">
+                      <button onClick={() => setDeptDialog(d)} className="text-xs text-muted-foreground hover:text-foreground">Edit</button>
+                      <button onClick={() => setConfirm({ kind: "dept", id: d.id, name: d.name })} className="text-xs text-muted-foreground hover:text-destructive">Remove</button>
+                    </div>
+                  )}
+                </li>
+              ))}
+              {depts.length === 0 && <p className="text-sm text-muted-foreground">No departments in this branch yet.</p>}
+            </ul>
+
+            {manage && (
+              <Button size="sm" variant="outline" onClick={() => setDeptDialog("new")}>
                 <Plus /> Add department
               </Button>
+            )}
+
+            <BranchModules branchId={current.id} manage={manage} />
+          </div>
+        )}
+      </CardContent>
+
+      {branchDialog && (
+        <BranchDialog
+          branch={branchDialog === "new" ? null : branchDialog}
+          onClose={() => setBranchDialog(null)}
+          onSaved={(b) => { setBranchDialog(null); qc.invalidateQueries({ queryKey: ["branches"] }); qc.invalidateQueries({ queryKey: ["branch-usage"] }); if (b) setSelected(b.id); }}
+        />
+      )}
+      {deptDialog && current && (
+        <DepartmentDialog
+          dept={deptDialog === "new" ? null : deptDialog}
+          branchId={selected}
+          branchName={current.name}
+          onClose={() => setDeptDialog(null)}
+          onSaved={() => { setDeptDialog(null); qc.invalidateQueries({ queryKey: ["departments"] }); }}
+        />
+      )}
+      {confirm && (
+        <ConfirmDialog
+          title={confirm.kind === "branch" ? "Delete branch" : "Delete department"}
+          message={
+            confirm.kind === "branch"
+              ? `Delete “${confirm.name}”? It stops appearing in scheduling and reception, and the departments inside it become unreachable.`
+              : `Delete the “${confirm.name}” department?`
+          }
+          loading={confirm.kind === "branch" ? delBranch.isPending : delDept.isPending}
+          onConfirm={() => (confirm.kind === "branch" ? delBranch.mutate(confirm.id) : delDept.mutate(confirm.id))}
+          onClose={() => setConfirm(null)}
+        />
+      )}
+    </Card>
+  );
+}
+
+const MODULE_LABELS: Record<string, string> = {
+  laboratory: "Laboratory",
+  pharmacy: "Pharmacy",
+  inventory: "Inventory",
+};
+
+// BranchModules lets an admin turn modules (lab, pharmacy, inventory) on/off for a
+// single branch, overriding the clinic-wide default. "Reset" removes the override.
+function BranchModules({ branchId, manage }: { branchId: string; manage: boolean }) {
+  const qc = useQueryClient();
+  const mods = useQuery({ queryKey: ["branch-modules", branchId], queryFn: () => getBranchModules(branchId) });
+  const save = useMutation({
+    mutationFn: (next: Record<string, boolean | null>) => setBranchModules(branchId, next),
+    onSuccess: () => {
+      toast.success("Module updated for this branch");
+      qc.invalidateQueries({ queryKey: ["branch-modules", branchId] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not update the module"),
+  });
+  const list = mods.data ?? [];
+  if (list.length === 0) return null;
+  return (
+    <div className="space-y-2 border-t pt-4">
+      <p className="text-sm">Modules in this branch</p>
+      <p className="text-xs text-muted-foreground">Turn a module on or off for this branch only. Reset follows the clinic-wide default.</p>
+      <ul className="space-y-2">
+        {list.map((m) => (
+          <li key={m.flag} className="flex items-center justify-between gap-3 rounded-md border bg-background p-2.5 text-sm">
+            <span className="flex items-center gap-2">
+              <span className="font-medium">{MODULE_LABELS[m.flag] ?? m.flag}</span>
+              {m.overridden ? <Badge variant="outline">override</Badge> : <span className="text-xs text-muted-foreground">default</span>}
+            </span>
+            {manage && (
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant={m.enabled ? "default" : "outline"} onClick={() => save.mutate({ [m.flag]: !m.enabled })} loading={save.isPending}>
+                  {m.enabled ? "On" : "Off"}
+                </Button>
+                {m.overridden && (
+                  <button className="text-xs text-muted-foreground hover:text-foreground" onClick={() => save.mutate({ [m.flag]: null })}>
+                    Reset
+                  </button>
+                )}
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function BranchDialog({ branch, onClose, onSaved }: { branch: Branch | null; onClose: () => void; onSaved: (b?: Branch) => void }) {
+  const [name, setName] = useState(branch?.name ?? "");
+  const [code, setCode] = useState(branch?.code ?? "");
+  const [active, setActive] = useState(branch?.is_active ?? true);
+  const save = useMutation({
+    mutationFn: () => (branch ? updateBranch(branch.id, { name, code, is_active: active }) : createBranch({ name, code })),
+    onSuccess: (b) => { toast.success(branch ? "Branch updated" : "Branch added"); onSaved(b); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not save the branch (code may be taken)"),
+  });
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>{branch ? "Edit branch" : "New branch"}</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5"><Label>Name</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Bole Branch" /></div>
+          <div className="space-y-1.5"><Label>Code</Label><Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="BOLE" /></div>
+          {branch && (
+            <div className="space-y-1.5">
+              <Label>Status</Label>
+              <Select value={active ? "active" : "inactive"} onValueChange={(v) => setActive(v === "active")}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={!name.trim() || !code.trim()} loading={save.isPending} onClick={() => save.mutate()}>{branch ? "Save" : "Add"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
-      <DiagnosisCatalogCard manage={manage} />
+function DepartmentDialog({ dept, branchId, branchName, onClose, onSaved }: { dept: Department | null; branchId: string; branchName: string; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(dept?.name ?? "");
+  const [specialty, setSpecialty] = useState(dept?.specialty ?? "");
+  const save = useMutation({
+    mutationFn: async () => {
+      if (dept) await updateDepartment(dept.id, { branch_id: branchId, name, specialty });
+      else await createDepartment({ branch_id: branchId, name, specialty });
+    },
+    onSuccess: () => { toast.success(dept ? "Department updated" : "Department added"); onSaved(); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not save the department"),
+  });
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>{dept ? "Edit department" : `New department in ${branchName}`}</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5"><Label>Name</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Pediatrics" /></div>
+          <div className="space-y-1.5"><Label>Specialty</Label><Input value={specialty} onChange={(e) => setSpecialty(e.target.value)} placeholder="pediatrics" /></div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={!name.trim()} loading={save.isPending} onClick={() => save.mutate()}>{dept ? "Save" : "Add"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
-      <DrugLibraryCard manage={manage} />
-    </div>
+function ConfirmDialog({ title, message, confirmLabel = "Delete", loading, onConfirm, onClose }: { title: string; message: string; confirmLabel?: string; loading?: boolean; onConfirm: () => void; onClose: () => void }) {
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
+        <p className="text-sm text-muted-foreground">{message}</p>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="destructive" loading={loading} onClick={onConfirm}>{confirmLabel}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -365,10 +831,32 @@ function DiagnosisCatalogCard({ manage }: { manage: boolean }) {
     },
     onError: () => toast.error("Could not add diagnosis (code may exist)"),
   });
-  const removeEntry = useMutation({
-    mutationFn: (id: string) => deleteCatalogEntry(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["diag-catalog-all"] }),
+
+  const [catDialog, setCatDialog] = useState<DiagnosisCategory | null>(null);
+  const [entryDialog, setEntryDialog] = useState<CatalogEntry | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: "cat" | "entry"; id: string; name: string } | null>(null);
+
+  const delCat = useMutation({
+    mutationFn: (id: string) => deleteCategory(id),
+    onSuccess: () => { toast.success("Category deleted"); setConfirm(null); qc.invalidateQueries({ queryKey: ["diag-categories"] }); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not delete the category"),
   });
+  const delEntry = useMutation({
+    mutationFn: (id: string) => deleteCatalogEntry(id),
+    onSuccess: () => { toast.success("Diagnosis deleted"); setConfirm(null); qc.invalidateQueries({ queryKey: ["diag-catalog-all"] }); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not delete the diagnosis"),
+  });
+
+  // Deleting a category would orphan its diagnoses (soft-delete, no cascade), so
+  // block it while any diagnosis still uses it.
+  const tryDeleteCat = (c: DiagnosisCategory) => {
+    const n = (entries.data ?? []).filter((e) => e.category_id === c.id).length;
+    if (n > 0) {
+      toast.error(`“${c.name}” still has ${n} diagnosis${n > 1 ? "es" : ""} — remove or move them first.`);
+      return;
+    }
+    setConfirm({ kind: "cat", id: c.id, name: c.name });
+  };
 
   return (
     <Card>
@@ -382,7 +870,15 @@ function DiagnosisCatalogCard({ manage }: { manage: boolean }) {
           <Label className="text-xs text-muted-foreground">Categories</Label>
           <div className="flex flex-wrap gap-2">
             {(categories.data ?? []).map((c) => (
-              <Badge key={c.id} variant="outline">{c.name}</Badge>
+              <span key={c.id} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${c.is_active ? "" : "opacity-50"}`}>
+                {c.name}
+                {manage && (
+                  <>
+                    <button onClick={() => setCatDialog(c)} className="text-muted-foreground hover:text-foreground" title="Edit category"><Pencil className="h-3 w-3" /></button>
+                    <button onClick={() => tryDeleteCat(c)} className="text-muted-foreground hover:text-destructive" title="Delete category"><Plus className="h-3 w-3 rotate-45" /></button>
+                  </>
+                )}
+              </span>
             ))}
             {categories.data?.length === 0 && <span className="text-sm text-muted-foreground">No categories yet.</span>}
           </div>
@@ -404,15 +900,16 @@ function DiagnosisCatalogCard({ manage }: { manage: boolean }) {
           <Label className="text-xs text-muted-foreground">Diagnoses</Label>
           <ul className="max-h-72 space-y-1.5 overflow-auto">
             {(entries.data ?? []).map((e) => (
-              <li key={e.id} className="flex items-center justify-between rounded-md border bg-background p-2 text-sm">
+              <li key={e.id} className="flex items-center justify-between gap-3 rounded-md border bg-background p-2 text-sm">
                 <span>
                   {e.code ? <span className="font-mono text-xs text-muted-foreground">{e.code} </span> : null}
                   {e.name} <span className="text-xs text-muted-foreground">· {e.category_name}</span>
                 </span>
                 {manage && (
-                  <button onClick={() => removeEntry.mutate(e.id)} className="text-xs text-muted-foreground hover:text-destructive">
-                    Remove
-                  </button>
+                  <div className="flex shrink-0 gap-2">
+                    <button onClick={() => setEntryDialog(e)} className="text-xs text-muted-foreground hover:text-foreground">Edit</button>
+                    <button onClick={() => setConfirm({ kind: "entry", id: e.id, name: e.name })} className="text-xs text-muted-foreground hover:text-destructive">Remove</button>
+                  </div>
                 )}
               </li>
             ))}
@@ -448,7 +945,103 @@ function DiagnosisCatalogCard({ manage }: { manage: boolean }) {
           )}
         </div>
       </CardContent>
+
+      {catDialog && (
+        <CategoryDialog
+          category={catDialog}
+          onClose={() => setCatDialog(null)}
+          onSaved={() => { setCatDialog(null); qc.invalidateQueries({ queryKey: ["diag-categories"] }); qc.invalidateQueries({ queryKey: ["diag-catalog-all"] }); }}
+        />
+      )}
+      {entryDialog && (
+        <DiagnosisDialog
+          entry={entryDialog}
+          categories={categories.data ?? []}
+          onClose={() => setEntryDialog(null)}
+          onSaved={() => { setEntryDialog(null); qc.invalidateQueries({ queryKey: ["diag-catalog-all"] }); }}
+        />
+      )}
+      {confirm && (
+        <ConfirmDialog
+          title={confirm.kind === "cat" ? "Delete category" : "Delete diagnosis"}
+          message={`Delete “${confirm.name}”?`}
+          loading={confirm.kind === "cat" ? delCat.isPending : delEntry.isPending}
+          onConfirm={() => (confirm.kind === "cat" ? delCat.mutate(confirm.id) : delEntry.mutate(confirm.id))}
+          onClose={() => setConfirm(null)}
+        />
+      )}
     </Card>
+  );
+}
+
+function CategoryDialog({ category, onClose, onSaved }: { category: DiagnosisCategory; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(category.name);
+  const [active, setActive] = useState(category.is_active);
+  const save = useMutation({
+    mutationFn: () => updateCategory(category.id, { name, sort_order: category.sort_order, is_active: active }),
+    onSuccess: () => { toast.success("Category updated"); onSaved(); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not save the category (name may exist)"),
+  });
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Edit category</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5"><Label>Name</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Dermatology" /></div>
+          <div className="space-y-1.5">
+            <Label>Status</Label>
+            <Select value={active ? "active" : "inactive"} onValueChange={(v) => setActive(v === "active")}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={!name.trim()} loading={save.isPending} onClick={() => save.mutate()}>Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DiagnosisDialog({ entry, categories, onClose, onSaved }: { entry: CatalogEntry; categories: DiagnosisCategory[]; onClose: () => void; onSaved: () => void }) {
+  const [categoryId, setCategoryId] = useState(entry.category_id);
+  const [code, setCode] = useState(entry.code ?? "");
+  const [name, setName] = useState(entry.name);
+  const save = useMutation({
+    mutationFn: () => updateCatalogEntry(entry.id, { category_id: categoryId, code: code || undefined, name }),
+    onSuccess: () => { toast.success("Diagnosis updated"); onSaved(); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not save the diagnosis (code may exist)"),
+  });
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Edit diagnosis</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label>Category</Label>
+            <Select value={categoryId} onValueChange={setCategoryId}>
+              <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+              <SelectContent>
+                {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-[7rem_1fr] gap-3">
+            <div className="space-y-1.5"><Label>ICD code</Label><Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="J02.9" /></div>
+            <div className="space-y-1.5"><Label>Name</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Acute pharyngitis" /></div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={!categoryId || !name.trim()} loading={save.isPending} onClick={() => save.mutate()}>Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

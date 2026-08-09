@@ -1,0 +1,372 @@
+<title>Pharmacy — how to use it (real-world guide)</title>
+<style>
+  :root{
+    --ink:#1f2a37; --soft:#5b6b7b; --line:#e4e9ef; --bg:#f7f9fb; --card:#fff;
+    --teal:#0d9488; --teal-bg:#e6f7f4; --amber:#b45309; --amber-bg:#fef4e6;
+    --blue:#1d4ed8; --blue-bg:#eaf0ff; --rose:#be123c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.65 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
+  .wrap{max-width:860px;margin:0 auto;padding:40px 22px 90px}
+  h1{font-size:32px;margin:0 0 6px;letter-spacing:-.01em}
+  .sub{color:var(--soft);font-size:17px;margin:0 0 26px}
+  h2{font-size:24px;margin:46px 0 4px;padding-top:26px;border-top:1px solid var(--line)}
+  h3{font-size:20px;margin:30px 0 6px}
+  p{margin:10px 0}
+  a{color:var(--teal)}
+  .lead{color:var(--soft)}
+  .toc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:8px 0 10px}
+  .toc h4{margin:0 0 8px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+  .toc a{display:inline-block;margin:3px 14px 3px 0;font-size:15px;text-decoration:none}
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+  .card.small{border-top:4px solid var(--teal)}
+  .card.big{border-top:4px solid var(--blue)}
+  .card h4{margin:0 0 8px;font-size:18px}
+  .who{margin:6px 0;font-size:14.5px;color:var(--soft)}
+  .scene{background:var(--teal-bg);border-left:4px solid var(--teal);border-radius:0 10px 10px 0;
+    padding:14px 18px;margin:14px 0}
+  .scene .tag{display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--teal);font-weight:700;margin-bottom:4px}
+  .page{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 24px 22px;margin:20px 0}
+  .page .num{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;background:var(--ink);color:#fff;font-weight:700;font-size:15px;margin-right:8px}
+  .page h3{display:flex;align-items:center;gap:2px}
+  .use{font-weight:600}
+  .pills{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 2px}
+  .pill{font-size:13.5px;padding:4px 12px;border-radius:999px;border:1px solid var(--line)}
+  .pill b{font-weight:700}
+  .pill.s{background:var(--teal-bg);border-color:#bfe9e1;color:#0b6b60}
+  .pill.l{background:var(--blue-bg);border-color:#cdd9ff;color:#1740b8}
+  ol,ul{margin:10px 0;padding-left:22px}
+  li{margin:5px 0}
+  .rule{background:var(--amber-bg);border:1px solid #f2d9ab;border-radius:12px;padding:14px 18px;margin:16px 0}
+  .rule b{color:var(--amber)}
+  .muted{color:var(--soft);font-size:14.5px}
+  code{background:#eef2f6;border-radius:5px;padding:1px 6px;font-size:14px}
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:14.5px;display:block;overflow-x:auto}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:#eef2f6;color:var(--soft)}
+  .heads{background:#fdecea;border:1px solid #f3c7c1;border-left:4px solid var(--rose);border-radius:0 10px 10px 0;padding:13px 17px;margin:14px 0;font-size:15px}
+  .heads .tag{display:block;font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--rose);font-weight:700;margin-bottom:4px}
+  .legend{font-size:14.5px;color:var(--soft);margin:4px 0 16px}
+  .lim{background:var(--card);border:1px solid var(--line);border-left:4px solid #cbd5e1;border-radius:0 10px 10px 0;padding:13px 17px;margin:11px 0}
+  .lim.r{border-left-color:#e11d48}.lim.o{border-left-color:#ea580c}.lim.y{border-left-color:#ca8a04}
+  .lim .t{font-weight:700}
+  .lim .imp{display:block;margin-top:7px;color:var(--teal);font-size:14.5px}
+  @media(max-width:680px){.cards{grid-template-columns:1fr}}
+</style>
+
+<div class="wrap">
+
+<h1>The Pharmacy, in plain language</h1>
+<p class="sub">From switching on an empty pharmacy and registering your stock, to a normal working day — for a small clinic pharmacy and a large one.</p>
+
+<div class="toc">
+  <h4>Jump to</h4>
+  <a href="#two">Two sizes of pharmacy</a>
+  <a href="#zero">Starting from zero (setup)</a>
+  <a href="#small">A day at a small pharmacy</a>
+  <a href="#big">A day at a large pharmacy</a>
+  <a href="#rule">The one golden rule</a>
+  <a href="#pages">Every page, explained</a>
+  <a href="#limits">Known limitations &amp; ideas</a>
+</div>
+
+<h2 id="two">First: two sizes of pharmacy, same software</h2>
+<p>The pharmacy has <b>10 pages</b>. You don't need all of them all the time — which ones matter depends on how big your pharmacy is. The software ships with two pharmacy roles:</p>
+
+<div class="cards">
+  <div class="card small">
+    <h4>🏠 Small clinic pharmacy</h4>
+    <p class="who"><b>One person</b> — the pharmacist — does everything: dispensing, selling, ordering, counting.</p>
+    <p class="who">They hold the <b>manager</b> role, so every page is open to them. Most days they live on just 2–3 pages and visit the rest weekly or monthly.</p>
+  </div>
+  <div class="card big">
+    <h4>🏥 Large clinic pharmacy</h4>
+    <p class="who"><b>A team</b> with split jobs: a <b>manager</b>, several <b>dispensers</b>, a <b>stock-keeper</b>, and a <b>cashier</b> at the front desk.</p>
+    <p class="who">Each person sees only the pages their job needs. The manager runs the “back office”; the floor staff run the counter.</p>
+  </div>
+</div>
+
+<p class="muted">Throughout this guide: <b>ETB</b> = Birr. “FEFO” = <i>First-Expiry-First-Out</i> — always sell the lot that expires soonest, so nothing dies on the shelf.</p>
+
+<!-- ================= START FROM ZERO ================= -->
+<h2 id="zero">Starting from zero: setting up a brand-new pharmacy</h2>
+<p>The clinic just installed the software. Sara logs into the pharmacy for the very first time and <b>every page is empty</b> — no drugs, no stock, no suppliers. The software doesn't know a single thing about your pharmacy yet. Before she can serve one patient, she has to teach it what she has. Here's the order she does it in.</p>
+
+<p>The whole setup follows one simple spine — <b>define → stock → sell</b>:</p>
+<table>
+  <thead><tr><th>Stage</th><th>You're telling the software…</th><th>Page</th><th>How often</th></tr></thead>
+  <tbody>
+    <tr><td><b>1 · Define</b></td><td>“These are the drugs we carry, and their prices.”</td><td>Catalog admin</td><td>Once at setup, then rarely</td></tr>
+    <tr><td><b>2 · Suppliers</b></td><td>“These are the wholesalers we buy from.”</td><td>Purchasing</td><td>Once at setup, then rarely</td></tr>
+    <tr><td><b>3 · Stock</b></td><td>“This is how much of each we actually have right now.”</td><td>Batches &amp; expiry (or Purchasing)</td><td>At setup, then with every delivery</td></tr>
+    <tr><td><b>4 · Check</b></td><td>“Show me it's all correct.”</td><td>Drug catalog + Dashboard</td><td>At setup, then daily glance</td></tr>
+    <tr><td><b>Sell</b></td><td>Now you serve patients.</td><td>Dispense queue, OTC</td><td>All day, every day</td></tr>
+  </tbody>
+</table>
+
+<div class="scene">
+  <span class="tag">Before you touch anything</span>
+  The Pharmacy menu only appears once your <b>clinic admin switches on the Pharmacy module</b> and gives your team pharmacy logins. If you don't see the Pharmacy section in the sidebar, that's the first call to make. (Setting up <i>which</i> staff can do <i>what</i> — dispensing vs purchasing vs counting — also happens there.)
+</div>
+
+<h3>Step 1 — Build your drug list <span class="muted" style="font-size:14px;font-weight:400">· Catalog admin</span></h3>
+<p>This is the foundation, and the very first thing. Until a drug exists in your catalog, you <b>cannot</b> stock it, dispense it, or sell it. On <b>Catalog admin</b>, add each product you carry, one at a time: its <b>name</b>, <b>form</b> (tablet, syrup, injection…), <b>unit price in ETB</b>, a <b>reorder level</b> (the stock level at which the system warns you “low stock”), whether it's a <b>controlled drug</b>, and that it's <b>active</b>.</p>
+<div class="rule">
+  <b>💡 Naming tip that saves you pain later.</b>
+  <p style="margin:8px 0 0">Spell each drug the way your <b>doctors</b> will write it on prescriptions. When a prescription comes in, the system matches it to your stock <b>by name</b>. If the doctor writes “Amoxicillin 500mg” and your catalog says “Amoxicillin caps,” the line won't match and it'll tell the patient to buy outside. Agree on names with the clinical team up front.</p>
+</div>
+<div class="scene">
+  <span class="tag">Picture it</span>
+  Sara spends her first morning with her shelf list open, typing in her ~150 products and their prices. Tedious once; then it's done.
+</div>
+<div class="heads">
+  <span class="tag">⚠ Heads-up</span>
+  Two real limits bite right here. <b>(1) No bulk import</b> — you add drugs one at a time; there's no spreadsheet/CSV upload, so a big formulary is a long afternoon. <b>(2) This catalog is separate from the doctors' prescribing list</b> — they're linked only by exact drug name, so if the names don't match, prescriptions won't find your stock. <span class="muted">Both are in the limitations list at the end.</span>
+</div>
+
+<h3>Step 2 — Add your suppliers <span class="muted" style="font-size:14px;font-weight:400">· Purchasing</span></h3>
+<p>On the <b>Purchasing</b> page, add the wholesalers and distributors you buy from. You only need their basic details. You'll attach every purchase to one of these suppliers, which later powers the supplier-performance report.</p>
+<div class="scene">
+  <span class="tag">Picture it</span>
+  Sara adds her two regular distributors. That's it for now.
+</div>
+
+<h3>Step 3 — Load your opening stock <span class="muted" style="font-size:14px;font-weight:400">· Batches &amp; expiry, or Purchasing</span></h3>
+<p>Your drugs now exist, but every one shows <b>0 on hand</b> — the software doesn't know what's on your shelves. There are two ways to put stock in, and which you use depends on the situation:</p>
+<ul>
+  <li><b>Stock is already on your shelves (an opening balance):</b> go to <b>Batches &amp; expiry</b> and add a batch for each drug — its <b>batch number</b>, <b>expiry date</b>, and <b>quantity</b>. This is the quick, direct way to enter what you physically already have.</li>
+  <li><b>You're recording a real delivery from a supplier:</b> use <b>Purchasing</b> — create a purchase order for what's arriving, then click <b>Receive</b>. This creates the batches <i>and</i> records what you paid. This is the normal way you'll add stock from now on.</li>
+</ul>
+<div class="scene">
+  <span class="tag">Picture it</span>
+  Sara's shelves were filled by the clinic's opening order, so she enters each lot directly on the <b>Batches &amp; expiry</b> page with its expiry and count. Next month, when her first supplier delivery arrives, she'll use the <b>Receive</b> button in Purchasing instead.
+</div>
+<div class="heads">
+  <span class="tag">⚠ Heads-up</span>
+  If you load opening stock through a <b>purchase order</b>, each line's cost <b>pre-fills with the selling price</b>, not what you actually paid — leave that and your cost/margin/valuation reports will be wrong. Either overwrite the real cost on every line, or (simpler for an opening balance) add batches directly on the Batches page. And as in Step 1, <b>there's no bulk import</b> for stock either — it's batch by batch.
+</div>
+
+<h3>Step 4 — Check that it's right <span class="muted" style="font-size:14px;font-weight:400">· Drug catalog + Dashboard</span></h3>
+<p>Open the <b>Drug catalog</b>: every drug should now show the correct quantity on hand. Open the <b>Pharmacy dashboard</b>: it should show your total inventory value (ETB) and flag anything that's already low or near expiry. If the numbers match your shelves, your pharmacy is <b>live</b>.</p>
+<div class="scene">
+  <span class="tag">Picture it</span>
+  Sara cross-checks a few shelves against the Drug catalog, sees the Dashboard value looks right, and switches the “open” sign on. From here, the day-to-day below takes over.
+</div>
+
+<p class="muted"><b>In a large pharmacy</b> the same four steps are split by role: the <b>manager</b> builds the drug list and adds suppliers (steps 1–2), the <b>stock-keeper</b> loads the opening stock and batches (step 3), and the manager confirms it on the Dashboard (step 4). Same spine — define → stock → sell — just more hands.</p>
+
+<!-- ================= SMALL DAY ================= -->
+<h2 id="small">A day at a small clinic pharmacy</h2>
+<p>Meet <b>Sara</b>, the only pharmacist at a small clinic in Addis. Here is her whole day, and which pages she touches.</p>
+
+<div class="scene">
+  <span class="tag">Morning · opening up</span>
+  Sara opens the <b>Pharmacy dashboard</b> with her coffee. It tells her at a glance: 3 drugs are low on stock, 2 lots are near expiry, and there are no open orders. She makes a mental note to reorder later.
+</div>
+
+<div class="scene">
+  <span class="tag">A patient arrives from the doctor</span>
+  Dr. Bekele finishes a consultation with <b>Almaz</b> and signs her prescription. It appears <b>automatically</b> in Sara's <b>Dispense queue</b> — she didn't have to do anything. She sees “R-1042 · Almaz · 2 items” with a small <b>allergy check</b> flag (Almaz has a penicillin allergy on file).
+  <br><br>
+  Sara clicks the row to open the <b>Dispense detail</b> page. It lists the two drugs. One is Amoxicillin — and because of the penicillin allergy, the page shows a red warning. Sara phones the doctor, who switches it. For each drug Sara picks the stock lot (the page suggests the one expiring soonest) and the quantity, then clicks <b>Prepare</b>. This <b>prices the prescription and sends the bill to the front desk.</b>
+  <br><br>
+  Almaz pays at reception. The moment the payment lands, Sara clicks <b>Complete</b> — the system subtracts the pills from stock and Sara hands over the medicine with counselling. Done.
+</div>
+
+<div class="scene">
+  <span class="tag">Midday · a walk-in</span>
+  A man walks in with no prescription, just wanting Paracetamol for a headache. Sara opens the <b>OTC sale</b> page, searches “Paracetamol”, adds 1 pack to the cart, takes 35 ETB cash, and the sale is done in 10 seconds. Stock drops automatically.
+</div>
+
+<div class="scene">
+  <span class="tag">Afternoon · restocking</span>
+  Remembering the low-stock warning, Sara opens <b>Purchasing</b>. She picks her supplier, makes a quick order (a “PO”) for more Amoxicillin and Paracetamol, and saves it. Two days later when the boxes arrive, she opens the same order and clicks <b>Receive</b> — the new stock appears instantly, with its batch number and expiry.
+</div>
+
+<div class="scene">
+  <span class="tag">End of month · tidying up</span>
+  Once a month Sara does a <b>Stock control</b> count: she walks the shelves, types in what she physically counted, and the page shows where reality differs from the system. She fixes the differences and approves the count. She also glances at <b>Reports</b> to see her best-selling drugs and what expired (wastage). If she ever needs to add a brand-new drug she never stocked before, she uses <b>Catalog admin</b>.
+</div>
+
+<p><b>Sara's reality:</b> every day she uses <b>Dispense queue + Dispense detail</b> and <b>OTC sale</b>. <b>Dashboard</b> and <b>Purchasing</b> are weekly. <b>Batches</b>, <b>Stock control</b>, <b>Catalog admin</b> and <b>Reports</b> are occasional. One person, all pages.</p>
+
+<!-- ================= BIG DAY ================= -->
+<h2 id="big">A day at a large clinic pharmacy</h2>
+<p>Now a busy hospital pharmacy. Same pages — but the work is <b>split across people</b>, so no one person does everything (safer, faster, and you can tell who did what).</p>
+
+<table>
+  <thead><tr><th>Person</th><th>Their job</th><th>Pages they live on</th></tr></thead>
+  <tbody>
+    <tr><td><b>Ato Girma</b> — Manager</td><td>Runs the “back office”: what drugs we carry, buying, and the numbers</td><td>Dashboard · Catalog admin · Purchasing · Reports</td></tr>
+    <tr><td><b>Sara &amp; Yonas</b> — Dispensers</td><td>Fill prescriptions and serve the counter all day</td><td>Dispense queue · Dispense detail · OTC sale</td></tr>
+    <tr><td><b>Dawit</b> — Stock-keeper</td><td>Receives deliveries, watches expiry, counts shelves</td><td>Batches &amp; expiry · Stock control</td></tr>
+    <tr><td><b>Hanna</b> — Cashier (front desk)</td><td>Collects prescription payments</td><td>(works in the billing/cashier screen, not pharmacy)</td></tr>
+  </tbody>
+</table>
+
+<div class="scene">
+  <span class="tag">The dispensing bench (Sara &amp; Yonas)</span>
+  Prescriptions pour into the shared <b>Dispense queue</b> all morning. Sara and Yonas each grab the next one, open <b>Dispense detail</b>, check allergies, pick lots, and click <b>Prepare</b>. The patient pays <b>Hanna</b> at the desk, then comes back to collect — whichever dispenser is free clicks <b>Complete</b> and hands over. The “awaiting payment” tag tells the bench who is still stuck at the cashier.
+</div>
+
+<div class="scene">
+  <span class="tag">The store room (Dawit)</span>
+  When a delivery arrives, Dawit doesn't create the order (that's the manager's job) — he just confirms goods on the order and watches <b>Batches &amp; expiry</b>. He spots a damaged box and <b>quarantines</b> that lot so no one can sell it. Every Friday he runs a partial <b>Stock control</b> count of the fast-moving shelves.
+</div>
+
+<div class="scene">
+  <span class="tag">The office (Ato Girma)</span>
+  The manager starts on the <b>Dashboard</b>: inventory value, what's low, what's expiring, open orders. He uses <b>Purchasing</b> to raise orders to suppliers, <b>Catalog admin</b> to set prices and add new drugs, and <b>Reports</b> at month-end for consumption, margins, wastage, and the controlled-drugs register.
+</div>
+
+<p><b>The big-pharmacy idea:</b> the <b>manager</b> decides <i>what we sell and what we buy</i>; the <b>dispensers</b> serve patients; the <b>stock-keeper</b> guards the shelves; the <b>cashier</b> takes the money. Each role only sees its own pages.</p>
+
+<div class="rule" id="rule">
+  <b>⭐ The one golden rule — prescriptions are “pay first, collect after.”</b>
+  <p style="margin:8px 0 0">A prescription is never handed over until it's paid. The flow is always:
+  <b>doctor signs → pharmacist prices it (Prepare) → patient pays the cashier → pharmacist hands over (Complete)</b>.
+  This keeps every Birr of prescription revenue going through the cashier. <span class="muted">(The only exception is an over-the-counter walk-in sale, which is paid right at the pharmacy counter.)</span></p>
+</div>
+
+<!-- ================= PAGE BY PAGE ================= -->
+<h2 id="pages">Every page, explained</h2>
+<p class="lead">For each page: what it's for, a quick real-world picture, and who uses it in a small vs large pharmacy.</p>
+
+<div class="page">
+  <h3><span class="num">1</span> Dispense queue</h3>
+  <p class="use">Your “to-do list” of prescriptions waiting to be filled.</p>
+  <p>The instant a doctor signs a prescription, it lands here by itself. You see the patient, the Rx number, how many items, and a flag if the patient has any allergy. It refreshes on its own. You don't <i>do</i> anything here — you just click the patient you want to serve next.</p>
+  <p class="muted"><b>Picture it:</b> Almaz's prescription pops onto the list as “R-1042 · 2 items · allergy check.” You click it.</p>
+  <div class="pills"><span class="pill s"><b>Small:</b> Sara watches it all day</span><span class="pill l"><b>Large:</b> the shared bench — several dispensers pull from it</span></div>
+</div>
+
+<div class="page">
+  <h3><span class="num">2</span> Dispense detail <span class="muted" style="font-size:14px;font-weight:400">(opens when you click a queue row)</span></h3>
+  <p class="use">The actual filling screen for one prescription.</p>
+  <p>Here you do the real work for each prescribed drug:</p>
+  <ol>
+    <li>Check the <b>allergy warning</b> — if the drug clashes with the patient's allergy, you'll see red. Call the doctor if needed.</li>
+    <li>Pick the <b>stock lot</b> (the page suggests the soonest-to-expire one) and the <b>quantity</b>.</li>
+    <li>Click <b>Prepare</b> → it prices the fill and sends the bill to the cashier.</li>
+    <li>After the patient pays, click <b>Complete</b> → stock drops, you hand over the medicine.</li>
+  </ol>
+  <p class="muted">If a prescribed drug isn't one your pharmacy stocks, the line says <b>“Not in stock — print &amp; buy outside,”</b> and the patient buys it elsewhere.</p>
+  <div class="pills"><span class="pill s"><b>Small:</b> Sara, every prescription</span><span class="pill l"><b>Large:</b> dispensers; the cashier handles the payment in between</span></div>
+</div>
+
+<div class="page">
+  <h3><span class="num">3</span> OTC sale</h3>
+  <p class="use">Selling something over the counter — no doctor, no prescription.</p>
+  <p>For walk-ins buying things like paracetamol, bandages, or vitamins. Search the drug, build a cart, add a discount if you like, take payment, done. Stock drops immediately. Payment is taken right here at the counter.</p>
+  <p class="muted"><b>Picture it:</b> someone wants cough syrup. Search, add to cart, take 80 ETB, finished.</p>
+  <div class="pills"><span class="pill s"><b>Small:</b> Sara, for every walk-in</span><span class="pill l"><b>Large:</b> the counter dispenser</span></div>
+</div>
+
+<div class="page">
+  <h3><span class="num">4</span> Drug catalog</h3>
+  <p class="use">A read-only list of every drug you carry and how much is on hand.</p>
+  <p>Think of it as your shelf list. You can't change anything here — it's for looking things up: “Do we stock Metformin? How much is left? What's the price?” Low-stock items are highlighted.</p>
+  <div class="pills"><span class="pill s"><b>Small:</b> a quick look-up</span><span class="pill l"><b>Large:</b> anyone on the floor checking availability</span></div>
+</div>
+
+<div class="page">
+  <h3><span class="num">5</span> Batches &amp; expiry</h3>
+  <p class="use">Tracking each physical lot of stock — its expiry and quantity — and handling problem stock.</p>
+  <p>Every delivery comes in “lots” (batches), each with its own expiry date. This page lists them all and flags ones that are near expiry or expired. Two actions live here: <b>correct a quantity</b> (if a count was wrong, or to log breakage) and <b>quarantine</b> a lot — lock it so it can't be sold (for a damaged box or a recall).</p>
+  <p class="muted"><b>Picture it:</b> Dawit finds a crushed box of syrup and quarantines that lot so no one dispenses it.</p>
+  <div class="pills"><span class="pill s"><b>Small:</b> occasional — fix counts, pull expired stock</span><span class="pill l"><b>Large:</b> the stock-keeper's home page</span></div>
+</div>
+
+<div class="page">
+  <h3><span class="num">6</span> Pharmacy dashboard</h3>
+  <p class="use">The manager's morning overview — the health of the pharmacy on one screen.</p>
+  <p>Numbers at a glance: how many filled today, total value of stock (ETB), how many drugs are low, how many lots are expiring soon, how many orders are open — plus a small alerts list and a chart of the last two weeks of dispensing.</p>
+  <div class="pills"><span class="pill s"><b>Small:</b> Sara's quick morning check</span><span class="pill l"><b>Large:</b> the manager, daily</span></div>
+</div>
+
+<div class="page">
+  <h3><span class="num">7</span> Catalog admin</h3>
+  <p class="use">Adding and editing the drugs your pharmacy carries (and their prices).</p>
+  <p>This is where you define a drug: its name, form (tablet/syrup), price in ETB, the <b>reorder level</b> (the stock level that triggers a “low stock” warning), whether it's a controlled drug, and whether it's active. You set up a drug here once; you sell it many times.</p>
+  <p class="muted"><b>Picture it:</b> a new antibiotic arrives in your formulary — you add it here with its price and reorder level before stocking it.</p>
+  <div class="pills"><span class="pill s"><b>Small:</b> Sara, when adding a new product</span><span class="pill l"><b>Large:</b> the manager only</span></div>
+</div>
+
+<div class="page">
+  <h3><span class="num">8</span> Purchasing</h3>
+  <p class="use">Buying stock from suppliers — and receiving it.</p>
+  <p>Three steps: keep a list of your <b>suppliers</b>; raise a <b>purchase order</b> (PO) listing what you want to buy; and when the delivery arrives, click <b>Receive</b> — which turns the order into real stock on the shelf (new batches with their expiry dates).</p>
+  <p class="muted"><b>Picture it:</b> stock is low, so you order 500 Amoxicillin caps. Two days later the box arrives — you Receive the order and the 500 appear in stock.</p>
+  <div class="pills"><span class="pill s"><b>Small:</b> Sara, weekly restock</span><span class="pill l"><b>Large:</b> the manager raises orders; the stock-keeper confirms receipt</span></div>
+</div>
+
+<div class="page">
+  <h3><span class="num">9</span> Stock control</h3>
+  <p class="use">Checking that the shelf matches the system — a physical count.</p>
+  <p>Reality drifts from records (miscounts, breakage, theft). Here you start a <b>count</b>, the system snapshots what it <i>thinks</i> you have, you type what you <i>actually</i> counted, and it shows the <b>difference</b> for each drug. You fix the differences, then <b>approve</b> the count to lock it.</p>
+  <p class="muted"><b>Picture it:</b> the system says 120 paracetamol but you count 110. You record 110; the system corrects itself and logs the 10 missing.</p>
+  <div class="pills"><span class="pill s"><b>Small:</b> Sara, monthly</span><span class="pill l"><b>Large:</b> the stock-keeper, on a regular cycle</span></div>
+</div>
+
+<div class="page">
+  <h3><span class="num">10</span> Reports</h3>
+  <p class="use">The numbers for decisions — six ready-made reports you can view or export.</p>
+  <ul>
+    <li><b>Consumption</b> — what's selling most</li>
+    <li><b>Margins</b> — sell price vs cost</li>
+    <li><b>Wastage</b> — expired / quarantined stock you lost</li>
+    <li><b>Controlled drugs</b> — register of controlled-substance movements</li>
+    <li><b>Stock valuation</b> — what your inventory is worth</li>
+    <li><b>Supplier</b> — supplier performance</li>
+  </ul>
+  <div class="pills"><span class="pill s"><b>Small:</b> Sara, occasional check</span><span class="pill l"><b>Large:</b> the manager, at month-end</span></div>
+</div>
+
+<!-- ================= LIMITATIONS ================= -->
+<h2 id="limits">Known limitations &amp; improvement ideas</h2>
+<p>An honest heads-up about rough edges you'll meet during setup and daily use, with what I'd improve. <b>None of these stop you running the pharmacy today</b> — they're things to plan around, and a wish-list for later.</p>
+<p class="legend">🔴 important · 🟠 worth knowing · 🟡 minor</p>
+
+<h3>Setting up &amp; your drug list</h3>
+<div class="lim o"><span class="t">🟠 No bulk import.</span> Every drug and every opening-stock batch is entered by hand — no spreadsheet/CSV upload — so a 150–300 line formulary is a long, error-prone setup.
+  <span class="imp"><b>Improve:</b> CSV/Excel import for the catalog and for opening stock.</span></div>
+<div class="lim r"><span class="t">🔴 The pharmacy catalog and the doctors' prescribing list are two separate lists.</span> They're linked only by exact (case-insensitive) drug name. A spelling, brand, or strength mismatch means a prescription line can't be dispensed and tells the patient to “buy outside” — even when you have it in stock.
+  <span class="imp"><b>Improve:</b> link the two by a shared drug ID, or add synonym/fuzzy matching and a “map this prescription to a stock item” step.</span></div>
+<div class="lim y"><span class="t">🟡 Thin catalog housekeeping.</span> Drugs can't be deleted (only set inactive); “form” and “class” are free text with no standard list (inconsistent wording weakens the allergy check and report grouping); price and reorder level aren't validated (negatives are accepted).
+  <span class="imp"><b>Improve:</b> standard form/class lists, basic number validation, and a proper soft-delete.</span></div>
+
+<h3>Stock &amp; inventory</h3>
+<div class="lim o"><span class="t">🟠 Purchase-order cost defaults to the selling price.</span> Each PO line pre-fills cost with the sell price, so unless you overwrite it your cost, margin, and valuation numbers are wrong.
+  <span class="imp"><b>Improve:</b> default to last cost or leave blank — never the sell price.</span></div>
+<div class="lim o"><span class="t">🟠 Inventory is valued at selling price, not cost.</span> The Dashboard “value on hand” and the valuation report use sell price and include quarantined/expired lots, so they overstate what your stock is really worth.
+  <span class="imp"><b>Improve:</b> cost-based valuation that excludes quarantined/expired stock.</span></div>
+<div class="lim o"><span class="t">🟠 Receiving a delivery is all-or-nothing.</span> The whole order is received at the full ordered quantity, in a single batch — no partial shipments, no “received 80 of 100,” no splitting one line across expiry dates.
+  <span class="imp"><b>Improve:</b> line-level partial receipt with a received quantity and multiple batches.</span></div>
+<div class="lim o"><span class="t">🟠 Stock counts correct the largest lot.</span> A count adjustment is applied to your single largest batch (or invents a never-expiring “COUNT-ADJ” lot), so batch/expiry accuracy degrades after a count.
+  <span class="imp"><b>Improve:</b> enter counted quantities per batch.</span></div>
+<div class="lim y"><span class="t">🟡 The movement log and on-hand quantity aren't reconciled.</span> On-hand is the batch quantity; the stock-movement history is a separate audit trail that's never summed back, so the two can drift with nothing checking.
+  <span class="imp"><b>Improve:</b> a periodic reconcile (or derive on-hand from the ledger).</span></div>
+
+<h3>Dispensing &amp; selling</h3>
+<div class="lim r"><span class="t">🔴 No partial fills.</span> If you stock only some of a prescription's items, completing it marks the <i>whole</i> prescription dispensed — there's no record of which lines were actually filled versus sent outside.
+  <span class="imp"><b>Improve:</b> per-line dispense status (filled / partial / referred out).</span></div>
+<div class="lim o"><span class="t">🟠 A priced-but-unpaid prescription can't be cancelled.</span> If the patient declines at the cashier after you've prepared it, there's no “void” button — it stays stuck “awaiting payment” and you can't re-prepare it.
+  <span class="imp"><b>Improve:</b> add a cancel/void action for an awaiting-payment dispense.</span></div>
+<div class="lim o"><span class="t">🟠 Allergy checking is basic.</span> It's a simple name/word match, not a real interaction database; very short drug names slip through, and OTC sales aren't allergy-checked at all.
+  <span class="imp"><b>Improve:</b> proper allergy/interaction checking, including on OTC.</span></div>
+<div class="lim o"><span class="t">🟠 OTC cash bypasses the cashier.</span> Walk-in OTC sales record themselves as paid at the pharmacy counter and don't flow through the central cashier/finance the way prescriptions do.
+  <span class="imp"><b>Improve:</b> route OTC through the same billing spine, or add a daily cash reconciliation.</span></div>
+
+<h3>Reporting &amp; day-to-day</h3>
+<div class="lim o"><span class="t">🟠 Reports have no date range and no totals.</span> Every report runs over all history with no period filter or total row, and some are capped — the controlled-drugs register shows only the most recent 100 movements, so it isn't a complete regulatory export.
+  <span class="imp"><b>Improve:</b> date filters, total rows, and a full controlled-drug export.</span></div>
+<div class="lim y"><span class="t">🟡 “Today” counts use UTC, not local time.</span> The day rolls over around 3 AM Addis time, so late-night/early-morning activity can land on the wrong day.
+  <span class="imp"><b>Improve:</b> use the clinic's local day boundary.</span></div>
+<div class="lim y"><span class="t">🟡 No proper labels or receipts.</span> The dispensing “print” prints the screen rather than a medicine label, and OTC has no printed receipt or change-due calculation.
+  <span class="imp"><b>Improve:</b> medicine-label and receipt templates.</span></div>
+
+<p class="muted" style="margin-top:34px">That's the whole pharmacy. If you remember just one thing: <b>prescriptions are pay-first (queue → prepare → cashier → complete)</b>, and <b>walk-in OTC is pay-at-the-counter</b>. Everything else — catalog, purchasing, batches, counts, reports — exists to keep those two counters stocked and honest.</p>
+
+</div>

@@ -9,13 +9,16 @@ import { UsersPage } from "@/features/admin/pages/UsersPage";
 import { DashboardPage } from "@/features/dashboard/pages/DashboardPage";
 import { PatientsListPage } from "@/features/patients/pages/PatientsListPage";
 import { PatientRegisterPage } from "@/features/patients/pages/PatientRegisterPage";
+import { PatientImportPage } from "@/features/patients/pages/PatientImportPage";
 import { PatientProfilePage } from "@/features/patients/pages/PatientProfilePage";
+import { PatientSchedulePage } from "@/features/patients/pages/PatientSchedulePage";
 import { SettingsPage } from "@/features/admin/pages/SettingsPage";
 import { AppointmentsPage } from "@/features/scheduling/pages/AppointmentsPage";
 import { QueuePage } from "@/features/scheduling/pages/QueuePage";
 import { ReceptionPage } from "@/features/scheduling/pages/ReceptionPage";
 import { TriagePage } from "@/features/scheduling/pages/TriagePage";
 import { WorklistPage } from "@/features/scheduling/pages/WorklistPage";
+import { ChairsidePage } from "@/features/dental/ChairsidePage";
 import { EncounterWorkspacePage } from "@/features/clinical/pages/EncounterWorkspacePage";
 import { DispenseQueuePage } from "@/features/pharmacy/pages/DispenseQueuePage";
 import { DispensePage } from "@/features/pharmacy/pages/DispensePage";
@@ -34,6 +37,10 @@ import { LabInboxPage } from "@/features/lab/pages/LabInboxPage";
 import { HelpCenterPage } from "@/features/help/HelpCenterPage";
 import { CashierPage } from "@/features/billing/pages/CashierPage";
 import { ServiceCatalogPage } from "@/features/billing/pages/ServiceCatalogPage";
+import { Dhis2ReportPage } from "@/features/reporting/pages/Dhis2ReportPage";
+import { BedsBoardPage } from "@/features/inpatient/pages/BedsBoardPage";
+import { BedConfigPage } from "@/features/inpatient/pages/BedConfigPage";
+import { BedReportsPage } from "@/features/inpatient/pages/BedReportsPage";
 import { FinancePage } from "@/features/billing/pages/FinancePage";
 import { NotFoundPage } from "@/features/misc/NotFoundPage";
 import { PlatformLoginPage } from "@/features/platform/pages/PlatformLoginPage";
@@ -57,7 +64,9 @@ export function AppRoutes() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/patients" element={<PatientsListPage />} />
           <Route path="/patients/new" element={<PatientRegisterPage />} />
+          <Route path="/patients/import" element={<PatientImportPage />} />
           <Route path="/patients/:id" element={<PatientProfilePage />} />
+          <Route path="/patients/:id/schedule" element={<PatientSchedulePage />} />
           <Route path="/appointments" element={<AppointmentsPage />} />
           <Route path="/reception" element={<ReceptionPage />} />
           <Route path="/cashier" element={<CashierPage />} />
@@ -66,6 +75,7 @@ export function AppRoutes() {
           <Route path="/triage" element={<TriagePage />} />
           <Route path="/queue" element={<QueuePage />} />
           <Route path="/worklist" element={<WorklistPage />} />
+          <Route path="/chairside" element={<ChairsidePage />} />
           <Route path="/encounter/:queueEntryId" element={<EncounterWorkspacePage />} />
           <Route path="/pharmacy/queue" element={<DispenseQueuePage />} />
           <Route path="/pharmacy/dispense/:rxId" element={<DispensePage />} />
@@ -82,6 +92,10 @@ export function AppRoutes() {
           <Route path="/lab/items/:itemId" element={<LabOrderItemPage />} />
           <Route path="/lab/catalog" element={<LabCatalogPage />} />
           <Route path="/help" element={<HelpCenterPage />} />
+          <Route path="/reporting/dhis2" element={<Dhis2ReportPage />} />
+          <Route path="/inpatient/beds" element={<BedsBoardPage />} />
+          <Route path="/inpatient/config" element={<BedConfigPage />} />
+          <Route path="/inpatient/reports" element={<BedReportsPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>

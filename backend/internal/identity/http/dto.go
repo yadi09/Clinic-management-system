@@ -27,6 +27,7 @@ type inviteRequest struct {
 	Email     string   `json:"email" binding:"required,email"`
 	FullName  string   `json:"full_name" binding:"required"`
 	RoleCodes []string `json:"roles"`
+	Branches  []string `json:"branch_ids"` // encoded brn_… ids; empty = all branches
 }
 
 type statusRequest struct {
@@ -34,7 +35,22 @@ type statusRequest struct {
 }
 
 type assignRolesRequest struct {
-	Roles []string `json:"roles"`
+	Roles    []string `json:"roles"`
+	Branches []string `json:"branch_ids"` // encoded brn_… ids; empty = all branches
+}
+
+type switchBranchRequest struct {
+	BranchID string `json:"branch_id"` // encoded brn_… id, or "all" for the consolidated view
+}
+
+type changePasswordRequest struct {
+	CurrentPassword string `json:"current_password" binding:"required"`
+	NewPassword     string `json:"new_password" binding:"required,min=8"`
+}
+
+type changeEmailRequest struct {
+	NewEmail        string `json:"new_email" binding:"required,email"`
+	CurrentPassword string `json:"current_password" binding:"required"`
 }
 
 // --- responses ---
@@ -73,10 +89,39 @@ type mfaChallengeResponse struct {
 	MFAToken    string `json:"mfa_token"`
 }
 
+type branchRefDTO struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Code string `json:"code"`
+}
+
 type meResponse struct {
-	User        userDTO         `json:"user"`
-	Permissions []string        `json:"permissions"`
-	Flags       map[string]bool `json:"flags"`
+	User           userDTO         `json:"user"`
+	Permissions    []string        `json:"permissions"`
+	Flags          map[string]bool `json:"flags"`
+	Branches       []branchRefDTO  `json:"branches"`
+	ActiveBranchID *string         `json:"active_branch_id"`
+	AllBranches    bool            `json:"all_branches"`
+}
+
+func toMeResponse(r *identity.MeResult) meResponse {
+	branches := make([]branchRefDTO, 0, len(r.Branches))
+	for _, b := range r.Branches {
+		branches = append(branches, branchRefDTO{ID: id.Encode(id.PrefixBranch, b.ID), Name: b.Name, Code: b.Code})
+	}
+	var active *string
+	if r.ActiveBranchID != nil {
+		s := id.Encode(id.PrefixBranch, *r.ActiveBranchID)
+		active = &s
+	}
+	return meResponse{
+		User:           toUserDTO(r.User),
+		Permissions:    r.Permissions,
+		Flags:          r.Flags,
+		Branches:       branches,
+		ActiveBranchID: active,
+		AllBranches:    r.AllBranches,
+	}
 }
 
 type userListDTO struct {

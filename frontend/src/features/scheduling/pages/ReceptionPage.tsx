@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
 import { useAuth } from "@/app/auth-context";
-import { listBranches, listDepartments, getSettings } from "@/features/admin/api";
+import { listBranches, listDepartments, getSettings, listProviders } from "@/features/admin/api";
 import { listServices, providersForServices, raiseChargeBatch, settleCharge, waiveCharge, waiverReasons, patientCharges } from "@/features/billing/api";
 import { walkIn } from "@/features/scheduling/api";
 import { PatientCombobox } from "@/features/scheduling/components/BookingDialog";
@@ -21,7 +21,11 @@ type SendOpts = { action: "cashier" | "collect" | "waive"; method?: string; reas
 
 export function ReceptionPage() {
   const qc = useQueryClient();
-  const { can } = useAuth();
+  const { can, activeBranchId, flagOn } = useAuth();
+  // A dental clinic doesn't triage or bill a per-visit consultation: reception just
+  // identifies the patient and sends them to a dentist (no charge, or an optional
+  // registration/visit fee). Billing happens later via the treatment plan.
+  const isDental = flagOn("dental");
   // Whether this user can collect cash themselves (Cashier capability). If they
   // can, reception collects inline; if not, charges hand off to the cashier.
   const canCollect = can("payment.collect");
@@ -41,7 +45,7 @@ export function ReceptionPage() {
   const [waiveOpen, setWaiveOpen] = useState(false);
   const [waiveReason, setWaiveReason] = useState("");
 
-  const branchId = branches.data?.[0]?.id;
+  const branchId = activeBranchId ?? branches.data?.[0]?.id;
   // Hand off to a separate cashier when this user can't collect cash themselves.
   const cashierMode = !canCollect;
   // When the clinic requires triage (Settings → Patient flow), reception cannot send
@@ -57,20 +61,25 @@ export function ReceptionPage() {
   }, [services.data, picked]);
 
   useEffect(() => {
-    setToTriage(!!settings.data?.triage_required);
-  }, [settings.data?.triage_required]);
+    // Dental never triages — always straight to the dentist.
+    setToTriage(isDental ? false : !!settings.data?.triage_required);
+  }, [settings.data?.triage_required, isDental]);
 
   const chosen = (services.data ?? []).filter((s) => picked[s.id]);
   const total = chosen.reduce((sum, s) => sum + (parseFloat(s.price) || 0), 0);
   const chosenIds = chosen.map((s) => s.id);
 
-  // The assign dropdown lists only staff who provide the selected service(s).
+  // The assign dropdown lists only staff who provide the selected service(s). For a
+  // dental clinic there may be no service at all, so list the assignable clinicians
+  // (dentists) instead — via /providers, which reception can read (queue.manage),
+  // unlike the full staff directory (user.read, which a receptionist/cashier lacks).
+  const dentists = useQuery({ queryKey: ["providers"], queryFn: listProviders, enabled: isDental });
   const provQ = useQuery({
     queryKey: ["service-providers", [...chosenIds].sort().join(",")],
     queryFn: () => providersForServices(chosenIds),
-    enabled: !toTriage && chosenIds.length > 0,
+    enabled: !isDental && !toTriage && chosenIds.length > 0,
   });
-  const providerList = provQ.data ?? [];
+  const providerList = isDental ? (dentists.data ?? []) : (provQ.data ?? []);
 
   // Drop a stale provider selection when it's no longer offered for the chosen services.
   useEffect(() => {
@@ -130,7 +139,7 @@ export function ReceptionPage() {
       // action === "cashier" → leave the charges pending for the cashier.
     },
     onSuccess: (_d, opts) => {
-      const dest = toTriage ? "triage" : "the doctor's queue";
+      const dest = isDental ? "the dentist" : toTriage ? "triage" : "the doctor's queue";
       let msg: string;
       if (chosen.length === 0) msg = `${patient!.name} sent to ${dest}`;
       else if (opts.action === "cashier") msg = `${patient!.name} → cashier (ETB ${total.toFixed(2)} to collect)`;
@@ -148,13 +157,16 @@ export function ReceptionPage() {
 
   const routeReady = !!patient && !!dept && !!branchId && (toTriage || !!provider);
   const hasFee = chosen.length > 0;
+  const destWord = isDental ? "dentist" : toTriage ? "triage" : "doctor";
 
   return (
     <div className="space-y-6">
       <div>
         <h1>Reception</h1>
         <p className="text-sm text-muted-foreground">
-          Register the visit, choose the service(s) the patient is here for, and route them.
+          {isDental
+            ? "Find the patient and send them to a dentist. Add a registration/visit fee only if you take one — treatment is billed later from the plan."
+            : "Register the visit, choose the service(s) the patient is here for, and route them."}
         </p>
       </div>
 
@@ -230,17 +242,18 @@ export function ReceptionPage() {
         <Card>
           <CardHeader>
             <CardTitle>Route patient</CardTitle>
-            <CardDescription>Send to triage, or straight to a doctor.</CardDescription>
+            <CardDescription>{isDental ? "Send the patient to a dentist." : "Send to triage, or straight to a doctor."}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-1.5">
               <Label>Department</Label>
               <Select value={dept} onValueChange={setDept}>
+                {/* @branch-scoped: only the active branch's departments */}
                 <SelectTrigger>
                   <SelectValue placeholder="Select department" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(departments.data ?? []).map((d) => (
+                  {(departments.data ?? []).filter((d) => !activeBranchId || d.branch_id === activeBranchId).map((d) => (
                     <SelectItem key={d.id} value={d.id}>
                       {d.name}
                     </SelectItem>
@@ -249,31 +262,33 @@ export function ReceptionPage() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label>Next step</Label>
-              {triageRequired ? (
-                <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
-                  <Stethoscope className="h-4 w-4 text-brand" />
-                  <span>Triage first <span className="text-muted-foreground">— required by clinic settings</span></span>
-                </div>
-              ) : (
-                <div className="flex gap-2">
-                  <Button type="button" variant={toTriage ? "default" : "outline"} className="flex-1" onClick={() => setToTriage(true)}>
-                    <Stethoscope /> Triage first
-                  </Button>
-                  <Button type="button" variant={!toTriage ? "default" : "outline"} className="flex-1" onClick={() => setToTriage(false)}>
-                    <UserCheck /> Straight to doctor
-                  </Button>
-                </div>
-              )}
-            </div>
+            {!isDental && (
+              <div className="space-y-2">
+                <Label>Next step</Label>
+                {triageRequired ? (
+                  <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                    <Stethoscope className="h-4 w-4 text-brand" />
+                    <span>Triage first <span className="text-muted-foreground">— required by clinic settings</span></span>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <Button type="button" variant={toTriage ? "default" : "outline"} className="flex-1" onClick={() => setToTriage(true)}>
+                      <Stethoscope /> Triage first
+                    </Button>
+                    <Button type="button" variant={!toTriage ? "default" : "outline"} className="flex-1" onClick={() => setToTriage(false)}>
+                      <UserCheck /> Straight to doctor
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {!toTriage && (
               <div className="space-y-1.5">
-                <Label>Provider</Label>
+                <Label>{isDental ? "Dentist" : "Provider"}</Label>
                 <Select value={provider} onValueChange={setProvider} disabled={providerList.length === 0}>
                   <SelectTrigger>
-                    <SelectValue placeholder={chosenIds.length === 0 ? "Pick a service first" : "Assign a provider"} />
+                    <SelectValue placeholder={isDental ? "Assign a dentist" : chosenIds.length === 0 ? "Pick a service first" : "Assign a provider"} />
                   </SelectTrigger>
                   <SelectContent>
                     {providerList.map((p) => (
@@ -283,7 +298,7 @@ export function ReceptionPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                {!toTriage && chosenIds.length > 0 && providerList.length === 0 && !provQ.isFetching && (
+                {!isDental && !toTriage && chosenIds.length > 0 && providerList.length === 0 && !provQ.isFetching && (
                   <p className="text-xs text-warning">No staff are assigned to the selected service(s). Assign providers in Billing → Service catalog, or send to triage.</p>
                 )}
               </div>
@@ -293,7 +308,7 @@ export function ReceptionPage() {
             {cashierMode ? (
               <>
                 <Button className="w-full" disabled={!routeReady || hasPending} loading={send.isPending} onClick={() => send.mutate({ action: "cashier" })}>
-                  {hasFee ? "Send to cashier" : `Send to ${toTriage ? "triage" : "doctor"}`}
+                  {hasFee ? "Send to cashier" : `Send to ${destWord}`}
                 </Button>
                 {hasFee && (
                   <p className="text-center text-xs text-muted-foreground">Raises a pending payment; the patient advances once the cashier settles it.</p>
@@ -318,12 +333,12 @@ export function ReceptionPage() {
                   <Button variant="outline" disabled={!routeReady || hasPending} onClick={() => setWaiveOpen(true)}>Waive…</Button>
                 </div>
                 <Button className="w-full" disabled={!routeReady || hasPending} loading={send.isPending} onClick={() => send.mutate({ action: "collect", method })}>
-                  <HandCoins className="h-4 w-4" /> Collect ETB {total.toFixed(2)} &amp; send to {toTriage ? "triage" : "doctor"}
+                  <HandCoins className="h-4 w-4" /> Collect ETB {total.toFixed(2)} &amp; send to {destWord}
                 </Button>
               </div>
             ) : (
               <Button className="w-full" disabled={!routeReady || hasPending} loading={send.isPending} onClick={() => send.mutate({ action: "cashier" })}>
-                Send to {toTriage ? "triage" : "doctor"}
+                Send to {destWord}
               </Button>
             )}
           </CardContent>

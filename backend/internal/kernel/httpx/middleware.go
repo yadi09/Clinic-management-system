@@ -147,6 +147,16 @@ func authenticate(c *gin.Context, ts *auth.TokenService, raw string) {
 		Permissions: claims.Permissions,
 		Flags:       claims.Flags,
 	}
+	for _, b := range claims.Branches {
+		if id, e := uuid.Parse(b); e == nil {
+			p.BranchIDs = append(p.BranchIDs, id)
+		}
+	}
+	if claims.ActiveBranch != "" {
+		if id, e := uuid.Parse(claims.ActiveBranch); e == nil {
+			p.ActiveBranchID = &id
+		}
+	}
 	c.Set(principalCtxKey, p)
 	c.Request = c.Request.WithContext(tenancy.WithPrincipal(c.Request.Context(), p))
 	c.Next()

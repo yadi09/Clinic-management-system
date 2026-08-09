@@ -11,6 +11,7 @@ import (
 func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	p := rg.Group("/patients")
 	p.POST("", httpx.RequirePermission("patient.create"), h.Create)
+	p.POST("/import", httpx.RequirePermission("patient.create"), h.Import) // legacy register (bulk CSV)
 	p.GET("", httpx.RequirePermission("patient.search"), h.Search)
 	p.GET("/:id", httpx.RequirePermission("patient.read"), h.Get)
 	p.PUT("/:id", httpx.RequirePermission("patient.update"), h.Update)

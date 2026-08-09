@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BadgeDollarSign, Check, HandCoins, Inbox, MoreVertical } from "lucide-react";
+import { AlertTriangle, BadgeDollarSign, CalendarCheck, Check, ChevronDown, HandCoins, Inbox, Lock, MoreVertical } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -13,10 +13,12 @@ import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
 import { useAuth } from "@/app/auth-context";
 import { getClinic } from "@/features/admin/api";
-import { closeDay, dayClose, paymentsToday, pendingCharges, refundVisit, settleVisit, voidCharge, waiveCharge, waiverReasons, type PaidVisit, type PendingCharge } from "@/features/billing/api";
+import { closeDay, dayClose, dayCloses, paymentsToday, pendingCharges, refundVisit, settleVisit, voidCharge, waiveCharge, waiverReasons, type DaySummary, type PaidVisit, type PendingCharge } from "@/features/billing/api";
 import { DateRangeFilter, windowFor, type DateWindow } from "@/components/ui/date-range-filter";
 import { printVisitReceipt, printZReport } from "@/features/billing/print";
 import { Input } from "@/components/ui/input";
+import { formatEthiopian } from "@/lib/ethiopian";
+import { cn } from "@/lib/utils";
 import { Printer, RotateCcw } from "lucide-react";
 
 const VOID_REASONS = ["Keying error", "Duplicate charge", "Patient left without service", "Wrong patient"];
@@ -34,21 +36,26 @@ interface Group {
 export function CashierPage() {
   const qc = useQueryClient();
   const { user, can } = useAuth();
-  const [tab, setTab] = useState<"pending" | "paid">("pending");
+  const [tab, setTab] = useState<"pending" | "paid" | "days">("pending");
   const [paidWin, setPaidWin] = useState<DateWindow>(() => windowFor("today"));
   const q = useQuery({ queryKey: ["pending-charges"], queryFn: pendingCharges, refetchInterval: 15000 });
   const paid = useQuery({ queryKey: ["payments-today", paidWin.from, paidWin.to], queryFn: () => paymentsToday(paidWin.from, paidWin.to), enabled: tab === "paid" });
+  const days = useQuery({ queryKey: ["day-closes"], queryFn: () => dayCloses(), enabled: tab === "days" });
   const reasons = useQuery({ queryKey: ["waiver-reasons"], queryFn: waiverReasons });
   const clinic = useQuery({ queryKey: ["clinic"], queryFn: getClinic, retry: false });
   const [waiving, setWaiving] = useState<PendingCharge | null>(null);
   const [voiding, setVoiding] = useState<PendingCharge | null>(null);
-  const [closing, setClosing] = useState(false);
+  const [closingDate, setClosingDate] = useState<string | null>(null);
   const [refunding, setRefunding] = useState<PaidVisit | null>(null);
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["pending-charges"] });
     qc.invalidateQueries({ queryKey: ["payments-today"] });
     qc.invalidateQueries({ queryKey: ["queue"] });
+  };
+  const refreshDays = () => {
+    qc.invalidateQueries({ queryKey: ["day-closes"] });
+    qc.invalidateQueries({ queryKey: ["day-close"] });
   };
 
   // Group pending charges by patient (one checkout per patient).
@@ -65,20 +72,22 @@ export function CashierPage() {
 
   const clinicName = clinic.data?.name || "Clinic";
   const cashierName = user?.full_name || "Cashier";
+  const openDays = (days.data ?? []).filter((d) => !d.closed && d.business_date < todayISO()).length;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1>Cashier</h1>
-          <p className="text-sm text-muted-foreground">Pending checkouts, and a record of today's payments to reprint or refund.</p>
+          <p className="text-sm text-muted-foreground">
+            {tab === "pending"
+              ? "All pending checkouts waiting to be collected — regardless of when they were raised."
+              : tab === "paid"
+                ? "A record of settled payments to reprint or refund."
+                : "Close off each day's drawer. A day you forgot to close stays here until you do."}
+          </p>
         </div>
-        {tab === "paid" && (
-          <div className="flex flex-wrap items-center gap-2">
-            <DateRangeFilter onChange={setPaidWin} />
-            <Button variant="outline" onClick={() => setClosing(true)}>Close day</Button>
-          </div>
-        )}
+        {tab === "paid" && <DateRangeFilter onChange={setPaidWin} />}
       </div>
 
       <div className="inline-flex rounded-lg border p-0.5">
@@ -86,11 +95,16 @@ export function CashierPage() {
           Pending {groups.length > 0 && <span className="ml-1 rounded-full bg-background/20 px-1.5 text-xs">{groups.length}</span>}
         </button>
         <button onClick={() => setTab("paid")} className={`rounded-md px-4 py-1.5 text-sm font-medium ${tab === "paid" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
-          Paid today
+          Paid
+        </button>
+        <button onClick={() => setTab("days")} className={`rounded-md px-4 py-1.5 text-sm font-medium ${tab === "days" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+          Day close {openDays > 0 && <span className="ml-1 rounded-full bg-amber-500 px-1.5 text-xs text-white">{openDays}</span>}
         </button>
       </div>
 
-      {tab === "pending" ? (
+      {tab === "days" ? (
+        <DayCloseList q={days} clinicName={clinicName} cashierName={cashierName} onClose={setClosingDate} />
+      ) : tab === "pending" ? (
         groups.length === 0 ? (
           <Card className="flex flex-col items-center justify-center gap-2 p-12 text-center text-sm text-muted-foreground">
             <Inbox className="h-5 w-5" />
@@ -117,7 +131,7 @@ export function CashierPage() {
 
       <WaiveDialog charge={waiving} reasons={reasons.data ?? []} onClose={() => setWaiving(null)} onDone={() => { setWaiving(null); refresh(); }} />
       <VoidDialog charge={voiding} onClose={() => setVoiding(null)} onDone={() => { setVoiding(null); refresh(); }} />
-      <DayCloseDialog open={closing} onClose={() => setClosing(false)} />
+      <DayCloseDialog date={closingDate} onClose={() => setClosingDate(null)} onDone={refreshDays} />
       <RefundVisitDialog visit={refunding} onClose={() => setRefunding(null)} onDone={() => { setRefunding(null); refresh(); }} />
     </div>
   );
@@ -264,30 +278,166 @@ function PatientCheckout({ group, onWaive, onVoid, onPaid }: {
   );
 }
 
-function DayCloseDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const etbFmt = (v: string | number) => Number(v || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const longDay = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+
+/** Day-close overview: one expandable row per business day, newest first. */
+function DayCloseList({ q, clinicName, cashierName, onClose }: {
+  q: { data?: DaySummary[]; isLoading: boolean };
+  clinicName: string;
+  cashierName: string;
+  onClose: (date: string) => void;
+}) {
+  const today = todayISO();
+  // Always offer today, even before any payment has come in.
+  const rows = useMemo(() => {
+    const list = [...(q.data ?? [])];
+    if (!list.some((d) => d.business_date === today)) {
+      list.unshift({ business_date: today, expected_total: "0", count: 0, closed: false });
+    }
+    return list.sort((a, b) => b.business_date.localeCompare(a.business_date));
+  }, [q.data, today]);
+  const missed = rows.filter((d) => !d.closed && d.business_date < today);
+
+  if (q.isLoading) return <Card className="p-8 text-center text-sm text-muted-foreground">Loading…</Card>;
+  return (
+    <div className="space-y-3">
+      {missed.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span><b>{missed.length}</b> earlier {missed.length === 1 ? "day was" : "days were"} never closed. You can still close {missed.length === 1 ? "it" : "them"} now — the takings are counted against that day's date.</span>
+        </div>
+      )}
+      {rows.map((d) => (
+        <DayCloseRow key={d.business_date} d={d} isToday={d.business_date === today} clinicName={clinicName} cashierName={cashierName} onClose={onClose} />
+      ))}
+    </div>
+  );
+}
+
+function DayCloseRow({ d, isToday, clinicName, cashierName, onClose }: {
+  d: DaySummary; isToday: boolean; clinicName: string; cashierName: string; onClose: (date: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  // Method breakdown is only needed once a row is opened.
+  const detail = useQuery({ queryKey: ["day-close", d.business_date], queryFn: () => dayClose(d.business_date), enabled: open });
+  const variance = Number(d.variance || 0);
+  const missed = !d.closed && !isToday;
+
+  const printZ = () => printZReport({
+    clinic: clinicName, cashier: cashierName, businessDate: d.business_date,
+    byMethod: detail.data?.by_method ?? [], expected: d.expected_total,
+    counted: d.counted_total ?? "0", variance: d.variance ?? "0", note: d.note,
+  });
+
+  return (
+    <Card className={cn("overflow-hidden", missed && "border-amber-300")}>
+      <button type="button" onClick={() => setOpen((o) => !o)} className="flex w-full flex-wrap items-center gap-3 p-4 text-left hover:bg-accent/40">
+        <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", !open && "-rotate-90")} />
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-brand">{longDay(d.business_date)}</span>
+            {isToday && <Badge variant="outline">today</Badge>}
+            {d.closed ? (
+              <Badge variant="success"><Check className="mr-1 h-3 w-3" /> closed</Badge>
+            ) : missed ? (
+              <Badge variant="warning"><AlertTriangle className="mr-1 h-3 w-3" /> needs closing</Badge>
+            ) : (
+              <Badge variant="outline">open</Badge>
+            )}
+            {d.closed && variance !== 0 && (
+              <Badge variant={variance > 0 ? "warning" : "destructive"}>{variance > 0 ? "over" : "short"} ETB {etbFmt(Math.abs(variance))}</Badge>
+            )}
+          </div>
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            {formatEthiopian(d.business_date)} EC · {d.count} payment{d.count === 1 ? "" : "s"}
+            {d.closed && d.closed_at ? ` · closed ${new Date(d.closed_at).toLocaleString()}` : ""}
+          </div>
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="font-mono text-sm font-semibold">ETB {etbFmt(d.expected_total)}</span>
+          {!d.closed && (
+            <span onClick={(e) => { e.stopPropagation(); onClose(d.business_date); }}>
+              <Button size="sm" variant={missed ? "default" : "outline"}><Lock className="h-3.5 w-3.5" /> Close day</Button>
+            </span>
+          )}
+        </div>
+      </button>
+
+      {open && (
+        <div className="space-y-3 border-t bg-muted/20 p-4">
+          <div>
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Collected</p>
+            <div className="divide-y rounded-md border bg-card text-sm">
+              {(detail.data?.by_method ?? []).map((m) => (
+                <div key={m.label} className="flex justify-between px-3 py-1.5"><span className="capitalize">{m.label} ({m.count})</span><span className="font-mono">ETB {etbFmt(m.total)}</span></div>
+              ))}
+              {(detail.data?.by_method ?? []).length === 0 && <div className="px-3 py-1.5 text-muted-foreground">{detail.isLoading ? "Loading…" : "No payments on this day."}</div>}
+              <div className="flex justify-between px-3 py-1.5 font-semibold"><span>Expected</span><span className="font-mono">ETB {etbFmt(d.expected_total)}</span></div>
+            </div>
+          </div>
+          {d.closed ? (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="text-sm">
+                <span className="text-muted-foreground">Counted </span><span className="font-mono font-medium">ETB {etbFmt(d.counted_total ?? "0")}</span>
+                <span className="text-muted-foreground"> · variance </span>
+                <span className={cn("font-mono font-medium", variance === 0 ? "text-emerald-600" : "text-rose-600")}>ETB {etbFmt(d.variance ?? "0")}</span>
+                {d.note && <p className="mt-1 text-xs text-muted-foreground">{d.note}</p>}
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={printZ}><Printer className="h-3.5 w-3.5" /> Print Z-report</Button>
+                <Button size="sm" variant="ghost" onClick={() => onClose(d.business_date)}>Re-close…</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                {missed ? "This day was never closed off." : "Close the drawer at the end of the day to file the Z-report."}
+              </p>
+              <Button size="sm" onClick={() => onClose(d.business_date)}><Lock className="h-3.5 w-3.5" /> Count &amp; close</Button>
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function DayCloseDialog({ date, onClose, onDone }: { date: string | null; onClose: () => void; onDone: () => void }) {
   const { user } = useAuth();
-  const exp = useQuery({ queryKey: ["day-close"], queryFn: () => dayClose(), enabled: open });
+  const open = !!date;
+  const exp = useQuery({ queryKey: ["day-close", date], queryFn: () => dayClose(date!), enabled: open });
   const clinic = useQuery({ queryKey: ["clinic"], queryFn: getClinic, retry: false, enabled: open });
   const [counted, setCounted] = useState("");
   const cashierName = user?.full_name || "Cashier";
   const e = exp.data;
   const mut = useMutation({
-    mutationFn: () => closeDay({ business_date: e?.business_date, counted: Number(counted) || 0, note: "" }),
+    mutationFn: () => closeDay({ business_date: date ?? undefined, counted: Number(counted) || 0, note: "" }),
     onSuccess: (rec) => {
       toast.success(`Day closed — variance ETB ${rec.variance}`);
       printZReport({
         clinic: clinic.data?.name || "Clinic", cashier: cashierName, businessDate: rec.business_date,
         byMethod: e?.by_method ?? [], expected: rec.expected_total, counted: rec.counted_total, variance: rec.variance, note: rec.note,
       });
+      setCounted("");
+      onDone();
       onClose();
     },
     onError: (err) => toast.error(err instanceof AppError ? err.message : "Could not close the day"),
   });
+  const isPast = !!date && date < todayISO();
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { setCounted(""); onClose(); } }}>
       <DialogContent>
-        <DialogHeader><DialogTitle>Close day — {e?.business_date ?? "today"}</DialogTitle></DialogHeader>
-        {e?.closed && <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">Already closed once today — saving again updates the closeout.</p>}
+        <DialogHeader><DialogTitle>Close day — {date ? longDay(date) : "today"}</DialogTitle></DialogHeader>
+        {isPast && (
+          <p className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <CalendarCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            Closing an earlier day. The Z-report is filed against <b>{date}</b>, not today.
+          </p>
+        )}
+        {e?.closed && <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">Already closed — saving again updates the closeout.</p>}
         <div>
           <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Expected (what you collected)</p>
           <div className="rounded-md border divide-y text-sm">
@@ -307,7 +457,7 @@ function DayCloseDialog({ open, onClose }: { open: boolean; onClose: () => void 
           )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" onClick={() => { setCounted(""); onClose(); }}>Cancel</Button>
           <Button disabled={counted === ""} loading={mut.isPending} onClick={() => mut.mutate()}>Close &amp; print Z-report</Button>
         </DialogFooter>
       </DialogContent>

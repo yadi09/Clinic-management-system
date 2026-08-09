@@ -16,6 +16,12 @@ type Clinic struct {
 	Locale   string    `json:"locale"`
 }
 
+// Workspace is the tenant's login handle (slug) plus its display name.
+type Workspace struct {
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+}
+
 type Branch struct {
 	ID           uuid.UUID       `json:"-"`
 	ClinicID     uuid.UUID       `json:"-"`
@@ -87,10 +93,42 @@ type ResourceInput struct {
 	Type         string
 }
 
+// ModuleFlag is a per-branch feature toggle (e.g. laboratory, pharmacy).
+type ModuleFlag struct {
+	Flag       string `json:"flag"`
+	Enabled    bool   `json:"enabled"`    // effective for the branch (override or tenant default)
+	Overridden bool   `json:"overridden"` // true when a branch-specific override exists
+}
+
+// BranchUsage reports how many branches exist against the plan's cap.
+type BranchUsage struct {
+	Used  int  `json:"used"`
+	Limit *int `json:"limit,omitempty"` // nil = unlimited
+}
+
+// UsageLine is one metered dimension: how much is used vs the effective cap
+// (Limit -1 = unlimited). Storage is in bytes; the others are counts.
+type UsageLine struct {
+	Used  int64 `json:"used"`
+	Limit int64 `json:"limit"`
+}
+
+// PlanUsage is the tenant's plan name plus usage vs cap for each dimension.
+type PlanUsage struct {
+	PlanName string    `json:"plan_name"`
+	Storage  UsageLine `json:"storage"`
+	Patients UsageLine `json:"patients"`
+	Users    UsageLine `json:"users"`
+	Branches UsageLine `json:"branches"`
+}
+
 // Service is the organisation module API.
 type Service interface {
 	GetClinic(ctx context.Context) (*Clinic, error)
 	SaveClinic(ctx context.Context, in ClinicInput) (*Clinic, error)
+
+	GetWorkspace(ctx context.Context) (*Workspace, error)
+	UpdateWorkspace(ctx context.Context, slug string) (*Workspace, error)
 
 	GetSettings(ctx context.Context) (*Settings, error)
 	SaveSettings(ctx context.Context, in SettingsInput) (*Settings, error)
@@ -99,6 +137,10 @@ type Service interface {
 	CreateBranch(ctx context.Context, in BranchInput) (*Branch, error)
 	UpdateBranch(ctx context.Context, id uuid.UUID, in BranchInput) (*Branch, error)
 	DeleteBranch(ctx context.Context, id uuid.UUID) error
+	BranchUsage(ctx context.Context) (*BranchUsage, error)
+	PlanUsage(ctx context.Context) (*PlanUsage, error)
+	GetBranchModules(ctx context.Context, branchID uuid.UUID) ([]ModuleFlag, error)
+	SetBranchModules(ctx context.Context, branchID uuid.UUID, modules map[string]*bool) error
 
 	ListDepartments(ctx context.Context) ([]Department, error)
 	CreateDepartment(ctx context.Context, in DepartmentInput) (*Department, error)

@@ -49,10 +49,57 @@ func (h *Handlers) Create(c *gin.Context) {
 	httpx.Created(c, toPatientDTO(*p))
 }
 
-// Search handles GET /patients?q=&page=&page_size= (FR-PAT-04).
+// Import handles POST /patients/import — bulk-load a legacy register. The client
+// parses the spreadsheet and posts raw cell values in batches; every row is
+// validated and written independently, so a bad row never aborts the run. With
+// dry_run the whole file is checked and reported without writing anything.
+func (h *Handlers) Import(c *gin.Context) {
+	var req struct {
+		DryRun      bool   `json:"dry_run"`
+		OnDuplicate string `json:"on_duplicate"` // skip (default) | update
+		Calendar    string `json:"calendar"`     // ethiopian (default) | gregorian
+		Rows        []struct {
+			RowNumber int    `json:"row_number"`
+			MRN       string `json:"mrn"`
+			Name      string `json:"name"`
+			Phone     string `json:"phone"`
+			Gender    string `json:"gender"`
+			Age       string `json:"age"`
+			VisitDate string `json:"visit_date"`
+		} `json:"rows"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("a rows array is required"))
+		return
+	}
+	rows := make([]patient.ImportRow, 0, len(req.Rows))
+	for i, r := range req.Rows {
+		n := r.RowNumber
+		if n == 0 {
+			n = i + 1
+		}
+		rows = append(rows, patient.ImportRow{
+			RowNumber: n, MRN: r.MRN, Name: r.Name, Phone: r.Phone,
+			Gender: r.Gender, Age: r.Age, VisitDate: r.VisitDate,
+		})
+	}
+	rep, err := h.svc.ImportPatients(c.Request.Context(), rows, patient.ImportOptions{
+		DryRun: req.DryRun, OnDuplicate: req.OnDuplicate, Calendar: req.Calendar,
+	})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, rep)
+}
+
+// Search handles GET /patients?q=&gender=&page=&page_size= (FR-PAT-04).
 func (h *Handlers) Search(c *gin.Context) {
 	page := httpx.ParsePage(c)
-	res, err := h.svc.Search(c.Request.Context(), c.Query("q"), page.Page, page.PageSize)
+	res, err := h.svc.Search(c.Request.Context(), patient.SearchFilter{
+		Query:  c.Query("q"),
+		Gender: c.Query("gender"),
+	}, page.Page, page.PageSize)
 	if err != nil {
 		httpx.Fail(c, err)
 		return
@@ -284,6 +331,7 @@ func decodeID(c *gin.Context, prefix, param string) (uuid.UUID, bool) {
 
 func toInput(req patientRequest) patient.PatientInput {
 	return patient.PatientInput{
+		MRN:       req.MRN,
 		FirstName: req.FirstName, MiddleName: req.MiddleName, LastName: req.LastName,
 		Gender: req.Gender, DOB: req.DOB, NationalID: req.NationalID, PassportNo: req.PassportNo,
 		Phone: req.Phone, Email: req.Email, BloodGroup: req.BloodGroup,

@@ -18,12 +18,17 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	// notes) and triage nurses (triage notes).
 	rg.POST("/transcribe", httpx.RequireAnyPermission("encounter.manage", "triage.manage"), h.Transcribe)
 
+	// Import a migrated (paper / old-system) patient record as a back-dated visit —
+	// done by whoever onboards old data (patient.create) or a clinician.
+	rg.POST("/history-import", httpx.RequireAnyPermission("patient.create", "encounter.manage"), h.ImportHistory)
+
 	// Encounter workspace (3b) — doctors.
 	enc := rg.Group("/encounters", httpx.RequirePermission("encounter.manage"))
 	enc.POST("", h.OpenEncounter) // open-or-get the encounter for a queue entry
 	enc.GET("", h.History)        // ?patient= → patient history timeline
 	enc.GET("/board", h.MyBoard)  // doctor's "My day": in-progress + done today
 	enc.GET("/:id", h.GetWorkspace)
+	enc.POST("/:id/assist", h.Assist) // AI clinical decision-support co-pilot
 	enc.PUT("/:id/note", h.SaveNote)
 	enc.POST("/:id/diagnoses", h.AddDiagnosis)
 	enc.DELETE("/:id/diagnoses/:dxId", h.RemoveDiagnosis)

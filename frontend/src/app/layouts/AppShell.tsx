@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { Activity, Bell, Search, LogOut, ChevronsUpDown } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Activity, Bell, Search, LogOut, ChevronsUpDown, Building2, Check } from "lucide-react";
 
 import { useAuth } from "@/app/auth-context";
 import { navSections } from "@/app/nav";
@@ -16,6 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 
 function initials(name?: string) {
@@ -24,17 +25,38 @@ function initials(name?: string) {
 }
 
 export function AppShell() {
-  const { user, signOut, can, flagOn } = useAuth();
+  const { user, signOut, can, flagOn, branches, activeBranch, allBranches, switchBranch } = useAuth();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const primaryRole = user?.roles?.[0]?.replace(/_/g, " ") ?? "staff";
 
+  // The branch switcher only appears once a clinic has more than one branch, so
+  // single-location clinics see no extra chrome. "All branches" is a consolidated
+  // view offered to clinic-wide (tenant-scoped) users.
+  const showSwitcher = branches.length > 1;
+  const branchLabel = allBranches && !activeBranch ? "All branches" : activeBranch?.name ?? "Main Branch";
+  const doSwitch = async (id: string) => {
+    try {
+      await switchBranch(id);
+      await qc.invalidateQueries();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not switch branch");
+    }
+  };
+
   // A module the clinic isn't entitled to (feature flag off) is hidden entirely.
-  const moduleFor = (to: string) => (to.startsWith("/pharmacy") ? "pharmacy" : to.startsWith("/lab") ? "laboratory" : null);
+  const moduleFor = (to: string) => (to.startsWith("/pharmacy") ? "pharmacy" : to.startsWith("/lab") ? "laboratory" : to.startsWith("/inpatient") ? "inpatient" : to.startsWith("/chairside") ? "dental" : null);
+  // A dental clinic doesn't use the encounter-centric flow (triage → queue →
+  // consultation) — its record of care is the tooth chart + treatment plan on the
+  // patient page. Hide those items so the menu matches how a dental clinic works.
+  const dentalHidden = new Set(["/triage", "/queue", "/worklist"]);
+  const isDental = flagOn("dental");
   const sections = navSections
     .map((s) => ({
       ...s,
       items: s.items.filter((i) => {
         if (i.perm && !i.perm.some((p) => can(p))) return false;
+        if (isDental && dentalHidden.has(i.to)) return false;
         const mod = moduleFor(i.to);
         return !mod || flagOn(mod);
       }),
@@ -61,9 +83,38 @@ export function AppShell() {
           <span className="text-lg font-bold tracking-tight">ClinicOS</span>
         </div>
         <div className="flex flex-1 items-center gap-3 px-5">
-          <span className="hidden rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium capitalize md:inline">
-            Main Branch · {primaryRole}
-          </span>
+          {showSwitcher ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger className="hidden items-center gap-2 rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium hover:bg-white/15 focus:outline-none md:flex">
+                <Building2 className="h-4 w-4" />
+                <span>{branchLabel}</span>
+                <ChevronsUpDown className="h-3.5 w-3.5 opacity-70" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-60">
+                <DropdownMenuLabel>Switch branch</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {branches.map((b) => (
+                  <DropdownMenuItem key={b.id} onSelect={() => void doSwitch(b.id)}>
+                    <span className="flex-1 truncate">{b.name}</span>
+                    {activeBranch?.id === b.id && <Check className="h-4 w-4" />}
+                  </DropdownMenuItem>
+                ))}
+                {allBranches && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onSelect={() => void doSwitch("all")}>
+                      <span className="flex-1">All branches</span>
+                      {!activeBranch && <Check className="h-4 w-4" />}
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <span className="hidden rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium capitalize md:inline">
+              {branchLabel} · {primaryRole}
+            </span>
+          )}
           <div className="flex-1" />
           <button
             onClick={() => window.dispatchEvent(new CustomEvent("open-command"))}

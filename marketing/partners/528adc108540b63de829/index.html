@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
+<title>ClinicOS — Partner Program (Confidential Proposal)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --ink:#0E2233; --brand:#1F4E79; --brand2:#16406a; --teal:#148F77; --teal2:#1BB394;
+  --gold:#B9822B; --bg:#EEF2F6; --panel:#fff; --line:#DCE4EC; --muted:#5A6B7B;
+  --disp:"Space Grotesk","Inter",system-ui,sans-serif; --body:"Inter",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:12pt;line-height:1.55;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--disp);font-weight:700;letter-spacing:-.02em;line-height:1.08;margin:0}
+p{margin:0 0 10px}
+.grad{background:linear-gradient(95deg,var(--brand),var(--teal));-webkit-background-clip:text;background-clip:text;color:transparent}
+.money{font-family:var(--disp);font-weight:700}
+
+/* A4 page model */
+.page{
+  position:relative; width:210mm; min-height:297mm; margin:14px auto; background:var(--panel);
+  padding:22mm 20mm; box-shadow:0 10px 40px -18px rgba(16,42,67,.5); overflow:hidden;
+}
+.pulse{display:block;width:150px;height:24px}
+.pulse path{fill:none;stroke:var(--teal);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.logo{display:flex;align-items:center;gap:9px;font-family:var(--disp);font-weight:700;font-size:17pt;color:var(--brand)}
+.logo .mark{width:30px;height:30px;border-radius:8px;background:var(--brand);display:grid;place-items:center;flex-shrink:0}
+.eyebrow{font-family:var(--disp);font-weight:600;font-size:9.5pt;letter-spacing:.16em;text-transform:uppercase;color:var(--teal)}
+.foot{position:absolute;left:20mm;right:20mm;bottom:12mm;display:flex;justify-content:space-between;font-size:8.5pt;color:var(--muted);border-top:1px solid var(--line);padding-top:6px}
+
+/* Cover */
+.cover{background:radial-gradient(900px 500px at 80% -10%, var(--brand) 0%, #0c2b47 60%);color:#eaf2f8;display:flex;flex-direction:column}
+.cover .logo{color:#fff}.cover .logo .mark{background:rgba(255,255,255,.14)}
+.cover .eyebrow{color:var(--teal2)}
+.cover h1{color:#fff;font-size:44pt;margin-top:26mm}
+.cover .lede{color:#b9cee0;font-size:15pt;max-width:150mm;margin-top:14px}
+.cover .prepared{margin-top:auto;display:flex;gap:40px;flex-wrap:wrap;font-size:10pt;color:#a9c0d2}
+.cover .prepared b{color:#fff;display:block;font-family:var(--disp);border-bottom:1px solid rgba(255,255,255,.3);min-width:60mm;padding-bottom:3px;margin-top:4px}
+.badge{display:inline-block;border:1px solid var(--teal2);color:var(--teal2);border-radius:999px;padding:3px 12px;font-size:9pt;font-weight:600}
+
+/* Section headings */
+.sec-h{font-size:22pt;margin:4px 0 4px}
+.sec-sub{color:var(--muted);font-size:12pt;margin-bottom:16px}
+
+.steps{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin:8px 0}
+.step{border:1px solid var(--line);border-radius:12px;padding:14px}
+.step .n{width:30px;height:30px;border-radius:8px;background:var(--brand);color:#fff;font-family:var(--disp);font-weight:700;display:grid;place-items:center;margin-bottom:8px}
+.step h3{font-size:12.5pt}.step p{font-size:10.5pt;color:var(--muted);margin:5px 0 0}
+
+.tiers{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:11pt}
+.tiers th{background:var(--brand);color:#fff;font-family:var(--disp);font-weight:600;text-align:left;padding:10px 12px;font-size:10.5pt}
+.tiers td{border-bottom:1px solid var(--line);padding:11px 12px}
+.tiers tr:nth-child(even) td{background:#f6f9fb}
+.tiers .rate{font-family:var(--disp);font-weight:700;color:var(--teal)}
+.tiers .amt{font-family:var(--disp);font-weight:700;color:var(--ink)}
+
+.hero-earn{background:linear-gradient(120deg,var(--teal),#0f7a63);color:#fff;border-radius:14px;padding:18px 22px;margin:8px 0 14px}
+.hero-earn .big{font-family:var(--disp);font-weight:700;font-size:26pt;line-height:1}
+.hero-earn .small{color:#d6f2ea;font-size:11pt;margin-top:6px}
+
+.scenarios{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin:6px 0}
+.sc{border:1px solid var(--line);border-radius:12px;padding:14px;text-align:center}
+.sc .c{font-size:10pt;color:var(--muted)}
+.sc .v{font-family:var(--disp);font-weight:700;font-size:19pt;color:var(--brand);margin:4px 0}
+.sc .p{font-size:9pt;color:var(--muted)}
+
+.benefits{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+.b{display:flex;gap:12px;border:1px solid var(--line);border-radius:12px;padding:14px}
+.b .ico{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#eaf1f8,#e6f6f1);color:var(--brand);display:grid;place-items:center;flex-shrink:0;font-size:15pt}
+.b h3{font-size:12pt}.b p{font-size:10pt;color:var(--muted);margin:3px 0 0}
+
+.callout{border-left:3px solid var(--teal);background:#f4fbf9;border-radius:0 10px 10px 0;padding:12px 16px;margin:12px 0;font-size:11pt}
+.note{font-size:9.5pt;color:var(--muted)}
+ul.clean{margin:6px 0;padding-left:18px}ul.clean li{margin:6px 0}
+
+.sign{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:20px}
+.sign .line{border-top:1px solid var(--ink);padding-top:6px;font-size:10pt;color:var(--muted)}
+.contact{display:flex;gap:26px;flex-wrap:wrap;margin-top:12px;font-size:11pt}
+.contact b{font-family:var(--disp)}
+
+@media screen{ body{padding:10px 0} }
+@media print{
+  html,body{background:#fff}
+  .page{margin:0;box-shadow:none;width:auto;min-height:auto;page-break-after:always;padding:20mm}
+  .page:last-child{page-break-after:auto}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  @page{size:A4;margin:0}
+}
+</style>
+</head>
+<body>
+
+<!-- COVER -->
+<section class="page cover">
+  <div class="logo"><span class="mark"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2-6 4 12 2-6h6"/></svg></span> ClinicOS</div>
+  <span class="eyebrow" style="margin-top:24mm">Partner Program · Confidential Proposal</span>
+  <h1>Put your name behind the future of Ethiopian healthcare — and earn from it.</h1>
+  <p class="lede">An invitation for trusted voices in medicine to bring ClinicOS to the clinics who need it, and earn a commission for every clinic they bring.</p>
+  <svg class="pulse" style="margin-top:16px" viewBox="0 0 210 30" aria-hidden="true"><path d="M2 15h40l8-11 10 22 7-16 6 11h30l7-7 8 7h67" stroke="#1BB394"/></svg>
+  <div class="prepared">
+    <div>Prepared for<b>&nbsp;</b></div>
+    <div>Date<b>&nbsp;</b></div>
+    <div style="align-self:flex-end"><span class="badge">Founding partners · limited</span></div>
+  </div>
+</section>
+
+<!-- OPPORTUNITY -->
+<section class="page">
+  <span class="eyebrow">Why this matters</span>
+  <h2 class="sec-h">A product clinics genuinely need — and a voice they already trust.</h2>
+  <p class="sec-sub">ClinicOS is the clinic operating system built for Ethiopia.</p>
+
+  <p>Across the country, private clinics still run on paper and spreadsheets — money leaks through untracked consultations, pharmacy and lab; reception runs on memory; and owners fly blind the moment they leave the building. <b>ClinicOS fixes that</b> — reception to the last birr, in ETB, on hardware they already have, shaped to how Ethiopian clinics actually work.</p>
+
+  <div class="callout">
+    Doctors <b>dictate notes by voice</b>, an <b>AI co-pilot</b> supports diagnosis, and the clinic's <b>monthly Ministry (DHIS2) report is filed automatically</b> — capabilities no foreign system offers here.
+  </div>
+
+  <h3 style="font-size:14pt;margin-top:14px">Why we're inviting <span class="grad">you</span></h3>
+  <p>You already have what money can't buy: the <b>trust and attention of the exact people who need this</b> — clinic owners, doctors, and health leaders. When you recommend ClinicOS, you're not selling software; you're helping the clinics who follow you run better, serve more patients, and stop losing money. We reward you generously for it.</p>
+
+  <div class="foot"><span>ClinicOS Partner Program</span><span>Confidential</span></div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="page">
+  <span class="eyebrow">How the partnership works</span>
+  <h2 class="sec-h">Three steps — and you're paid for every clinic you bring.</h2>
+  <p class="sec-sub">Simple, transparent, and generous — a commission on each clinic's first year with ClinicOS.</p>
+
+  <div class="steps">
+    <div class="step"><div class="n">1</div><h3>You get your link</h3><p>A personal referral link and code, plus a simple dashboard to track your clinics and earnings.</p></div>
+    <div class="step"><div class="n">2</div><h3>A clinic subscribes</h3><p>A clinic you referred signs up to ClinicOS (100,000 ETB / year) and goes live — we handle setup and training.</p></div>
+    <div class="step"><div class="n">3</div><h3>You earn on their first year</h3><p>You receive your commission on that clinic's <b>first-year subscription</b> — paid once the clinic is on board.</p></div>
+  </div>
+
+  <div class="callout">
+    <b>A strong first-year reward.</b> You earn your full commission on every clinic's first year with ClinicOS — and the more clinics you bring, the higher your rate climbs (see the next page).
+  </div>
+
+  <p class="note">Commission is calculated on each referred clinic's first-year subscription (100,000 ETB) and paid once the clinic's first-year payment is received.</p>
+
+  <div class="foot"><span>ClinicOS Partner Program</span><span>Confidential</span></div>
+</section>
+
+<!-- COMMISSION -->
+<section class="page">
+  <span class="eyebrow">What you earn</span>
+  <h2 class="sec-h">The more clinics you bring, the higher your rate — on all of them.</h2>
+  <p class="sec-sub">Subscription: 100,000 ETB per clinic. You earn a one-time commission on each clinic's first year — and your tier is retroactive, so reaching it lifts the rate on every clinic you've referred.</p>
+
+  <table class="tiers">
+    <thead><tr><th>Clinics referred</th><th>Commission</th><th>Per clinic (first year)</th><th>Example — one-time</th></tr></thead>
+    <tbody>
+      <tr><td><b>1 – 3</b> clinics</td><td class="rate">40%</td><td class="amt">40,000 ETB</td><td>3 clinics → <span class="money">120,000 ETB</span></td></tr>
+      <tr><td><b>4 – 10</b> clinics</td><td class="rate">45%</td><td class="amt">45,000 ETB</td><td>10 clinics → <span class="money">450,000 ETB</span></td></tr>
+      <tr><td><b>11 – 20</b> clinics</td><td class="rate">50%</td><td class="amt">50,000 ETB</td><td>20 clinics → <span class="money">1,000,000 ETB</span></td></tr>
+      <tr><td><b>21 – 30</b> clinics</td><td class="rate">55%</td><td class="amt">55,000 ETB</td><td>30 clinics → <span class="money">1,650,000 ETB</span></td></tr>
+      <tr><td><b>31 – 40</b> clinics</td><td class="rate">60%</td><td class="amt">60,000 ETB</td><td>40 clinics → <span class="money">2,400,000 ETB</span></td></tr>
+      <tr><td><b>41 – 50</b> clinics</td><td class="rate">65%</td><td class="amt">65,000 ETB</td><td>50 clinics → <span class="money">3,250,000 ETB</span></td></tr>
+      <tr><td><b>51 +</b> clinics</td><td class="rate">70%</td><td class="amt">70,000 ETB</td><td>60 clinics → <span class="money">4,200,000 ETB</span></td></tr>
+    </tbody>
+  </table>
+
+  <div class="hero-earn">
+    <div class="big">Refer 10 clinics → up to 450,000 ETB.</div>
+    <div class="small">A one-time reward, earned on each clinic's first year with ClinicOS.</div>
+  </div>
+
+  <div class="scenarios">
+    <div class="sc"><div class="c">5 clinics</div><div class="v">225,000 ETB</div><div class="p">45% · one-time</div></div>
+    <div class="sc"><div class="c">10 clinics</div><div class="v">450,000 ETB</div><div class="p">45% · one-time</div></div>
+    <div class="sc"><div class="c">20 clinics</div><div class="v">1,000,000 ETB</div><div class="p">50% · one-time</div></div>
+  </div>
+  <p class="note">Illustrative, at the tier rate applied to all your referred clinics, one-time on each clinic's first year. Final terms are set in the partner agreement.</p>
+
+  <div class="foot"><span>ClinicOS Partner Program</span><span>Confidential</span></div>
+</section>
+
+<!-- WHAT YOU GET / WHAT WE ASK -->
+<section class="page">
+  <span class="eyebrow">The partnership</span>
+  <h2 class="sec-h">What you get.</h2>
+  <div class="benefits">
+    <div class="b"><div class="ico">💸</div><div><h3>Strong first-year reward</h3><p>Earn up to 70,000 ETB per clinic — paid on each clinic's first-year subscription.</p></div></div>
+    <div class="b"><div class="ico">⭐</div><div><h3>Founding-partner status</h3><p>Limited early partners get the top-tier terms locked in and public recognition.</p></div></div>
+    <div class="b"><div class="ico">🔗</div><div><h3>Your link &amp; dashboard</h3><p>A personal referral link/code and a live view of your clinics and earnings.</p></div></div>
+    <div class="b"><div class="ico">🎬</div><div><h3>Ready-made materials</h3><p>Content, demos, and a live product to show — we make it effortless to share.</p></div></div>
+    <div class="b"><div class="ico">🤝</div><div><h3>We do the heavy lifting</h3><p>We onboard, set up, and support every clinic you send. You just make the intro.</p></div></div>
+    <div class="b"><div class="ico">📞</div><div><h3>A direct line</h3><p>Priority support and a direct channel to the founding team.</p></div></div>
+  </div>
+
+  <h2 class="sec-h" style="margin-top:20px">What we ask of you.</h2>
+  <ul class="clean">
+    <li>Share ClinicOS <b>authentically</b> with clinics and health leaders in your network.</li>
+    <li>Introduce interested clinics to us (or point them to your link).</li>
+    <li>Represent ClinicOS with the same integrity you bring to your own name.</li>
+  </ul>
+  <p class="note" style="margin-top:8px">No quotas, no cost to join. You earn purely on the clinics that come through you.</p>
+
+  <div class="foot"><span>ClinicOS Partner Program</span><span>Confidential</span></div>
+</section>
+
+<!-- GET STARTED -->
+<section class="page">
+  <span class="eyebrow">Get started</span>
+  <h2 class="sec-h">Let's build something that matters — together.</h2>
+  <p class="sec-sub">We're onboarding a small number of founding partners now.</p>
+
+  <ol class="clean">
+    <li>We agree the terms and sign a short partnership.</li>
+    <li>You receive your referral link, code, and dashboard.</li>
+    <li>You start referring — and earn on every clinic you bring.</li>
+  </ol>
+
+  <div class="callout" style="margin-top:16px">
+    <b>Talk to us</b>
+    <div class="contact">
+      <span>WhatsApp: <b>+251 98 853 8381</b></span>
+      <span>Email: <b>yadamzerterefe09@gmail.com</b></span>
+      <span>Web: <b>clinicos.cc</b></span>
+    </div>
+  </div>
+
+  <div class="sign">
+    <div class="line">Partner — name &amp; signature / date</div>
+    <div class="line">ClinicOS — authorised signature / date</div>
+  </div>
+
+  <div style="margin-top:26px" class="logo"><span class="mark"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2-6 4 12 2-6h6"/></svg></span> ClinicOS</div>
+  <p class="note" style="margin-top:4px">The clinic operating system built for Ethiopia — reception to the last birr.</p>
+
+  <div class="foot"><span>ClinicOS Partner Program</span><span>Confidential</span></div>
+</section>
+
+<!-- Partner lead capture (screen only; hidden in print/PDF) -->
+<div id="leadFab" class="lead-fab">Register your interest ↗</div>
+<div id="leadOverlay" class="lead-overlay" aria-hidden="true">
+  <div class="lead-modal" role="dialog" aria-modal="true" aria-label="Register your interest">
+    <button class="lead-x" id="leadClose" aria-label="Close">×</button>
+    <div id="leadForm">
+      <h3 class="lead-h">Become a ClinicOS partner</h3>
+      <p class="lead-sub">Tell us about you and we'll reach out on WhatsApp with your personal referral link.</p>
+      <div class="lead-grid">
+        <label class="lead-full">Full name<input id="ln" type="text" autocomplete="name"></label>
+        <label>WhatsApp / phone<input id="lp" type="tel" autocomplete="tel"></label>
+        <label>Email (optional)<input id="le" type="email" autocomplete="email"></label>
+        <label>City / region<input id="lr" type="text"></label>
+        <label>Who are you?<select id="la"><option value="">Select…</option><option value="influencer">Influencer / creator</option><option value="clinic_owner">Clinic owner</option><option value="professional">Medical professional</option><option value="sales">Sales / marketing</option><option value="other">Other</option></select></label>
+        <label class="lead-full">How many clinics can you bring?<select id="lc"><option value="">Select…</option><option value="1-3">1–3</option><option value="4-10">4–10</option><option value="11-20">11–20</option><option value="20+">20+</option></select></label>
+        <label class="lead-full">Your goal (optional)<textarea id="lg" rows="2"></textarea></label>
+      </div>
+      <input type="text" id="lw" class="lead-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <div class="lead-err" id="leadErr"></div>
+      <button class="lead-btn" id="leadSubmit">Register</button>
+      <p class="lead-fine">We'll only use this to contact you about the partner program.</p>
+    </div>
+    <div id="leadDone" class="lead-done" hidden>
+      <div class="lead-check">✓</div>
+      <h3 class="lead-h">You're in — thank you!</h3>
+      <p class="lead-sub">We'll reach out on WhatsApp shortly with your personal referral link.</p>
+      <button class="lead-btn" id="leadCloseDone">Close</button>
+    </div>
+  </div>
+</div>
+<style>
+  .lead-fab{position:fixed;right:18px;bottom:18px;z-index:50;background:#148F77;color:#fff;font-family:"Space Grotesk",Inter,sans-serif;font-weight:600;font-size:13px;padding:11px 16px;border-radius:999px;box-shadow:0 8px 24px -8px rgba(20,143,119,.6);cursor:pointer;border:none}
+  .lead-overlay{position:fixed;inset:0;z-index:60;background:rgba(14,34,51,.55);display:none;align-items:center;justify-content:center;padding:16px}
+  .lead-overlay.open{display:flex}
+  .lead-modal{position:relative;width:100%;max-width:440px;background:#fff;border-radius:16px;padding:22px;box-shadow:0 30px 80px -20px rgba(16,42,67,.6);font-family:Inter,system-ui,sans-serif;max-height:92vh;overflow:auto}
+  .lead-x{position:absolute;top:10px;right:14px;border:none;background:none;font-size:24px;line-height:1;color:#5A6B7B;cursor:pointer}
+  .lead-h{font-family:"Space Grotesk",Inter,sans-serif;font-weight:700;font-size:19px;color:#1F4E79;margin:0 0 4px}
+  .lead-sub{color:#5A6B7B;font-size:13px;margin:0 0 14px;line-height:1.45}
+  .lead-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .lead-grid label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:#0E2233;min-width:0}
+  .lead-full{grid-column:1/-1}
+  .lead-grid input,.lead-grid select,.lead-grid textarea{font:inherit;font-weight:400;font-size:14px;padding:9px 10px;border:1px solid #DCE4EC;border-radius:9px;background:#F7FAFC;color:#0E2233;box-sizing:border-box;width:100%;min-width:0}
+  @media (max-width:400px){.lead-grid{grid-template-columns:1fr}}
+  .lead-grid input:focus,.lead-grid select:focus,.lead-grid textarea:focus{outline:none;border-color:#1F4E79;background:#fff}
+  .lead-hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+  .lead-btn{width:100%;margin-top:14px;background:#1F4E79;color:#fff;font-family:"Space Grotesk",Inter,sans-serif;font-weight:600;font-size:15px;padding:12px;border:none;border-radius:10px;cursor:pointer}
+  .lead-btn:disabled{opacity:.6;cursor:default}
+  .lead-fine{color:#8a99a8;font-size:11px;text-align:center;margin:10px 0 0}
+  .lead-err{color:#c0392b;font-size:12.5px;margin-top:10px}
+  .lead-done{text-align:center;padding:10px 4px}
+  .lead-check{width:52px;height:52px;border-radius:50%;background:#148F77;color:#fff;font-size:28px;display:flex;align-items:center;justify-content:center;margin:4px auto 12px}
+  @media print{.lead-fab,.lead-overlay{display:none!important}}
+</style>
+<script>
+(function(){
+  var overlay=document.getElementById('leadOverlay');
+  function open(){overlay.classList.add('open');overlay.setAttribute('aria-hidden','false');}
+  function close(){overlay.classList.remove('open');overlay.setAttribute('aria-hidden','true');}
+  document.getElementById('leadFab').addEventListener('click',open);
+  document.getElementById('leadClose').addEventListener('click',close);
+  document.getElementById('leadCloseDone').addEventListener('click',close);
+  overlay.addEventListener('click',function(e){if(e.target===overlay)close();});
+  if(location.protocol.indexOf('http')===0){setTimeout(open,900);} // auto-open when hosted (not on a local file)
+  function source(){var m=location.pathname.match(/partners\/([^\/]+)/);var slug=m?m[1]:location.pathname;var ref=new URLSearchParams(location.search).get('ref');return ref?(slug+' · ref='+ref):slug;}
+  var btn=document.getElementById('leadSubmit'),err=document.getElementById('leadErr');
+  btn.addEventListener('click',function(){
+    var name=document.getElementById('ln').value.trim();
+    if(!name){err.textContent='Please enter your name.';return;}
+    err.textContent='';btn.disabled=true;btn.textContent='Sending…';
+    fetch('/api/v1/partner/leads',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      name:name,phone:document.getElementById('lp').value.trim(),email:document.getElementById('le').value.trim(),
+      region:document.getElementById('lr').value.trim(),audience:document.getElementById('la').value,
+      clinics_estimate:document.getElementById('lc').value,goal:document.getElementById('lg').value.trim(),
+      source:source(),website:document.getElementById('lw').value
+    })}).then(function(r){if(!r.ok)throw new Error();document.getElementById('leadForm').hidden=true;document.getElementById('leadDone').hidden=false;})
+    .catch(function(){err.textContent='Something went wrong — please try again, or WhatsApp us.';btn.disabled=false;btn.textContent='Register';});
+  });
+})();
+</script>
+</body>
+</html>

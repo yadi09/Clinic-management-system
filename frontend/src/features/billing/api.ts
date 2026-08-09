@@ -109,6 +109,17 @@ export interface ExpectedDay {
   closed: boolean;
   reconciliation?: Reconciliation;
 }
+// One business day on the close-out overview: takings + whether it's closed.
+export interface DaySummary {
+  business_date: string;
+  expected_total: string;
+  count: number;
+  closed: boolean;
+  counted_total?: string;
+  variance?: string;
+  note?: string;
+  closed_at?: string;
+}
 
 export function listServices(activeOnly = false) {
   return apiFetch<ServiceItem[]>(`/billing/services${activeOnly ? "?active=1" : ""}`);
@@ -222,6 +233,13 @@ export function cashSummary(sinceISO?: string, untilISO?: string) {
   if (untilISO) p.set("until", untilISO);
   const qs = p.toString();
   return apiFetch<CashSummary>(`/billing/cash${qs ? `?${qs}` : ""}`);
+}
+export function dayCloses(from?: string, to?: string) {
+  const q = new URLSearchParams();
+  if (from) q.set("from", from);
+  if (to) q.set("to", to);
+  const s = q.toString();
+  return apiFetch<DaySummary[]>(`/billing/day-closes${s ? `?${s}` : ""}`);
 }
 export function dayClose(date?: string) {
   return apiFetch<ExpectedDay>(`/billing/day-close${date ? `?date=${date}` : ""}`);

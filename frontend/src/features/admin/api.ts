@@ -26,14 +26,74 @@ export function getClinic() {
 export function saveClinic(body: { name: string; timezone?: string; locale?: string }) {
   return apiFetch<Clinic>("/org/clinic", { method: "PUT", body });
 }
+
+export interface Workspace {
+  name: string;
+  slug: string;
+}
+export function getWorkspace() {
+  return apiFetch<Workspace>("/org/workspace");
+}
+export function updateWorkspace(body: { slug: string }) {
+  return apiFetch<Workspace>("/org/workspace", { method: "PUT", body });
+}
+
 export function listBranches() {
   return apiFetch<Branch[]>("/org/branches");
 }
 export function createBranch(body: { name: string; code: string; address?: string; phone?: string }) {
   return apiFetch<Branch>("/org/branches", { method: "POST", body });
 }
+export function updateBranch(id: string, body: { name: string; code: string; address?: string; phone?: string; is_active?: boolean }) {
+  return apiFetch<Branch>(`/org/branches/${id}`, { method: "PUT", body });
+}
+export function deleteBranch(id: string) {
+  return apiFetch<void>(`/org/branches/${id}`, { method: "DELETE" });
+}
+
+export interface UsageLine {
+  used: number;
+  limit: number; // -1 = unlimited; storage in bytes, others are counts
+}
+export interface PlanUsage {
+  plan_name: string;
+  storage: UsageLine;
+  patients: UsageLine;
+  users: UsageLine;
+  branches: UsageLine;
+}
+export function planUsage() {
+  return apiFetch<PlanUsage>("/org/plan-usage");
+}
+
+export interface BranchUsage {
+  used: number;
+  limit?: number | null; // null/undefined = unlimited
+}
+export function branchUsage() {
+  return apiFetch<BranchUsage>("/org/branch-usage");
+}
+
+export interface BranchModule {
+  flag: string;
+  enabled: boolean;
+  overridden: boolean;
+}
+export function getBranchModules(id: string) {
+  return apiFetch<BranchModule[]>(`/org/branches/${id}/modules`);
+}
+/** Set per-branch module overrides. Value null clears the override (follow default). */
+export function setBranchModules(id: string, modules: Record<string, boolean | null>) {
+  return apiFetch<BranchModule[]>(`/org/branches/${id}/modules`, { method: "PUT", body: modules });
+}
 export function listDepartments() {
   return apiFetch<Department[]>("/org/departments");
+}
+export function updateDepartment(id: string, body: { branch_id: string; name: string; specialty?: string }) {
+  return apiFetch<Department>(`/org/departments/${id}`, { method: "PUT", body });
+}
+export function deleteDepartment(id: string) {
+  return apiFetch<void>(`/org/departments/${id}`, { method: "DELETE" });
 }
 
 // ---- clinic flow settings (Phase 3a) ----
@@ -100,13 +160,19 @@ export function listProviders() {
 export function listRoles() {
   return apiFetch<Role[]>("/roles");
 }
-export function inviteUser(body: { email: string; full_name: string; roles: string[] }) {
+export function inviteUser(body: { email: string; full_name: string; roles: string[]; branch_ids?: string[] }) {
   return apiFetch<InviteResult>("/users", { method: "POST", body });
 }
 export function updateUserStatus(id: string, status: string) {
   return apiFetch<void>(`/users/${id}/status`, { method: "POST", body: { status } });
 }
-export function assignRoles(id: string, roles: string[]) {
-  return apiFetch<void>(`/users/${id}/roles`, { method: "PUT", body: { roles } });
+export function updateUserName(id: string, full_name: string) {
+  return apiFetch<void>(`/users/${id}/name`, { method: "POST", body: { full_name } });
+}
+export function deleteUser(id: string) {
+  return apiFetch<void>(`/users/${id}`, { method: "DELETE" });
+}
+export function assignRoles(id: string, roles: string[], branch_ids?: string[]) {
+  return apiFetch<void>(`/users/${id}/roles`, { method: "PUT", body: { roles, branch_ids } });
 }
 

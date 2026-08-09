@@ -61,6 +61,32 @@ WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
 UPDATE branches SET deleted_at = now(), updated_at = now()
 WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
 
+-- name: CountBranches :one
+SELECT count(*) FROM branches WHERE tenant_id = @tenant_id AND deleted_at IS NULL;
+
+-- name: GetBranchLimit :one
+-- The tenant's plan branch cap (NULL = unlimited). No subscription row ⇒ no rows.
+SELECT p.branch_limit
+FROM subscriptions s JOIN plans p ON p.id = s.plan_id
+WHERE s.tenant_id = @tenant_id
+ORDER BY s.created_at DESC
+LIMIT 1;
+
+-- name: GetTenantModuleDefaults :many
+SELECT flag, enabled FROM feature_flags WHERE tenant_id = @tenant_id AND branch_id IS NULL;
+
+-- name: GetBranchModuleOverrides :many
+SELECT flag, enabled FROM feature_flags WHERE tenant_id = @tenant_id AND branch_id = @branch_id;
+
+-- name: UpsertBranchModule :exec
+INSERT INTO feature_flags (tenant_id, flag, enabled, source, branch_id)
+VALUES (@tenant_id, @flag, @enabled, 'override', @branch_id)
+ON CONFLICT (tenant_id, flag, branch_id) WHERE branch_id IS NOT NULL
+DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = now();
+
+-- name: DeleteBranchModule :exec
+DELETE FROM feature_flags WHERE tenant_id = @tenant_id AND branch_id = @branch_id AND flag = @flag;
+
 -- ---- Departments ---------------------------------------------------------
 
 -- name: ListDepartments :many

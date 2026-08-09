@@ -195,6 +195,18 @@ type HistoryItem struct {
 // NoteInput saves SOAP fields.
 type NoteInput struct{ Subjective, Objective, Assessment, Plan string }
 
+// HistoryImportInput carries a migrated record: the patient, the date it was
+// originally recorded (YYYY-MM-DD; blank = today), and the history split into the
+// standard SOAP sections (at least one must be non-empty).
+type HistoryImportInput struct {
+	PatientID  uuid.UUID
+	Date       string
+	Subjective string // History (HPI, past/family/personal)
+	Objective  string // Examination findings
+	Assessment string // Diagnosis / assessment
+	Plan       string // Treatment / plan
+}
+
 // DiagnosisInput adds a diagnosis — from the catalog (CatalogID set) or free entry.
 type DiagnosisInput struct {
 	CatalogID   *uuid.UUID
@@ -299,6 +311,9 @@ type Service interface {
 	// MyBoard returns the calling doctor's in-progress and done-today encounters.
 	MyBoard(ctx context.Context, providerID uuid.UUID, doneSince time.Time, doneUntil *time.Time) (*Board, error)
 	History(ctx context.Context, patientID uuid.UUID) ([]HistoryItem, error)
+	// ImportHistory stores a migrated (paper / old-system) record as a back-dated,
+	// signed historical encounter+note so it appears in the patient's timeline.
+	ImportHistory(ctx context.Context, in HistoryImportInput) (uuid.UUID, error)
 
 	// Diagnosis catalog (admin config + doctor search).
 	ListCategories(ctx context.Context) ([]DiagnosisCategory, error)

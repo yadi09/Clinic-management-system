@@ -1,0 +1,640 @@
+<title>ClinicOS · Dental patient page redesign</title>
+<style>
+:root{--bg:#faf9f7;--ink:#16130f;--muted:#6b6560;--line:#e3ded7;--card:#fff;--brand:#14532d;
+--accent:#b45309;--rose:#9f1239;--code:#f4f1ec;--shadow:0 1px 2px rgba(20,19,17,.06)}
+:root:not([data-theme="light"]){@media (prefers-color-scheme:dark){
+--bg:#14120f;--ink:#f0ece5;--muted:#a09890;--line:#2e2a25;--card:#1c1915;--brand:#5eb888;
+--accent:#e0a355;--rose:#f0879f;--code:#221e19;--shadow:none}}
+:root[data-theme="dark"]{--bg:#14120f;--ink:#f0ece5;--muted:#a09890;--line:#2e2a25;--card:#1c1915;
+--brand:#5eb888;--accent:#e0a355;--rose:#f0879f;--code:#221e19;--shadow:none}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);margin:0;padding:0 20px 100px;
+font:16px/1.62 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+.w{max-width:1180px;margin:0 auto}
+header.top{padding:64px 0 30px;border-bottom:3px solid var(--brand)}
+.kicker{font:600 11px/1 ui-monospace,monospace;letter-spacing:.22em;text-transform:uppercase;color:var(--brand)}
+h1{font-size:clamp(30px,5vw,46px);line-height:1.06;margin:14px 0 8px;letter-spacing:-.022em}
+.dek{color:var(--muted);font-size:18px;max-width:64ch;margin:0}
+h2{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--brand);
+margin:62px 0 6px;padding-bottom:7px;border-bottom:1px solid var(--line)}
+h3{font-size:21px;margin:30px 0 8px;letter-spacing:-.01em}
+h4{font-size:16px;margin:0 0 6px}
+p{margin:0 0 11px} p.li{margin:0 0 6px;padding-left:16px;text-indent:-16px}
+p.sub{font:600 11px/1.5 ui-monospace,monospace;letter-spacing:.1em;color:var(--brand);margin:20px 0 6px}
+.verdict{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--brand);
+border-radius:10px;padding:22px 26px;margin:26px 0;box-shadow:var(--shadow)}
+.verdict .t{font-size:22px;font-weight:650;letter-spacing:-.01em;margin-bottom:4px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--card);margin:14px 0}
+th{text-align:left;font:600 10px/1 ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;
+color:var(--muted);padding:12px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+.ev{font:11px/1.5 ui-monospace,monospace;color:var(--muted);margin-top:4px;word-break:break-word}
+.lens{color:var(--muted);font-size:12px;white-space:nowrap}
+.sev{font:600 10px/1 ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;
+padding:4px 7px;border-radius:4px;white-space:nowrap}
+.s-critical{background:var(--rose);color:#fff} .s-high{background:var(--accent);color:#fff}
+.s-medium{background:var(--line);color:var(--ink)} .s-low{background:transparent;color:var(--muted);border:1px solid var(--line)}
+.worst{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:10px 0}
+.wl{font:600 10px/1 ui-monospace,monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--rose);margin-bottom:7px}
+.worst p{margin:0;font-size:14.5px}
+.grid3{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));margin:16px 0}
+.judge{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+.judge h4{font-size:13px;color:var(--muted);font-weight:600;line-height:1.4}
+table.score{margin:10px 0 8px} table.score td{padding:5px 0;border:0;font-size:13.5px}
+table.score td.n{text-align:right;white-space:nowrap;font-family:ui-monospace,monospace}
+.win{font-size:13px;color:var(--brand);margin:0}
+pre{background:var(--code);border:1px solid var(--line);border-radius:10px;padding:18px;
+overflow-x:auto;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;margin:14px 0}
+.phase{display:flex;gap:18px;padding:20px 0;border-bottom:1px solid var(--line)}
+.pn{flex:0 0 42px;height:42px;border-radius:50%;background:var(--brand);color:var(--bg);
+display:flex;align-items:center;justify-content:center;font:650 18px ui-monospace,monospace}
+.pb{min-width:0;flex:1}
+.delivers{font-size:15px}
+.risk{font-size:13px;color:var(--muted);margin:8px 0 0}
+.files{font:11.5px/1.6 ui-monospace,monospace;color:var(--muted);word-break:break-word}
+details{margin:8px 0} summary{cursor:pointer;font-size:13px;color:var(--brand);font-weight:600}
+.q{background:var(--card);border:1px solid var(--accent);border-left:4px solid var(--accent);
+border-radius:10px;padding:18px 22px;margin:14px 0}
+.q .qn{font:600 10px/1 ui-monospace,monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px}
+footer{margin-top:70px;padding-top:22px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}
+@media(max-width:640px){.phase{flex-direction:column;gap:10px} pre{font-size:10.5px}}
+</style>
+<div class="w">
+<header class="top">
+<div class="kicker">ClinicOS · Design study</div>
+<h1>The dental patient page,<br>rebuilt around the visit</h1>
+<p class="dek">Five independent audits of the running code, three competing redesigns, three adversarial judges, one plan. Commissioned because the page “has a lot of issues” — it does, and they are worse than they look.</p>
+</header>
+
+<h2>The verdict</h2>
+<div class="verdict"><div class="t">Direction B — &quot;The Chair&quot;</div>
+<p style="color:var(--muted);margin:0"> with the timeline from A and the money-by-state grouping, URL state and dialog-level safety line from C grafted in.
+
+The page becomes: PATIENT BAR → SAFETY STRIP → THE COCKPIT (resolves to the one visit that is happening, and is where work gets recorded) → THE RECORD SHELF (one surface, one panel open at a time, replacing six stacked cards). Reception gets the same skeleton with a different action slot and a different shelf, fed by a projection type that has no clinical fields on it.</p></div>
+<p>The clinic owner&#x27;s complaint is &quot;recurring medicals&quot;. Every day, roughly 25 times, a dentist opens a patient who is mid-course and needs to answer three questions — where are we, what did I do last time, what do I do now — and then write one paragraph. Today that costs ten-plus interactions, two typed justifications, and a guess about which filter to change. The Chair costs three clicks and no typing that isn&#x27;t clinical, because the top of the page *resolves* to the visit instead of *filtering* to it.</p>
+<p>Concretely, for Cure Dental:</p>
+<p class="li">- The page never again opens on last year&#x27;s finished scaling. `focusVisit()` walks today → overdue → next → last done → complete → first visit and always names the rung it landed on (&quot;OVERDUE · was Thu 7 Aug · 3 days ago&quot;). There is no date scope to reset and no tab counter that can read &quot;In progress 0&quot; for a patient with two live courses.</p>
+<p class="li">- The dentist finally sees &quot;session 4 of 6&quot; — the string reception, the appointments board and the schedule page have always shown and the clinical page never did.</p>
+<p class="li">- &quot;What did I do last time&quot; is on screen before anyone clicks, as read-only prose, and the reading surface is no longer the writing surface with a Save button next to it.</p>
+<p class="li">- Nobody has to send money to the cashier before they are allowed to write a clinical note. Treat → record → bill, which is the order it happens in the chair.</p>
+<p class="li">- A root canal that overruns can gain a seventh visit; one that seals in five can be closed. Both are things the product currently has no verb for.</p>
+<p class="li">- The front desk stops asking patients for money they have already queued to pay, because &quot;At cashier&quot; is subtracted from &quot;Owed now&quot; rather than shown beside it.</p>
+<p>I picked B over C (the tab direction) because the two judges who counted actual work — everyday speed and implementation cost — both put B first, and C&#x27;s own strongest argument (it kills ReceptionDentalView) is also its worst property: there is no half-tabbed page, so it cannot be shipped in increments against a live clinic. B&#x27;s stages (1) and (2) change no layout at all and still fix real bugs; if the project were stopped after them, Cure Dental would be strictly better off. That matters more than elegance when the customer is treating patients on this code today.</p>
+<p>I picked B over A (the pure timeline) because dentistry asks a set question — &quot;which of her three courses is which and how much is left on each&quot; — and a date-sorted spine scatters it. A&#x27;s own author says so. So I took A&#x27;s timeline as the *history* surface, where it is unbeatable, and kept B&#x27;s cockpit as the *action* surface.</p>
+
+<h2>The worst moment in each lens</h2>
+<p style="color:var(--muted)">Each reviewer was asked to name the single worst moment in the current experience, as a concrete scenario.</p>
+<div class="worst"><div class="wl">FRONT DESK / RECEPTION + MONEY</div><p>A patient walks in for today&#x27;s session of an ongoing root canal — the single most common event at Cure Dental&#x27;s desk. The receptionist opens the patient, sees &quot;Take payment&quot;, clicks it. The dialog opens with **nothing ticked and &quot;0.00 ETB&quot;**, because it defaults to `rows.filter((r) =&gt; moneyState(r.s) === &quot;due&quot;)` and today&#x27;s session is `status: &quot;planned&quot;` → `moneyState` returns `&quot;scheduled&quot;`, not `&quot;due&quot;` (ReceptionDentalView.tsx:426, :45-51). She now has to find today&#x27;s session by eye in a flat, unsorted, ungrouped list of every unbilled session across every plan, where the only date shown is a raw ISO string (`{r.s.scheduled_date}`, line 455), no &quot;Today&quot; marker, no Ethiopian date, and the only badge is &quot;Due&quot; on rows that are *not* the one she wants. She ticks something, presses &quot;Send to cashier&quot;, gets a toast — and no money has been collected, because reception with `payment.charge` cannot settle: there is no settle action anywhere on this page and no link to /cashier. Meanwhile the tile above her still reads &quot;Due now&quot; with the same amount she just sent, because `bal.due` counts billed sessions too. She asks the patient for money the patient is already queued to pay.</p></div>
+<div class="worst"><div class="wl">Information architecture &amp; page structure</div><p>Tuesday. A patient mid-course on a 12,000 ETB root canal walks in two days early because she&#x27;s in pain. The dentist opens her page. `dateScope` defaults to &quot;today&quot; (DentalWorkspace.tsx:221) and filters plans BEFORE the tab auto-picker runs (L263-264 -&gt; L275), so &quot;In progress&quot; counts 0 and the workspace opens on the **History** tab showing last year&#x27;s finished scaling — and the Today/Upcoming/All-dates control is hidden on that tab (L401), so there is no visible way out. The dentist clicks &quot;In progress&quot;, reads &quot;Nothing scheduled for today — switch to Upcoming or All dates&quot; (L267), clicks &quot;All dates&quot;, scrolls past the tooth chart, the balance card, the medical-history card and the examinations card, expands the plan, and finds session 4 dated Thursday. It is gated behind &quot;Access now&quot; (L684-687, `gatedByDate` L631). After clicking it, the &quot;Record&quot; button is still disabled — &quot;Collect payment or mark pay-later to record this visit&quot; (L713-714) — so she opens the Pay-later dialog and must type a promise note before the Confirm button enables (L775). &quot;Record&quot; finally expands, and a THIRD gate appears: &quot;Upcoming — this session is scheduled for 2026-08-13, not today. Recording is locked until you confirm the date&quot; with &quot;Move to today&quot; / &quot;Record on that date anyway&quot; (L841-849). Ten-plus interactions and two written justifications, with the patient in the chair, before a single word of clinical note can be typed — and this is the ordinary weekly event, not the edge case.</p></div>
+<div class="worst"><div class="wl">The recurring-treatment workflow</div><p>Patient sits down for session 4 of 6 of a root canal. The dentist scrolls ~1,000px past the tooth chart, the balance card, the medical-history card and every past examination to reach Treatment plans. The session row for today shows a circled &quot;4&quot; — not &quot;4 of 6&quot; — and the row above it says &quot;1 of 6 sessions&quot; (which actually means &quot;showing 1 of 6&quot;) while the strip below says &quot;3 of 6 sessions done&quot;. There is no sign of what happened at session 3; to read it the dentist must click the &quot;All dates&quot; scope, hunt the row, and press a button labelled **Record** to open session 3&#x27;s *editable* form and read the notes out of a Textarea. Then, back on today&#x27;s session, the &quot;Record&quot; button is greyed out: `title=&quot;Collect payment or mark pay-later to record this visit&quot;`. The dentist cannot write down what they did until they have either sent 2,000 ETB to the cashier or typed a mandatory &quot;promise to pay&quot; note. Clinical documentation is held hostage by billing. And if the patient turns up three days late instead of on the day, none of this is even on screen — the page defaults to the &quot;Today&quot; scope, the root canal vanishes from both Today and Upcoming, and `autoTab` drops the dentist onto the **History** tab showing finished treatments.</p></div>
+<div class="worst"><div class="wl">Visual design, density &amp; hierarchy</div><p>A patient returns for week 4 of a 6-session root canal — the exact recurring workflow the user says is broken. The dentist opens the page and the first fixation is a 30px bold number: the outstanding balance. `text-3xl font-bold tabular-nums` (DentalWorkspace.tsx:351) is the largest type anywhere on the page — larger than the patient&#x27;s own name (`text-h2` = 21px, line 296) and larger than the design system&#x27;s h1 token (26px). Nothing on the screen says &quot;today&quot;. To reach today&#x27;s session they scroll past seven visually identical white cards with identical 17px blue titles (`CardTitle` = `text-h3 font-bold text-brand` for all of them), find &quot;Treatment plans&quot;, read a tab strip whose selected tab is a raised white chip (line 391), then a second control strip 12px to its right whose selected item is a solid blue pill (line 402) — two contradictory conventions for &quot;selected&quot; on one line — expand a plan whose header carries four badges at once (amber &quot;In progress&quot; meaning nothing is wrong, blue &quot;Today&quot; that only restates the filter already set, &quot;Owes&quot;, and a tooth code, lines 505-511), read a four-cell money strip that repeats &quot;Due now&quot; at `text-sm` (line 538) — the same figure rendered at `text-3xl` two cards above — then a grey counter strip, then a date header, and finally a session row carrying a teal &quot;Paid&quot; pill beside an emerald percentage, two rose icon+text warnings and a grey image count. The action they came to perform — record the visit — is the last control in that row and the only `variant=&quot;ghost&quot;` in it (line 713), visually quieter than &quot;Collect&quot; (`variant=&quot;outline&quot;`, line 702) and quieter than the &quot;Access now&quot; lock button beside it (line 685).</p></div>
+<div class="worst"><div class="wl">Interaction, state &amp; responsiveness</div><p>A recurring patient — mid root canal, three sessions done, next visit in nine days — walks in unannounced on a Tuesday. The dentist opens the patient page. `dateScope` defaults to `&quot;today&quot;`, and because `notStarted`/`inProgress` are filtered by that scope BEFORE the default tab is chosen (`const autoTab: PlanTab = inProgress.length ? &quot;in_progress&quot; : notStarted.length ? &quot;not_started&quot; : completed.length ? &quot;history&quot; : &quot;in_progress&quot;`), both live lists are empty and the page opens on **History**, showing last year&#x27;s finished scaling, with the tab badges reading &quot;Not started 0 · In progress 0&quot;. The active 12,000 ETB root canal is invisible and the counters actively deny it exists. The dentist must guess that &quot;All dates&quot; is the fix. Having found the plan, they expand the session and type the visit notes — then reach up and hit Collect on the same row. `collect.mutate()` → `onChanged()` → `invalidateQueries([&quot;dental-summary&quot;])`; the plan&#x27;s phase flips, the card re-renders into a different list, `SessionRow` unmounts, and the typed notes are gone with no warning and no toast. Meanwhile the Payment history card directly below still shows the pre-collection totals, because `invalidate()` never touches `[&quot;patient-charges&quot;, patientId]`.</p></div>
+
+<h2>What the audit found</h2>
+<div class="scroll"><table>
+<thead><tr><th>Sev</th><th>Finding</th><th>Why it hurts</th><th>Lens</th></tr></thead>
+<tbody><tr><td><span class="sev s-critical">critical</span></td><td><b>A refunded dental payment still reads as &quot;Paid&quot; and &quot;Settled&quot; — the two cards on the same screen give opposite answers</b><div class="ev">backend/internal/billing/service/service.go:620-654 — &quot;The original paid charge is left intact&quot;; refund posts a separate negative row. backend/internal/dental/service/service.go:71</div></td><td>The clinic refunds 6,000 ETB to a patient. The treatment plan keeps showing 100%, &quot;Settled&quot;, and Due now 0.00. Nobody ever re-collects, and the two panels a receptionist reads top-to-bottom flatly contradict each other about whether this patient has paid. Real, unrecoverable money loss.</td><td class="lens">FRONT DESK / RECEPTION + MONEY</td></tr>
+<tr><td><span class="sev s-critical">critical</span></td><td><b>&quot;Due now&quot; and &quot;At cashier&quot; double-count the same birr, and &quot;Due now&quot; has no collect action</b><div class="ev">backend/internal/dental/service/service.go:980-987 — the due query is `AND (se.status = &#x27;done&#x27; OR se.pay_later) AND (c.status IS NULL OR c.status &lt;&gt; &#x27;paid&#x27;)`, so a </div></td><td>A done, billed 3,000 ETB session shows as &quot;Due now 3,000 — Treatment already given, collect this&quot; AND &quot;At cashier 3,000&quot;. The receptionist reads 6,000 owed, asks the patient for money they are already queued to pay, and finds no button to collect it. The &quot;Needs payment&quot; tab meanwhile reads 0, because `moneyState` checks `billed` before `done` (line 46-49).</td><td class="lens">FRONT DESK / RECEPTION + MONEY</td></tr>
+<tr><td><span class="sev s-critical">critical</span></td><td><b>A waived (free-of-charge) session reads as unpaid, stays in &quot;Due now&quot; forever, and can be silently billed a second time</b><div class="ev">backend/internal/dental/service/service.go:80-81 `default: // void / refund / other` → returns &quot;unpaid&quot; for `waived`. The due SQL (:985) `c.status &lt;&gt; &#x27;paid&#x27;` includ</div></td><td>The dentist waives a session for a hardship patient. The desk sees &quot;Due&quot;, a red &quot;Owes 2,500 ETB&quot; plan badge, and a live &quot;Bill&quot; button — while PaymentHistoryCard on the same page labels it &quot;Free of charge&quot;. Clicking Bill raises a *second* charge, overwrites `charge_id`, and the patient is asked to pay for something the clinic already wrote off.</td><td class="lens">FRONT DESK / RECEPTION + MONEY</td></tr>
+<tr><td><span class="sev s-critical">critical</span></td><td><b>The default view hides the running treatment for exactly the recurring patient the page exists for</b><div class="ev">DentalWorkspace.tsx:221 `const [dateScope, setDateScope] = useState&lt;DateScope&gt;(&quot;today&quot;)`; L263-264 `const notStarted = byScope(...); const inProgress = byScope(...)`; L275 `c</div></td><td>The date filter is applied before the tab auto-picker, so any patient not scheduled for TODAY (i.e. every patient on any day between appointments) lands on the History tab looking at finished treatments. The escape control is hidden on that very tab. The active course of treatment — the whole reason the page is open — is two clicks and one guess away, and the page gives no signal that it is being filtered.</td><td class="lens">Information architecture</td></tr>
+<tr><td><span class="sev s-critical">critical</span></td><td><b>Recording a routine repeat visit requires passing three separate confirmation gates</b><div class="ev">DentalWorkspace.tsx:631 `const gatedByDate = editable &amp;&amp; future &amp;&amp; untouched &amp;&amp; !accessed`; L624 `const unlocked = session.payment !== &quot;unpaid&quot; || !!session</div></td><td>Gate 1 (&quot;Access now&quot;), gate 2 (money must move before clinical notes can be written), gate 3 (date confirmation) all fire on the same session. Gate 2 is clinically backwards — the dentist cannot write what they did until billing state changes — and it recurs on every one of the six sessions in a course. Friction that is tolerable once becomes the defining experience of a treatment that is by definition repeated.</td><td class="lens">Information architecture</td></tr>
+<tr><td><span class="sev s-critical">critical</span></td><td><b>The dentist cannot record clinical work until money has moved</b><div class="ev">/home/yadi09/Yaz_project/Clinic-management-system/frontend/src/features/dental/DentalWorkspace.tsx:624 `const unlocked = session.payment !== &quot;unpaid&quot; || !!session.pay_later;` — the</div></td><td>Every recurring session arrives `planned`/`unpaid`. Before the dentist may type a note, pick a procedure, attach an X-ray, or even set the status to Done, they must click Collect (raising a charge for work not yet performed) or open the Pay-later dialog and type a mandatory free-text promise (:775 `disabled={!note.trim()}`). The chairside sequence is treat → record → bill; the UI enforces bill → record. In practice the dentist will click Collect before touching the patient, so the charge is raised for treatment that may not happen, or they will skip the record entirely.</td><td class="lens">The recurring-treatment workflow: </td></tr>
+<tr><td><span class="sev s-critical">critical</span></td><td><b>A running treatment plan cannot gain a session — the defining act of recurring dental work</b><div class="ev">/home/yadi09/Yaz_project/Clinic-management-system/frontend/src/features/dental/api.ts exposes only `createPlan`, `updatePlan` (title/tooth/note/status), `updateSession`, `rescheduleSession`,</div></td><td>Root canals overrun. &quot;Six visits&quot; becomes seven the moment a canal won&#x27;t dry. The dentist&#x27;s only options are to delete the plan (destroying three sessions of notes, prescriptions, images and their payment history — :587 &quot;Removes … and all its sessions, notes and images&quot;) or create a second plan for the same tooth, which then double-counts in the balance and appears as an unrelated treatment. This is the single most common event in recurring dentistry and the model has no verb for it.</td><td class="lens">The recurring-treatment workflow: </td></tr>
+<tr><td><span class="sev s-critical">critical</span></td><td><b>A patient who returns off-schedule disappears from their own page</b><div class="ev">/home/yadi09/Yaz_project/Clinic-management-system/frontend/src/features/dental/DentalWorkspace.tsx:221 `const [dateScope, setDateScope] = useState&lt;DateScope&gt;(&quot;today&quot;)`; :118 </div></td><td>Three compounding failures. (a) An overdue session — the patient came three days late, the commonest recurring case — matches neither `today` (exact date equality) nor `upcoming` (strictly `&gt; today`), so it is invisible in both default scopes; only &quot;All dates&quot; reveals it. (b) Because `autoTab` is computed from the *scoped* lists, a patient with any finished treatment lands on the **History** tab, staring at completed work while their live root canal is hidden. (c) The tab counters mix scopes — `not_started`/`in_progress` counts are date-filtered but `history` is not — so the header can read &quot;In progress 0 · History 3&quot; for a patient with two active plans. Reception&#x27;s view has a dedicated &quot;Missed visits&quot; card (ReceptionDentalView.tsx:205-229); the dentist has nothing.</td><td class="lens">The recurring-treatment workflow: </td></tr>
+<tr><td><span class="sev s-critical">critical</span></td><td><b>An unneeded future session can never be cancelled, so a plan can never be marked finished</b><div class="ev">/home/yadi09/Yaz_project/Clinic-management-system/frontend/src/features/dental/DentalWorkspace.tsx:691 the status Select (the only place `cancelled` can be chosen) renders under `{editable &</div></td><td>Courses finish early constantly — the canal seals in five visits, not six. Session 6 is `planned`/`unpaid`, therefore `!unlocked`, therefore the Cancelled option is not rendered. To cancel it the dentist must first bill the patient for a visit that will never happen, or flag them as owing money for it. Neither is acceptable, so session 6 sits planned forever: the plan stays &quot;In progress&quot;, the patient stays on the outstanding list, and the only exit the UI offers is the destructive `Delete plan` button (:575). `updatePlan` (api.ts:137) can set status `completed` but is never imported anywhere in the dental feature — grep shows its only callers are in features/platform.</td><td class="lens">The recurring-treatment workflow: </td></tr>
+<tr><td><span class="sev s-critical">critical</span></td><td><b>No visual entry point: seven equal-weight cards, and the largest element on the page is a money figure</b><div class="ev">card.tsx `CardTitle` = `&quot;text-h3 font-bold text-brand&quot;` — identical 17px blue heading on all seven cards (tooth chart, balance, medical history, examinations, treatment plans, paym</div></td><td>A dentist opening a returning patient has to read the whole page to find the one thing they need — today&#x27;s session. Nothing is sized, weighted or coloured to say &quot;start here&quot;, and the one element that IS visually dominant (the balance) is the front desk&#x27;s concern, not the dentist&#x27;s. Every visit costs a full-page scan.</td><td class="lens">Visual design, density</td></tr>
+<tr><td><span class="sev s-critical">critical</span></td><td><b>The default view hides the treatment the page exists to show; tab counters report 0 for running treatments</b><div class="ev">DentalWorkspace.tsx:221 `const [dateScope, setDateScope] = useState&lt;DateScope&gt;(&quot;today&quot;);` — then :263-265 `const notStarted = byScope(plans.filter(...)); const inProgress = b</div></td><td>The auto-tab is chosen from lists that have ALREADY been date-filtered to today. On any day the patient is not booked — i.e. most days, including every walk-in — both live tabs are empty, so the page opens on History and the badges show &quot;In progress 0&quot; for a patient with three active courses. `dateScope` is not persisted (no URL param, no localStorage), so it resets to &quot;today&quot; on every navigation and every refresh. This is the recurring-treatment complaint, literally.</td><td class="lens">Interaction, state</td></tr>
+<tr><td><span class="sev s-critical">critical</span></td><td><b>Unsaved clinical notes in an expanded session are destroyed silently by any neighbouring action</b><div class="ev">DentalWorkspace.tsx:794 `const [notes, setNotes] = useState(session.notes ?? &quot;&quot;);` (seeded once, never re-synced) — rendered under DentalWorkspace.tsx:551 `&lt;div key={date}&gt;` </div></td><td>Rescheduling moves the session into a different `key={date}` bucket and a plan-phase flip moves the whole card into a different tab list — either unmounts `SessionRow`, resetting `expanded`, `accessed`, `approved` and every form field. There is no dirty tracking, no autosave, no beforeunload guard, and no confirmation. A paragraph of examination findings vanishes with no toast and no way to recover it. The &quot;Close&quot; button discards the same way.</td><td class="lens">Interaction, state</td></tr>
+<tr><td><span class="sev s-critical">critical</span></td><td><b>Tooth-chart edits are lost on navigation and the UI shows unsaved state as if it were saved</b><div class="ev">DentalWorkspace.tsx:213-214 `if (timer.current) clearTimeout(timer.current); timer.current = setTimeout(() =&gt; chartSave.mutate(map), 700);` plus :200 `useEffect(() =&gt; () =&gt; { if (ti</div></td><td>Click a tooth then click the &quot;Patients&quot; back link within 700ms and the unmount cleanup cancels the pending save — the odontogram change is discarded with no indication it was ever pending. On error, the local `teeth` map keeps the new colour, so the chart shows a status that was never persisted; the next visitor reads a clinical record that does not exist server-side. `seeded.current` (:192,:196-198) also means the chart never re-syncs from a later refetch, so a second dentist&#x27;s edits are invisible until a full page reload.</td><td class="lens">Interaction, state</td></tr>
+<tr><td><span class="sev s-critical">critical</span></td><td><b>A failed medical-history fetch renders as &quot;no history taken&quot; and silently removes every safety alert</b><div class="ev">medicalHistory.ts:173-174 `export function reviewState(reviewedAt?: string, recorded?: boolean) { if (!recorded || !reviewedAt) return &quot;missing&quot;; }` → MedicalHistoryCard.tsx:73-77 </div></td><td>`useQuery` error state is never checked in either place. A 500, a timeout or an offline moment produces exactly the same screen as a genuinely empty questionnaire: zero alert chips, an empty sticky bar, and a card asserting no history exists. &quot;Bleeding risk — confirm before extraction&quot; simply does not appear before an extraction. Since the user is deleting the standalone card, these two failure-silent consumers become the ONLY surface for the alerts — the failure mode has to be fixed before the card goes.</td><td class="lens">Interaction, state</td></tr>
+<tr><td><span class="sev s-high">high</span></td><td><b>The printed statement handed to the patient understates what they owe, sometimes to zero</b><div class="ev">PaymentHistoryCard.tsx:111 `outstanding: String(totals.awaiting)` where :69 `else if (c.status === &quot;pending&quot;) { charged += num(c.amount); awaiting += num(c.amount); }` — only charg</div></td><td>Patient had a 4,000 ETB extraction, marked done, pay-later, never sent to the cashier. The screen says &quot;Due now 4,000&quot;. The receptionist prints a statement for the patient and it says outstanding 0.00 ETB. The patient walks out holding clinic-headed paper proving they owe nothing.</td><td class="lens">FRONT DESK / RECEPTION + MONEY</td></tr>
+<tr><td><span class="sev s-high">high</span></td><td><b>Reprinting a receipt stamps today&#x27;s logged-in user as the cashier who took the money</b><div class="ev">PaymentHistoryCard.tsx:92-97 `printReceipt({ ... cashier: user?.full_name, when: whenOf(c), ... })` — `user` is the current viewer from `useAuth()`, not whoever settled the charge. `ChargeRo</div></td><td>A receptionist reprints a three-week-old receipt for a patient dispute and the document names *her* as the cashier who received 8,000 ETB she never touched. In a cash clinic with day-close reconciliation, that is a falsified accountability record on a customer-facing document, and it destroys the audit trail the reconciliation flow depends on.</td><td class="lens">FRONT DESK / RECEPTION + MONEY</td></tr>
+<tr><td><span class="sev s-high">high</span></td><td><b>Reception&#x27;s summary payload contains the entire clinical record — chart, notes, prescriptions and X-ray URLs — it just doesn&#x27;t paint it</b><div class="ev">backend/internal/dental/http/routes.go:23-28 mounts `view.GET(&quot;/patients/:id/summary&quot;)` and `view.GET(&quot;/patients/:id/images&quot;)` behind `RequireAnyPermission(&quot;dental.m</div></td><td>routes.go:60-67 states the intent — &quot;the front desk&#x27;s read access must never reach the clinical record&quot; — and enforces it only for exams and medical history. Everything else is on the wire: the odontogram, per-visit clinical notes, drug names and doses, and direct `url`s to X-rays (handlers.go:42). Reception has it in the network tab and in the React Query cache; `GET /dental/patients/:id/images` returns the image list outright with dental.read. Any future component that reuses `summary.data` in the reception tree leaks PHI with no code review flag, and the same is true if the planned redesign hoists safety alerts into a shared header.</td><td class="lens">FRONT DESK / RECEPTION + MONEY</td></tr>
+<tr><td><span class="sev s-high">high</span></td><td><b>&quot;Take payment&quot; does not take payment, and the page offers no way to finish the transaction</b><div class="ev">ReceptionDentalView.tsx:174 `&lt;Button onClick={() =&gt; setCollecting(true)}&gt;&lt;HandCoins /&gt; Take payment&lt;/Button&gt;`; the mutation is `collectSessions` (api.ts:162) which only </div></td><td>In a small Addis clinic one person is both reception and cashier. Today she must: open the patient, tick sessions, &quot;Send to cashier&quot;, leave the page, open /cashier, find the patient in the queue by name, settle, print, navigate back to confirm. Six navigations for one payment, and the patient page she returns to still shows the amount as &quot;Due now&quot; (see finding 2). The verb on the button and the outcome of the click do not match.</td><td class="lens">FRONT DESK / RECEPTION + MONEY</td></tr>
+<tr><td><span class="sev s-high">high</span></td><td><b>The collect dialog defaults to the wrong sessions for the most common visit type</b><div class="ev">ReceptionDentalView.tsx:426 `const [picked, setPicked] = useState&lt;string[]&gt;(() =&gt; rows.filter((r) =&gt; moneyState(r.s) === &quot;due&quot;).map((r) =&gt; r.s.id));` combined with :</div></td><td>The recurring-treatment patient arriving for today&#x27;s appointment — the workflow the user says is broken — opens the dialog to an empty selection and 0.00 ETB, then has to visually scan every unbilled session of every plan. This is the highest-frequency money interaction in a dental clinic and it is the one the defaults get wrong.</td><td class="lens">FRONT DESK / RECEPTION + MONEY</td></tr>
+<tr><td><span class="sev s-high">high</span></td><td><b>Plan &quot;paid&quot; is computed from the session&#x27;s current price, not from what was actually charged</b><div class="ev">ReceptionDentalView.tsx:307 `const paid = live.filter((s) =&gt; s.payment === &quot;paid&quot;).reduce((a, s) =&gt; a + num(s.amount_due), 0);` — while backend/internal/dental/service/servic</div></td><td>The dentist corrects a paid session from 3,000 to 4,000 ETB. The plan header now reads &quot;4,000 paid&quot; and the progress bar jumps, while PaymentHistoryCard two cards down says 3,000 was received. The 1,000 ETB the clinic is actually owed disappears from the plan card and appears nowhere as due. The receptionist has two numbers on one screen and no way to know which is the money.</td><td class="lens">FRONT DESK / RECEPTION + MONEY</td></tr>
+<tr><td><span class="sev s-high">high</span></td><td><b>Money is stated in five places, in three vocabularies, from two disagreeing sources</b><div class="ev">Banner chip `Owes {birr(bal.due)}` L317; Balance card L352 `Planned … · Paid … · Remaining …`; per-plan strip L532-539 `Plan total / Collected / Outstanding / Due now`; session row L663 `{bi</div></td><td>&quot;Paid&quot; appears in two tiles computed from different data: `bal.paid` from the dental summary versus `paidGross - refunded` from the charge ledger (PaymentHistoryCard.tsx:71). After any refund the two numbers on one screen disagree with no explanation. A patient asking &quot;how much do I owe?&quot; gets four candidate answers depending on which card the staff member reads.</td><td class="lens">Information architecture</td></tr>
+<tr><td><span class="sev s-high">high</span></td><td><b>Every per-session image is rendered twice on the same page, and the duplicate is the tallest block on it</b><div class="ev">SessionImages renders `&lt;ImageGallery images={rows} … thumb /&gt;` inside the session row (DentalWorkspace.tsx:1104); PatientImagesCard rebuilds the identical set at L1122 `...plans.map((p</div></td><td>Twelve clinical photos produce twelve thumbnails inside session rows plus twelve ~250px-tall tiles at the bottom of the page — roughly 1,000px of pure duplication and a second delete surface for the same asset. Deleting from one place silently changes the other, and the user has no model of which gallery is authoritative.</td><td class="lens">Information architecture</td></tr>
+<tr><td><span class="sev s-high">high</span></td><td><b>Twelve nested list surfaces, with four different visual idioms for the same &#x27;filter this list&#x27; operation</b><div class="ev">Plan tabs L391 `rounded-lg bg-muted p-1`; date scope L402 `rounded-md border bg-card p-0.5 text-xs`; session-image tabs L1086 `rounded-md bg-muted p-0.5 text-xs`; patient-images filter L1163</div></td><td>Three of these filters can be active simultaneously and contradict each other (plan tab + date scope + image category), and none of them show their state anywhere except at the control itself. Nothing tells the user that the emptiness they are looking at is a filter result rather than an absence of data — the single most common way people conclude a record is missing.</td><td class="lens">Information architecture</td></tr>
+<tr><td><span class="sev s-high">high</span></td><td><b>The page is ~1,400px of mostly-empty scaffolding for a new patient and ~6,300px (about seven screens) for a real one</b><div class="ev">Six top-level Cards, each costing ~72px of header chrome (card.tsx CardHeader `p-6` + CardContent `p-6 pt-0`); PlanCard opens by default for every unfinished plan — `const [open, setOpen] = </div></td><td>A brand-new dental patient sees five separate empty-state paragraphs (L414, MedicalHistoryCard L74-77, ExaminationCard L110-118, PaymentHistoryCard L129, DentalWorkspace L1181) spread over one and a half screens before any work can start. A three-plan patient scrolls seven screens, of which the images and the money are duplicated content. Nothing on the page is collapsible above the plan level.</td><td class="lens">Information architecture</td></tr>
+<tr><td><span class="sev s-high">high</span></td><td><b>Opening the examination form buries the treatment plans two screens down with no way to collapse anything</b><div class="ev">ExaminationCard is rendered at DentalWorkspace.tsx:381, above Treatment plans (L384); `{composing &amp;&amp; (&lt;ExamForm …/&gt;)}` renders inline at ExaminationCard.tsx:100-107; the form i</div></td><td>The form is roughly 1,800px tall and inserts itself at page position four, pushing the sessions the visit is actually about below two full screens of scroll. Recording an exam and continuing the course of treatment are the same visit, but the layout makes them mutually exclusive views.</td><td class="lens">Information architecture</td></tr>
+<tr><td><span class="sev s-high">high</span></td><td><b>&#x27;Which tooth, what was done&#x27; is recorded in four unlinked places, one of which admits the duplication in its own hint text</b><div class="ev">Odontogram L341 `&lt;ToothChart teeth={teeth} …&gt;`; `plan.tooth` L505 and NewPlanDialog L1450; session `procedure`/`tooth` L865-866; exam per-tooth table ExaminationCard.tsx:220-244. The e</div></td><td>Charting UR6 as decayed, planning &quot;Root canal (UR6)&quot;, recording session procedure &quot;Root Canal Treatment (UR6)&quot; and typing UR6 into the exam table are four manual entries of one fact, none of which propagate. The record can and will disagree with itself, and the dentist pays a four-times transcription tax per tooth.</td><td class="lens">Information architecture</td></tr></tbody></table></div>
+
+<h2>How the three directions scored</h2>
+<div class="grid3"><div class="judge"><h4>Speed of use in a busy Addis clinic</h4><table class="score"><tr><td>Direction A — One Timeline</td><td class="n"><b>6</b>/10</td></tr><tr><td>Direction B — The Chair</td><td class="n"><b>9</b>/10</td></tr><tr><td>Direction C — Rail &amp; Workbench</td><td class="n"><b>8</b>/10</td></tr></table><p class="win">Winner: <b>Direction B — &quot;The Chair&quot;</b></p></div>
+<div class="judge"><h4>Clinical safety and record integrity</h4><table class="score"><tr><td>Direction A — One Timeline</td><td class="n"><b>5</b>/10</td></tr><tr><td>Direction B — The Chair</td><td class="n"><b>7</b>/10</td></tr><tr><td>Direction C — Rail &amp; Workbench</td><td class="n"><b>8</b>/10</td></tr></table><p class="win">Winner: <b>Direction C — Rail &amp; Workbench</b></p></div>
+<div class="judge"><h4>Implementation cost and regression risk against the real codebase</h4><table class="score"><tr><td>Direction A — One Timeline</td><td class="n"><b>6</b>/10</td></tr><tr><td>Direction B — The Chair</td><td class="n"><b>8</b>/10</td></tr><tr><td>Direction C — Rail &amp; Workbench</td><td class="n"><b>4</b>/10</td></tr></table><p class="win">Winner: <b>Direction B — &quot;The Chair&quot;</b></p></div></div>
+
+<h2>The design</h2>
+<pre>LEGEND USED THROUGHOUT
+  Tokens only. rose/`--destructive` = clinical safety, nothing else. amber/`--warning` = a human
+  must decide something (owed money, missed visit, stale history, data disagreement) — never the
+  ambient state of a healthy in-progress course. teal/`--primary` = the primary action.
+  Every date renders through &lt;DualDate iso relative /&gt; — no raw ISO survives anywhere.
+  Type scale: day rule / card head 15px semibold · body 14px · facet 13px · meta 12px muted.
+  Nothing on the page is larger than the patient&#x27;s name. The 30px balance figure is gone.
+
+
+════════════════════════════════════════════════════════════════════════════════════════════════
+MOCKUP 1 · DENTIST · ≥1280px · Almaz Bekele, session 4 of 6 of a root canal, booked today,
+           with a second course (scaling) running and one missed session. THE WEEKLY EVENT.
+           Files: DentalWorkspace.tsx (shell) → SafetyStrip.tsx → visit/VisitCockpit.tsx → RecordShelf.tsx
+════════════════════════════════════════════════════════════════════════════════════════════════
+
+← Patients
+
+┌──────────────────────────────────────────────────────────────────────────────────────────────┐
+│ ⬤AB   Almaz Bekele                                              [ ✎ Edit ]  [ 🗓 Schedule ]   │  bg-brand, py-3 (was p-5)
+│       MRN 00417 · 34y · Female · 0911 234 567 · A+                                           │  text-h2 / text-sm
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┃⚠ SAFETY   Allergy: Penicillin  ·  Bleeding risk — confirm before any extraction              ┃  border-l-4 rose,
+┃           Cardiac history — antibiotic prophylaxis may be required                           ┃  NO dismiss button
+┃           Health check confirmed 12 Mar 2026 · 3 መጋቢት 2018 by Dr Selam    [ Review ]         ┃  sticky top-0 z-30
+└──────────────────────────────────────────────────────────────────────────────────────────────┘  (see mockup 5)
+
+┌═ THE COCKPIT ═ the only shadow-card on the page; everything else is flat border ═════════════┐
+│ ┏━━━━━━━━━━━━━━━━━━━━━━┓                                                                     │
+│ ┃ TODAY                ┃                                              [ ⌄ other work (2) ]   │  band 1: the resolution
+│ ┃ Tue 12 Aug 2026      ┃                                              [ 🗓 Move ]            │  verdict. NEVER a silent
+│ ┃ 6 ነሐሴ 2018           ┃                                                                     │  filter — always names
+│ ┗━━━━━━━━━━━━━━━━━━━━━━┛                                                                     │  the rung it landed on.
+│                                                                                              │
+│  Root canal — [UR6]                                        session 4 of 6 · 2,000 ETB        │  band 2: the work line.
+│  Dr Selam Tesfaye                                                                            │  tooth chip is coloured
+│                                                                                              │  from the odontogram;
+│  ●━━━●━━━●━━━◉━━━○━━━○   ⊕ add                                                              │  click → Chart panel,
+│  S1   S2   S3   S4   S5  S6                                                                  │  scrolled to that tooth.
+│  paid 6,000 of 12,000 ETB · 2 sessions unbilled            [ Finish course ]  [ Edit course ] │
+│                                                                                              │  band 3: CourseRail.tsx
+│  ┌ LAST TIME ── S3 · Tue 29 Jul 2026 · 22 ሐምሌ 2018 · Dr Selam ─────────────────────────────┐ │  click any dot → reader
+│  │ RCT 46 — canals located and dressed with Ca(OH)₂, temporary GIC. Pain-free since.       │ │
+│  │ ℞ Amoxicillin 500mg tds 5/7      🖼 2 images [view]                     [ full record ] │ │  band 4: VisitReader.tsx
+│  └────────────────────────────────────────────────────────────────────────────────────────┘ │  READ-ONLY. No Textarea,
+│                                                                                              │  no Save button, no gate.
+│  ┌──────────────────────────────┐   Owed now        1,200 ETB  ← Composite UL4, treatment given │
+│  │  ▶  Record today&#x27;s work      │   At cashier          0 ETB                                │  band 5: action slot.
+│  └──────────────────────────────┘   Today&#x27;s fee     2,000 ETB  bill after recording          │  ONE filled primary.
+│                                     Rest of course  4,000 ETB  not yet due                   │  Money is 13px text.
+│                                     Next after today: Tue 26 Aug · 20 ነሐሴ · in 14 days       │
+│                                                                                              │
+│  ⚠ Also open:  Scaling &amp; polish — S2 of 3 was due Thu 7 Aug (5 days ago)   [ switch to this ] │  demoted candidates are
+│                Composite UL4 — done 4 Jun, 1,200 ETB never billed         [ resolve money ]   │  NAMED, never hidden
+└══════════════════════════════════════════════════════════════════════════════════════════════┘
+
+┌═ RECORD SHELF ═ one surface replacing six cards; ONE panel open, remembered per patient ═════┐
+│ ▎Timeline   14 │                                                                             │  sticky left rail
+│  Tooth chart   │  TIMELINE — every visit, every course, one spine. Read-only.                │  ≥1024px; becomes a
+│  Examinations 2│                                                                             │  horizontal scroll strip
+│  Medical &amp; safety│  UPCOMING                                                                 │  below that.
+│  Images     12 │  ○ Tue 26 Aug 2026 · 20 ነሐሴ   in 14d   Root canal UR6 · S5 of 6            │
+│  Money       ● │                                          2,000 ETB · not yet due   [Move]   │  role=&quot;tablist&quot;,
+│                │  ○ Tue 9 Sep 2026 · 4 መስከረም   in 28d   Root canal UR6 · S6 of 6   [Move]   │  arrow keys, aria-selected
+│                │ ══ TODAY · Tue 12 Aug 2026 · 6 ነሐሴ 2018 ═══════════════════════════════════ │
+│                │  ◉ Root canal UR6 · S4 of 6 — being recorded now                            │
+│                │  PAST                                                                       │
+│                │  ⊗ Thu 7 Aug 2026 · 1 ነሐሴ    5d ago   Scaling &amp; polish · S2 of 3           │  ⊗ = missed. Rose rail.
+│                │       Did not attend. Nothing charged.                                      │  Full list — never
+│                │       [ Rebook ]  [ Call 0911 234 567 ]  [ Cancel this session ]            │  slice(0,3) + &quot;+2 more&quot;.
+│                │  ● Tue 29 Jul 2026 · 22 ሐምሌ   14d ago  Root canal UR6 · S3 of 6            │
+│                │       RCT 46 — canals located and dressed with Ca(OH)₂, temporary GIC.      │  note rendered INLINE,
+│                │       Pain-free since visit 2.                                              │  read-only, 2-line clamp
+│                │       UR6 · Root canal treatment · 🖼2 · ℞1 · Paid 2,000 · R-1241 [Receipt] │
+│                │  ✎ Sat 28 Jun 2026 · 21 ሰኔ    45d ago  EXAMINATION — irreversible pulpitis  │  exams and sessions share
+│                │       Chief complaint: throbbing pain upper right, wakes her at night.      │  the spine, joined on
+│                │       Diagnosis: irreversible pulpitis UR6 · Plan: RCT over 6 visits        │  visit_date — no schema
+│                │                                          [ Read ] [ Edit ] [ Print ]        │  change, Exam.session_id
+│                │  ◐ Wed 4 Jun 2026 · 28 ግንቦት   69d ago  Composite UL4 · S2 of 2             │  stops mattering.
+│                │       Composite restoration UL4, shade A2. Occlusion checked.               │
+│                │       ⚠ 1,200 ETB — treatment given, never billed   [ Send to the desk ]    │  ◐ = done + unsettled.
+│                │                          [ ⌄ Load 4 earlier entries ]                       │  This state PERSISTS
+└══════════════════════════════════════════════════════════════════════════════════════════════┘  until money is resolved.
+
+  MARKS  ● done+settled (teal) · ◐ done+unsettled (amber) · ◉ today (brand) · ○ planned (grey)
+         ⊗ missed (rose) · ⊘ cancelled (struck, muted) · ✎ examination (brand)
+
+  WHAT IS GONE FROM THIS SCREEN, versus DentalWorkspace.tsx today:
+   · the tooth chart as slot 1 (520px of fixed-width buttons)  → shelf panel, tooth chips inline
+   · the 30px balance figure as slot 2                         → 13px money block in the cockpit
+   · MedicalHistoryCard as slot 3                              → the safety strip + shelf panel
+   · ExaminationCard&#x27;s inline 1,800px form as slot 4           → a dialog, launched from the record
+   · Treatment plans as slot 7, ~900–1,400px below the fold    → the cockpit, above the fold
+   · plan tabs + date scope + image tabs + image filter        → deleted; one SegmentedControl left
+   · PatientImagesCard&#x27;s duplicate gallery (~1,000px)          → count chips → one lightbox
+  First-screen height ~640px against today&#x27;s ~1,400px of scaffolding. A three-plan patient goes
+  from ~6,300px to ~1,900px.
+
+
+════════════════════════════════════════════════════════════════════════════════════════════════
+MOCKUP 2 · THE RECORD-TODAY&#x27;S-WORK MOMENT · two states, in place, in the cockpit.
+           No modal. No scroll. The shelf below does not move. File: visit/RecordVisitForm.tsx
+════════════════════════════════════════════════════════════════════════════════════════════════
+
+2A — after [▶ Record today&#x27;s work]. Bands 4/5 are replaced; focus lands in Notes; nothing is
+     disabled; nothing was billed to get here.
+
+┌═ THE COCKPIT ════════════════════════════════════════════════════════════════════════════════┐
+│ ┏━━━━━━━━━━━━━━━━━━━━━━┓                                                                     │
+│ ┃ RECORDING            ┃  Almaz Bekele · Root canal — UR6 · session 4 of 6                   │  patient NAME is in the
+│ ┃ Tue 12 Aug 2026      ┃                                        [ reader ⌄ ]  [ cancel ]     │  recording header at
+│ ┃ 6 ነሐሴ 2018           ┃                                                                     │  every breakpoint
+│ ┗━━━━━━━━━━━━━━━━━━━━━━┛                                                                     │
+│  ⟨ last time: S3 · 29 Jul — canals dressed Ca(OH)₂, temp GIC, pain-free ⟩            more ›  │  reader COLLAPSES to one
+│                                                                                              │  line while recording, so
+│  WHAT WAS DONE                                                                               │  the notes field is not
+│  Tooth      [ UR6 ✕ ] [ + tooth ]        prefilled from the plan — never retyped             │  pushed below the fold
+│  Procedure  [ Root canal treatment ✕ ] [ + ]                                                 │
+│             ⌁ also mark UR6 as &quot;filled&quot; on the tooth chart?   [ yes ]  [ no ]                │  ONE entry writes
+│                                                                                              │  session.tooth +
+│  NOTES                                                              [ 🎤 dictate ]           │  session.procedure,
+│  ┌────────────────────────────────────────────────────────────────────────────────────────┐ │  offers the chart edit,
+│  │ Obturated 46 with gutta-percha + AH Plus, single cone. Post-op radiograph adequate    ▏│ │  and feeds the exam&#x27;s
+│  │ to apex. Temporary restoration placed. Crown prep next visit.                          │ │  per-tooth table.
+│  └────────────────────────────────────────────────────────────────────────────────────────┘ │
+│  ⟳ Draft saved 12:41 — safe if this page reloads, refetches, or reception moves the session  │  sessionStorage, keyed by
+│                                                                                              │  session id, 1s debounce,
+│  Attach  [ 🖼 before ] [ 🖼 after ] [ 🖼 x-ray ]  ·  2 files this visit                       │  restored with &quot;Draft
+│  ℞       [ + Prescription ]  ·  none yet     ← dialog carries &lt;SafetyStrip compact /&gt;        │  restored&quot;, dirty guard
+│  ✎       [ Full examination ]                ← dialog, never inline in the page              │  on close + beforeunload
+│                                                                                              │
+│  ┌────────────────────────────┐  ┌──────────────────┐    Fee 2,000 ETB — you&#x27;ll choose how   │
+│  │  ✓ Save &amp; mark done        │  │ Save as draft    │    it&#x27;s settled after saving  [edit]   │
+│  └────────────────────────────┘  └──────────────────┘                                        │
+└══════════════════════════════════════════════════════════════════════════════════════════════┘
+
+2B — immediately after Save. Same panel. THIS is the first time money appears in the flow.
+
+┌═ THE COCKPIT ════════════════════════════════════════════════════════════════════════════════┐
+│ ┏━━━━━━━━━━━━━━━━━━━━━━┓                                                                     │
+│ ┃ ✓ RECORDED  14:38    ┃  Root canal — UR6 · S4 of 6 · Tue 12 Aug 2026 · 6 ነሐሴ 2018   [edit] │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━┛                                                                     │
+│  ⚠ 2,000 ETB for this visit is not settled.  How is it handled?                              │  amber, and this line
+│  ┌──────────────────────────────┐ ┌────────────────────┐ ┌──────────────────────────────┐    │  PERSISTS on the cockpit
+│  │ ▶ Send to the front desk     │ │ Patient pays later │ │ Free of charge  (Phase 4)    │    │  AND on the timeline row
+│  └──────────────────────────────┘ └────────────────────┘ └──────────────────────────────┘    │  until one is chosen —
+│    default, pre-selected           chips: [next visit]     requires a reason; disabled       │  it is not a dismissible
+│                                    [end of month] [other]  until the backend waive fix       │  panel state.
+│                                    note OPTIONAL            ships (see kill_list)            │
+│                                                                                              │
+│  ●━━━●━━━●━━━●━━━○━━━○  ⊕     Next: S5 · Tue 26 Aug · 20 ነሐሴ · in 14 days  [move] [+ add]   │  rail advances optimistically,
+└══════════════════════════════════════════════════════════════════════════════════════════════┘  then invalidateDental()
+
+  GONE FROM THIS MOMENT, versus today:
+   · &quot;Collect payment or mark pay-later to record this visit&quot;   (DentalWorkspace.tsx:624/713-714)
+   · &quot;Access now&quot; lock                                          (:631, :685)
+   · &quot;Move to today / Record on that date anyway&quot;               (:801, :841-849)
+   · the &lt;fieldset disabled&gt; the dentist types into after two confirmations   (:859)
+   · the mandatory free-text promise before Confirm enables     (:775)
+   · losing the paragraph because a neighbouring mutation unmounted the row
+
+
+2C — THE OFF-SCHEDULE ARRIVALS. Only cockpit band 1 changes. One decision, made ONCE, before
+     the form opens, with both options as equal-weight peers.
+
+  THREE DAYS LATE — today&#x27;s worst moment, currently invisible on the entire page:
+  ┏━━━━━━━━━━━━━━━━━━━━┓
+  ┃ OVERDUE            ┃  Root canal — UR6 · session 4 of 6 · 2,000 ETB          amber rail:
+  ┃ was Thu 7 Aug 2026 ┃  ┌────────────────────────┐  ┌──────────────────────┐   a decision,
+  ┃ 1 ነሐሴ · 3 days ago ┃  │ ▶ Seat it today        │  │ Record on 7 Aug      │   not a danger
+  ┗━━━━━━━━━━━━━━━━━━━━┛  └────────────────────────┘  └──────────────────────┘
+                            moves scheduled_date → today   keeps the true booked date, so the
+                            (undo toast, invalidates       record does not claim the visit was
+                            dental-cal + appointments)     scheduled for a day it wasn&#x27;t
+
+  NINE DAYS EARLY (&quot;I was passing — can you do the next one?&quot;):
+  ┏━━━━━━━━━━━━━━━━━━━━┓  Root canal — UR6 · session 4 of 6 · 2,000 ETB
+  ┃ NEXT VISIT         ┃  ┌────────────────────────┐  ┌──────────────────────┐
+  ┃ Tue 26 Aug · 20 ነሐሴ┃  │ ▶ Bring forward + treat│  │ Just looking         │
+  ┃ in 14 days         ┃  └────────────────────────┘  └──────────────────────┘
+  ┗━━━━━━━━━━━━━━━━━━━━┛
+
+  UNANNOUNCED, IN PAIN, NOTHING BOOKED — every open course is listed; the resolver is removed
+  from the decision (graft from Direction A):
+  ┏━━━━━━━━━━━━━━━━━━━━┓  Nothing booked for today. She is here — what for?
+  ┃ WALK-IN            ┃
+  ┃ Tue 12 Aug 2026    ┃  ○ Root canal UR6 — S4 of 6, due Thu 26 Aug     [ Seat it today ]
+  ┃ 6 ነሐሴ 2018         ┃  ⊗ Scaling &amp; polish — S2 of 3, missed Thu 7 Aug [ Seat it today ]
+  ┗━━━━━━━━━━━━━━━━━━━━┛  ┌──────────────────────────────────┐
+                          │ + New complaint (unplanned visit)│  ← creates a ONE-SESSION course
+                          └──────────────────────────────────┘    dated today via the EXISTING
+                                                                  createPlan(). No new endpoint,
+                                                                  no new model, no dead button.
+
+  FIRST VISIT (rung 6) — one empty state, one numbered path, replacing five empty-state
+  paragraphs spread over 1.5 screens:
+  ┏━━━━━━━━━━━━━━━━━━━━┓  Nothing recorded for this patient yet.
+  ┃ FIRST VISIT        ┃  ┌────────────────────────┐  1. examine → 2. diagnose →
+  ┃ Tue 12 Aug 2026    ┃  │ ▶ Start examination    │  3. plan &amp; price → 4. book sessions
+  ┗━━━━━━━━━━━━━━━━━━━━┛  └────────────────────────┘  [chart teeth first] [+ plan without an exam]
+   …and above it the safety strip is the loudest thing on the page: &quot;NO HEALTH CHECK ON FILE&quot;.
+
+
+════════════════════════════════════════════════════════════════════════════════════════════════
+MOCKUP 3 · RECEPTION (dental.read + payment.charge) · ≥1280px · same skeleton, same words,
+           different action slot and shelf. Files: visit/DeskVisitActions.tsx + deskProjection.ts
+════════════════════════════════════════════════════════════════════════════════════════════════
+
+┌──────────────────────────────────────────────────────────────────────────────────────────────┐
+│ ⬤AB   Almaz Bekele        MRN 00417 · 34y · Female · 0911 234 567   [ ✎ Edit ] [ 🗓 Schedule ]│
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┃⚠ 1 allergy on file — Penicillin.   Health check: on file.  Clinical details are with the dentist.┃
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+   ▲ reception learns THAT a flag exists, never the questionnaire. The medical-history endpoint is
+     dental.manage-only and the query stays `enabled: isDentist` — gated on the ROLE, not on
+     whether the data happens to be present.
+
+┌═ THE COCKPIT ════════════════════════════════════════════════════════════════════════════════┐
+│ ┏━━━━━━━━━━━━━━━━━━━━━━┓                                                                     │
+│ ┃ TODAY                ┃                                              [ ⌄ other work (2) ]   │  IDENTICAL band 1.
+│ ┃ Tue 12 Aug 2026      ┃                                              [ 🗓 Move ]            │  Same words as the
+│ ┃ 6 ነሐሴ 2018           ┃                                                                     │  dentist sees, so verbal
+│ ┗━━━━━━━━━━━━━━━━━━━━━━┛                                                                     │  handoff works.
+│                                                                                              │
+│  Root canal          session 4 of 6         treatment recorded 14:38 ✓        2,000 ETB      │  no tooth, no procedure,
+│  ●━━━●━━━●━━━●━━━○━━━○   paid 6,000 of 12,000                                               │  no notes — not rendered
+│                                                                                              │  AND not on the type
+│  ┌────────────────────────────────────┐   Owed now       3,200 ETB                           │
+│  │  💵 Take payment · 3,200 ETB       │     · today&#x27;s session, just recorded    2,000        │  ONE pre-loaded action,
+│  └────────────────────────────────────┘     · Composite UL4, given 4 Jun       1,200        │  amount ON the button.
+│    settles + prints the receipt here.     At cashier         0 ETB                           │  Today the dialog opens
+│    Without payment.collect the button     Not yet due    4,000 ETB   S5, S6                  │  with NOTHING ticked and
+│    reads &quot;Send to the cashier →&quot; and,     ─────────────────────────────────────              │  0.00 ETB for exactly
+│    after sending, the line becomes        Next visit  Tue 26 Aug · 20 ነሐሴ · in 14d  [move]   │  this patient.
+│    &quot;3,200 with the cashier                                                                   │
+│     [ Open the cashier queue › ]&quot;.        AT CASHIER IS SUBTRACTED FROM OWED NOW,             │  fixes reception asking
+│    The verb always matches the outcome.   never shown beside it.                             │  for 6,000 when 3,000
+│                                                                                              │  is owed.
+│  ⚠ Scaling &amp; polish — S2 of 3 missed Thu 7 Aug (5 days ago)  📞 0911 234 567 [call] [rebook] │  tel: link, not inert text
+└══════════════════════════════════════════════════════════════════════════════════════════════┘
+
+┌═ RECORD SHELF · desk build ══════════════════════════════════════════════════════════════════┐
+│ ▎Money        ● │  OWED NOW · 3,200 ETB — treatment already given, no charge raised          │  grouped BY MONEY STATE
+│  Schedule    ⚠2 │  ┌─────────────────────────────────────────────────────────────────────┐  │  (graft from C). The
+│  Statements     │  │ Root canal · S4 of 6   Tue 12 Aug · 6 ነሐሴ    2,000  [ take payment ] │  │  grouping IS the answer
+│                 │  │ Composite UL4 · S2/2   Wed 4 Jun · 28 ግንቦት   1,200  [ take payment ] │  │  to &quot;for what?&quot;.
+│  no Timeline    │  └─────────────────────────────────────────────────────────────────────┘  │
+│  no Chart       │  AT CASHIER · 0 ETB — queued; the patient pays the cashier                 │
+│  no Exams       │  │ Nothing waiting.                    [ Cashier desk › ]                  │
+│  no Images      │  NOT YET DUE · 4,000 ETB across 2 sessions                                 │
+│  no Medical     │  │ Root canal · S5 of 6  Tue 26 Aug · 20 ነሐሴ   2,000  [pre-pay] [move]    │
+│                 │  │ Root canal · S6 of 6  Tue 9 Sep · 4 መስከረም   2,000  [pre-pay] [move]    │
+│                 │  ── PLAN LEDGER · Root canal UR6 ────────────────────────────────────────  │
+│                 │  Plan total 12,000 · Paid 6,000 · At cashier 0 · Owed now 2,000            │  NO affirmative &quot;✓ agrees&quot;
+│                 │  · Not yet due 4,000        ●●●●○○  4 of 6 sessions done                   │  tick. Silence when they
+│                 │  ⚠ Sessions say 8,000 collected · receipts say 6,000 · 2,000 unaccounted   │  agree; an explicit
+│                 │    (a session was re-priced after billing, or a charge was refunded)       │  discrepancy row when
+│                 │                                             [ investigate in Statements ]  │  they don&#x27;t.
+└══════════════════════════════════════════════════════════════════════════════════════════════┘
+
+  [ Take payment · 3,200 ETB ] → the collect sheet, DEFAULTING CORRECTLY:
+   ┌───────────────────────────────────────────────────────────────────────────────┐
+   │ Take payment                                                                  │
+   │ TODAY · Tue 12 Aug 2026 · 6 ነሐሴ 2018                                          │
+   │  ▣ Root canal · S4 of 6 · Tue 12 Aug · 6 ነሐሴ            owed now      2,000  │  today&#x27;s session
+   │ EARLIER                                                                       │  PRE-TICKED
+   │  ▣ Composite UL4 · S2 of 2 · Wed 4 Jun · 28 ግንቦት        owed now      1,200  │
+   │ LATER                                                                         │  sorted by date,
+   │  ▢ Root canal · S5 of 6 · Tue 26 Aug · 20 ነሐሴ           not yet due   2,000  │  grouped, TODAY marked,
+   │ ───────────────────────────────────────────────────────────────────────────── │  both calendars
+   │ 2 selected                                                        3,200 ETB   │
+   │ [ Cancel ]  [ Send to cashier ]  [ Send + open the cashier desk › ]           │  a route to actually
+   └───────────────────────────────────────────────────────────────────────────────┘  finish the transaction
+
+  SEALED BY TYPE, NOT BY DISCIPLINE:
+    interface DeskVisit {            // deskProjection.ts — the ONLY shape desk components accept
+      sessionId, planId, planTitle, seq, sessionCount,
+      scheduledDate, amountDue, moneyState, status, chargeId?, receiptNo?
+    }                                // no notes, no tooth, no procedure, no images, no rx, no chart
+  Rendering a clinical field at the desk is a TypeScript error, not a code-review catch.
+  And from Phase 4 the server stops sending them: GET /summary?view=desk (or the same decision
+  taken from the permission set) omits chart/notes/tooth/procedure/rx/prescriptions/image URLs
+  for a caller who has dental.read but not dental.manage.
+
+
+════════════════════════════════════════════════════════════════════════════════════════════════
+MOCKUP 4 · MOBILE · 375px · dentist. Everything stacks; the action never leaves the thumb.
+════════════════════════════════════════════════════════════════════════════════════════════════
+
+┌───────────────────────────────────┐   ┌───────────────────────────────────┐
+│ ← Patients                        │   │ ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+├───────────────────────────────────┤   │ ┃ RECORDING · Tue 12 Aug        ┃ │
+│ ⬤AB Almaz Bekele                  │   │ ┃ 6 ነሐሴ 2018                    ┃ │
+│     MRN 00417 · 34y · F           │   │ ┃ ALMAZ BEKELE · MRN 00417      ┃ │  ← patient name IS in
+│     [ ✎ Edit ]  [ 🗓 Schedule ]    │   │ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │    the full-screen writing
+├───────────────────────────────────┤   │ ⟨last: S3 29 Jul — canals        │    surface. Wrong-patient
+│┃⚠ Penicillin allergy              │   │  dressed Ca(OH)₂⟩          more ›│    hazard, closed.
+│┃ Bleeding risk — confirm before   │   │┃⚠ Penicillin · Bleeding risk     │  ← the SAME &lt;SafetyStrip
+│┃ any extraction                   │   │                                   │    compact/&gt; component
+│┃ Cardiac — prophylaxis may be…    │   │ Tooth      [UR6 ✕] [+]           │
+│┃                      [ Review ]  │   │ Procedure  [Root canal ✕] [+]    │
+├───────────────────────────────────┤   │ ⌁ mark UR6 filled?  [yes] [no]   │
+│ ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │   │                                   │
+│ ┃ TODAY · Tue 12 Aug 2026       ┃ │   │ Notes                    [ 🎤 ]  │
+│ ┃ 6 ነሐሴ 2018                    ┃ │   │ ┌───────────────────────────────┐│
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │   │ │ Obturated 46 with gutta-    ▏ ││
+│         [ ⌄ other work 2 ] [Move] │   │ │ percha + AH Plus, single cone.││
+│                                   │   │ └───────────────────────────────┘│
+│ Root canal — [UR6]                │   │ ⟳ Draft saved 12:41              │
+│ session 4 of 6 · 2,000 ETB        │   │                                   │
+│                                   │   │ Attach [before][after][x-ray]    │
+│ ●━●━●━◉━○━○  ⊕     ← swipes      │   │ ℞      [ + Prescription ]        │
+│ paid 6,000 / 12,000               │   ├───────────────────────────────────┤
+│                                   │   │ ┌───────────────────────────────┐│  sticky bottom-0 z-40,
+│ ┌ LAST TIME ──────────────────┐   │   │ │     ✓ Save &amp; mark done        ││  safe-area inset padding,
+│ │ S3 · Tue 29 Jul · 22 ሐምሌ    │   │   │ └───────────────────────────────┘│  hides while a dialog
+│ │ Dr Selam                    │   │   │ Fee 2,000 ETB · settle after save │  is open
+│ │ RCT 46 — canals dressed with│   │   └───────────────────────────────────┘
+│ │ Ca(OH)₂, temp GIC.          │   │
+│ │ 🖼2  ℞1        [full record]│   │   TOOTH CHART (shelf panel) at 375px:
+│ └─────────────────────────────┘   │   ┌───────────────────────────────────┐
+│                                   │   │ TOOTH CHART · Palmer              │
+│ Owed now 1,200 · today 2,000      │   │ ◀ swipe ───────────────────────── ▶│  overflow-x-auto +
+│ Rest of course 4,000              │   │ ┆ UPPER RIGHT   │ UPPER LEFT     ┆│  min-w-[520px] +
+│ Next: Tue 26 Aug · in 14 days     │   │ ┆ 8 7 6 5 4 3 2 1│1 2 3 4 5 6 7 8┆│  scroll-snap, INSIDE
+│                                   │   │ ┆ ───────────────┼───────────────┆│  the panel. The page
+│ ⚠ Also: Scaling S2 missed 5d ago  │   │ ┆ 8 7 6 5 4 3 2 1│1 2 3 4 5 6 7 8┆│  body never scrolls
+│                       [ switch ]  │   │ ┆ LOWER RIGHT   │ LOWER LEFT     ┆│  sideways.
+├───────────────────────────────────┤   │ ▪healthy ▪decayed ▪filled ▪crown  │  Quadrant labels +
+│ [Timeline 14][Chart][Exams 2]…  ▶ │   └───────────────────────────────────┘  a drawn midline,
+│ ─────────────────────── scroll ▶  │                                          which the chart
+│                                   │   Today ToothChart.tsx renders ~520px of  has never had.
+│ TIMELINE                          │   fixed-width buttons into ~279px with no
+│ ○ Tue 26 Aug · 20 ነሐሴ  in 14d    │   scroll container: the upper-LEFT quadrant
+│   Root canal · S5 of 6            │   is simply off-screen and the whole body
+│   2,000 ETB          [Move]       │   gets a horizontal scrollbar.
+│ ══ TODAY · 12 Aug · 6 ነሐሴ ══      │
+│ ◉ Root canal · S4 of 6            │   375px RULES
+│ ⊗ Thu 7 Aug · 1 ነሐሴ   5d ago     │    · dual dates STACK: Gregorian 13px, Ethiopian 11px muted
+│   Scaling · S2 of 3 · missed      │    · every action cluster is flex-wrap; touch targets ≥40px
+│   [Rebook] [Call] [Cancel]        │      (today&#x27;s Move + h-8 w-28 Select + Collect is ~310px of
+│ ● Tue 29 Jul · 22 ሐምሌ  14d ago   │      non-wrapping controls in ~255px)
+│   Root canal · S3 of 6            │    · the shelf rail becomes a horizontal snap strip; badges
+│   RCT 46 — canals dressed with    │      travel with their labels
+│   Ca(OH)₂, temp GIC…              │    · only the shelf rail and the tooth chart scroll
+│   🖼2 ℞1 · Paid 2,000  [Receipt]  │      horizontally, both deliberately
+├───────────────────────────────────┤
+│ ┌───────────────────────────────┐ │  sticky bottom action bar, always visible on the cockpit
+│ │   ▶ Record today&#x27;s work       │ │
+│ └───────────────────────────────┘ │
+│ 2,000 ETB today · 1,200 owed      │
+└───────────────────────────────────┘
+
+
+════════════════════════════════════════════════════════════════════════════════════════════════
+MOCKUP 5 · THE SAFETY STRIP · six states · SafetyStrip.tsx. This is the whole answer to
+           deleting MedicalHistoryCard. One component, one visual language, four renderings → one.
+════════════════════════════════════════════════════════════════════════════════════════════════
+
+ DANGER      ┃⚠ SAFETY  Allergy: Penicillin · Bleeding risk — confirm before any extraction
+  rose,      ┃          Cardiac history — antibiotic prophylaxis may be required
+  sticky,    ┃          Health check confirmed 12 Mar 2026 · 3 መጋቢት 2018 by Dr Selam  [Review]
+  NO dismiss ┃          ⟨ 3 not established › ⟩          ← popover: the &quot;not sure&quot; answers
+
+ WARN ONLY   ┃⚠ Diabetes — slower healing, higher infection risk
+  amber       ┃  Confirmed 12 Mar 2026 · 3 መጋቢት 2018                     [Review]        [×]
+
+ CLEAN        │✓ Health check confirmed 12 Mar 2026 · 3 መጋቢት 2018 · nothing flagged     [Review]
+  neutral        13px, muted, no coloured icon, one line, not dismissible, deliberately quiet.
+                 Earns its height only when it has something to say — a green &quot;Nothing flagged&quot;
+                 card costing 150px on every visit is the paperwork-shaped noise the user is
+                 actually complaining about.
+
+ NEVER TAKEN ┃● NO HEALTH CHECK ON FILE
+  amber      ┃  Take it before treating — it is what tells you whether anaesthetic, extraction
+  (danger    ┃  or radiographs are safe for this patient.       ┌────────────────────┐
+   on a      ┃                                                  │ Take health check  │
+   session   ┃                                                  └────────────────────┘
+   with an   ┃  ▲ THE STATE THE USER&#x27;S REQUEST WOULD SILENTLY DESTROY. historyAlerts({}) returns
+   extraction)   [], so a patient nobody ever questioned currently renders IDENTICALLY to a
+                 patient with a clean bill of health. Now synthesised as a real alert
+                 { key:&quot;hx-missing&quot;, level:&quot;danger&quot; }, so it inherits every alert surface.
+
+ STALE &gt;12mo ┃● Health check last confirmed 14 months ago (12 Jun 2025 · 5 ሰኔ 2017)
+  amber      ┃  Re-confirm it at this visit.                    [ Re-confirm ]
+
+ LOAD FAILED ┃▨ SAFETY CHECK UNAVAILABLE
+  grey,      ┃  Could not load this patient&#x27;s health check. The allergies above come from the
+  hatched    ┃  patient record and are current.                 [ Retry ]
+             ┃  ⚠ Do not read the absence of alerts as a clear history.
+             ┃  ▲ THIS STATE DOES NOT EXIST TODAY AND MUST SHIP IN THE SAME COMMIT THAT DELETES
+             ┃    THE CARD. `historyAlerts(history.data?.answers ?? {})` currently turns a 500,
+             ┃    a timeout or an offline moment into a screen that says nothing is wrong — in
+             ┃    BOTH consumers. `?? {}` is banned in this path; `query.isError` is read
+             ┃    explicitly. The strip is NEVER absent, so absence can never mean &quot;clear&quot;.
+
+ RECEPTION   ┃⚠ 1 allergy on file — Penicillin.  Health check: on file.
+             ┃  Clinical details are with the dentist.
+             ┃  ▲ gated on the ROLE prop, not on whether data happens to be present.
+
+ WHERE IT RENDERS: the page strip (sticky top-0 z-30 whenever ANY alert is present — not only
+ danger, because historyAlerts classifies &quot;Bleeding risk not established — confirm before
+ extraction&quot; and &quot;Pregnancy status unknown — confirm before any radiograph&quot; as WARN); AND as
+ &lt;SafetyStrip compact /&gt; inside PrescriptionDialog, HistoryDialog, NewPlanDialog, the examination
+ dialog, the image lightbox, and the full-screen mobile record surface. Radix dialogs cover the
+ page; a dentist prescribing amoxicillin must see the penicillin allergy.
+ DANGER-LEVEL ROWS NEVER COLLAPSE AND NEVER DISMISS. Warn-level may fold behind &quot;+n ⌄&quot;.
+ On scroll, danger rows compress to a one-line summary — they do not disappear.
+ MONEY IS BANNED FROM THIS REGION. &quot;Owes 2,000 ETB&quot; lives in the cockpit&#x27;s money block, in
+ amber/neutral. Today an anticoagulant warning and an unpaid invoice wear the identical
+ `bg-destructive px-3 py-1 text-xs font-semibold` pill in the same flex-wrap row, which is
+ exactly how staff learn to filter red out.
+
+
+════════════════════════════════════════════════════════════════════════════════════════════════
+MOCKUP 6 · focusVisit() — the resolution ladder. ~20 lines, one file, unit-testable.
+           Replaces dateScope + autoTab + byScope + inScope entirely. visit/useFocusVisit.ts
+════════════════════════════════════════════════════════════════════════════════════════════════
+
+  rung  condition (over ALL plans; cancelled sessions excluded)   header renders
+  ────  ──────────────────────────────────────────────────────    ──────────────────────────────
+   0    ?visit=&lt;sessionId&gt; in the URL                             whatever that session is
+   1    sessions with scheduled_date == today                     TODAY · &lt;date&gt;
+   2    planned sessions with scheduled_date &lt;  today             OVERDUE · was &lt;date&gt; · N days ago
+   3    planned sessions with scheduled_date &gt;  today (earliest)  NEXT VISIT · &lt;date&gt; · in N days
+   4    the most recent DONE session                              LAST VISIT · &lt;date&gt; · N days ago
+   5    plans exist, nothing left to do                           COURSE COMPLETE · &lt;plan title&gt;
+   6    no plans at all                                           FIRST VISIT
+
+  · Rung 0 is the graft from Direction C and it is what makes the resolver honest: the choice,
+    and any override of it, is addressable, survives refresh and back-navigation, and lets
+    ChairsidePage.tsx:66 navigate straight into today&#x27;s visit instead of the top of the page.
+    `dateScope` being unaddressable React state is the root of the audit&#x27;s worst bug; a resolver
+    with the same property would be worse, because it reads as the system&#x27;s considered opinion.
+  · A rung NEVER returns empty because of a filter — there are no filters.
+  · Several sessions on the chosen date → ONE visit, several work items, one header, one money
+    line, one Finish. Two concurrent courses read as one appointment.
+  · Rungs 2–6 always render &quot;[⌄ other work (N)]&quot; AND an inline &quot;⚠ Also open: … [switch to this]&quot;
+    line naming every demoted candidate. A demoted course is never silent.
+  · AFTER RECORDING, THE READER DEFAULTS TO THE MOST RECENT *RECORDED* SESSION, falling back to
+    the previous one only when today&#x27;s visit is not yet done — so a dentist reopening the patient
+    an hour later to check what they wrote sees S4, not S3.
+  · The ladder lives in one 20-line function so tuning it after a week at Cure Dental is a
+    one-file change. Expect to tune it.</pre>
+
+<h2>What is taken from the losing directions</h2>
+<p>FROM DIRECTION A (the timeline):</p>
+<p class="li">1. THE UNIFIED CHRONOLOGICAL TIMELINE, as the shelf&#x27;s first and default panel — replacing B&#x27;s per-plan collapsible &quot;Course&quot; table. One date-ordered list across every plan: Upcoming (nearest first) → a full-width TODAY rule → Past (newest first), each past row rendering its clinical note inline, read-only, two-line clamped. Taken because it answers &quot;what did I do last time&quot;, &quot;how is this course going&quot; and &quot;when is the next one&quot; in one fixation, and because it is the cheapest thing in any of the three proposals to build: a pure map over `summary.data.plans`, which `api.ts:96-101` already fetches complete with `notes`, `images` and `prescriptions`. No new query, no new endpoint, no editable surface to guard. It also makes B&#x27;s resolver auditable — the dentist can see what `focusVisit()` skipped without opening a disclosure.</p>
+<p class="li">2. WHEN NOTHING IS BOOKED TODAY, EVERY OPEN COURSE GETS A &quot;SEAT IT TODAY&quot; PROMPT — not just the one the resolver picked. B demotes the rest behind &quot;[⌄ other work]&quot;; A lists them all at ~24px each. For the unannounced walk-in — the case the redesign exists for — this removes the resolver from the decision entirely.</p>
+<p class="li">3. A&#x27;S &quot;FINISH COURSE&quot; CONFIRMATION COPY, verbatim in spirit: &quot;Session 6 (4 Sep, 2,000 ETB, unpaid) will be cancelled. The course will be marked complete. Nothing already collected changes.&quot; The best destructive-action copy in the set — it enumerates the effect and explicitly reassures about money.</p>
+<p class="li">4. `historyAlerts()` GAINS SYNTHESISED ALERTS for `missing` (danger) and `due`/stale (warn). A&#x27;s insight: as synthesised alerts they inherit every alert surface for free — strip, dialog strip, collapsed sticky state — instead of living only in a badge inside a card that is being deleted.</p>
+<p class="li">5. THE ONE-ENTRY WORK LINE: saving the visit&#x27;s tooth + procedure writes `session.tooth`/`session.procedure`, offers &quot;mark UR6 as filled?&quot; on the odontogram in the same interaction, and feeds the examination&#x27;s per-tooth table. Four manual transcriptions of one fact become one.</p>
+<p>FROM DIRECTION C (rail &amp; tabs):</p>
+<p class="li">6. URL STATE — `?visit=&lt;sessionId&gt;` via `useSearchParams` (react-router v6 is already a dependency). This is the fix for B&#x27;s worst structural flaw: `focusVisit()`&#x27;s choice, and any override of it, would otherwise live nowhere addressable and be lost on refetch or back-navigation — exactly the property that made `dateScope` the worst bug in the audit. It also lets `ChairsidePage.tsx:66` hand off straight into today&#x27;s visit instead of dumping the dentist at the top of the page.</p>
+<p class="li">7. MONEY GROUPED BY MONEY STATE — OWED NOW / AT CASHIER / NOT YET DUE, each row carrying its own action, above a per-plan ledger — as the Money panel for BOTH roles, replacing B&#x27;s chronological instalment table. The grouping is the answer to &quot;what do I owe / for what&quot;, asked ~40 times a day. WITH ONE CHANGE: C&#x27;s &quot;✓ ledger agrees with receipts&quot; affirmative tick is removed. A green tick asserting integrity computed from `amount_due` — the field the backend leaves editable after billing — would read green while both sides were wrong and would stop a receptionist investigating a real refund. Keep only the explicit discrepancy row: &quot;sessions say 8,000 · receipts say 6,000 · 2,000 unaccounted [investigate]&quot;. Silence when they agree.</p>
+<p class="li">8. `&lt;SafetyStrip compact /&gt;` INSIDE EVERY CLINICAL DIALOG — PrescriptionDialog, HistoryDialog, NewPlanDialog, the examination dialog and the image lightbox. Radix dialogs cover the page, and `StickyAlertBar.tsx`&#x27;s own header comment describes precisely this scenario (&quot;someone scrolls down to write a prescription, at which point the one thing that could prevent harm has left the screen&quot;). A dentist prescribing amoxicillin must see the penicillin allergy.</p>
+<p class="li">9. EXPLICIT `refunded` AND `waived` MONEY STATES rather than folding both into &quot;unpaid&quot;.</p>
+<p class="li">10. ONE GALLERY, DELETE ONLY IN THE LIGHTBOX. Session rows and the reader show a count chip that opens the same lightbox pre-filtered; they never re-render tiles.</p>
+<p class="sub">FROM THE JUDGES, NOT FROM ANY DIRECTION:</p>
+<p class="li">11. `toDeskVisit()` as a TYPE, not a convention (judge 1&#x27;s graft into C, folded back into B where it originated). Desk components never receive a `Session`; they receive a `DeskVisit` with no clinical fields on the type, so leaking a note, a tooth, a drug name or an X-ray URL is a compile error.</p>
+<p class="li">12. DANGER-LEVEL ALERTS ARE NEVER DISMISSIBLE AND NEVER COLLAPSE. Warn-level may fold behind &quot;+n&quot;. B listed this as a &quot;consider&quot;; it is a requirement.</p>
+
+<h2>What gets deleted — including the medical history card</h2>
+<p class="sub">DELETED FILES</p>
+<p class="li">· frontend/src/features/dental/MedicalHistoryCard.tsx — phase 2. HistoryDialog is extracted verbatim to dental/HistoryDialog.tsx first; it holds the only mount point for the questionnaire and deleting it blind would leave no way to take or re-confirm a history at all.</p>
+<p class="li">· frontend/src/features/dental/ReceptionDentalView.tsx — phase 6, 507 lines, only after every behaviour is ported and phase 4&#x27;s payload split is deployed.</p>
+<p>NOT DELETED, despite the temptation</p>
+<p class="li">· frontend/src/features/patients/components/StickyAlertBar.tsx — the dental page stops using it (SafetyStrip subsumes it), but PatientProfilePage.tsx:107 still renders it for non-dental clinics. Deleting it breaks general-medical tenants.</p>
+<p class="li">· frontend/src/features/dental/ToothChart.tsx — survives, moved into a shelf panel, gains overflow-x-auto, quadrant labels, a drawn midline, and tokens instead of its five inline hex colours.</p>
+<p class="li">· ExaminationCard&#x27;s ExamForm, PrescriptionSection/PrescriptionDialog/MedLine, SessionImages, ImageGallery, NewPlanDialog, ProcedureMultiSelect, ToothMultiSelect, EthiopianDateInput — all survive, re-homed.</p>
+<p>DELETED CONCEPTS (all in DentalWorkspace.tsx)</p>
+<p class="li">· `DateScope`, `dateScope` state (:221), `inScope` (:113-120), `byScope` (:259-262), the Today/Upcoming/All-dates control (:401-408) — the direct cause of the worst bug in the audit.</p>
+<p class="li">· `PlanTab`, `planTabs`, `autoTab` (:275), the plan-tab strip (:391-399) — replaced by resolution, not filtering.</p>
+<p class="li">· `unlocked` (:624) — the payment gate. Clinical documentation is never again held hostage by billing.</p>
+<p class="li">· `gatedByDate` (:631) and the &quot;Access now&quot; button (:685).</p>
+<p class="li">· `gated` (:801), the in-form date banner (:839-849) and `&lt;fieldset disabled&gt;` (:859) — folded into ONE date decision taken once, before the form opens.</p>
+<p class="li">· PatientImagesCard&#x27;s duplicate gallery (:1112-1204) — ~1,000px of pure duplication and a second delete surface for the same asset.</p>
+<p class="li">· Four of the five segmented controls (:391, :402, :1086, :1487) and the image-category Select (:1163) — one &lt;Segmented&gt; idiom survives.</p>
+<p class="li">· PlanCard / SessionRow / InlineSessionRecord and their reception twins PlanMoneyCard / SessionMoneyRow — one visit component per role slot.</p>
+<p class="li">· Two of the three reschedule dialogs (:723, ReceptionDentalView.tsx:479) — one MoveSessionDialog, carrying the clash warning that only PatientSchedulePage had.</p>
+<p class="li">· `Session.rx?: string` (api.ts:73) — dead, superseded by `prescriptions`; drop from the type and from updateSession&#x27;s body.</p>
+<p class="li">· PHASE_META.in_progress&#x27;s `warning` variant (:75) and PAY_META.billed&#x27;s `warning` (:49) — amber stops being the ambient state of a healthy course.</p>
+<p class="li">· The 30px balance figure (:351) and the centred &quot;✓ Fully paid&quot; island (:369).</p>
+<p class="li">· The four vocabularies: &quot;Due now / Owes / Outstanding / Awaiting payment / Needs payment / Not due yet / Bill / Collect&quot; → owed now / at cashier / paid / not yet due / refunded / waived, defined once in dental/money.ts.</p>
+<p>═══════════════════════════════════════════════════════════════════════════════</p>
+<p class="sub">THE MEDICAL-HISTORY CARD: WHAT GOES, AND WHERE EACH PIECE LANDS</p>
+<p>The card carried five things. Only one of them is the alert chips, and three of the other four would die silently with a naive deletion.</p>
+<p class="li">1. THE ALERTS → THE SAFETY STRIP (phase 2). `historyAlerts(answers)` merged with the patient&#x27;s allergies, rendered by ONE component in ONE idiom. Three renderings collapse to one: no more filled destructive pill in the banner (MedicalHistoryCard.tsx:34-35) versus tinted bordered chip in the card (:85) versus rose sticky bar (StickyAlertBar.tsx:64). The strip is sticky whenever any alert is present — not only danger, because historyAlerts classifies &quot;Bleeding risk not established — confirm before extraction&quot; and &quot;Pregnancy status unknown — confirm before any radiograph&quot; as WARN (medicalHistory.ts:150, :154), and an alert whose text says &quot;confirm before extraction&quot; must not scroll off the screen.</p>
+<p class="li">2. THE `missing` STATE → A SYNTHESISED DANGER ALERT. `{ key:&#x27;hx-missing&#x27;, level:&#x27;danger&#x27;, text:&#x27;No health check on file — take it before treating&#x27; }`. This is the most important line in the whole answer. `historyAlerts({})` returns an empty array, so today a patient nobody ever questioned renders IDENTICALLY to a patient with a clean bill of health. As a synthesised alert it inherits the strip, the compact dialog strip and the collapsed scroll state for free — surfaces the card never had.</p>
+<p class="li">3. THE `due`/STALE STATE → A SYNTHESISED WARN ALERT. `{ key:&#x27;hx-stale&#x27;, level:&#x27;warn&#x27;, text:&#x27;Health check last confirmed 12 Jun 2025 (14 months ago) — re-confirm&#x27; }`, driven by the existing REVIEW_MONTHS = 12. The date is stated, not just the staleness, so the clinician can judge it.</p>
+<p class="li">4. THE `unsure` TAIL → a `⟨ 3 not established › ⟩` chip on the strip opening a popover of `unresolved(answers)`. The four clinically-decisive unknowns are already promoted to warn alerts by historyAlerts; the rest are visible without a card.</p>
+<p class="li">5. THE DETAIL — full answer set, current meds, free-text notes, reviewed_by, reviewed_at → the &quot;Medical &amp; safety&quot; shelf panel (phase 5), read-only, one click from the strip and one from the shelf rail.</p>
+<p class="li">6. THE LAUNCHER → the strip&#x27;s own button, always present: [Take health check] / [Re-confirm] / [Review] / [Retry]. Mounting HistoryDialog unchanged.</p>
+<p class="li">7. THE STATE THAT DOES NOT EXIST TODAY AND MUST SHIP IN THE SAME COMMIT: `error`. `useQuery`&#x27;s error state is checked in neither current consumer, so a 500, a timeout or an offline moment produces exactly the screen of a genuinely empty questionnaire — zero chips, empty sticky bar, and a card asserting no history exists. &quot;Bleeding risk — confirm before extraction&quot; simply does not appear before an extraction. Once the card is gone the strip is the only surface, so it renders a grey hatched band: &quot;SAFETY CHECK UNAVAILABLE … Do not read the absence of alerts as a clear history. [Retry]&quot;. `query.isError` read explicitly; `?? {}` banned in this path.</p>
+<p class="li">8. WHAT ACTUALLY IMPROVES BY LOSING THE CARD: money is banned from the safety region. Today &quot;Owes 2,000 ETB&quot; and &quot;Allergy: Penicillin&quot; wear the identical `bg-destructive px-3 py-1 text-xs font-semibold` pill in the same flex-wrap row (DentalWorkspace.tsx:313-328) — which is precisely how staff are trained to filter red out. And the clean case gets quieter, not louder: a single 13px muted line, because a green &quot;Nothing flagged&quot; card costing 150px on every visit is the paperwork-shaped noise the user is complaining about.</p>
+<p class="li">9. RECEPTION SEES NONE OF IT. The endpoint is dental.manage-only and the query stays gated on the ROLE (`enabled: isDentist`), not on whether data happens to be present. The desk strip says: &quot;1 allergy on file — Penicillin. Health check: on file. Clinical details are with the dentist.&quot;</p>
+
+<h2>The plan</h2>
+<div class="phase"><div class="pn">1</div><div class="pb"><h4>Foundations — pure substitutions, zero IA change</h4><p class="delivers">Nothing moves on screen, but four live bugs die. Every date renders in both calendars (reception&#x27;s collect dialog and session rows currently print raw `2026-08-13`). Moving a session from the dentist&#x27;s page now warns about a same-day clash, which only PatientSchedulePage did — the workspace silently double-books today. Payment history stops showing pre-collection totals after the dentist collects (DentalWorkspace.tsx:188 invalidates only `dental-summary`). A reprinted receipt names the cashier who actually took the money instead of whoever is logged in now.</p><details><summary>Files touched</summary><p class="files">NEW frontend/src/components/DualDate.tsx (Gregorian + Ethiopian + relative chip; wraps lib/ethiopian.ts). NEW frontend/src/components/ui/segmented.tsx (one selected-state idiom; replaces the five hand-rolled controls at DentalWorkspace.tsx:391, :402, :1086, :1487 and ReceptionDentalView.tsx:236; real role=tablist + arrow keys + aria-selected). NEW frontend/src/features/dental/money.ts (the vocabulary: owedNow / atCashier / paid / notYetDue / refunded / waived — DEFINITIONS ONLY, not yet wired to the UI; see phase 4). NEW frontend/src/features/dental/shared/MoveSessionDialog.tsx (hoisted from the three copies at DentalWorkspace.tsx:723, ReceptionDentalView.tsx:479, PatientSchedulePage.tsx:406; carries PatientSchedulePage&#x27;s clash + past-date warnings). NEW frontend/src/features/dental/invalidate.ts — invalidateDental(qc, patientId) hitting dental-summary, patient-charges, patient-appointments, dental-cal, dental-exams. EDIT DentalWorkspace.tsx, ReceptionDentalView.tsx, PatientSchedulePage.tsx to use all five. EDIT backend/internal/billing/repo/queries/billing.sql:124 (ListPatientCharges) to select settled_by + join users for the cashier name; regenerate sqlc; add to ChargeRow in backend/internal/billing/ports.go + frontend/src/features/billing/api.ts; EDIT PaymentHistoryCard.tsx:92-97 to print that name instead of useAuth()&#x27;s.</p></details><p class="risk"><b>Risk:</b> Very low. No layout change, no new concepts, each substitution independently revertible. The only care needed is the sqlc regeneration.</p></div></div>
+<div class="phase"><div class="pn">2</div><div class="pb"><h4>SafetyStrip — delete MedicalHistoryCard safely</h4><p class="delivers">The medical-history card is gone, as asked, and the safety signal gets louder rather than quieter. Alerts collapse from four visual identities (banner pill, card chip, sticky bar, dialog line) to one component. Two states a questionnaire exists to produce — &#x27;never asked&#x27; and &#x27;too old to trust&#x27; — get promoted from a badge inside a collapsed card to a top-of-page row. A failed history fetch stops rendering as a clean patient. And the alert now follows the dentist into PrescriptionDialog, which is the exact case StickyAlertBar was written for and never covered.</p><details><summary>Files touched</summary><p class="files">NEW frontend/src/features/dental/SafetyStrip.tsx (six states per mockup 5; page variant + `compact` dialog variant; reads history.isError explicitly — `?? {}` banned in this path; danger rows never dismiss, never collapse). NEW frontend/src/features/dental/HistoryDialog.tsx (extracted verbatim from MedicalHistoryCard.tsx:117 — it holds the ONLY mount point for the questionnaire). EDIT frontend/src/features/dental/medicalHistory.ts — historyAlerts(answers, meta?) synthesises { key:&#x27;hx-missing&#x27;, level:&#x27;danger&#x27; } and { key:&#x27;hx-stale&#x27;, level:&#x27;warn&#x27; } from reviewState()/REVIEW_MONTHS. EDIT DentalWorkspace.tsx: drop &lt;MedicalHistoryCard&gt;, drop &lt;HistoryAlertChips&gt; from the banner, drop the dental page&#x27;s &lt;StickyAlertBar&gt; usage. Mount &lt;SafetyStrip compact /&gt; in PrescriptionDialog (DentalWorkspace.tsx:957), NewPlanDialog (:1388), HistoryDialog, ImageGallery&#x27;s lightbox (:1206) and ExaminationCard&#x27;s form. DELETE frontend/src/features/dental/MedicalHistoryCard.tsx. DO NOT DELETE StickyAlertBar.tsx — PatientProfilePage.tsx:107 still uses it for non-dental clinics.</p></details><p class="risk"><b>Risk:</b> Low, and it is the highest safety-value change in the plan. The one thing that must not slip: the error state and the synthesised `missing` alert ship in the SAME commit that deletes the card. Until then the card is the last surface masking the silent-failure hole.</p></div></div>
+<div class="phase"><div class="pn">3</div><div class="pb"><h4>The cockpit for the dentist — kill the filters and the three gates</h4><p class="delivers">The user&#x27;s actual complaint, fixed. The page resolves to the visit that is happening instead of filtering to it, and always names the rung. A patient who walks in three days late, nine days early or unannounced is the first thing on screen. &#x27;Session 4 of 6&#x27; finally appears on the clinician&#x27;s page. &#x27;What did I do last time&#x27; is on screen at zero clicks, read-only. Recording a visit is one filled button with no preconditions — no Access-now lock, no bill-before-you-write, no second date banner, no disabled fieldset. Money moves after the record, defaulted correctly. Typed notes survive a reschedule, a refetch and a plan-phase flip.</p><details><summary>Files touched</summary><p class="files">NEW frontend/src/features/dental/visit/useFocusVisit.ts (the ladder; rung 0 reads ?visit= via useSearchParams). NEW visit/VisitCockpit.tsx, visit/CourseRail.tsx, visit/VisitReader.tsx, visit/RecordVisitForm.tsx. EDIT DentalWorkspace.tsx — DELETE DateScope/PlanTab/byScope/inScope/autoTab/planTabs (:113-120, :221, :259-276, :391-408) and the three gates: `unlocked` (:624), `gatedByDate` (:631), the Access-now button (:685), `gated` (:801) and the disabled fieldset (:859). Render cockpit above the EXISTING plan list, which stays in place this release. EDIT ChairsidePage.tsx:66 to navigate(`/patients/${patientId}?visit=${sessionId}`). Draft autosave to sessionStorage keyed by session id, 1s debounce, restore banner, dirty guard on close + beforeunload. Fix the tooth-chart save (DentalWorkspace.tsx:202-214): onSuccess required, revert local state on error, drop the seeded.current one-shot so a second dentist&#x27;s edits appear.</p></details><p class="risk"><b>Risk:</b> Medium — this is the first visible change for a live clinic, so keep the old plan list rendered beneath the cockpit for one release. The resolver can pick wrong; mitigated by naming the rung, the inline &#x27;Also open&#x27; line, and ?visit= making any override addressable and shareable. DO NOT combine with phase 5.</p></div></div>
+<div class="phase"><div class="pn">4</div><div class="pb"><h4>Money truth + the one missing endpoint</h4><p class="delivers">The money vocabulary becomes safe to state once. A refunded 6,000 ETB stops reading as &#x27;Paid / Settled&#x27;. A waived session stops sitting in &#x27;Due now&#x27; forever and stops being billable a second time. &#x27;Due now&#x27; stops double-counting birr already with the cashier. A running root canal can gain a seventh visit; one that seals in five can be closed. Reception&#x27;s payload stops carrying the clinical record. And &#x27;treatment given, never billed&#x27; becomes visible instead of silently leaking — which is the precondition for having removed the payment gate in phase 3.</p><details><summary>Files touched</summary><p class="files">backend/internal/dental/service/service.go — paymentState (:71-82): refunded/void → &#x27;unpaid&#x27;, waived → &#x27;waived&#x27;; balanceTx due SQL (:980-987): exclude charges with status IN (&#x27;pending&#x27;,&#x27;waived&#x27;); per-plan collected from the charge ledger, not sum(amount_due); UpdateSession (:618) reject amount_due edits when the linked charge is pending/paid; collectOne (:725) already guards pending/paid — add &#x27;waived&#x27;. NEW AddSession service method + POST /dental/patients/:id/plans/:pid/sessions in backend/internal/dental/http/routes.go + handlers.go (plain INSERT into treatment_sessions with seq = max+1, bump plan.session_count and deadline — NO migration; treatment_sessions.seq is a bare INT with a non-unique index in db/migrations/00039). Strip clinical fields from sessionDTO/planDTO (handlers.go:67-73, :105) when the caller has dental.read but not dental.manage. NEW frontend addSession() in features/dental/api.ts; wire the rail&#x27;s ⊕. Wire &#x27;Finish course&#x27; to the ALREADY-EXPORTED updatePlan(status:&#x27;completed&#x27;) (api.ts:137, imported nowhere) plus a cancel loop over remaining planned sessions — NO backend work needed, validSessionStatus already accepts &#x27;cancelled&#x27; and PUT /plans/:pid is already routed. Wire money.ts to the corrected numbers; enable the &#x27;Free of charge&#x27; button. NEW backend report + frontend page: unbilled treatment (done, no charge, no pay_later). EDIT PaymentHistoryCard.tsx:69/111 so the printed statement includes done-but-never-billed work instead of printing 0.00.</p></details><p class="risk"><b>Risk:</b> Medium-high — this touches the money path of a paying clinic. Ship the backend fixes and the money.ts wiring TOGETHER: one confident wrong number is more dangerous than four honest disagreeing ones, and &#x27;Free of charge&#x27; must not render before the waived mapping lands. Verify against Cure Dental&#x27;s real data before enabling.</p></div></div>
+<div class="phase"><div class="pn">5</div><div class="pb"><h4>The record shelf — six cards become one surface</h4><p class="delivers">The page stops being a filing cabinet. The odontogram, examinations, images, medical detail and money each get to be the right size in their own panel instead of stacking. Twelve X-rays are rendered once, not twice, with one delete surface. The 1,800px examination form opens as a dialog instead of inserting itself at page position four. A three-plan patient&#x27;s page goes from ~6,300px to ~1,900px; a new patient&#x27;s from ~1,400px of empty scaffolding to ~380px with one numbered path. The unified read-only timeline (grafted from Direction A) becomes the default panel, so course shape and visit history are answered without leaving the page.</p><details><summary>Files touched</summary><p class="files">NEW frontend/src/features/dental/RecordShelf.tsx + shelf/TimelinePanel.tsx (the A graft: one date-ordered spine across all plans, Upcoming → TODAY rule → Past newest-first, notes inline two-line clamped, missed sessions rose-railed with Rebook/Call/Cancel), shelf/ChartPanel.tsx (ToothChart in overflow-x-auto min-w-[520px], quadrant labels, drawn midline, per-tooth history + &#x27;Plan treatment for UR6&#x27;), shelf/ExamsPanel.tsx, shelf/SafetyPanel.tsx (the full questionnaire read-out, &#x27;not established&#x27; list, reviewed_by/at — everything the card held except the card), shelf/ImagesPanel.tsx (the ONE gallery; lightbox is the only delete surface), shelf/MoneyPanel.tsx (the C graft: OWED NOW / AT CASHIER / NOT YET DUE + plan ledger with a discrepancy row and NO affirmative tick). EDIT DentalWorkspace.tsx down to a ~150-line shell; DELETE the old plan list, PlanCard, SessionRow, InlineSessionRecord, PatientImagesCard&#x27;s duplicate render (:1112-1204), the image-category tabs and Select. EDIT ExaminationCard.tsx to render its form in a Dialog. Fix the per-session vs per-patient image cap confusion (:1059 vs :1124). Replace the unconfirmed double-firing prescription delete (:943) with the one confirm pattern. Add htmlFor to every Label, aria-expanded to every disclosure, focus-visible on the image delete.</p></details><p class="risk"><b>Risk:</b> Medium — the largest visual change, but by now the cockpit has been live for two releases and everything below it is reference material. The change most likely to draw a complaint is the odontogram leaving slot 1; if it does, the answer is a mini-chart in the cockpit, not moving the full chart back to the top.</p></div></div>
+<div class="phase"><div class="pn">6</div><div class="pb"><h4>Reception onto the shared skeleton — delete the parallel implementation</h4><p class="delivers">Dentist and receptionist finally use the same words for the same things, so verbal handoff works and an IA fix is applied once instead of three times. &#x27;Take payment&#x27; takes payment when the user has payment.collect, and says &#x27;Send to the cashier →&#x27; with a route to /cashier when they don&#x27;t. The collect dialog opens with today&#x27;s session ticked and the right total instead of nothing and 0.00 ETB. Missed visits are a full chaseable list with a tappable phone number, not three rows and a dead &#x27;+2 more&#x27;. And the clinical record is sealed at the desk by a type, on top of the server-side split from phase 4.</p><details><summary>Files touched</summary><p class="files">NEW frontend/src/features/dental/deskProjection.ts — toDeskVisit(): DeskVisit has no notes/tooth/procedure/images/rx/chart on the type, so a leak is a compile error. NEW visit/DeskVisitActions.tsx (the desk action slot). EDIT RecordShelf.tsx for the desk panel set (Money / Schedule / Statements only). EDIT PatientProfilePage.tsx:63-66 so both branches render the shared shell with a role prop. Port every behaviour out of ReceptionDentalView.tsx first — missed-visit rebooking, collect-all-per-plan, undo-from-cashier, statement print — then DELETE frontend/src/features/dental/ReceptionDentalView.tsx (507 lines). EDIT PaymentHistoryCard.tsx:56/90 to use the branch the charges were raised at, not branches[0], so a second-branch statement carries the right address and phone.</p></details><p class="risk"><b>Risk:</b> Medium-high — this replaces working behaviour on a live front desk&#x27;s money path. Hard gate: do not ship until phase 4&#x27;s server-side payload split is deployed. Inventory ReceptionDentalView&#x27;s behaviours as a checklist before deleting the file, and keep it behind a flag for one release.</p></div></div>
+
+<h2>Decisions that are yours, not mine</h2>
+<div class="q"><div class="qn">Question 1</div><p class="li">1. REMOVING THE BILL-BEFORE-RECORD GATE IS A POLICY CHANGE, NOT ONLY A UX ONE — and it needs the clinic owner, not the dentist. Someone chose it deliberately, presumably because a session recorded and never billed is revenue lost. My call is to remove it (it is clinically backwards, it recurs on all six sessions of a course, and it is trivially satisfied by typing one character into the pay-later note, so it does not work as a control anyway). The replacement is: the unresolved fee persists as an amber line on the cockpit AND on the timeline row until settled, plus a clinic-wide &quot;treatment given, never billed&quot; report in phase 4. Please confirm with Cure Dental&#x27;s owner before phase 3 ships, because if they say no, the honest alternative is a soft prompt on leaving the page rather than restoring the lock.</p></div><div class="q"><div class="qn">Question 2</div><p class="li">2. WHO MAY WAIVE? &quot;Free of charge&quot; becomes a first-class, encouraged outcome in phase 4, and waiving is a real Addis workflow. Right now any dental.manage user could do it. My default is to keep it on dental.manage with a mandatory reason written to the charge, but if the owner wants it restricted to a manager that is a new permission (`payment.waive`) and needs a migration — cheap now, awkward later.</p></div><div class="q"><div class="qn">Question 3</div><p class="li">3. CAN WE HAVE A TWO-RELEASE STAGGER? The plan deliberately cuts the dentist over in phase 3 and leaves the front desk on ReceptionDentalView.tsx until phase 6, so the two roles are never both in flux at the same time on a clinic that is treating patients today. That means roughly 3-4 weeks where the dentist&#x27;s page and the desk&#x27;s page look different from each other. Confirm that is acceptable; the alternative — one big cutover — is the single riskiest thing we could do to this customer.</p></div>
+
+<footer>ClinicOS design study · generated 9 August 2026 · 12 agents, 5 audit lenses, 3 directions, 3 judges.<br>
+Source: <code>DentalWorkspace.tsx</code> and 8 sibling files at commit on <code>refine/clinic-ops</code>.</footer>
+</div>

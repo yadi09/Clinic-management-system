@@ -10,14 +10,17 @@ import (
 // --- requests ---
 
 type bookRequest struct {
-	BranchID     string `json:"branch_id" binding:"required"`
-	PatientID    string `json:"patient_id" binding:"required"`
-	ProviderID   string `json:"provider_id" binding:"required"`
-	DepartmentID string `json:"department_id"`
-	ResourceID   string `json:"resource_id"`
-	StartsAt     string `json:"starts_at" binding:"required"` // RFC3339
-	DurationMin  int    `json:"duration_min"`
-	Reason       string `json:"reason"`
+	BranchID          string `json:"branch_id" binding:"required"`
+	PatientID         string `json:"patient_id" binding:"required"`
+	ProviderID        string `json:"provider_id" binding:"required"`
+	DepartmentID      string `json:"department_id"`
+	ResourceID        string `json:"resource_id"`
+	StartsAt          string `json:"starts_at" binding:"required"` // RFC3339
+	DurationMin       int    `json:"duration_min"`
+	Reason            string `json:"reason"`
+	IsFollowup        bool   `json:"is_followup"`
+	FreeUntil         string `json:"free_until"`          // RFC3339; optional
+	OriginEncounterID string `json:"origin_encounter_id"` // enc_… the visit that ordered it
 }
 
 type rescheduleRequest struct {
@@ -61,6 +64,11 @@ type assignRequest struct {
 	ProviderID string `json:"provider_id" binding:"required"`
 }
 
+type reassignRequest struct {
+	ProviderID string `json:"provider_id" binding:"required"`
+	Note       string `json:"note"`
+}
+
 type followupRequest struct {
 	FreeUntil string `json:"free_until"` // RFC3339; optional (defaults applied by caller)
 }
@@ -68,22 +76,26 @@ type followupRequest struct {
 // --- responses (prefixed external IDs; times serialize as RFC3339) ---
 
 type appointmentDTO struct {
-	ID           string  `json:"id"`
-	PatientID    string  `json:"patient_id"`
-	ProviderID   string  `json:"provider_id"`
-	DepartmentID *string `json:"department_id"`
-	ResourceID   *string `json:"resource_id"`
+	ID                string  `json:"id"`
+	PatientID         string  `json:"patient_id"`
+	ProviderID        string  `json:"provider_id"`
+	DepartmentID      *string `json:"department_id"`
+	ResourceID        *string `json:"resource_id"`
+	OrderedBy         *string `json:"ordered_by"`
+	OriginEncounterID *string `json:"origin_encounter_id"`
 	scheduling.Appointment
 }
 
 func toAppointmentDTO(a scheduling.Appointment) appointmentDTO {
 	return appointmentDTO{
-		ID:           id.Encode(id.PrefixAppointment, a.ID),
-		PatientID:    id.Encode(id.PrefixPatient, a.PatientID),
-		ProviderID:   id.Encode(id.PrefixUser, a.ProviderID),
-		DepartmentID: encodePtr(id.PrefixDepartment, a.DepartmentID),
-		ResourceID:   encodePtr(id.PrefixResource, a.ResourceID),
-		Appointment:  a,
+		ID:                id.Encode(id.PrefixAppointment, a.ID),
+		PatientID:         id.Encode(id.PrefixPatient, a.PatientID),
+		ProviderID:        id.Encode(id.PrefixUser, a.ProviderID),
+		DepartmentID:      encodePtr(id.PrefixDepartment, a.DepartmentID),
+		ResourceID:        encodePtr(id.PrefixResource, a.ResourceID),
+		OrderedBy:         encodePtr(id.PrefixUser, a.OrderedBy),
+		OriginEncounterID: encodePtr(id.PrefixEncounter, a.OriginEncounterID),
+		Appointment:       a,
 	}
 }
 

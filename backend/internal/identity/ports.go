@@ -45,11 +45,27 @@ type LoginResult struct {
 	User         UserProfile
 }
 
+// BranchRef is a branch the user can access (for the branch switcher).
+type BranchRef struct {
+	ID   uuid.UUID `json:"-"`
+	Name string    `json:"name"`
+	Code string    `json:"code"`
+}
+
 // MeResult is the authenticated principal's full context (FR for /auth/me).
 type MeResult struct {
-	User        UserProfile     `json:"user"`
-	Permissions []string        `json:"permissions"`
-	Flags       map[string]bool `json:"flags"`
+	User           UserProfile     `json:"user"`
+	Permissions    []string        `json:"permissions"`
+	Flags          map[string]bool `json:"flags"`
+	Branches       []BranchRef     `json:"branches"`
+	ActiveBranchID *uuid.UUID      `json:"active_branch_id,omitempty"`
+	AllBranches    bool            `json:"all_branches"`
+}
+
+// SwitchResult is the access token re-issued for a newly-selected branch.
+type SwitchResult struct {
+	AccessToken     string
+	AccessExpiresAt time.Time
 }
 
 // Service is the identity module's authentication API.
@@ -58,15 +74,25 @@ type Service interface {
 	VerifyMFA(ctx context.Context, challengeToken, code, userAgent, ip string) (*TokenPair, UserProfile, error)
 	Refresh(ctx context.Context, refreshToken, userAgent, ip string) (*TokenPair, error)
 	Logout(ctx context.Context, refreshToken string) error
-	Me(ctx context.Context, tenantID, userID uuid.UUID) (*MeResult, error)
+	// RevokeOtherSessions signs the user out of all devices except currentRefresh
+	// (empty = everywhere). Returns how many sessions were revoked.
+	RevokeOtherSessions(ctx context.Context, tenantID, userID uuid.UUID, currentRefresh string) (int64, error)
+	Me(ctx context.Context, tenantID, userID uuid.UUID, activeBranch *uuid.UUID) (*MeResult, error)
+	// SwitchBranch re-issues an access token for a different branch (target nil =
+	// consolidated "all branches" view, for tenant-wide users).
+	SwitchBranch(ctx context.Context, tenantID, userID uuid.UUID, target *uuid.UUID, refreshToken string) (*SwitchResult, error)
 	AcceptInvite(ctx context.Context, token, password, userAgent, ip string) (*TokenPair, UserProfile, error)
+	ChangePassword(ctx context.Context, tenantID, userID uuid.UUID, currentPassword, newPassword string) error
+	ChangeEmail(ctx context.Context, tenantID, userID uuid.UUID, newEmail, currentPassword string) error
 }
 
-// InviteInput is the staff-invitation payload.
+// InviteInput is the staff-invitation payload. BranchIDs scopes the assigned
+// roles to those branches; empty means tenant-wide (all branches).
 type InviteInput struct {
 	Email     string
 	FullName  string
 	RoleCodes []string
+	BranchIDs []uuid.UUID
 }
 
 // InviteResult is returned after inviting a user; InviteLink is shown to the
@@ -108,6 +134,10 @@ type UserAdmin interface {
 	ListUsers(ctx context.Context) ([]UserListItem, error)
 	ListProviders(ctx context.Context) ([]Provider, error)
 	UpdateUserStatus(ctx context.Context, userID uuid.UUID, status string) error
-	AssignRoles(ctx context.Context, userID uuid.UUID, roleCodes []string) error
+	UpdateUserName(ctx context.Context, userID uuid.UUID, fullName string) error
+	DeleteUser(ctx context.Context, userID uuid.UUID) error
+	// AssignRoles replaces a user's role assignments. branchIDs scopes them to
+	// those branches; empty means tenant-wide (all branches).
+	AssignRoles(ctx context.Context, userID uuid.UUID, roleCodes []string, branchIDs []uuid.UUID) error
 	ListRoles(ctx context.Context) ([]RoleItem, error)
 }

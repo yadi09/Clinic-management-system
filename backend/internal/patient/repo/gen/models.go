@@ -36,25 +36,27 @@ type Allergy struct {
 }
 
 type Appointment struct {
-	ID           uuid.UUID  `json:"id"`
-	TenantID     uuid.UUID  `json:"tenant_id"`
-	BranchID     uuid.UUID  `json:"branch_id"`
-	DepartmentID *uuid.UUID `json:"department_id"`
-	PatientID    uuid.UUID  `json:"patient_id"`
-	ProviderID   uuid.UUID  `json:"provider_id"`
-	ResourceID   *uuid.UUID `json:"resource_id"`
-	StartsAt     time.Time  `json:"starts_at"`
-	EndsAt       time.Time  `json:"ends_at"`
-	Status       string     `json:"status"`
-	Reason       *string    `json:"reason"`
-	CancelReason *string    `json:"cancel_reason"`
-	Source       string     `json:"source"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
-	CreatedBy    *uuid.UUID `json:"created_by"`
-	DeletedAt    *time.Time `json:"deleted_at"`
-	IsFollowup   bool       `json:"is_followup"`
-	FreeUntil    *time.Time `json:"free_until"`
+	ID                uuid.UUID  `json:"id"`
+	TenantID          uuid.UUID  `json:"tenant_id"`
+	BranchID          uuid.UUID  `json:"branch_id"`
+	DepartmentID      *uuid.UUID `json:"department_id"`
+	PatientID         uuid.UUID  `json:"patient_id"`
+	ProviderID        uuid.UUID  `json:"provider_id"`
+	ResourceID        *uuid.UUID `json:"resource_id"`
+	StartsAt          time.Time  `json:"starts_at"`
+	EndsAt            time.Time  `json:"ends_at"`
+	Status            string     `json:"status"`
+	Reason            *string    `json:"reason"`
+	CancelReason      *string    `json:"cancel_reason"`
+	Source            string     `json:"source"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+	CreatedBy         *uuid.UUID `json:"created_by"`
+	DeletedAt         *time.Time `json:"deleted_at"`
+	IsFollowup        bool       `json:"is_followup"`
+	FreeUntil         *time.Time `json:"free_until"`
+	OrderedBy         *uuid.UUID `json:"ordered_by"`
+	OriginEncounterID *uuid.UUID `json:"origin_encounter_id"`
 }
 
 type Attachment struct {
@@ -244,6 +246,17 @@ type Department struct {
 	DeletedAt             *time.Time `json:"deleted_at"`
 }
 
+type Dhis2Disease struct {
+	ID          uuid.UUID `json:"id"`
+	TenantID    uuid.UUID `json:"tenant_id"`
+	Rank        int32     `json:"rank"`
+	Name        string    `json:"name"`
+	DataElement string    `json:"data_element"`
+	Counts      string    `json:"counts"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
 type Diagnosis struct {
 	ID          uuid.UUID  `json:"id"`
 	TenantID    uuid.UUID  `json:"tenant_id"`
@@ -368,13 +381,14 @@ type EventOutbox struct {
 }
 
 type FeatureFlag struct {
-	ID        uuid.UUID `json:"id"`
-	TenantID  uuid.UUID `json:"tenant_id"`
-	Flag      string    `json:"flag"`
-	Enabled   bool      `json:"enabled"`
-	Source    string    `json:"source"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        uuid.UUID  `json:"id"`
+	TenantID  uuid.UUID  `json:"tenant_id"`
+	Flag      string     `json:"flag"`
+	Enabled   bool       `json:"enabled"`
+	Source    string     `json:"source"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	BranchID  *uuid.UUID `json:"branch_id"`
 }
 
 type GuardianLink struct {
@@ -488,6 +502,23 @@ type LabTest struct {
 type MrnCounter struct {
 	TenantID  uuid.UUID `json:"tenant_id"`
 	LastValue int64     `json:"last_value"`
+}
+
+type PartnerLead struct {
+	ID              uuid.UUID `json:"id"`
+	Name            string    `json:"name"`
+	Phone           *string   `json:"phone"`
+	Email           *string   `json:"email"`
+	Region          *string   `json:"region"`
+	Audience        *string   `json:"audience"`
+	ClinicsEstimate *string   `json:"clinics_estimate"`
+	Goal            *string   `json:"goal"`
+	Source          *string   `json:"source"`
+	Ip              *string   `json:"ip"`
+	UserAgent       *string   `json:"user_agent"`
+	Status          string    `json:"status"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 type Patient struct {
@@ -721,6 +752,7 @@ type Session struct {
 	RevokedAt        *time.Time `json:"revoked_at"`
 	RotatedFrom      *uuid.UUID `json:"rotated_from"`
 	CreatedAt        time.Time  `json:"created_at"`
+	ActiveBranchID   *uuid.UUID `json:"active_branch_id"`
 }
 
 type StockCount struct {

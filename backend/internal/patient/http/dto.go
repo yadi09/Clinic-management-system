@@ -8,6 +8,7 @@ import (
 // --- requests ---
 
 type patientRequest struct {
+	MRN              string `json:"mrn"` // optional: preserve an existing card ID on import
 	FirstName        string `json:"first_name" binding:"required"`
 	MiddleName       string `json:"middle_name"`
 	LastName         string `json:"last_name" binding:"required"`

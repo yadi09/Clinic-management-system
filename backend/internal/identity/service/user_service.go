@@ -16,6 +16,7 @@ import (
 	"github.com/reicb/clinicsaas/internal/kernel/auth"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
 	"github.com/reicb/clinicsaas/internal/kernel/id"
+	"github.com/reicb/clinicsaas/internal/kernel/limits"
 	"github.com/reicb/clinicsaas/internal/kernel/notify"
 	"github.com/reicb/clinicsaas/internal/kernel/tenancy"
 )
@@ -57,7 +58,7 @@ func (s *UserService) InviteUser(ctx context.Context, in identity.InviteInput) (
 	var composite string
 	if err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := identitydb.New(tx)
-		if e := checkUserLimit(ctx, q, tenantID); e != nil {
+		if e := checkUserLimit(ctx, tx, q, tenantID); e != nil {
 			return e
 		}
 		uid, e := q.CreateInvitedUser(ctx, identitydb.CreateInvitedUserParams{TenantID: tenantID, Email: email, FullName: in.FullName, CreatedBy: actorID})
@@ -65,17 +66,8 @@ func (s *UserService) InviteUser(ctx context.Context, in identity.InviteInput) (
 			return e
 		}
 		userID = uid
-		for _, code := range in.RoleCodes {
-			rid, e := q.GetRoleByCode(ctx, identitydb.GetRoleByCodeParams{TenantID: tenantID, Code: code})
-			if e != nil {
-				if errors.Is(e, pgx.ErrNoRows) {
-					return apperr.Validation("unknown role: " + code)
-				}
-				return e
-			}
-			if e := q.AssignUserRole(ctx, identitydb.AssignUserRoleParams{TenantID: tenantID, UserID: uid, RoleID: rid}); e != nil {
-				return e
-			}
+		if e := assignRoleScopes(ctx, q, tenantID, uid, in.RoleCodes, in.BranchIDs); e != nil {
+			return e
 		}
 		opaque, e := auth.GenerateRefreshToken()
 		if e != nil {
@@ -153,7 +145,7 @@ func (s *UserService) UpdateUserStatus(ctx context.Context, userID uuid.UUID, st
 	return s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := identitydb.New(tx)
 		if status == "active" {
-			if e := checkUserLimit(ctx, q, tenantID); e != nil {
+			if e := checkUserLimit(ctx, tx, q, tenantID); e != nil {
 				return e
 			}
 		}
@@ -161,28 +153,92 @@ func (s *UserService) UpdateUserStatus(ctx context.Context, userID uuid.UUID, st
 	})
 }
 
-// AssignRoles replaces a user's role assignments (tenant-wide in Phase 1).
-func (s *UserService) AssignRoles(ctx context.Context, userID uuid.UUID, roleCodes []string) error {
+// UpdateUserName corrects a staff member's display name (e.g. a typo at invite).
+func (s *UserService) UpdateUserName(ctx context.Context, userID uuid.UUID, fullName string) error {
+	tenantID, _ := userActor(ctx)
+	name := strings.TrimSpace(fullName)
+	if name == "" {
+		return apperr.Validation("a name is required")
+	}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		ct, e := tx.Exec(ctx,
+			`UPDATE users SET full_name = $3, updated_at = now() WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+			tenantID, userID, name)
+		if e != nil {
+			return e
+		}
+		if ct.RowsAffected() == 0 {
+			return apperr.NotFound("USER_NOT_FOUND", "staff member not found")
+		}
+		return nil
+	})
+	if ae, ok := apperr.As(err); ok {
+		return ae
+	}
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}
+
+// DeleteUser soft-deletes a staff member and revokes their sessions. The caller
+// cannot delete their own account.
+func (s *UserService) DeleteUser(ctx context.Context, userID uuid.UUID) error {
+	tenantID, actorID := userActor(ctx)
+	if actorID != nil && *actorID == userID {
+		return apperr.Validation("you can't delete your own account")
+	}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := identitydb.New(tx)
+		if e := q.SoftDeleteUser(ctx, identitydb.SoftDeleteUserParams{TenantID: tenantID, ID: userID}); e != nil {
+			return e
+		}
+		return q.RevokeAllUserSessions(ctx, identitydb.RevokeAllUserSessionsParams{TenantID: tenantID, UserID: userID})
+	})
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}
+
+// AssignRoles replaces a user's role assignments, scoped to branchIDs (empty =
+// tenant-wide / all branches).
+func (s *UserService) AssignRoles(ctx context.Context, userID uuid.UUID, roleCodes []string, branchIDs []uuid.UUID) error {
 	tenantID, _ := userActor(ctx)
 	return s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := identitydb.New(tx)
 		if e := q.ClearUserRoles(ctx, identitydb.ClearUserRolesParams{TenantID: tenantID, UserID: userID}); e != nil {
 			return e
 		}
-		for _, code := range roleCodes {
-			rid, e := q.GetRoleByCode(ctx, identitydb.GetRoleByCodeParams{TenantID: tenantID, Code: code})
-			if e != nil {
-				if errors.Is(e, pgx.ErrNoRows) {
-					return apperr.Validation("unknown role: " + code)
-				}
+		return assignRoleScopes(ctx, q, tenantID, userID, roleCodes, branchIDs)
+	})
+}
+
+// assignRoleScopes assigns each role to the user, scoped to each branch in
+// branchIDs (or tenant-wide when branchIDs is empty). Shared by invite + edit.
+func assignRoleScopes(ctx context.Context, q *identitydb.Queries, tenantID, userID uuid.UUID, roleCodes []string, branchIDs []uuid.UUID) error {
+	for _, code := range roleCodes {
+		rid, e := q.GetRoleByCode(ctx, identitydb.GetRoleByCodeParams{TenantID: tenantID, Code: code})
+		if e != nil {
+			if errors.Is(e, pgx.ErrNoRows) {
+				return apperr.Validation("unknown role: " + code)
+			}
+			return e
+		}
+		if len(branchIDs) == 0 {
+			if e := q.AssignUserRole(ctx, identitydb.AssignUserRoleParams{TenantID: tenantID, UserID: userID, RoleID: rid, BranchID: nil}); e != nil {
 				return e
 			}
-			if e := q.AssignUserRole(ctx, identitydb.AssignUserRoleParams{TenantID: tenantID, UserID: userID, RoleID: rid}); e != nil {
+			continue
+		}
+		for i := range branchIDs {
+			b := branchIDs[i]
+			if e := q.AssignUserRole(ctx, identitydb.AssignUserRoleParams{TenantID: tenantID, UserID: userID, RoleID: rid, BranchID: &b}); e != nil {
 				return e
 			}
 		}
-		return nil
-	})
+	}
+	return nil
 }
 
 // ListRoles returns the tenant's assignable roles.
@@ -207,20 +263,21 @@ func (s *UserService) ListRoles(ctx context.Context) ([]identity.RoleItem, error
 
 // --- shared helpers (package service) ---
 
-// checkUserLimit enforces the plan's active-user limit (FR-USR-03).
-func checkUserLimit(ctx context.Context, q *identitydb.Queries, tenantID uuid.UUID) error {
-	limit, err := q.GetTenantUserLimit(ctx, tenantID)
+// checkUserLimit enforces the effective active-user cap (per-clinic override, else
+// plan; nil = unlimited) — FR-USR-03.
+func checkUserLimit(ctx context.Context, tx pgx.Tx, q *identitydb.Queries, tenantID uuid.UUID) error {
+	limit, err := limits.UserLimit(ctx, tx, tenantID)
 	if err != nil {
 		return err
 	}
-	if limit == nil { // NULL = unlimited
+	if limit == nil { // unlimited
 		return nil
 	}
 	n, err := q.CountActiveUsers(ctx, tenantID)
 	if err != nil {
 		return err
 	}
-	if int(n) >= int(*limit) {
+	if n >= *limit {
 		return apperr.New(http.StatusForbidden, "USER_LIMIT_REACHED", "your plan's active-user limit has been reached — upgrade to add more staff")
 	}
 	return nil

@@ -18,6 +18,7 @@ import (
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
 	"github.com/reicb/clinicsaas/internal/kernel/events"
+	"github.com/reicb/clinicsaas/internal/kernel/limits"
 	"github.com/reicb/clinicsaas/internal/kernel/storage"
 	"github.com/reicb/clinicsaas/internal/kernel/tenancy"
 	"github.com/reicb/clinicsaas/internal/patient"
@@ -89,11 +90,21 @@ func (s *Service) Create(ctx context.Context, in patient.PatientInput) (*patient
 	var created patientdb.CreatePatientRow
 	if err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := patientdb.New(tx)
-		seq, e := q.NextMRNValue(ctx, tenantID)
-		if e != nil {
+		// Enforce the plan's patient cap (effective, honouring any per-clinic override).
+		if e := limits.EnsurePatientRoom(ctx, tx, tenantID); e != nil {
 			return e
 		}
-		mrn := fmt.Sprintf("P%06d", seq)
+		// A supplied MRN preserves the clinic's existing card ID (data import);
+		// otherwise auto-generate the next sequential P###### number.
+		mrn := strings.TrimSpace(in.MRN)
+		if mrn == "" {
+			seq, e := q.NextMRNValue(ctx, tenantID)
+			if e != nil {
+				return e
+			}
+			mrn = fmt.Sprintf("P%06d", seq)
+		}
+		var e error
 		created, e = q.CreatePatient(ctx, patientdb.CreatePatientParams{
 			TenantID:         tenantID,
 			Mrn:              mrn,
@@ -218,8 +229,22 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*patient.Profile, erro
 	return &prof, nil
 }
 
-// Search returns a paginated patient list (FR-PAT-04, FTS + trigram).
-func (s *Service) Search(ctx context.Context, q string, page, pageSize int) (*patient.SearchResult, error) {
+// searchWhere is the shared predicate for the list and its total (FR-PAT-04:
+// full-text + trigram over name/MRN/phone), plus the optional gender filter.
+const searchWhere = `
+	WHERE tenant_id = $1 AND deleted_at IS NULL
+	  AND (
+	    $2::text = ''
+	    OR concat_ws(' ', first_name, middle_name, last_name) ILIKE '%' || $2 || '%'
+	    OR search_tsv @@ websearch_to_tsquery('simple', $2)
+	    OR lower(first_name || ' ' || last_name) % lower($2)
+	    OR mrn ILIKE '%' || $2 || '%'
+	    OR phone ILIKE '%' || $2 || '%'
+	  )
+	  AND ($3::text = '' OR gender = $3)`
+
+// Search returns a paginated, optionally filtered patient list.
+func (s *Service) Search(ctx context.Context, f patient.SearchFilter, page, pageSize int) (*patient.SearchResult, error) {
 	tenantID, _ := actor(ctx)
 	if page < 1 {
 		page = 1
@@ -227,31 +252,46 @@ func (s *Service) Search(ctx context.Context, q string, page, pageSize int) (*pa
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
-	q = strings.TrimSpace(q)
+	q := strings.TrimSpace(f.Query)
+	gender := strings.ToLower(strings.TrimSpace(f.Gender))
+	switch gender {
+	case "", "male", "female", "other", "unknown":
+	default:
+		return nil, apperr.Validation("gender filter must be male, female, other or unknown")
+	}
 	res := &patient.SearchResult{Page: page, PageSize: pageSize}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		qd := patientdb.New(tx)
-		total, e := qd.CountPatients(ctx, patientdb.CountPatientsParams{TenantID: tenantID, Q: q})
-		if e != nil {
+		args := []any{tenantID, q, gender}
+		var total int64
+		if e := tx.QueryRow(ctx, `SELECT count(*) FROM patients`+searchWhere, args...).Scan(&total); e != nil {
 			return e
 		}
 		res.Total = int(total)
-		rows, e := qd.SearchPatients(ctx, patientdb.SearchPatientsParams{
-			TenantID: tenantID, Q: q, Lim: int32(pageSize), Off: int32((page - 1) * pageSize),
-		})
+		rows, e := tx.Query(ctx,
+			`SELECT id, mrn, first_name, coalesce(middle_name,''), last_name, gender, dob, coalesce(phone,''), coalesce(email,'')
+			 FROM patients`+searchWhere+`
+			 ORDER BY last_name, first_name
+			 LIMIT $4 OFFSET $5`,
+			append(args, pageSize, (page-1)*pageSize)...)
 		if e != nil {
 			return e
 		}
-		for _, r := range rows {
-			res.Items = append(res.Items, patient.Summary{
-				ID: r.ID, MRN: r.Mrn, FirstName: r.FirstName, MiddleName: deref(r.MiddleName),
-				LastName: r.LastName, Gender: r.Gender, DOB: r.Dob.Format(dateLayout),
-				Phone: deref(r.Phone), Email: deref(r.Email),
-			})
+		defer rows.Close()
+		for rows.Next() {
+			var it patient.Summary
+			var dob time.Time
+			if e := rows.Scan(&it.ID, &it.MRN, &it.FirstName, &it.MiddleName, &it.LastName, &it.Gender, &dob, &it.Phone, &it.Email); e != nil {
+				return e
+			}
+			it.DOB = dob.Format(dateLayout)
+			res.Items = append(res.Items, it)
 		}
-		return nil
+		return rows.Err()
 	})
 	if err != nil {
+		if ae, ok := apperr.As(err); ok {
+			return nil, ae
+		}
 		return nil, apperr.Internal(err)
 	}
 	return res, nil
@@ -339,8 +379,17 @@ func (s *Service) AddGuardian(ctx context.Context, patientID uuid.UUID, in patie
 }
 
 // SignAttachmentUpload returns a signed direct-upload target for a patient file.
+// The storage quota is enforced first, so an over-cap tenant can't upload more.
 func (s *Service) SignAttachmentUpload(ctx context.Context, patientID uuid.UUID, in patient.AttachmentSignInput) (storage.UploadTarget, error) {
 	tenantID, _ := actor(ctx)
+	if err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		return limits.EnsureStorageRoom(ctx, tx, tenantID)
+	}); err != nil {
+		if ae, ok := apperr.As(err); ok {
+			return storage.UploadTarget{}, ae
+		}
+		return storage.UploadTarget{}, apperr.Internal(err)
+	}
 	resourceType := "raw"
 	if in.Type == "image" {
 		resourceType = "image"
@@ -349,15 +398,23 @@ func (s *Service) SignAttachmentUpload(ctx context.Context, patientID uuid.UUID,
 	return s.store.SignUpload(ctx, storage.UploadOptions{Folder: folder, ResourceType: resourceType, Tags: []string{"patient"}})
 }
 
-// RecordAttachment persists attachment metadata after a direct upload.
+// RecordAttachment persists attachment metadata after a direct upload. It prefers
+// the real stored size (via the provider's Sizer) over the client-declared one, so
+// a client can't under-report its size to dodge the storage quota.
 func (s *Service) RecordAttachment(ctx context.Context, patientID uuid.UUID, in patient.AttachmentInput) (*patient.Attachment, error) {
 	tenantID, actor := actor(ctx)
+	size := in.SizeBytes
+	if sizer, ok := s.store.(storage.Sizer); ok {
+		if real, e := sizer.Size(ctx, in.StorageKey); e == nil && real > 0 {
+			size = real
+		}
+	}
 	var row patientdb.CreateAttachmentRow
 	if err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		var e error
 		row, e = patientdb.New(tx).CreateAttachment(ctx, patientdb.CreateAttachmentParams{
 			TenantID: tenantID, PatientID: patientID, Type: in.Type, StorageKey: in.StorageKey,
-			Filename: in.Filename, MimeType: in.MimeType, SizeBytes: in.SizeBytes, CreatedBy: actor,
+			Filename: in.Filename, MimeType: in.MimeType, SizeBytes: size, CreatedBy: actor,
 		})
 		return e
 	}); err != nil {
@@ -365,7 +422,7 @@ func (s *Service) RecordAttachment(ctx context.Context, patientID uuid.UUID, in 
 	}
 	return &patient.Attachment{
 		ID: row.ID, Type: in.Type, StorageKey: in.StorageKey, URL: s.store.URL(in.StorageKey),
-		Filename: in.Filename, MimeType: in.MimeType, SizeBytes: in.SizeBytes, CreatedAt: row.CreatedAt,
+		Filename: in.Filename, MimeType: in.MimeType, SizeBytes: size, CreatedAt: row.CreatedAt,
 	}, nil
 }
 
@@ -454,6 +511,9 @@ func mapWriteErr(err error) error {
 		return ae
 	}
 	msg := err.Error()
+	if strings.Contains(msg, "idx_patients_mrn") {
+		return apperr.Conflict("MRN_TAKEN", "that card ID is already used by another patient")
+	}
 	if strings.Contains(msg, "duplicate key") || strings.Contains(msg, "unique constraint") {
 		return apperr.Conflict("PATIENT_CONFLICT", "a record with these details already exists")
 	}

@@ -1,0 +1,12 @@
+# Standalone edge overlay: one Caddy on :8443 terminates a self-signed cert
+# (Cloudflare Full) and routes by hostname — clinicos.cc -> marketing static,
+# app.clinicos.cc -> the app SPA + API. Only :8443 is exposed (Fasthosts allows it).
+services:
+  web:
+    volumes:
+      - ./infra/Caddyfile.standalone:/etc/caddy/Caddyfile:ro
+      - ./infra/origin.crt:/etc/caddy/origin.crt:ro
+      - ./infra/origin.key:/etc/caddy/origin.key:ro
+      - ./marketing:/marketing:ro
+    ports:
+      - "8443:443"

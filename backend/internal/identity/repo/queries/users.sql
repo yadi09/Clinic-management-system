@@ -28,3 +28,16 @@ WHERE tenant_id = $1 AND id = $2;
 UPDATE users
 SET mfa_enabled = $3, mfa_secret = $4, updated_at = now()
 WHERE tenant_id = $1 AND id = $2;
+
+-- name: GetUserCredentials :one
+-- Current credentials for self-service email/password changes (needs the hash).
+SELECT id, email, password_hash FROM users
+WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
+
+-- name: UpdateUserPassword :exec
+UPDATE users SET password_hash = @password_hash, updated_at = now()
+WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;
+
+-- name: UpdateUserEmail :exec
+UPDATE users SET email = @email, updated_at = now()
+WHERE tenant_id = @tenant_id AND id = @id AND deleted_at IS NULL;

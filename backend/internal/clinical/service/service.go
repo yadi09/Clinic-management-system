@@ -152,6 +152,13 @@ func (s *Service) OpenEncounter(ctx context.Context, queueEntryID uuid.UUID) (*c
 		switch {
 		case e == nil:
 			encID = enc.ID
+			// The doctor opening/resuming the consult is the provider. Claim it if
+			// the encounter has none yet so it lands on their "My day" board.
+			if enc.ProviderID == nil && actor != nil {
+				if e2 := q.ClaimEncounterProvider(ctx, clinicaldb.ClaimEncounterProviderParams{TenantID: tenantID, ID: encID, ProviderID: actor}); e2 != nil {
+					return e2
+				}
+			}
 		case errors.Is(e, pgx.ErrNoRows):
 			qe, e2 := q.GetQueueEntryForEncounter(ctx, clinicaldb.GetQueueEntryForEncounterParams{TenantID: tenantID, ID: queueEntryID})
 			if errors.Is(e2, pgx.ErrNoRows) {
@@ -161,9 +168,17 @@ func (s *Service) OpenEncounter(ctx context.Context, queueEntryID uuid.UUID) (*c
 				return e2
 			}
 			dept := qe.DepartmentID
+			// Attribute the encounter to its assigned provider, or to the doctor
+			// opening it when the queue entry was never explicitly assigned (the
+			// common walk-in → triage → doctor path) — otherwise provider_id stays
+			// NULL and the encounter never appears on any doctor's board.
+			provider := qe.AssignedProviderID
+			if provider == nil {
+				provider = actor
+			}
 			created, e3 := q.CreateEncounter(ctx, clinicaldb.CreateEncounterParams{
 				TenantID: tenantID, BranchID: qe.BranchID, DepartmentID: &dept, PatientID: qe.PatientID,
-				QueueEntryID: &qid, ProviderID: qe.AssignedProviderID, CreatedBy: actor,
+				QueueEntryID: &qid, ProviderID: provider, CreatedBy: actor,
 			})
 			if e3 != nil {
 				return e3
@@ -807,6 +822,62 @@ func mapWriteErr(err error, code, msg string) error {
 	return apperr.Internal(err)
 }
 
+// ImportHistory stores a migrated record as a back-dated, signed historical
+// encounter + note, so it shows in the patient's timeline and feeds the AI
+// co-pilot's past-history summary. No queue entry; provider is left unset.
+func (s *Service) ImportHistory(ctx context.Context, in clinical.HistoryImportInput) (uuid.UUID, error) {
+	tenantID, actor := actorOf(ctx)
+	subjective := strPtr(in.Subjective)
+	objective := strPtr(in.Objective)
+	assessment := strPtr(in.Assessment)
+	plan := strPtr(in.Plan)
+	if subjective == nil && objective == nil && assessment == nil && plan == nil {
+		return uuid.Nil, apperr.Validation("enter at least one section of the patient's past history")
+	}
+	when := time.Now()
+	if d := strings.TrimSpace(in.Date); d != "" {
+		t, e := time.Parse("2006-01-02", d)
+		if e != nil {
+			return uuid.Nil, apperr.Validation("date must be YYYY-MM-DD")
+		}
+		when = t
+	}
+	branch := activeBranchOf(ctx)
+	var encID uuid.UUID
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := clinicaldb.New(tx)
+		if branch == nil {
+			b, e := q.GetDefaultBranch(ctx, tenantID)
+			if e != nil {
+				if errors.Is(e, pgx.ErrNoRows) {
+					return apperr.Validation("add a branch before importing records")
+				}
+				return e
+			}
+			branch = &b
+		}
+		enc, e := q.ImportHistoricalEncounter(ctx, clinicaldb.ImportHistoricalEncounterParams{
+			TenantID: tenantID, BranchID: *branch, PatientID: in.PatientID, ProviderID: nil, StartedAt: when, CreatedBy: actor,
+		})
+		if e != nil {
+			return e
+		}
+		encID = enc
+		_, e = q.ImportHistoricalNote(ctx, clinicaldb.ImportHistoricalNoteParams{
+			TenantID: tenantID, EncounterID: enc, Subjective: subjective, Objective: objective, Assessment: assessment, Plan: plan,
+			SignedBy: actor, SignedAt: &when, CreatedBy: actor,
+		})
+		return e
+	})
+	if err != nil {
+		if ae, ok := apperr.As(err); ok {
+			return uuid.Nil, ae
+		}
+		return uuid.Nil, apperr.Internal(err)
+	}
+	return encID, nil
+}
+
 // --- helpers ---
 
 func actorOf(ctx context.Context) (uuid.UUID, *uuid.UUID) {
@@ -816,6 +887,14 @@ func actorOf(ctx context.Context) (uuid.UUID, *uuid.UUID) {
 	}
 	tid, _ := tenancy.TenantIDFromContext(ctx)
 	return tid, nil
+}
+
+// activeBranchOf returns the branch the request is scoped to (nil = all-branches).
+func activeBranchOf(ctx context.Context) *uuid.UUID {
+	if p, ok := tenancy.PrincipalFromContext(ctx); ok {
+		return p.ActiveBranchID
+	}
+	return nil
 }
 
 func i32(p *int) *int32 {

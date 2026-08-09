@@ -14,7 +14,7 @@ import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
 import { useDebounce } from "@/hooks/useDebounce";
 import { searchPatients } from "@/features/patients/api";
-import { listDepartments, listProviders } from "@/features/admin/api";
+import { getSettings, listDepartments, listProviders } from "@/features/admin/api";
 import { bookAppointment, rescheduleAppointment, type Appointment } from "@/features/scheduling/api";
 
 const DURATIONS = [15, 20, 30, 45, 60];
@@ -39,10 +39,13 @@ export function BookingDialog({ open, onOpenChange, branchId, defaultDate, exist
   const [time, setTime] = useState("09:00");
   const [duration, setDuration] = useState(30);
   const [reason, setReason] = useState("");
+  const [followup, setFollowup] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const providers = useQuery({ queryKey: ["providers"], queryFn: listProviders, enabled: open });
   const departments = useQuery({ queryKey: ["departments"], queryFn: listDepartments, enabled: open });
+  const settings = useQuery({ queryKey: ["settings"], queryFn: getSettings, enabled: open, retry: false });
+  const windowDays = settings.data?.free_window_days ?? 30;
 
   useEffect(() => {
     if (!open) return;
@@ -65,6 +68,7 @@ export function BookingDialog({ open, onOpenChange, branchId, defaultDate, exist
       setDuration(30);
       setReason("");
     }
+    setFollowup(false);
   }, [open, existing, defaultDate]);
 
   const mut = useMutation({
@@ -79,6 +83,9 @@ export function BookingDialog({ open, onOpenChange, branchId, defaultDate, exist
           reason: reason || undefined,
         });
       }
+      const freeUntil = followup
+        ? new Date(Math.max(Date.now(), new Date(startsAt).getTime()) + windowDays * 86_400_000).toISOString()
+        : undefined;
       return bookAppointment({
         branch_id: branchId,
         patient_id: patient!.id,
@@ -87,6 +94,8 @@ export function BookingDialog({ open, onOpenChange, branchId, defaultDate, exist
         starts_at: startsAt,
         duration_min: duration,
         reason: reason || undefined,
+        is_followup: followup || undefined,
+        free_until: freeUntil,
       });
     },
     onSuccess: () => {
@@ -185,6 +194,26 @@ export function BookingDialog({ open, onOpenChange, branchId, defaultDate, exist
             <Label>Reason</Label>
             <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Chief complaint" />
           </div>
+
+          {!editing && (
+            <button
+              type="button"
+              onClick={() => setFollowup((v) => !v)}
+              className={`flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors ${followup ? "border-primary/40 bg-primary/5" : "hover:bg-accent"}`}
+            >
+              <span className={`mt-0.5 flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors ${followup ? "bg-primary" : "bg-muted"}`}>
+                <span className={`h-4 w-4 rounded-full bg-background transition-transform ${followup ? "translate-x-4" : ""}`} />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">This is a follow-up</span>
+                <span className="block text-xs text-muted-foreground">
+                  {followup
+                    ? `No card fee if attended within ${windowDays} days.`
+                    : "A covered return visit — waives the card fee within the clinic's window."}
+                </span>
+              </span>
+            </button>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -204,7 +233,7 @@ export function PatientCombobox({ value, onSelect }: { value: { id: string; name
   const [q, setQ] = useState("");
   const debounced = useDebounce(q, 250);
   const results = useQuery({
-    queryKey: ["patients", debounced, 1],
+    queryKey: ["patients", debounced, 1, 8],
     queryFn: () => searchPatients(debounced.trim(), 1, 8),
     enabled: open, // empty query returns the first patients, so a list shows by default
   });

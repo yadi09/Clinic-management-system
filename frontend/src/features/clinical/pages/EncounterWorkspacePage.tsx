@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CalendarCheck, CalendarPlus, Check, FlaskConical, PauseCircle, Pencil, Pill, Plus, Printer, Search, X } from "lucide-react";
+import { AlertTriangle, CalendarCheck, CalendarPlus, Check, FlaskConical, PauseCircle, Pencil, Pill, Plus, Printer, Search, Sparkles, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -9,15 +9,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
 import { useAuth } from "@/app/auth-context";
-import { getClinic, getSettings, listBranches } from "@/features/admin/api";
+import { getClinic, getSettings, listBranches, listProviders } from "@/features/admin/api";
 import { printPrescription, printLabRequest } from "@/features/clinical/print";
 import { DictateButton } from "@/features/clinical/components/DictateButton";
 import { bookAppointment, listAppointments, markFollowup, rescheduleAppointment, setAppointmentStatus, transitionQueue } from "@/features/scheduling/api";
 import { createOrder, encounterLabs, listTests } from "@/features/lab/api";
+import { PregnancyDatingCard } from "@/features/maternity/PregnancyCalculator";
 import {
   addDiagnosis,
   addMedication,
@@ -33,6 +35,7 @@ import {
   removeMedication,
   listAllergens,
   recordLabReferralResult,
+  runAssist,
   saveNote,
   searchCatalog,
   searchDrugs,
@@ -41,6 +44,7 @@ import {
   signReferralUpload,
   uploadToTarget,
   vitalFlag,
+  type AssistResult,
   type CatalogEntry,
   type Drug,
   type HistoryItem,
@@ -95,6 +99,7 @@ export function EncounterWorkspacePage() {
 }
 
 function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace; queueEntryId: string; onChanged: () => void; onClosed: () => void }) {
+  const { flagOn } = useAuth();
   const locked = ws.status === "closed" || ws.note.status === "signed";
   const awaiting = ws.status === "awaiting_results";
   const latest = ws.vitals[0];
@@ -193,7 +198,7 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[180px_1fr_240px]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[180px_1fr_300px]">
         {/* Left rail */}
         <Card className="hidden h-fit p-3 lg:block">
           <nav className="space-y-1 text-sm">
@@ -248,6 +253,7 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
             <PrescriptionPanel ws={ws} locked={locked} onChanged={onChanged} />
           </section>
 
+          {flagOn("maternity") && <PregnancyDatingCard patientId={ws.patient.patient_id} />}
           {!locked && <FollowUp ws={ws} />}
 
           {!locked && (
@@ -264,8 +270,11 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
           )}
         </div>
 
-        {/* Right rail — patient history timeline */}
-        <HistoryPanel patientId={ws.patient.patient_id} />
+        {/* Right rail — AI co-pilot + patient history timeline */}
+        <div className="space-y-4">
+          <AssistPanel encounterId={ws.encounter_id} />
+          <HistoryPanel patientId={ws.patient.patient_id} />
+        </div>
       </div>
 
       <Dialog open={confirmSign} onOpenChange={setConfirmSign}>
@@ -288,19 +297,22 @@ function FollowUp({ ws }: { ws: Workspace }) {
   const { user } = useAuth();
   const qc = useQueryClient();
   const settings = useQuery({ queryKey: ["settings"], queryFn: getSettings, retry: false });
-  const provider = ws.provider_id || user?.id;
+  const providersQ = useQuery({ queryKey: ["providers"], queryFn: listProviders });
+  const provider = ws.provider_id || user?.id || "";
   const [date, setDate] = useState("");
+  const [time, setTime] = useState("09:00");
+  const [instructions, setInstructions] = useState("");
+  const [handler, setHandler] = useState(provider); // who attends; defaults to me
   const [editing, setEditing] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
 
-  // Look for an existing upcoming follow-up for this patient + provider, so the
-  // doctor can't silently double-book and can fix a wrong date.
+  // Look for an existing upcoming follow-up for this patient (any provider, so a
+  // handed-off one still shows), so the doctor can't silently double-book.
   const fromISO = new Date().toISOString();
   const toISO = new Date(Date.now() + 365 * 86_400_000).toISOString();
   const existingQ = useQuery({
-    queryKey: ["followup", ws.patient.patient_id, provider],
-    queryFn: () => listAppointments(ws.branch_id, fromISO, toISO, provider),
-    enabled: !!provider,
+    queryKey: ["followup", ws.patient.patient_id],
+    queryFn: () => listAppointments(ws.branch_id, fromISO, toISO),
     select: (appts) =>
       appts
         .filter((a) => a.patient_id === ws.patient.patient_id && a.is_followup && !["cancelled", "no_show", "completed"].includes(a.status))
@@ -314,33 +326,38 @@ function FollowUp({ ws }: { ws: Workspace }) {
     const base = Math.max(Date.now(), new Date(startsAtISO).getTime());
     return new Date(base + days * 86_400_000).toISOString();
   };
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["followup", ws.patient.patient_id, provider] });
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["followup", ws.patient.patient_id] });
 
   const book = useMutation({
     mutationFn: async () => {
-      if (!provider) throw new Error("no provider on this encounter");
-      const startsAt = new Date(`${date}T09:00:00`).toISOString();
-      const appt = await bookAppointment({
-        branch_id: ws.branch_id, patient_id: ws.patient.patient_id, provider_id: provider,
-        department_id: ws.department_id || undefined, starts_at: startsAt, duration_min: 30, reason: "Follow-up",
+      const attendedBy = handler || provider;
+      if (!attendedBy) throw new Error("no provider on this encounter");
+      const startsAt = new Date(`${date}T${time || "09:00"}:00`).toISOString();
+      // One atomic call: marks the follow-up, anchors the free window, records the
+      // ordering doctor (server defaults ordered_by to me) and links the origin visit.
+      await bookAppointment({
+        branch_id: ws.branch_id, patient_id: ws.patient.patient_id, provider_id: attendedBy,
+        department_id: ws.department_id || undefined, starts_at: startsAt, duration_min: 30,
+        reason: instructions.trim() || "Follow-up",
+        is_followup: true, free_until: freeUntilFor(startsAt), origin_encounter_id: ws.encounter_id,
       });
-      await markFollowup(appt.id, freeUntilFor(startsAt));
     },
-    onSuccess: () => { toast.success("Follow-up booked"); setDate(""); invalidate(); },
-    onError: () => toast.error("Could not book the follow-up"),
+    onSuccess: () => { toast.success("Follow-up booked"); setDate(""); setInstructions(""); invalidate(); },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not book the follow-up"),
   });
 
   const reschedule = useMutation({
     mutationFn: async () => {
-      if (!existing || !provider) throw new Error("nothing to reschedule");
-      const startsAt = new Date(`${date}T09:00:00`).toISOString();
+      if (!existing) throw new Error("nothing to reschedule");
+      const startsAt = new Date(`${date}T${time || "09:00"}:00`).toISOString();
       await rescheduleAppointment(existing.id, {
-        provider_id: provider, department_id: ws.department_id || undefined, starts_at: startsAt, duration_min: 30, reason: "Follow-up",
+        provider_id: existing.provider_id, department_id: ws.department_id || undefined, starts_at: startsAt, duration_min: 30,
+        reason: existing.reason || "Follow-up",
       });
       await markFollowup(existing.id, freeUntilFor(startsAt)); // re-anchor the free window
     },
     onSuccess: () => { toast.success("Follow-up moved"); setEditing(false); setDate(""); invalidate(); },
-    onError: () => toast.error("Could not move the follow-up"),
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not move the follow-up"),
   });
 
   const cancel = useMutation({
@@ -364,7 +381,14 @@ function FollowUp({ ws }: { ws: Workspace }) {
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-xs font-medium uppercase tracking-wide text-primary">Follow-up booked</p>
-              <p className="font-semibold text-brand">{fmtDate(existing.starts_at)}</p>
+              <p className="font-semibold text-brand">
+                {fmtDate(existing.starts_at)} · {new Date(existing.starts_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {existing.ordered_by && existing.ordered_by !== existing.provider_id && existing.ordered_by_name
+                  ? `Ordered by ${existing.ordered_by_name} · handled by ${existing.provider_name}`
+                  : `With ${existing.provider_name}`}
+              </p>
               <p className="text-xs text-muted-foreground">
                 {existing.free_until
                   ? `Free of the card fee if attended on or before ${fmtShort(existing.free_until)}.`
@@ -412,6 +436,23 @@ function FollowUp({ ws }: { ws: Workspace }) {
               <Label>Date</Label>
               <Input type="date" min={new Date().toISOString().slice(0, 10)} value={date} onChange={(e) => setDate(e.target.value)} />
             </div>
+            <div className="space-y-1.5">
+              <Label>Time</Label>
+              <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+            </div>
+            {!editing && (providersQ.data?.length ?? 0) > 1 && (
+              <div className="space-y-1.5">
+                <Label>Handled by</Label>
+                <Select value={handler} onValueChange={setHandler}>
+                  <SelectTrigger className="w-[190px]"><SelectValue placeholder="Choose a doctor…" /></SelectTrigger>
+                  <SelectContent>
+                    {(providersQ.data ?? []).map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.id === provider ? `${p.full_name} (me)` : p.full_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <Button variant="outline" disabled={!date} loading={book.isPending || reschedule.isPending} onClick={onSubmit}>
               {existing ? <><CalendarCheck className="h-4 w-4" /> Save new date</> : <><CalendarPlus className="h-4 w-4" /> Book follow-up</>}
             </Button>
@@ -419,10 +460,144 @@ function FollowUp({ ws }: { ws: Workspace }) {
               <Button variant="ghost" onClick={() => { setEditing(false); setDate(""); }}>Keep current</Button>
             )}
           </div>
+          {!editing && (
+            <div className="mt-3 space-y-1.5">
+              <Label>Instructions for the return visit <span className="text-muted-foreground">(optional)</span></Label>
+              <Textarea rows={2} placeholder="e.g. Recheck BP; review CBC results; titrate medication" value={instructions} onChange={(e) => setInstructions(e.target.value)} />
+            </div>
+          )}
           <p className="mt-2 text-xs text-muted-foreground">
             A doctor-booked follow-up is free of the card fee when the patient attends within the clinic's window.
+            {handler && handler !== provider ? " You're handing this to a colleague; it stays credited to you." : ""}
           </p>
         </>
+      )}
+    </Card>
+  );
+}
+
+function likelihoodChip(l: string) {
+  const k = (l || "").toLowerCase();
+  const cls =
+    k === "high" ? "bg-rose-100 text-rose-700 border-rose-200" : k === "moderate" ? "bg-amber-100 text-amber-700 border-amber-200" : "bg-slate-100 text-slate-600 border-slate-200";
+  return <span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold capitalize ${cls}`}>{l}</span>;
+}
+
+// AI clinical decision-support co-pilot. Doctor-triggered; provisional; never
+// writes to the record. Reads the encounter's current context + relevant past
+// history server-side (the patient's data never leaves the server for the browser).
+function AssistPanel({ encounterId }: { encounterId: string }) {
+  const [result, setResult] = useState<AssistResult | null>(null);
+  const [disabled, setDisabled] = useState(false);
+  const run = useMutation({
+    mutationFn: () => runAssist(encounterId),
+    onSuccess: (r) => {
+      setResult(r);
+      setDisabled(false);
+    },
+    onError: (e) => {
+      if (e instanceof AppError && e.code === "ASSIST_DISABLED") {
+        setDisabled(true);
+        return;
+      }
+      toast.error(e instanceof Error ? e.message : "Assist couldn't analyze this encounter");
+    },
+  });
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-center gap-1.5">
+        <Sparkles className="h-4 w-4 text-primary" />
+        <span className="text-sm font-semibold">Assist</span>
+        <Badge variant="outline" className="text-[10px]">AI · provisional</Badge>
+      </div>
+
+      {disabled ? (
+        <p className="mt-3 text-xs text-muted-foreground">AI Assist isn't enabled for this clinic yet.</p>
+      ) : !result ? (
+        <>
+          <p className="mt-2 text-xs text-muted-foreground">A second opinion drawn from this patient's vitals, allergies, your note, and past history. You decide.</p>
+          <Button size="sm" className="mt-3 w-full bg-primary" loading={run.isPending} onClick={() => run.mutate()}>
+            <Sparkles className="h-3.5 w-3.5" /> Analyze
+          </Button>
+        </>
+      ) : (
+        <div className="mt-3 space-y-3 text-xs">
+          {result.summary && <p className="italic text-muted-foreground">{result.summary}</p>}
+
+          {result.red_flags?.length > 0 && (
+            <div className="rounded-md border border-rose-200 bg-rose-50 p-2.5">
+              <div className="flex items-center gap-1 font-semibold text-rose-700">
+                <AlertTriangle className="h-3.5 w-3.5" /> Red flags
+              </div>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4 text-rose-800">
+                {result.red_flags.map((f, i) => (
+                  <li key={i}>{f}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {result.differentials?.length > 0 && (
+            <div>
+              <div className="mb-1 font-semibold text-foreground">Likely conditions</div>
+              <ul className="space-y-1.5">
+                {result.differentials.map((d, i) => (
+                  <li key={i}>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium text-foreground">{d.condition}</span>
+                      {likelihoodChip(d.likelihood)}
+                    </div>
+                    {d.why && <p className="text-muted-foreground">{d.why}</p>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {result.workup?.length > 0 && (
+            <div>
+              <div className="mb-1 font-semibold text-foreground">Check next</div>
+              <ul className="list-disc space-y-0.5 pl-4 text-muted-foreground">
+                {result.workup.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {result.management?.length > 0 && (
+            <div>
+              <div className="mb-1 font-semibold text-foreground">Consider</div>
+              <ul className="space-y-1">
+                {result.management.map((m, i) => (
+                  <li key={i}>
+                    <span className="text-foreground">{m.suggestion}</span>
+                    {m.caution && <span className="ml-1 font-medium text-amber-700">⚠ {m.caution}</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {result.questions?.length > 0 && (
+            <div>
+              <div className="mb-1 font-semibold text-foreground">Ask</div>
+              <ul className="list-disc space-y-0.5 pl-4 text-muted-foreground">
+                {result.questions.map((q, i) => (
+                  <li key={i}>{q}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between border-t pt-2">
+            <span className="text-[10px] text-muted-foreground">Suggestions only — the doctor decides.</span>
+            <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" loading={run.isPending} onClick={() => run.mutate()}>
+              Re-analyze
+            </Button>
+          </div>
+        </div>
       )}
     </Card>
   );
@@ -495,6 +670,7 @@ function HistoryDetailDialog({ item, onClose }: { item: HistoryItem; onClose: ()
 
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span>{item.type}</span>
+          <span>· {hhmm(item.started_at)}</span>
           {item.provider_name && <span>· {item.provider_name}</span>}
           {d && <Badge variant={d.status === "closed" ? "success" : "outline"}>{STATUS_LABEL[d.status] ?? d.status}</Badge>}
         </div>
@@ -504,9 +680,33 @@ function HistoryDetailDialog({ item, onClose }: { item: HistoryItem; onClose: ()
 
         {d && (
           <div className="space-y-5">
-            {d.vitals[0] && (
+            <Section title="Allergies">
+              {d.allergies.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No known allergies.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {d.allergies.map((a, i) => (
+                    <span key={`${a.substance}-${i}`} className="flex items-center gap-1 rounded-full bg-rose-600 px-3 py-1 text-xs font-semibold text-white">
+                      <AlertTriangle className="h-3.5 w-3.5" /> {a.substance}
+                      {a.severity ? ` · ${a.severity}` : ""}{a.reaction ? ` · ${a.reaction}` : ""}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </Section>
+
+            {d.vitals.length > 0 && (
               <Section title="Vitals">
-                <VitalsGrid vitals={d.vitals[0]} fields={vfields.data ?? []} />
+                <div className="space-y-3">
+                  {d.vitals.map((v, i) => (
+                    <div key={v.recorded_at ?? i}>
+                      {(d.vitals.length > 1 || v.recorded_at) && (
+                        <p className="mb-1 text-xs text-muted-foreground">{v.recorded_at ? new Date(v.recorded_at).toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : `Reading ${i + 1}`}</p>
+                      )}
+                      <VitalsGrid vitals={v} fields={vfields.data ?? []} />
+                    </div>
+                  ))}
+                </div>
               </Section>
             )}
 
@@ -519,6 +719,9 @@ function HistoryDetailDialog({ item, onClose }: { item: HistoryItem; onClose: ()
                       <p className="whitespace-pre-wrap text-sm">{s.text}</p>
                     </div>
                   ))}
+                  {note?.signed_at && (
+                    <p className="pt-1 text-xs text-muted-foreground">Signed {new Date(note.signed_at).toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                  )}
                 </div>
               </Section>
             )}
@@ -547,6 +750,18 @@ function HistoryDetailDialog({ item, onClose }: { item: HistoryItem; onClose: ()
                       <span className="font-medium">{m.drug_name}</span>
                       <span className="text-muted-foreground"> · {[m.dose, m.frequency, m.duration].filter(Boolean).join(" · ")}</span>
                       {m.instructions ? <p className="text-xs text-muted-foreground">{m.instructions}</p> : null}
+                      {((m.allergens?.length ?? 0) > 0 || m.allergy_override) && (
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          {(m.allergens ?? []).map((a) => (
+                            <Badge key={a} variant="warning" className="gap-1"><AlertTriangle className="h-3 w-3" />{a}</Badge>
+                          ))}
+                          {m.allergy_override && (
+                            <Badge variant="destructive" className="gap-1" title={m.allergy_override}>
+                              Prescribed despite allergy
+                            </Badge>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -584,8 +799,62 @@ function HistoryDetailDialog({ item, onClose }: { item: HistoryItem; onClose: ()
                                 </tbody>
                               </table>
                             )}
+                            {it.results.length === 0 && it.status !== "validated" && (
+                              <p className="mt-1 text-xs text-muted-foreground">Awaiting lab…</p>
+                            )}
                           </div>
                         ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Section>
+            )}
+
+            {(d.lab_referrals?.length ?? 0) > 0 && (
+              <Section title="Lab requests">
+                <div className="space-y-3">
+                  {(d.lab_referrals ?? []).map((r) => (
+                    <div key={r.id} className="rounded-md border">
+                      <div className="flex items-center justify-between gap-2 border-b bg-muted/30 px-3 py-1.5 text-sm">
+                        <span className="font-medium">{r.tests.split("\n").filter(Boolean).join(", ")}</span>
+                        <Badge variant={r.status === "resulted" ? "success" : r.status === "cancelled" ? "outline" : "warning"}>{r.status}</Badge>
+                      </div>
+                      <div className="space-y-2 px-3 py-2 text-sm">
+                        {r.indication && <p className="text-xs text-muted-foreground">Indication: {r.indication}</p>}
+                        {r.status === "resulted" ? (
+                          <div className="rounded bg-muted/40 p-2 text-xs">
+                            {(r.external_lab || r.resulted_at) && (
+                              <p className="font-medium">{r.external_lab || "External lab"}{r.resulted_at ? ` · ${new Date(r.resulted_at).toLocaleDateString()}` : ""}</p>
+                            )}
+                            {r.result_summary && <p className="mt-0.5 whitespace-pre-wrap">{r.result_summary}</p>}
+                            {(r.result_values?.length ?? 0) > 0 && (
+                              <table className="mt-1.5 w-full">
+                                <tbody>
+                                  {r.result_values!.map((v, i) => (
+                                    <tr key={i}>
+                                      <td className="py-0.5 text-muted-foreground">{v.name}</td>
+                                      <td className="py-0.5 font-medium">{v.value}{v.unit ? ` ${v.unit}` : ""}</td>
+                                      <td className="py-0.5 text-muted-foreground">{v.ref || ""}</td>
+                                      <td className="py-0.5 text-right">{v.flag ? <Badge variant="outline">{v.flag}</Badge> : null}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                            {(r.result_files?.length ?? 0) > 0 && (
+                              <div className="mt-1.5 flex flex-wrap gap-2">
+                                {r.result_files!.map((f, i) => (
+                                  <a key={i} href={f.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded border bg-background px-2 py-0.5 text-primary hover:underline">
+                                    <Printer className="h-3 w-3" /> {f.name}
+                                  </a>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">{r.status === "cancelled" ? "Cancelled." : "Awaiting result."}</p>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -632,22 +901,54 @@ function worstFlag(a: Flag, b: Flag): Flag {
   return null;
 }
 
-// VitalsGrid renders the five headline tiles with Low/Normal/High flags computed
-// from the clinic's configured reference ranges (shared by the workspace + history).
+// VitalsGrid renders one tile per configured vital, with Low/Normal/High flags
+// computed from the clinic's reference ranges (shared by the workspace + history).
+// It is data-driven off the clinic's vitals form so any enabled field (resp rate,
+// height, …) appears — and any field that has a recorded value still shows even if
+// later disabled, so the read-only history view never hides captured data.
 function VitalsGrid({ vitals, fields }: { vitals: Vitals; fields: VitalField[] }) {
   const flagOf = (key: string, v: number | undefined): Flag => {
     const f = fields.find((x) => x.key === key);
     if (!f || v === undefined) return null;
     return vitalFlag(f, v);
   };
-  const bp = worstFlag(flagOf("systolic", numOr(vitals.systolic)), flagOf("diastolic", numOr(vitals.diastolic)));
+  const val = (key: string): string | undefined => {
+    const raw = (vitals as unknown as Record<string, unknown>)[key];
+    return raw == null || raw === "" ? undefined : String(raw);
+  };
+  const shown = fields.filter((f) => f.enabled || val(f.key) !== undefined).sort((a, b) => a.order - b.order);
+  const hasBP = shown.some((f) => f.key === "systolic") && shown.some((f) => f.key === "diastolic");
+
+  const tiles: { key: string; label: string; value: string; flag: Flag }[] = [];
+  let bpDone = false;
+  for (const f of shown) {
+    if ((f.key === "systolic" || f.key === "diastolic") && hasBP) {
+      if (bpDone) continue;
+      bpDone = true;
+      const s = val("systolic"), d = val("diastolic");
+      tiles.push({
+        key: "bp", label: "BP",
+        value: s && d ? `${s}/${d}` : "—",
+        flag: worstFlag(flagOf("systolic", numOr(vitals.systolic)), flagOf("diastolic", numOr(vitals.diastolic))),
+      });
+      continue;
+    }
+    const v = val(f.key);
+    tiles.push({
+      key: f.key, label: f.label,
+      value: v ? `${v}${f.unit ? ` ${f.unit}` : ""}` : "—",
+      flag: flagOf(f.key, numOr(v)),
+    });
+  }
+
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-      <VitalCard label="Temp" value={vitals.temp_c ? `${vitals.temp_c} °C` : "—"} flag={flagOf("temp_c", numOr(vitals.temp_c))} />
-      <VitalCard label="BP" value={vitals.systolic && vitals.diastolic ? `${vitals.systolic}/${vitals.diastolic}` : "—"} flag={bp} />
-      <VitalCard label="HR" value={vitals.pulse ? String(vitals.pulse) : "—"} flag={flagOf("pulse", numOr(vitals.pulse))} />
-      <VitalCard label="SpO₂" value={vitals.spo2 ? `${vitals.spo2}%` : "—"} flag={flagOf("spo2", numOr(vitals.spo2))} />
-      <VitalCard label="Weight" value={vitals.weight_kg ? `${vitals.weight_kg} kg` : "—"} flag={flagOf("weight_kg", numOr(vitals.weight_kg))} />
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {tiles.map((t) => <VitalCard key={t.key} label={t.label} value={t.value} flag={t.flag} />)}
+      </div>
+      {vitals.notes ? (
+        <p className="text-xs text-muted-foreground"><span className="font-medium">Notes:</span> {vitals.notes}</p>
+      ) : null}
     </div>
   );
 }

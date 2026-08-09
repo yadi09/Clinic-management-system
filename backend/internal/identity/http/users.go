@@ -45,7 +45,12 @@ func (h *Handlers) InviteUser(c *gin.Context) {
 		httpx.Fail(c, apperr.Validation("a valid email and full name are required"))
 		return
 	}
-	res, err := h.users.InviteUser(c.Request.Context(), identity.InviteInput{Email: req.Email, FullName: req.FullName, RoleCodes: req.RoleCodes})
+	branchIDs, err := decodeBranchIDs(req.Branches)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	res, err := h.users.InviteUser(c.Request.Context(), identity.InviteInput{Email: req.Email, FullName: req.FullName, RoleCodes: req.RoleCodes, BranchIDs: branchIDs})
 	if err != nil {
 		httpx.Fail(c, err)
 		return
@@ -71,6 +76,38 @@ func (h *Handlers) UpdateUserStatus(c *gin.Context) {
 	httpx.NoContent(c)
 }
 
+// DeleteUser handles DELETE /users/:id (soft-delete + session revoke).
+func (h *Handlers) UpdateUserName(c *gin.Context) {
+	uid, ok := userID(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		FullName string `json:"full_name"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("a name is required"))
+		return
+	}
+	if err := h.users.UpdateUserName(c.Request.Context(), uid, req.FullName); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+func (h *Handlers) DeleteUser(c *gin.Context) {
+	uid, ok := userID(c)
+	if !ok {
+		return
+	}
+	if err := h.users.DeleteUser(c.Request.Context(), uid); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
 // AssignRoles handles PUT /users/:id/roles.
 func (h *Handlers) AssignRoles(c *gin.Context) {
 	uid, ok := userID(c)
@@ -82,11 +119,32 @@ func (h *Handlers) AssignRoles(c *gin.Context) {
 		httpx.Fail(c, apperr.Validation("roles is required"))
 		return
 	}
-	if err := h.users.AssignRoles(c.Request.Context(), uid, req.Roles); err != nil {
+	branchIDs, err := decodeBranchIDs(req.Branches)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	if err := h.users.AssignRoles(c.Request.Context(), uid, req.Roles, branchIDs); err != nil {
 		httpx.Fail(c, err)
 		return
 	}
 	httpx.NoContent(c)
+}
+
+// decodeBranchIDs turns encoded brn_… ids into UUIDs (empty input = all branches).
+func decodeBranchIDs(raw []string) ([]uuid.UUID, error) {
+	out := make([]uuid.UUID, 0, len(raw))
+	for _, s := range raw {
+		if s == "" {
+			continue
+		}
+		b, err := id.Decode(id.PrefixBranch, s)
+		if err != nil {
+			return nil, apperr.Validation("invalid branch id")
+		}
+		out = append(out, b)
+	}
+	return out, nil
 }
 
 // ListRoles handles GET /roles.

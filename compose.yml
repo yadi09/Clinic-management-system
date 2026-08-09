@@ -5,6 +5,9 @@
 
 x-backend-env: &backend-env
   APP_ENV: ${APP_ENV:-dev}
+  # Public web URL used to build staff invite / accept-invite links. Set to the
+  # real domain in prod (.env); the localhost default is for local dev only.
+  APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8088}
   # api/worker connect as the least-privilege clinic_app role so RLS is enforced
   # (the superuser would bypass it). Migrations run as the superuser (see migrate).
   DATABASE_URL: postgres://clinic_app:${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-clinic}?sslmode=disable
@@ -20,10 +23,24 @@ x-backend-env: &backend-env
   CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
   CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
   CLOUDINARY_UPLOAD_FOLDER: ${CLOUDINARY_UPLOAD_FOLDER:-clinic}
+  # Object storage: "r2" (Cloudflare R2, S3-compatible) or "cloudinary". Empty =
+  # auto (R2 if configured, else Cloudinary). R2 creds are secrets (VPS .env only).
+  STORAGE_PROVIDER: ${STORAGE_PROVIDER:-}
+  R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+  R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+  R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+  R2_BUCKET: ${R2_BUCKET:-}
   # Deepgram speech-to-text for clinician voice dictation. Empty = feature disabled.
   DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
   DEEPGRAM_MODEL: ${DEEPGRAM_MODEL:-nova-3}
   DEEPGRAM_LANGUAGE: ${DEEPGRAM_LANGUAGE:-en}
+  # AI clinical decision-support co-pilot (ClinicOS Assist). Empty = feature disabled.
+  NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+  AI_MODEL: ${AI_MODEL:-meta/llama-3.3-70b-instruct}
+  AI_BASE_URL: ${AI_BASE_URL:-https://integrate.api.nvidia.com/v1}
+  # DHIS2 (Ministry of Health) reporting showcase. Empty token = push disabled.
+  DHIS2_TOKEN: ${DHIS2_TOKEN:-}
+  DHIS2_BASE_URL: ${DHIS2_BASE_URL:-https://dhis.moh.gov.et}
   RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-20}
   RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-40}
 

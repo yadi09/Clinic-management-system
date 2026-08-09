@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const patientSchema = z.object({
+  mrn: z.string().optional(), // existing card ID; blank = auto-generate
   first_name: z.string().min(1, "First name is required"),
   middle_name: z.string().optional(),
   last_name: z.string().min(1, "Last name is required"),

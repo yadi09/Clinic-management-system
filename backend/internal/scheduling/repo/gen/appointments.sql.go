@@ -13,22 +13,28 @@ import (
 )
 
 const createAppointment = `-- name: CreateAppointment :one
-INSERT INTO appointments (tenant_id, branch_id, department_id, patient_id, provider_id, resource_id, starts_at, ends_at, reason, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+INSERT INTO appointments (tenant_id, branch_id, department_id, patient_id, provider_id, resource_id,
+                          starts_at, ends_at, reason, is_followup, free_until, ordered_by, origin_encounter_id, created_by)
+VALUES ($1, $2, $3, $4, $5, $6,
+        $7, $8, $9, $10, $11, $12, $13, $14)
 RETURNING id, starts_at, ends_at, status, created_at
 `
 
 type CreateAppointmentParams struct {
-	TenantID     uuid.UUID  `json:"tenant_id"`
-	BranchID     uuid.UUID  `json:"branch_id"`
-	DepartmentID *uuid.UUID `json:"department_id"`
-	PatientID    uuid.UUID  `json:"patient_id"`
-	ProviderID   uuid.UUID  `json:"provider_id"`
-	ResourceID   *uuid.UUID `json:"resource_id"`
-	StartsAt     time.Time  `json:"starts_at"`
-	EndsAt       time.Time  `json:"ends_at"`
-	Reason       *string    `json:"reason"`
-	CreatedBy    *uuid.UUID `json:"created_by"`
+	TenantID          uuid.UUID  `json:"tenant_id"`
+	BranchID          uuid.UUID  `json:"branch_id"`
+	DepartmentID      *uuid.UUID `json:"department_id"`
+	PatientID         uuid.UUID  `json:"patient_id"`
+	ProviderID        uuid.UUID  `json:"provider_id"`
+	ResourceID        *uuid.UUID `json:"resource_id"`
+	StartsAt          time.Time  `json:"starts_at"`
+	EndsAt            time.Time  `json:"ends_at"`
+	Reason            *string    `json:"reason"`
+	IsFollowup        bool       `json:"is_followup"`
+	FreeUntil         *time.Time `json:"free_until"`
+	OrderedBy         *uuid.UUID `json:"ordered_by"`
+	OriginEncounterID *uuid.UUID `json:"origin_encounter_id"`
+	CreatedBy         *uuid.UUID `json:"created_by"`
 }
 
 type CreateAppointmentRow struct {
@@ -50,6 +56,10 @@ func (q *Queries) CreateAppointment(ctx context.Context, arg CreateAppointmentPa
 		arg.StartsAt,
 		arg.EndsAt,
 		arg.Reason,
+		arg.IsFollowup,
+		arg.FreeUntil,
+		arg.OrderedBy,
+		arg.OriginEncounterID,
 		arg.CreatedBy,
 	)
 	var i CreateAppointmentRow
@@ -64,7 +74,8 @@ func (q *Queries) CreateAppointment(ctx context.Context, arg CreateAppointmentPa
 }
 
 const getAppointment = `-- name: GetAppointment :one
-SELECT id, tenant_id, branch_id, department_id, patient_id, provider_id, resource_id, starts_at, ends_at, status, reason
+SELECT id, tenant_id, branch_id, department_id, patient_id, provider_id, resource_id, starts_at, ends_at,
+       status, reason, is_followup, free_until, ordered_by, origin_encounter_id
 FROM appointments
 WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
 `
@@ -75,17 +86,21 @@ type GetAppointmentParams struct {
 }
 
 type GetAppointmentRow struct {
-	ID           uuid.UUID  `json:"id"`
-	TenantID     uuid.UUID  `json:"tenant_id"`
-	BranchID     uuid.UUID  `json:"branch_id"`
-	DepartmentID *uuid.UUID `json:"department_id"`
-	PatientID    uuid.UUID  `json:"patient_id"`
-	ProviderID   uuid.UUID  `json:"provider_id"`
-	ResourceID   *uuid.UUID `json:"resource_id"`
-	StartsAt     time.Time  `json:"starts_at"`
-	EndsAt       time.Time  `json:"ends_at"`
-	Status       string     `json:"status"`
-	Reason       *string    `json:"reason"`
+	ID                uuid.UUID  `json:"id"`
+	TenantID          uuid.UUID  `json:"tenant_id"`
+	BranchID          uuid.UUID  `json:"branch_id"`
+	DepartmentID      *uuid.UUID `json:"department_id"`
+	PatientID         uuid.UUID  `json:"patient_id"`
+	ProviderID        uuid.UUID  `json:"provider_id"`
+	ResourceID        *uuid.UUID `json:"resource_id"`
+	StartsAt          time.Time  `json:"starts_at"`
+	EndsAt            time.Time  `json:"ends_at"`
+	Status            string     `json:"status"`
+	Reason            *string    `json:"reason"`
+	IsFollowup        bool       `json:"is_followup"`
+	FreeUntil         *time.Time `json:"free_until"`
+	OrderedBy         *uuid.UUID `json:"ordered_by"`
+	OriginEncounterID *uuid.UUID `json:"origin_encounter_id"`
 }
 
 func (q *Queries) GetAppointment(ctx context.Context, arg GetAppointmentParams) (GetAppointmentRow, error) {
@@ -103,6 +118,10 @@ func (q *Queries) GetAppointment(ctx context.Context, arg GetAppointmentParams) 
 		&i.EndsAt,
 		&i.Status,
 		&i.Reason,
+		&i.IsFollowup,
+		&i.FreeUntil,
+		&i.OrderedBy,
+		&i.OriginEncounterID,
 	)
 	return i, err
 }
@@ -110,44 +129,54 @@ func (q *Queries) GetAppointment(ctx context.Context, arg GetAppointmentParams) 
 const listAppointments = `-- name: ListAppointments :many
 SELECT a.id, a.patient_id, a.provider_id, a.department_id, a.resource_id,
        a.starts_at, a.ends_at, a.status, a.reason, a.is_followup, a.free_until,
+       a.ordered_by, a.origin_encounter_id,
        p.first_name, p.last_name, p.mrn,
        u.full_name AS provider_name,
+       (u.status = 'active') AS provider_active,
+       ob.full_name AS ordered_by_name,
        d.name AS department_name
 FROM appointments a
 JOIN patients p ON p.id = a.patient_id AND p.tenant_id = a.tenant_id
 JOIN users u ON u.id = a.provider_id AND u.tenant_id = a.tenant_id
+LEFT JOIN users ob ON ob.id = a.ordered_by AND ob.tenant_id = a.tenant_id
 LEFT JOIN departments d ON d.id = a.department_id AND d.tenant_id = a.tenant_id
 WHERE a.tenant_id = $1 AND a.branch_id = $2 AND a.deleted_at IS NULL
   AND a.starts_at >= $3 AND a.starts_at < $4
   AND ($5::uuid IS NULL OR a.provider_id = $5)
+  AND (NOT $6::bool OR a.is_followup)
 ORDER BY a.starts_at
 `
 
 type ListAppointmentsParams struct {
-	TenantID   uuid.UUID  `json:"tenant_id"`
-	BranchID   uuid.UUID  `json:"branch_id"`
-	FromTs     time.Time  `json:"from_ts"`
-	ToTs       time.Time  `json:"to_ts"`
-	ProviderID *uuid.UUID `json:"provider_id"`
+	TenantID     uuid.UUID  `json:"tenant_id"`
+	BranchID     uuid.UUID  `json:"branch_id"`
+	FromTs       time.Time  `json:"from_ts"`
+	ToTs         time.Time  `json:"to_ts"`
+	ProviderID   *uuid.UUID `json:"provider_id"`
+	OnlyFollowup bool       `json:"only_followup"`
 }
 
 type ListAppointmentsRow struct {
-	ID             uuid.UUID  `json:"id"`
-	PatientID      uuid.UUID  `json:"patient_id"`
-	ProviderID     uuid.UUID  `json:"provider_id"`
-	DepartmentID   *uuid.UUID `json:"department_id"`
-	ResourceID     *uuid.UUID `json:"resource_id"`
-	StartsAt       time.Time  `json:"starts_at"`
-	EndsAt         time.Time  `json:"ends_at"`
-	Status         string     `json:"status"`
-	Reason         *string    `json:"reason"`
-	IsFollowup     bool       `json:"is_followup"`
-	FreeUntil      *time.Time `json:"free_until"`
-	FirstName      string     `json:"first_name"`
-	LastName       string     `json:"last_name"`
-	Mrn            string     `json:"mrn"`
-	ProviderName   string     `json:"provider_name"`
-	DepartmentName *string    `json:"department_name"`
+	ID                uuid.UUID  `json:"id"`
+	PatientID         uuid.UUID  `json:"patient_id"`
+	ProviderID        uuid.UUID  `json:"provider_id"`
+	DepartmentID      *uuid.UUID `json:"department_id"`
+	ResourceID        *uuid.UUID `json:"resource_id"`
+	StartsAt          time.Time  `json:"starts_at"`
+	EndsAt            time.Time  `json:"ends_at"`
+	Status            string     `json:"status"`
+	Reason            *string    `json:"reason"`
+	IsFollowup        bool       `json:"is_followup"`
+	FreeUntil         *time.Time `json:"free_until"`
+	OrderedBy         *uuid.UUID `json:"ordered_by"`
+	OriginEncounterID *uuid.UUID `json:"origin_encounter_id"`
+	FirstName         string     `json:"first_name"`
+	LastName          string     `json:"last_name"`
+	Mrn               string     `json:"mrn"`
+	ProviderName      string     `json:"provider_name"`
+	ProviderActive    bool       `json:"provider_active"`
+	OrderedByName     *string    `json:"ordered_by_name"`
+	DepartmentName    *string    `json:"department_name"`
 }
 
 func (q *Queries) ListAppointments(ctx context.Context, arg ListAppointmentsParams) ([]ListAppointmentsRow, error) {
@@ -157,6 +186,7 @@ func (q *Queries) ListAppointments(ctx context.Context, arg ListAppointmentsPara
 		arg.FromTs,
 		arg.ToTs,
 		arg.ProviderID,
+		arg.OnlyFollowup,
 	)
 	if err != nil {
 		return nil, err
@@ -177,10 +207,14 @@ func (q *Queries) ListAppointments(ctx context.Context, arg ListAppointmentsPara
 			&i.Reason,
 			&i.IsFollowup,
 			&i.FreeUntil,
+			&i.OrderedBy,
+			&i.OriginEncounterID,
 			&i.FirstName,
 			&i.LastName,
 			&i.Mrn,
 			&i.ProviderName,
+			&i.ProviderActive,
+			&i.OrderedByName,
 			&i.DepartmentName,
 		); err != nil {
 			return nil, err
@@ -191,6 +225,132 @@ func (q *Queries) ListAppointments(ctx context.Context, arg ListAppointmentsPara
 		return nil, err
 	}
 	return items, nil
+}
+
+const listFollowups = `-- name: ListFollowups :many
+SELECT a.id, a.patient_id, a.provider_id, a.department_id, a.resource_id,
+       a.starts_at, a.ends_at, a.status, a.reason, a.is_followup, a.free_until,
+       a.ordered_by, a.origin_encounter_id,
+       p.first_name, p.last_name, p.mrn,
+       u.full_name AS provider_name,
+       (u.status = 'active') AS provider_active,
+       ob.full_name AS ordered_by_name,
+       d.name AS department_name
+FROM appointments a
+JOIN patients p ON p.id = a.patient_id AND p.tenant_id = a.tenant_id
+JOIN users u ON u.id = a.provider_id AND u.tenant_id = a.tenant_id
+LEFT JOIN users ob ON ob.id = a.ordered_by AND ob.tenant_id = a.tenant_id
+LEFT JOIN departments d ON d.id = a.department_id AND d.tenant_id = a.tenant_id
+WHERE a.tenant_id = $1 AND a.branch_id = $2 AND a.deleted_at IS NULL
+  AND a.is_followup
+  AND a.starts_at >= $3 AND a.starts_at < $4
+ORDER BY a.starts_at
+`
+
+type ListFollowupsParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	BranchID uuid.UUID `json:"branch_id"`
+	FromTs   time.Time `json:"from_ts"`
+	ToTs     time.Time `json:"to_ts"`
+}
+
+type ListFollowupsRow struct {
+	ID                uuid.UUID  `json:"id"`
+	PatientID         uuid.UUID  `json:"patient_id"`
+	ProviderID        uuid.UUID  `json:"provider_id"`
+	DepartmentID      *uuid.UUID `json:"department_id"`
+	ResourceID        *uuid.UUID `json:"resource_id"`
+	StartsAt          time.Time  `json:"starts_at"`
+	EndsAt            time.Time  `json:"ends_at"`
+	Status            string     `json:"status"`
+	Reason            *string    `json:"reason"`
+	IsFollowup        bool       `json:"is_followup"`
+	FreeUntil         *time.Time `json:"free_until"`
+	OrderedBy         *uuid.UUID `json:"ordered_by"`
+	OriginEncounterID *uuid.UUID `json:"origin_encounter_id"`
+	FirstName         string     `json:"first_name"`
+	LastName          string     `json:"last_name"`
+	Mrn               string     `json:"mrn"`
+	ProviderName      string     `json:"provider_name"`
+	ProviderActive    bool       `json:"provider_active"`
+	OrderedByName     *string    `json:"ordered_by_name"`
+	DepartmentName    *string    `json:"department_name"`
+}
+
+// Follow-ups in a window for the lens (due / upcoming / overdue / needs-handoff).
+// provider_active drives the handoff flag; overdue/coverage are derived from free_until.
+func (q *Queries) ListFollowups(ctx context.Context, arg ListFollowupsParams) ([]ListFollowupsRow, error) {
+	rows, err := q.db.Query(ctx, listFollowups,
+		arg.TenantID,
+		arg.BranchID,
+		arg.FromTs,
+		arg.ToTs,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListFollowupsRow{}
+	for rows.Next() {
+		var i ListFollowupsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PatientID,
+			&i.ProviderID,
+			&i.DepartmentID,
+			&i.ResourceID,
+			&i.StartsAt,
+			&i.EndsAt,
+			&i.Status,
+			&i.Reason,
+			&i.IsFollowup,
+			&i.FreeUntil,
+			&i.OrderedBy,
+			&i.OriginEncounterID,
+			&i.FirstName,
+			&i.LastName,
+			&i.Mrn,
+			&i.ProviderName,
+			&i.ProviderActive,
+			&i.OrderedByName,
+			&i.DepartmentName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const reassignAppointmentProvider = `-- name: ReassignAppointmentProvider :one
+UPDATE appointments
+SET provider_id = $1, updated_at = now()
+WHERE tenant_id = $2 AND id = $3 AND deleted_at IS NULL
+RETURNING id, patient_id, ordered_by
+`
+
+type ReassignAppointmentProviderParams struct {
+	ProviderID uuid.UUID `json:"provider_id"`
+	TenantID   uuid.UUID `json:"tenant_id"`
+	ID         uuid.UUID `json:"id"`
+}
+
+type ReassignAppointmentProviderRow struct {
+	ID        uuid.UUID  `json:"id"`
+	PatientID uuid.UUID  `json:"patient_id"`
+	OrderedBy *uuid.UUID `json:"ordered_by"`
+}
+
+// Hand the follow-up to a covering doctor: change who attends (provider_id) while
+// leaving ordered_by intact. The GiST exclusion still rejects a time conflict.
+func (q *Queries) ReassignAppointmentProvider(ctx context.Context, arg ReassignAppointmentProviderParams) (ReassignAppointmentProviderRow, error) {
+	row := q.db.QueryRow(ctx, reassignAppointmentProvider, arg.ProviderID, arg.TenantID, arg.ID)
+	var i ReassignAppointmentProviderRow
+	err := row.Scan(&i.ID, &i.PatientID, &i.OrderedBy)
+	return i, err
 }
 
 const rescheduleAppointment = `-- name: RescheduleAppointment :one
@@ -248,8 +408,8 @@ type SetAppointmentFollowupRow struct {
 }
 
 // Mark an appointment as a covered (doctor-booked) follow-up that is free of the
-// card fee when attended on or before free_until. In Phase 3b the doctor sets
-// this when booking a follow-up; in 3a reception can mark it manually.
+// card fee when attended on or before free_until. Used by reception to mark an
+// existing appointment manually; the doctor flow sets these inline at booking.
 func (q *Queries) SetAppointmentFollowup(ctx context.Context, arg SetAppointmentFollowupParams) (SetAppointmentFollowupRow, error) {
 	row := q.db.QueryRow(ctx, setAppointmentFollowup,
 		arg.IsFollowup,
