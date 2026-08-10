@@ -164,7 +164,17 @@
       "Bash(rm -rf profile)",
       "Bash(node drive.mjs 2000)",
       "Bash(node drive.mjs 2000 control)",
-      "Bash(node drive.mjs 100)"
+      "Bash(node drive.mjs 100)",
+      "Bash(scp -q -i ~/.ssh/The-millions /tmp/claude-1000/-home-yadi09-Yaz-project-Clinic-management-system/645e13cd-7bf4-4bdd-bc99-7189bfed4c74/scratchpad/unbilled.sql themillions@77.68.116.240:/tmp/unbilled.sql)",
+      "Bash(sed -i 's|\"github.com/jackc/pgx/v5\"|\"github.com/jackc/pgx/v5\"\\\\n\\\\t\"github.com/jackc/pgx/v5/pgconn\"|' internal/billing/service/service.go)",
+      "Bash(gofmt -w internal/billing/service/service.go)",
+      "Bash(gofmt -w internal/dental/service/service.go)",
+      "Bash(gofmt -w internal/dental/service/service.go internal/dental/http/handlers.go)",
+      "Bash(echo \"OK=$?\")",
+      "Bash(rsync -az --exclude node_modules --exclude .git -e 'ssh -i /home/yadi09/.ssh/The-millions -o ConnectTimeout=20' backend/ themillions@77.68.116.240:/home/themillions/clinicos/backend/)",
+      "Bash(scp -q -i ~/.ssh/The-millions /tmp/claude-1000/-home-yadi09-Yaz-project-Clinic-management-system/645e13cd-7bf4-4bdd-bc99-7189bfed4c74/scratchpad/proj.sql themillions@77.68.116.240:/tmp/proj.sql)",
+      "Bash(scp -q -i ~/.ssh/The-millions /tmp/claude-1000/-home-yadi09-Yaz-project-Clinic-management-system/645e13cd-7bf4-4bdd-bc99-7189bfed4c74/scratchpad/delta.sql themillions@77.68.116.240:/tmp/delta.sql)",
+      "Bash(node /tmp/claude-1000/-home-yadi09-Yaz-project-Clinic-management-system/645e13cd-7bf4-4bdd-bc99-7189bfed4c74/scratchpad/smoke.mjs \"https://app.clinicos.cc/patients/pat_e9zdkj34yx7815hzvh3cffpk6c\")"
     ],
     "additionalDirectories": [
       "/home/yadi09/Yaz_project/Clinic-management-system/backend/internal/billing/repo/queries",

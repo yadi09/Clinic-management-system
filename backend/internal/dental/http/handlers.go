@@ -34,7 +34,8 @@ func chartDTO(ch dental.Chart) gin.H {
 }
 
 func balanceDTO(b dental.Balance) gin.H {
-	return gin.H{"owed": b.Owed, "paid": b.Paid, "balance": b.Balance, "due": b.Due, "overdue": b.Overdue}
+	return gin.H{"owed": b.Owed, "paid": b.Paid, "balance": b.Balance, "due": b.Due, "overdue": b.Overdue,
+		"at_cashier": b.AtCashier, "waived": b.Waived}
 }
 
 func imageDTO(im dental.Image) gin.H {

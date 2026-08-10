@@ -20,6 +20,7 @@ import { toast } from "@/components/ui/sonner";
 import { cn, ageLabel } from "@/lib/utils";
 import { useAuth } from "@/app/auth-context";
 import { Segmented } from "@/components/ui/segmented";
+import { MONEY, sessionMoneyState } from "@/features/dental/money";
 import { AppError } from "@/lib/api-client";
 import { MoveSessionDialog } from "@/features/dental/shared/MoveSessionDialog";
 import { formatEthiopian } from "@/lib/ethiopian";
@@ -40,21 +41,11 @@ const daysFromToday = (iso: string) => Math.round((new Date(`${iso}T00:00:00`).g
 /** A session plus the plan it belongs to — reception always needs both together. */
 interface Row { plan: Plan; s: Session }
 
-/** Money state of one session, from the front desk's point of view. */
-type Money = "due" | "billed" | "paid" | "scheduled";
-function moneyState(s: Session): Money {
-  if (s.payment === "paid") return "paid";
-  if (s.payment === "billed") return "billed";
-  // Service already given but unpaid — this is the money to actually chase.
-  if (s.status === "done" || s.pay_later) return "due";
-  return "scheduled";
-}
-const MONEY_BADGE: Record<Money, { variant: "destructive" | "warning" | "success" | "outline"; label: string }> = {
-  due: { variant: "destructive", label: "Due" },
-  billed: { variant: "warning", label: "At cashier" },
-  paid: { variant: "success", label: "Paid" },
-  scheduled: { variant: "outline", label: "Not due yet" },
-};
+// The desk used its own three-word money vocabulary while the dentist's page used
+// another; the same session could read "Due" on one screen and "Unpaid" on the other.
+// Both now answer to features/dental/money.ts, so a verbal handoff between the two
+// people uses the same words.
+const moneyState = (s: Session) => sessionMoneyState(s);
 
 type Lens = "all" | "unpaid" | "upcoming" | "done";
 
@@ -87,7 +78,9 @@ export function ReceptionDentalView({ patientId }: { patientId: string }) {
     [plans],
   );
   const today = todayISO();
-  const atCashier = rows.filter((r) => moneyState(r.s) === "billed").reduce((a, r) => a + num(r.s.amount_due), 0);
+  // The server figure, from the charge ledger — the client one summed amount_due
+  // (the plan's intent) and drifted from the receipts after any refund.
+  const atCashier = num(summary.data?.balance.at_cashier);
   const billable = rows.filter((r) => r.s.payment === "unpaid" && num(r.s.amount_due) > 0);
   // Missed: should have happened, never marked done — reception chases these.
   const missed = rows.filter((r) => r.s.status === "planned" && r.s.scheduled_date < today);
@@ -239,8 +232,8 @@ export function ReceptionDentalView({ patientId }: { patientId: string }) {
             onChange={(v) => setLens(v as Lens)}
             options={([
               ["all", "All", rows.length],
-              ["unpaid", "Needs payment", rows.filter((r) => moneyState(r.s) === "due").length],
-              ["upcoming", "Upcoming", rows.filter((r) => moneyState(r.s) === "scheduled").length],
+              ["unpaid", "Needs payment", rows.filter((r) => moneyState(r.s) === "owedNow").length],
+              ["upcoming", "Upcoming", rows.filter((r) => moneyState(r.s) === "notYetDue").length],
               ["done", "Paid", rows.filter((r) => moneyState(r.s) === "paid").length],
             ] as [Lens, string, number][]).map(([value, label, n]) => ({ value, label, badge: n }))}
           />
@@ -301,15 +294,15 @@ function PlanMoneyCard({ patientId, plan, lens, canCollect, canReschedule, onRes
   const live = plan.sessions.filter((s) => s.status !== "cancelled");
   const match = (s: Session) =>
     lens === "all" ||
-    (lens === "unpaid" && moneyState(s) === "due") ||
-    (lens === "upcoming" && moneyState(s) === "scheduled") ||
+    (lens === "unpaid" && moneyState(s) === "owedNow") ||
+    (lens === "upcoming" && moneyState(s) === "notYetDue") ||
     (lens === "done" && moneyState(s) === "paid");
   const shown = live.filter(match);
   const [open, setOpen] = useState(false);
 
   const total = num(plan.total_amount);
   const paid = live.filter((s) => s.payment === "paid").reduce((a, s) => a + num(s.amount_due), 0);
-  const due = live.filter((s) => moneyState(s) === "due").reduce((a, s) => a + num(s.amount_due), 0);
+  const due = live.filter((s) => moneyState(s) === "owedNow").reduce((a, s) => a + num(s.amount_due), 0);
   const pct = total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0;
   const allPaid = live.length > 0 && live.every((s) => s.payment === "paid");
 
@@ -373,7 +366,7 @@ function SessionMoneyRow({ patientId, plan, s, canCollect, canReschedule, onResc
   onReschedule: () => void; onChanged: () => void;
 }) {
   const state = moneyState(s);
-  const badge = MONEY_BADGE[state];
+  const badge = MONEY[state];
   const collect = useMutation({
     mutationFn: () => collectSessions(patientId, [s.id]),
     onSuccess: () => { toast.success("Sent to the cashier"); onChanged(); },
@@ -409,7 +402,7 @@ function SessionMoneyRow({ patientId, plan, s, canCollect, canReschedule, onResc
             <CalendarClock className="h-3.5 w-3.5" /> Move
           </Button>
         )}
-        {canCollect && state === "billed" && (
+        {canCollect && state === "atCashier" && (
           <Button size="sm" variant="ghost" loading={undo.isPending} onClick={() => undo.mutate()} title="Pull back from the cashier">
             <Undo2 className="h-3.5 w-3.5" /> Undo
           </Button>
@@ -427,7 +420,7 @@ function SessionMoneyRow({ patientId, plan, s, canCollect, canReschedule, onResc
 /** Pick exactly which sessions to bill — the patient decides how much to settle today. */
 function CollectDialog({ patientId, rows, onClose, onDone }: { patientId: string; rows: Row[]; onClose: () => void; onDone: () => void }) {
   // Default to what's actually owed; prepaying future sessions is opt-in.
-  const [picked, setPicked] = useState<string[]>(() => rows.filter((r) => moneyState(r.s) === "due").map((r) => r.s.id));
+  const [picked, setPicked] = useState<string[]>(() => rows.filter((r) => moneyState(r.s) === "owedNow").map((r) => r.s.id));
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   const total = rows.filter((r) => picked.includes(r.s.id)).reduce((a, r) => a + num(r.s.amount_due), 0);
 
@@ -458,7 +451,7 @@ function CollectDialog({ patientId, rows, onClose, onDone }: { patientId: string
                   <span className="block truncate">{r.plan.title} · session {r.s.seq}</span>
                   <span className="text-xs text-muted-foreground tabular-nums">{r.s.scheduled_date}</span>
                 </span>
-                {st === "due" && <Badge variant="destructive">Due</Badge>}
+                {st === "owedNow" && <Badge variant="destructive">Owed now</Badge>}
                 <span className="w-24 text-right font-mono tabular-nums">{birr(r.s.amount_due)}</span>
               </button>
             );

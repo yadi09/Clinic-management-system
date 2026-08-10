@@ -67,21 +67,6 @@ func nullStr(s string) *string {
 
 var validSessionStatus = map[string]bool{"planned": true, "done": true, "cancelled": true}
 
-// paymentState maps a session's linked charge status to unpaid|billed|paid.
-func paymentState(chargeStatus *string) string {
-	if chargeStatus == nil {
-		return "unpaid"
-	}
-	switch *chargeStatus {
-	case "pending":
-		return "billed"
-	case "paid":
-		return "paid"
-	default: // void / refund / other
-		return "unpaid"
-	}
-}
-
 // splitAmount divides a total into payable whole-birr amounts: each session rounds
 // down to a comfortable unit (100 when the share is ≥100, else 10, else 1) and the
 // last session carries the remainder — so patients pay round numbers, not 5833.33.
@@ -304,13 +289,14 @@ func (s *Service) loadPlansTx(ctx context.Context, tx pgx.Tx, tid, patientID uui
 
 	// sessions (+ payment state from the linked charge)
 	sidx := map[uuid.UUID][2]int{} // session id → (plan index, session index)
-	srows, e := tx.Query(ctx,
-		`SELECT se.id, se.plan_id, se.seq, se.scheduled_date, se.amount_due::text, se.status,
-		        coalesce(se.procedure,''), coalesce(se.tooth,''), coalesce(se.notes,''), coalesce(se.rx,''),
-		        se.pay_later, coalesce(se.pay_later_note,''), c.status
-		 FROM treatment_sessions se
-		 LEFT JOIN charges c ON c.id = se.charge_id AND c.tenant_id = se.tenant_id
-		 WHERE se.tenant_id = $1 AND se.patient_id = $2 ORDER BY se.plan_id, se.seq`, tid, patientID)
+	srows, e := tx.Query(ctx, sessionMoneyCTE+`
+		SELECT sm.session_id, sm.plan_id, sm.seq, sm.scheduled_date, sm.amount_due::text,
+		       sm.session_status, sm.procedure, sm.tooth,
+		       coalesce(se.notes,''), coalesce(se.rx,''),
+		       sm.pay_later, sm.pay_later_note, sm.pay_state
+		FROM session_money sm
+		JOIN treatment_sessions se ON se.id = sm.session_id
+		WHERE sm.patient_id = $2 ORDER BY sm.plan_id, sm.seq`, tid, patientID)
 	if e != nil {
 		return nil, e
 	}
@@ -319,13 +305,11 @@ func (s *Service) loadPlansTx(ctx context.Context, tx pgx.Tx, tid, patientID uui
 		var se dental.Session
 		var id, planID uuid.UUID
 		var sd time.Time
-		var chargeStatus *string
-		if e := srows.Scan(&id, &planID, &se.Seq, &sd, &se.AmountDue, &se.Status, &se.Procedure, &se.Tooth, &se.Notes, &se.Rx, &se.PayLater, &se.PayLaterNote, &chargeStatus); e != nil {
+		if e := srows.Scan(&id, &planID, &se.Seq, &sd, &se.AmountDue, &se.Status, &se.Procedure, &se.Tooth, &se.Notes, &se.Rx, &se.PayLater, &se.PayLaterNote, &se.Payment); e != nil {
 			return nil, e
 		}
 		se.ID = id
 		se.ScheduledDate = sd.Format("2006-01-02")
-		se.Payment = paymentState(chargeStatus)
 		se.Images = []dental.Image{}
 		pi, ok := idx[planID]
 		if !ok {
@@ -957,38 +941,108 @@ func (s *Service) DeletePrescription(ctx context.Context, patientID, prescriptio
 	return nil
 }
 
+// sessionMoneyCTE is the ONE place dental decides what a session's charge means.
+//
+// Five surfaces used to each reduce treatment_sessions.amount_due — the plan's
+// INTENT — and call the result money, while charges.amount, the actual money, was
+// read in a single query. They drifted, and after a refund they contradicted each
+// other on one screen. The balance, the per-plan strip, the outstanding list and
+// the unbilled report all now select from this, so they cannot disagree again.
+//
+// Two things it gets right that the old joins did not:
+//
+//	deleted_at — every billing query filters it and none of the seven dental joins
+//	did, so one soft-deleted charge kept a session reading "paid" forever.
+//
+//	refunds — a refund is a SEPARATE negative row carrying reverses_charge_id, and
+//	the original is deliberately left 'paid' for the audit trail. Judging by the
+//	original's status alone therefore reports a refunded session as fully collected,
+//	which is how a clinic hands back 6,000 ETB and never re-bills it.
+//
+// $1 is always tenant_id.
+const sessionMoneyCTE = `
+WITH session_charge AS (
+  SELECT se.id AS session_id,
+         se.tenant_id, se.plan_id, se.patient_id, se.seq,
+         se.scheduled_date,
+         se.status AS session_status,
+         se.pay_later,
+         coalesce(se.pay_later_note,'') AS pay_later_note,
+         coalesce(se.procedure,'')      AS procedure,
+         coalesce(se.tooth,'')          AS tooth,
+         se.amount_due,
+         se.completed_at, se.completed_by, se.branch_id,
+         c.id AS charge_id, c.status AS charge_status, c.amount AS charge_amount,
+         rev.refunded_amount
+  FROM treatment_sessions se
+  LEFT JOIN charges c
+         ON c.id = se.charge_id AND c.tenant_id = se.tenant_id AND c.deleted_at IS NULL
+  LEFT JOIN LATERAL (
+        SELECT sum(-r.amount) AS refunded_amount
+        FROM charges r
+        WHERE r.tenant_id = c.tenant_id AND r.reverses_charge_id = c.id AND r.deleted_at IS NULL
+  ) rev ON true
+  WHERE se.tenant_id = $1
+),
+session_money AS (
+  SELECT sc.*,
+         -- Treatment actually happened. pay_later alone does NOT count: before the
+         -- billing gate was removed it was the mechanism for unlocking the record
+         -- form, so promises exist on sessions that were never delivered.
+         (sc.session_status = 'done') AS delivered,
+         (sc.pay_later AND sc.session_status <> 'done') AS promised_undelivered,
+         CASE
+           WHEN sc.charge_id IS NULL           THEN 'unpaid'
+           WHEN sc.charge_status = 'void'      THEN 'unpaid'
+           WHEN sc.charge_status = 'pending'   THEN 'billed'
+           WHEN sc.charge_status = 'waived'    THEN 'waived'
+           WHEN sc.refunded_amount IS NOT NULL THEN 'refunded'
+           ELSE 'paid'
+         END AS pay_state,
+         CASE WHEN sc.charge_status = 'paid'
+              THEN sc.charge_amount - coalesce(sc.refunded_amount, 0)
+              ELSE 0 END AS net_paid,
+         CASE WHEN sc.charge_status = 'paid' AND sc.refunded_amount IS NOT NULL
+              THEN sc.refunded_amount
+              ELSE sc.amount_due END AS owed_amount
+  FROM session_charge sc
+)`
+
 // --- summary + balance ---
 
-// balanceTx: owed = Σ amount_due of non-cancelled sessions (whole planned cost);
-// paid = Σ settled source='dental' charges; due = the actionable debt — sessions
-// whose service was given (done or pay-later) but not yet paid.
+// balanceTx answers the money questions from the shared projection, in one query.
+//
+//	owed        every non-cancelled session's planned fee (the course's total cost)
+//	paid        money actually retained — settled minus refunded
+//	at_cashier  raised and queued; deliberately NOT part of `due`, because counting
+//	            it there is what made the desk ask patients for money they had just
+//	            been sent to pay
+//	due         the actionable debt: treatment DELIVERED, nothing live at the
+//	            cashier. Includes refunded (the clinic gave the money back, so the
+//	            treatment is owed again) and excludes waived (formally forgiven).
 func (s *Service) balanceTx(ctx context.Context, tx pgx.Tx, tid, patientID uuid.UUID) (dental.Balance, error) {
-	var owed, paid, due string
-	if e := tx.QueryRow(ctx,
-		`SELECT coalesce(sum(se.amount_due),0)::text
-		 FROM treatment_sessions se JOIN treatment_plans p ON p.id = se.plan_id AND p.tenant_id = se.tenant_id
-		 WHERE se.tenant_id = $1 AND se.patient_id = $2 AND se.status <> 'cancelled' AND p.status <> 'cancelled'`,
-		tid, patientID).Scan(&owed); e != nil {
-		return dental.Balance{}, e
+	var owed, paid, atCashier, due, waived string
+	err := tx.QueryRow(ctx, sessionMoneyCTE+`,
+scoped AS (
+  SELECT sm.*, (sm.session_status <> 'cancelled' AND pl.status <> 'cancelled') AS alive
+  FROM session_money sm
+  JOIN treatment_plans pl ON pl.id = sm.plan_id AND pl.tenant_id = sm.tenant_id
+  WHERE sm.patient_id = $2
+)
+SELECT coalesce(sum(amount_due)    FILTER (WHERE alive), 0)::text,
+       coalesce(sum(net_paid)      FILTER (WHERE alive), 0)::text,
+       coalesce(sum(charge_amount) FILTER (WHERE alive AND pay_state = 'billed'), 0)::text,
+       coalesce(sum(owed_amount)   FILTER (WHERE alive AND delivered
+                                             AND pay_state IN ('unpaid','refunded')), 0)::text,
+       coalesce(sum(amount_due)    FILTER (WHERE alive AND pay_state = 'waived'), 0)::text
+FROM scoped`, tid, patientID).Scan(&owed, &paid, &atCashier, &due, &waived)
+	if err != nil {
+		return dental.Balance{}, err
 	}
-	if e := tx.QueryRow(ctx,
-		`SELECT coalesce(sum(amount),0)::text FROM charges
-		 WHERE tenant_id = $1 AND patient_id = $2 AND source = 'dental' AND status = 'paid'`, tid, patientID).Scan(&paid); e != nil {
-		return dental.Balance{}, e
-	}
-	if e := tx.QueryRow(ctx,
-		`SELECT coalesce(sum(se.amount_due),0)::text
-		 FROM treatment_sessions se
-		 JOIN treatment_plans p ON p.id = se.plan_id AND p.tenant_id = se.tenant_id
-		 LEFT JOIN charges c ON c.id = se.charge_id AND c.tenant_id = se.tenant_id
-		 WHERE se.tenant_id = $1 AND se.patient_id = $2 AND se.status <> 'cancelled' AND p.status <> 'cancelled'
-		   AND (se.status = 'done' OR se.pay_later) AND (c.status IS NULL OR c.status <> 'paid')`,
-		tid, patientID).Scan(&due); e != nil {
-		return dental.Balance{}, e
-	}
-	bal := money(owed) - money(paid)
 	return dental.Balance{
-		Owed: fmtMoney(money(owed)), Paid: fmtMoney(money(paid)), Balance: fmtMoney(bal),
+		Owed: fmtMoney(money(owed)), Paid: fmtMoney(money(paid)),
+		Balance:   fmtMoney(money(owed) - money(paid)),
+		AtCashier: fmtMoney(money(atCashier)), Waived: fmtMoney(money(waived)),
 		Due: fmtMoney(money(due)), Overdue: money(due) > 0.005,
 	}, nil
 }
@@ -1300,20 +1354,21 @@ func (s *Service) Outstanding(ctx context.Context) ([]dental.Outstanding, error)
 	tid, _ := actorOf(ctx)
 	out := []dental.Outstanding{}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		// "Owes" here = debt for service already given (done or pay-later) but unpaid,
-		// so a fresh plan of future sessions does NOT flag the patient.
-		rows, e := tx.Query(ctx,
-			`SELECT p.id, p.first_name, coalesce(p.last_name,''), p.mrn, d.due::text AS balance
-			 FROM patients p
-			 JOIN (SELECT se.patient_id, sum(se.amount_due) due
-			       FROM treatment_sessions se
-			       JOIN treatment_plans pl ON pl.id = se.plan_id AND pl.tenant_id = se.tenant_id
-			       LEFT JOIN charges c ON c.id = se.charge_id AND c.tenant_id = se.tenant_id
-			       WHERE se.tenant_id = $1 AND se.status <> 'cancelled' AND pl.status <> 'cancelled'
-			         AND (se.status = 'done' OR se.pay_later) AND (c.status IS NULL OR c.status <> 'paid')
-			       GROUP BY se.patient_id) d ON d.patient_id = p.id AND d.due > 0.005
-			 WHERE p.tenant_id = $1 AND p.deleted_at IS NULL
-			 ORDER BY d.due DESC`, tid)
+		// Deliberately the SAME predicate as balanceTx's `due`, from the same
+		// projection: the "Owes" badge on the worklist and the Balance card on the
+		// patient page must be arithmetically incapable of disagreeing.
+		rows, e := tx.Query(ctx, sessionMoneyCTE+`
+			SELECT p.id, p.first_name, coalesce(p.last_name,''), p.mrn,
+			       sum(sm.owed_amount)::text AS balance
+			FROM session_money sm
+			JOIN treatment_plans pl ON pl.id = sm.plan_id    AND pl.tenant_id = sm.tenant_id
+			JOIN patients        p  ON p.id  = sm.patient_id AND p.tenant_id  = sm.tenant_id
+			WHERE p.deleted_at IS NULL
+			  AND pl.status <> 'cancelled' AND sm.session_status <> 'cancelled'
+			  AND sm.delivered AND sm.pay_state IN ('unpaid','refunded')
+			GROUP BY p.id, p.first_name, p.last_name, p.mrn
+			HAVING sum(sm.owed_amount) > 0.005
+			ORDER BY sum(sm.owed_amount) DESC`, tid)
 		if e != nil {
 			return e
 		}
@@ -1343,17 +1398,18 @@ func (s *Service) SessionsInRange(ctx context.Context, from, to string) ([]denta
 	tid, _ := actorOf(ctx)
 	out := []dental.SessionCalItem{}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		rows, e := tx.Query(ctx,
-			`SELECT se.id, se.plan_id, se.patient_id, pt.first_name, coalesce(pt.last_name,''), pt.mrn,
-			        se.scheduled_date, se.seq, p.session_count, p.title,
-			        coalesce(se.procedure,''), coalesce(se.tooth,''), se.amount_due::text, se.status, se.pay_later, c.status
-			 FROM treatment_sessions se
-			 JOIN treatment_plans p ON p.id = se.plan_id AND p.tenant_id = se.tenant_id
-			 JOIN patients pt ON pt.id = se.patient_id
-			 LEFT JOIN charges c ON c.id = se.charge_id AND c.tenant_id = se.tenant_id
-			 WHERE se.tenant_id = $1 AND se.scheduled_date >= $2::date AND se.scheduled_date <= $3::date
-			   AND se.status <> 'cancelled' AND p.status <> 'cancelled' AND pt.deleted_at IS NULL
-			 ORDER BY se.scheduled_date, pt.first_name`, tid, from, to)
+		// Same projection as everywhere else, so a session's colour on the calendar
+		// matches its badge on the patient page.
+		rows, e := tx.Query(ctx, sessionMoneyCTE+`
+			SELECT sm.session_id, sm.plan_id, sm.patient_id, pt.first_name, coalesce(pt.last_name,''), pt.mrn,
+			       sm.scheduled_date, sm.seq, p.session_count, p.title,
+			       sm.procedure, sm.tooth, sm.amount_due::text, sm.session_status, sm.pay_later, sm.pay_state
+			FROM session_money sm
+			JOIN treatment_plans p ON p.id = sm.plan_id AND p.tenant_id = sm.tenant_id
+			JOIN patients pt ON pt.id = sm.patient_id
+			WHERE sm.scheduled_date >= $2::date AND sm.scheduled_date <= $3::date
+			  AND sm.session_status <> 'cancelled' AND p.status <> 'cancelled' AND pt.deleted_at IS NULL
+			ORDER BY sm.scheduled_date, pt.first_name`, tid, from, to)
 		if e != nil {
 			return e
 		}
@@ -1362,14 +1418,12 @@ func (s *Service) SessionsInRange(ctx context.Context, from, to string) ([]denta
 			var it dental.SessionCalItem
 			var first, last string
 			var sd time.Time
-			var chargeStatus *string
 			if e := rows.Scan(&it.SessionID, &it.PlanID, &it.PatientID, &first, &last, &it.MRN,
-				&sd, &it.Seq, &it.SessionCount, &it.Title, &it.Procedure, &it.Tooth, &it.AmountDue, &it.Status, &it.PayLater, &chargeStatus); e != nil {
+				&sd, &it.Seq, &it.SessionCount, &it.Title, &it.Procedure, &it.Tooth, &it.AmountDue, &it.Status, &it.PayLater, &it.Payment); e != nil {
 				return e
 			}
 			it.PatientName = strings.TrimSpace(first + " " + last)
 			it.ScheduledDate = sd.Format("2006-01-02")
-			it.Payment = paymentState(chargeStatus)
 			out = append(out, it)
 		}
 		return rows.Err()

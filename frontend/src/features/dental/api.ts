@@ -13,9 +13,13 @@ export interface Chart {
 
 export interface Balance {
   owed: string;
-  paid: string;
+  paid: string; // settled MINUS refunded — money actually retained
   balance: string;
-  due: string; // service already given (done/pay-later) but not yet paid
+  /** Raised and with the cashier. Deliberately NOT part of `due`. */
+  at_cashier: string;
+  /** Formally forgiven — neither owed nor collected. */
+  waived: string;
+  due: string; // treatment DELIVERED but not paid (includes refunded, excludes waived)
   overdue: boolean;
 }
 
@@ -58,7 +62,9 @@ interface UploadTarget {
 // --- treatment plans + sessions ---
 
 export type SessionStatus = "planned" | "done" | "cancelled";
-export type PaymentState = "unpaid" | "billed" | "paid";
+// "refunded" and "waived" are sent once the server-side money projection ships;
+// the client understands them first so the two can be deployed independently.
+export type PaymentState = "unpaid" | "billed" | "paid" | "refunded" | "waived";
 
 export interface Session {
   id: string;

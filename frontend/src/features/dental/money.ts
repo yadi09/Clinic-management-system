@@ -87,9 +87,11 @@ export function birr(amount: string | number | undefined): string {
 /**
  * Derive the display state of one session.
  *
- * `payment` is the server's `unpaid | billed | paid`. Note the deliberate gap: the
- * server maps refunded and voided charges to "unpaid", so this cannot yet return
- * `refunded` — see the header. Callers must not invent it.
+ * `payment` is the server's wire state. It carries `refunded` and `waived` only once
+ * the server's projection ships; until then those branches simply never fire, which
+ * is why this is safe to deploy first. It must never THROW on an unknown state — a
+ * server that learns a new one before the client does must degrade to a readable
+ * badge, not to a blank chairside record.
  */
 export function sessionMoneyState(s: {
   status: string;
@@ -101,6 +103,10 @@ export function sessionMoneyState(s: {
   if (s.status === "cancelled") return "cancelled";
   if (s.payment === "paid") return "paid";
   if (s.payment === "billed") return "atCashier";
+  if (s.payment === "waived") return "waived";
+  // Paid, then given back. NOT the same as never paid: the treatment still happened,
+  // so it stays visible rather than being silently written off.
+  if (s.payment === "refunded") return "refunded";
   // Unpaid. Whether that is a debt turns on whether the work actually happened —
   // NOT on whether the date has passed. A session booked for last Tuesday that the
   // patient never attended is a missed appointment to chase, not money owed; billing

@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/reicb/clinicsaas/internal/billing"
 	billingdb "github.com/reicb/clinicsaas/internal/billing/repo/gen"
@@ -631,6 +632,14 @@ func (s *Service) VoidChargeTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, rea
 	return s.publisher.Publish(ctx, tx, &tenantID, "charge", row.ID, "billing.charge.voided", map[string]any{"charge_id": row.ID, "reason": reason})
 }
 
+// alreadyRefunded maps migration 00047's unique index onto the same message the
+// application-level check gives, so losing the race reads as "already refunded"
+// rather than as a 500. The index is the real guarantee; the checks are courtesy.
+func alreadyRefunded(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" && strings.Contains(pgErr.ConstraintName, "reverses")
+}
+
 // RefundCharge reverses a settled (paid) charge by posting a linked negative entry
 // dated now — so day/Z reports stay correct and the refund is auditable. The
 // original paid charge is left intact. Refunding twice is rejected.
@@ -653,6 +662,21 @@ func (s *Service) RefundCharge(ctx context.Context, id uuid.UUID, reason string)
 		}
 		if orig.Source == "refund" {
 			return apperr.Conflict("NOT_REFUNDABLE", "a refund entry cannot itself be refunded")
+		}
+		// Lock the original before counting reversals. CountReversals is an unlocked
+		// read, so without this two concurrent refunds of the same charge — or one
+		// double-clicked button, or a retried request — both see zero and both post a
+		// negative row, paying the patient back twice. Migration 00047 makes the second
+		// insert fail regardless; this turns that race into a clean queue instead of an
+		// error, and keeps the friendly message.
+		var locked uuid.UUID
+		if e := tx.QueryRow(ctx,
+			`SELECT id FROM charges WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL FOR UPDATE`,
+			tenantID, id).Scan(&locked); e != nil {
+			if errors.Is(e, pgx.ErrNoRows) {
+				return apperr.NotFound("CHARGE_NOT_FOUND", "charge not found")
+			}
+			return e
 		}
 		n, e := q.CountReversals(ctx, billingdb.CountReversalsParams{TenantID: tenantID, ID: &id})
 		if e != nil {
@@ -678,6 +702,9 @@ func (s *Service) RefundCharge(ctx context.Context, id uuid.UUID, reason string)
 	})
 	if ae, ok := apperr.As(err); ok {
 		return ae
+	}
+	if alreadyRefunded(err) {
+		return apperr.Conflict("ALREADY_REFUNDED", "this charge has already been refunded")
 	}
 	if err != nil {
 		return apperr.Internal(err)
@@ -758,6 +785,14 @@ func (s *Service) RefundVisit(ctx context.Context, receiptNo int64, reason strin
 	}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := billingdb.New(tx)
+		// Lock every charge on this receipt first. GetRefundableByReceipt is an
+		// unlocked read, so two concurrent whole-receipt refunds would both see the
+		// same refundable lines and both post reversals — the patient paid back twice.
+		if _, e := tx.Exec(ctx,
+			`SELECT 1 FROM charges WHERE tenant_id = $1 AND receipt_no = $2 AND deleted_at IS NULL FOR UPDATE`,
+			tenantID, receiptNo); e != nil {
+			return e
+		}
 		rows, e := q.GetRefundableByReceipt(ctx, billingdb.GetRefundableByReceiptParams{TenantID: tenantID, ReceiptNo: &receiptNo})
 		if e != nil {
 			return e
@@ -785,6 +820,9 @@ func (s *Service) RefundVisit(ctx context.Context, receiptNo int64, reason strin
 	})
 	if ae, ok := apperr.As(err); ok {
 		return ae
+	}
+	if alreadyRefunded(err) {
+		return apperr.Conflict("ALREADY_REFUNDED", "part of this payment has already been refunded")
 	}
 	if err != nil {
 		return apperr.Internal(err)

@@ -153,8 +153,14 @@ type SessionUpdate struct {
 // but not yet paid; Overdue = Due > 0.
 type Balance struct {
 	Owed    string `json:"owed"`
-	Paid    string `json:"paid"`
+	Paid    string `json:"paid"` // settled MINUS refunded — money actually retained
 	Balance string `json:"balance"`
+	// Raised and sitting with the cashier. Reported separately and excluded from Due:
+	// counting queued money as owed is what made the desk chase patients twice.
+	AtCashier string `json:"at_cashier"`
+	// Formally forgiven. Neither owed nor collected; shown so it is not mistaken for
+	// either, and so a waived fee can never be billed a second time.
+	Waived  string `json:"waived"`
 	Due     string `json:"due"`
 	Overdue bool   `json:"overdue"`
 }
@@ -204,7 +210,7 @@ type ExamProcedure struct {
 // (same contract as the tooth chart), so a clinic's form can grow without a migration.
 type Exam struct {
 	ID                   uuid.UUID       `json:"-"`
-	SessionID            *uuid.UUID      `json:"-"` // encoded by the DTO layer
+	SessionID            *uuid.UUID      `json:"-"`          // encoded by the DTO layer
 	VisitDate            string          `json:"visit_date"` // YYYY-MM-DD
 	ChiefComplaint       string          `json:"chief_complaint,omitempty"`
 	HPI                  string          `json:"hpi,omitempty"`

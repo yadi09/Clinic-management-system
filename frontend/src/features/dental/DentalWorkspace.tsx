@@ -33,11 +33,12 @@ import { ExaminationCard } from "@/features/dental/ExaminationCard";
 import { invalidateDental } from "@/features/dental/invalidate";
 import { ToothChart } from "@/features/dental/ToothChart";
 import { FLAT_TEETH, parseCsv, ProcedureMultiSelect, ToothMultiSelect } from "@/features/dental/shared/pickers";
+import { MONEY, sessionMoneyState } from "@/features/dental/money";
 import { MoveSessionDialog } from "@/features/dental/shared/MoveSessionDialog";
 import {
   addPrescription, collectSession, collectSessions, createPlan, deleteDentalImage, deletePlan, deletePrescription, dentalSummary,
   listDentalImages, saveChart, setPayLater, uncollectSession, updateSession, uploadDentalImage,
-  type DentalImage, type ImageCategory, type PaymentState, type Plan, type Prescription, type RxItem, type Session, type SessionStatus,
+  type DentalImage, type ImageCategory, type Plan, type Prescription, type RxItem, type Session, type SessionStatus,
 } from "@/features/dental/api";
 import { searchDrugs, type Drug } from "@/features/clinical/api";
 import { printPrescription } from "@/features/clinical/print";
@@ -47,11 +48,6 @@ const num = (s?: string) => Number(s || 0);
 const birr = (s?: string) => `${num(s).toLocaleString(undefined, { maximumFractionDigits: 2 })} ETB`;
 const MAX_SESSION_IMAGES = 12;
 
-const PAY_META: Record<PaymentState, { label: string; variant: "outline" | "warning" | "success" }> = {
-  unpaid: { label: "Unpaid", variant: "outline" },
-  billed: { label: "At cashier", variant: "warning" },
-  paid: { label: "Paid", variant: "success" },
-};
 const SESSION_STATUSES: SessionStatus[] = ["planned", "done", "cancelled"];
 const SESSION_STATUS_LABEL: Record<SessionStatus, string> = { planned: "Planned", done: "Done", cancelled: "Cancelled" };
 
@@ -406,6 +402,15 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Due now</p>
               <p className={`mt-1 text-3xl font-bold tabular-nums ${bal.overdue ? "text-rose-600" : "text-emerald-600"}`}>{birr(bal.due)}</p>
               <p className="mt-1 text-xs text-muted-foreground">Planned {birr(bal.owed)} · Paid {birr(bal.paid)} · Remaining {birr(bal.balance)}</p>
+              {/* Money already queued is stated, and deliberately not inside "Due now":
+                  counting it there is what had the desk asking patients for money they
+                  had just been sent to pay. */}
+              {num(bal.at_cashier) > 0.005 && (
+                <p className="mt-0.5 text-xs font-medium text-amber-700">{birr(bal.at_cashier)} with the cashier — not counted above</p>
+              )}
+              {num(bal.waived) > 0.005 && (
+                <p className="mt-0.5 text-xs text-muted-foreground">{birr(bal.waived)} written off</p>
+              )}
             </div>
             {owed > 0 && (
               <div className="flex items-center gap-2">
@@ -652,7 +657,7 @@ function SessionRow({ patientId, session, planTitle, teeth, editable, canCollect
   const [expanded, setExpanded] = useState(false);
   const [deferring, setDeferring] = useState(false);
   const [moving, setMoving] = useState(false);
-  const pay = PAY_META[session.payment];
+  const pay = MONEY[sessionMoneyState(session)];
   const today = isoLocal(new Date());
   const owes = (session.status === "done" || !!session.pay_later) && session.payment !== "paid";
   const overdue = session.status === "planned" && !session.pay_later && session.scheduled_date < today;
