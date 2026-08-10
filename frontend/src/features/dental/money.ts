@@ -59,10 +59,13 @@ export const MONEY: Record<MoneyState, MoneyMeta> = {
     countsAsOwed: false,
   },
   refunded: {
-    label: "Refunded",
-    hint: "Paid, then reversed. The money is back with the patient.",
-    variant: "outline",
-    countsAsOwed: false,
+    // The clinic's policy: the money went back, the treatment still happened, so it
+    // is owed again. A muted "Refunded" chip said the opposite on the same screen as
+    // a red balance demanding it.
+    label: "Refunded — owed again",
+    hint: "Paid, then given back. The treatment stands, so this is owed again.",
+    variant: "destructive",
+    countsAsOwed: true,
   },
   waived: {
     label: "Free of charge",
@@ -107,10 +110,24 @@ export function sessionMoneyState(s: {
   // Paid, then given back. NOT the same as never paid: the treatment still happened,
   // so it stays visible rather than being silently written off.
   if (s.payment === "refunded") return "refunded";
-  // Unpaid. Whether that is a debt turns on whether the work actually happened —
-  // NOT on whether the date has passed. A session booked for last Tuesday that the
-  // patient never attended is a missed appointment to chase, not money owed; billing
-  // it would charge for treatment nobody received.
-  const delivered = s.status === "done" || s.pay_later === true;
-  return delivered ? "owedNow" : "notYetDue";
+  // Unpaid. Whether that is a debt turns on whether the work actually happened.
+  //
+  // pay_later is deliberately NOT part of this, and must match the server's
+  // `delivered` exactly. Before the billing gate was removed, "pay later" was how the
+  // record form got unlocked, so promises exist against visits that never happened —
+  // Cure Dental has one for 4,000 ETB. Counting it here offered to bill a patient for
+  // treatment they have not had.
+  return s.status === "done" ? "owedNow" : "notYetDue";
+}
+
+/**
+ * Can a charge be raised for this session?
+ *
+ * Mirrors the server's collect guard exactly. "unpaid" is the obvious case; a
+ * REFUNDED session is billable too, because the money went back and the treatment
+ * stands — the report offers "Bill again" for precisely this, and gating the button
+ * on unpaid alone meant it was owed on every screen and billable on none.
+ */
+export function isBillable(s: { payment: string; amount_due?: string }): boolean {
+  return (s.payment === "unpaid" || s.payment === "refunded") && Number(s.amount_due || 0) > 0;
 }

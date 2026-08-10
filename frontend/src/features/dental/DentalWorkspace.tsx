@@ -33,7 +33,7 @@ import { ExaminationCard } from "@/features/dental/ExaminationCard";
 import { invalidateDental } from "@/features/dental/invalidate";
 import { ToothChart } from "@/features/dental/ToothChart";
 import { FLAT_TEETH, parseCsv, ProcedureMultiSelect, ToothMultiSelect } from "@/features/dental/shared/pickers";
-import { MONEY, sessionMoneyState } from "@/features/dental/money";
+import { isBillable, MONEY, sessionMoneyState } from "@/features/dental/money";
 import { MoveSessionDialog } from "@/features/dental/shared/MoveSessionDialog";
 import {
   addPrescription, collectSession, collectSessions, createPlan, deleteDentalImage, deletePlan, deletePrescription, dentalSummary,
@@ -497,9 +497,11 @@ function PlanCard({ patientId, plan, teeth, editable, canCollect, canReschedule,
     return {
       collected: sum((s) => s.payment === "paid"),
       awaiting: sum((s) => s.payment === "billed"),
-      outstanding: sum((s) => s.payment !== "paid"),
-      // Money for treatment already given — the only figure that is genuinely owed now.
-      overdue: sum((s) => s.status === "done" && s.payment !== "paid"),
+      // Neither queued money nor a written-off fee is outstanding: counting them here
+      // re-created, per plan, the double-chase the server-side projection removed.
+      outstanding: sum((s) => s.payment === "unpaid" || s.payment === "refunded"),
+      // Treatment already given and not settled — the only genuinely owed figure.
+      overdue: sum((s) => s.status === "done" && (s.payment === "unpaid" || s.payment === "refunded")),
       done: live.filter((s) => s.status === "done").length,
       count: live.length,
     };
@@ -532,7 +534,7 @@ function PlanCard({ patientId, plan, teeth, editable, canCollect, canReschedule,
   const [confirmDel, setConfirmDel] = useState(false);
 
   // The patient may want to settle the whole course at the desk in one go.
-  const unbilled = plan.sessions.filter((s) => s.status !== "cancelled" && s.payment === "unpaid" && num(s.amount_due) > 0);
+  const unbilled = plan.sessions.filter((s) => s.status !== "cancelled" && isBillable(s));
   const unbilledTotal = unbilled.reduce((a, s) => a + num(s.amount_due), 0);
   const collectAll = useMutation({
     mutationFn: () => collectSessions(patientId, unbilled.map((s) => s.id)),
@@ -728,7 +730,7 @@ function SessionRow({ patientId, session, planTitle, teeth, editable, canCollect
               <Undo2 className="h-3.5 w-3.5" /> Undo
             </Button>
           )}
-          {canCollect && session.payment === "unpaid" && num(session.amount_due) > 0 && (
+          {canCollect && isBillable(session) && (
             <Button size="sm" variant="outline" loading={collect.isPending} onClick={() => collect.mutate()}>
               <HandCoins className="h-3.5 w-3.5" /> Collect
             </Button>

@@ -83,6 +83,14 @@ export function UnbilledPage() {
   });
 
   const count = (l: UnbilledLane) => (data?.rows ?? []).filter((r) => r.lane === l).length;
+  // When a lane is selected the headline must describe THAT lane, not the whole
+  // report — a header reading 11,500 over rows totalling 4,000 is a number nobody
+  // can reconcile. Unfiltered, the server's total is authoritative because it covers
+  // rows beyond this page.
+  const filtered = lens !== "all";
+  const shownTotal = filtered ? rows.reduce((a, r) => a + Number(r.amount || 0), 0) : Number(data?.total ?? 0);
+  const shownCount = filtered ? rows.length : (data?.count ?? 0);
+  const oldest = rows.length > 0 ? Math.max(...rows.map((r) => r.days_unbilled)) : 0;
 
   return (
     <div className="space-y-6">
@@ -101,12 +109,13 @@ export function UnbilledPage() {
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-3">
-            <Card className={cn(Number(data?.total ?? 0) > 0 && "border-destructive")}>
+            <Card className={cn(shownTotal > 0 && "border-destructive")}>
               <CardContent className="p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Owed for treatment given</p>
-                <p className="mt-1 text-3xl font-bold tabular-nums text-destructive">{birr(data?.total)}</p>
+                <p className="mt-1 text-3xl font-bold tabular-nums text-destructive">{birr(shownTotal)}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  across {data?.count ?? 0} visit{data?.count === 1 ? "" : "s"}
+                  across {shownCount} visit{shownCount === 1 ? "" : "s"}
+                  {filtered && <span> · {LANE[lens as UnbilledLane].label.toLowerCase()} only</span>}
                 </p>
               </CardContent>
             </Card>
@@ -114,7 +123,7 @@ export function UnbilledPage() {
               <CardContent className="p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Oldest</p>
                 <p className="mt-1 text-3xl font-bold tabular-nums">
-                  {rows.length > 0 ? Math.max(...(data?.rows ?? []).map((r) => r.days_unbilled)) : 0}
+                  {oldest}
                   <span className="ml-1 text-base font-normal text-muted-foreground">days</span>
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">since the treatment was given</p>

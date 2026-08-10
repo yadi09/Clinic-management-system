@@ -20,7 +20,7 @@ import { toast } from "@/components/ui/sonner";
 import { cn, ageLabel } from "@/lib/utils";
 import { useAuth } from "@/app/auth-context";
 import { Segmented } from "@/components/ui/segmented";
-import { MONEY, sessionMoneyState } from "@/features/dental/money";
+import { isBillable, MONEY, sessionMoneyState } from "@/features/dental/money";
 import { AppError } from "@/lib/api-client";
 import { MoveSessionDialog } from "@/features/dental/shared/MoveSessionDialog";
 import { formatEthiopian } from "@/lib/ethiopian";
@@ -81,7 +81,7 @@ export function ReceptionDentalView({ patientId }: { patientId: string }) {
   // The server figure, from the charge ledger — the client one summed amount_due
   // (the plan's intent) and drifted from the receipts after any refund.
   const atCashier = num(summary.data?.balance.at_cashier);
-  const billable = rows.filter((r) => r.s.payment === "unpaid" && num(r.s.amount_due) > 0);
+  const billable = rows.filter((r) => isBillable(r.s));
   // Missed: should have happened, never marked done — reception chases these.
   const missed = rows.filter((r) => r.s.status === "planned" && r.s.scheduled_date < today);
   const nextVisit = rows
@@ -306,7 +306,7 @@ function PlanMoneyCard({ patientId, plan, lens, canCollect, canReschedule, onRes
   const pct = total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0;
   const allPaid = live.length > 0 && live.every((s) => s.payment === "paid");
 
-  const unbilled = live.filter((s) => s.payment === "unpaid" && num(s.amount_due) > 0);
+  const unbilled = live.filter((s) => isBillable(s));
   const collectAll = useMutation({
     mutationFn: () => collectSessions(patientId, unbilled.map((s) => s.id)),
     onSuccess: (r) => { toast.success(`${r.billed} session${r.billed === 1 ? "" : "s"} sent to the cashier · ${birr(r.total)}`); onChanged(); },
@@ -407,7 +407,7 @@ function SessionMoneyRow({ patientId, plan, s, canCollect, canReschedule, onResc
             <Undo2 className="h-3.5 w-3.5" /> Undo
           </Button>
         )}
-        {canCollect && s.payment === "unpaid" && num(s.amount_due) > 0 && (
+        {canCollect && isBillable(s) && (
           <Button size="sm" variant="outline" loading={collect.isPending} onClick={() => collect.mutate()}>
             <HandCoins className="h-3.5 w-3.5" /> Bill
           </Button>
