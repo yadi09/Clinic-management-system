@@ -332,6 +332,9 @@ type Service interface {
 	DeletePrescription(ctx context.Context, patientID, prescriptionID uuid.UUID) error
 
 	Outstanding(ctx context.Context) ([]Outstanding, error)
+	// UnbilledTreatment lists delivered treatment that nobody has billed — the
+	// clinic-wide safety net for the removed billing gate.
+	UnbilledTreatment(ctx context.Context, from, to string, limit, offset int) (*Unbilled, error)
 	// SessionsInRange lists all patients' sessions scheduled within [from,to] for the
 	// clinic calendar (follow-up visits shown next to appointments).
 	SessionsInRange(ctx context.Context, from, to string) ([]SessionCalItem, error)
@@ -341,4 +344,50 @@ type Service interface {
 	RecordImage(ctx context.Context, patientID uuid.UUID, sessionID *uuid.UUID, in ImageRecordInput) (*Image, error)
 	ListImages(ctx context.Context, patientID uuid.UUID, sessionID *uuid.UUID) ([]Image, error)
 	DeleteImage(ctx context.Context, patientID, imageID uuid.UUID) error
+}
+
+// UnbilledRow is one delivered-but-unpaid treatment on the clinic-wide report.
+//
+// This is the control that replaced the billing gate. Recording a visit no longer
+// requires money to move first — the clinic's rule is that a patient may be treated
+// on a promise to pay — so something has to make sure the promise is not simply
+// forgotten. Nothing did: Cure Dental was carrying 11,500 ETB of delivered treatment
+// that no screen in the product would ever have raised its hand about.
+type UnbilledRow struct {
+	SessionID     uuid.UUID `json:"-"`
+	PatientID     uuid.UUID `json:"-"`
+	MRN           string    `json:"mrn"`
+	PatientName   string    `json:"patient_name"`
+	Phone         string    `json:"phone,omitempty"` // so the desk can actually chase it
+	PlanTitle     string    `json:"plan_title"`
+	Procedure     string    `json:"procedure,omitempty"`
+	Tooth         string    `json:"tooth,omitempty"`
+	Seq           int       `json:"seq"`
+	SessionCount  int       `json:"session_count"`
+	TreatmentDate string    `json:"treatment_date"` // delivered-on, falling back to scheduled
+	DaysUnbilled  int       `json:"days_unbilled"`
+	Amount        string    `json:"amount"`
+	// never_billed | bill_withdrawn | refunded — three different actions, never summed
+	// into one headline.
+	Lane         string `json:"lane"`
+	PayLater     bool   `json:"pay_later"`
+	PayLaterNote string `json:"pay_later_note,omitempty"`
+	Clinician    string `json:"clinician,omitempty"`
+	Branch       string `json:"branch,omitempty"`
+}
+
+// Unbilled is the report plus its true totals. The totals are computed over the
+// WHOLE result, not the returned page — a header reading "142,000 ETB" that only
+// counts the first fifty rows is the same silent understatement as the truncated
+// statement, in the place it matters most.
+type Unbilled struct {
+	Rows    []UnbilledRow `json:"rows"`
+	Total   string        `json:"total"`
+	Count   int           `json:"count"`
+	HasMore bool          `json:"has_more"`
+	// Promised but NOT yet delivered — shown apart because billing it would charge
+	// for a visit that has not happened. These exist because "pay later" used to be
+	// how the record form was unlocked.
+	PromisedTotal string `json:"promised_total"`
+	PromisedCount int    `json:"promised_count"`
 }

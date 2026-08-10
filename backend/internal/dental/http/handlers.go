@@ -3,6 +3,8 @@
 package http
 
 import (
+	"strconv"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
@@ -783,4 +785,34 @@ func (h *Handlers) DeleteExam(c *gin.Context) {
 		return
 	}
 	httpx.NoContent(c)
+}
+
+// --- the unbilled-treatment report -------------------------------------------
+
+func (h *Handlers) UnbilledTreatment(c *gin.Context) {
+	limit, _ := strconv.Atoi(c.Query("limit"))
+	offset, _ := strconv.Atoi(c.Query("offset"))
+	out, err := h.svc.UnbilledTreatment(c.Request.Context(), c.Query("from"), c.Query("to"), limit, offset)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	rows := make([]gin.H, 0, len(out.Rows))
+	for _, r := range out.Rows {
+		rows = append(rows, gin.H{
+			"session_id": id.Encode(id.PrefixTreatmentSession, r.SessionID),
+			"patient_id": id.Encode(id.PrefixPatient, r.PatientID),
+			"mrn":        r.MRN, "patient_name": r.PatientName, "phone": r.Phone,
+			"plan_title": r.PlanTitle, "procedure": r.Procedure, "tooth": r.Tooth,
+			"seq": r.Seq, "session_count": r.SessionCount,
+			"treatment_date": r.TreatmentDate, "days_unbilled": r.DaysUnbilled,
+			"amount": r.Amount, "lane": r.Lane,
+			"pay_later": r.PayLater, "pay_later_note": r.PayLaterNote,
+			"clinician": r.Clinician, "branch": r.Branch,
+		})
+	}
+	httpx.OK(c, gin.H{
+		"rows": rows, "total": out.Total, "count": out.Count, "has_more": out.HasMore,
+		"promised_total": out.PromisedTotal, "promised_count": out.PromisedCount,
+	})
 }

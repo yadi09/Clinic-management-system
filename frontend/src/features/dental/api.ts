@@ -293,3 +293,52 @@ export function updateExam(patientId: string, examId: string, body: ExamBody) {
 export function deleteExam(patientId: string, examId: string) {
   return apiFetch<void>(`/dental/patients/${patientId}/exams/${examId}`, { method: "DELETE" });
 }
+
+// --- treatment given but never billed (clinic-wide) --------------------------
+//
+// The control that replaced the rule requiring payment before a visit could be
+// recorded. Three lanes, three different actions — never one total.
+
+export type UnbilledLane = "never_billed" | "bill_withdrawn" | "refunded";
+
+export interface UnbilledRow {
+  session_id: string;
+  patient_id: string;
+  mrn: string;
+  patient_name: string;
+  phone?: string;
+  plan_title: string;
+  procedure?: string;
+  tooth?: string;
+  seq: number;
+  session_count: number;
+  treatment_date: string;
+  days_unbilled: number;
+  amount: string;
+  lane: UnbilledLane;
+  pay_later: boolean;
+  pay_later_note?: string;
+  clinician?: string;
+  branch?: string;
+}
+
+export interface UnbilledReport {
+  rows: UnbilledRow[];
+  /** Over the WHOLE result, not the page. */
+  total: string;
+  count: number;
+  has_more: boolean;
+  /** Promised but not yet delivered — shown apart; billing these would charge for a visit that has not happened. */
+  promised_total: string;
+  promised_count: number;
+}
+
+export function unbilledTreatment(params: { from?: string; to?: string; limit?: number; offset?: number } = {}) {
+  const q = new URLSearchParams();
+  if (params.from) q.set("from", params.from);
+  if (params.to) q.set("to", params.to);
+  if (params.limit) q.set("limit", String(params.limit));
+  if (params.offset) q.set("offset", String(params.offset));
+  const qs = q.toString();
+  return apiFetch<UnbilledReport>(`/dental/unbilled${qs ? `?${qs}` : ""}`);
+}

@@ -174,7 +174,9 @@
       "Bash(rsync -az --exclude node_modules --exclude .git -e 'ssh -i /home/yadi09/.ssh/The-millions -o ConnectTimeout=20' backend/ themillions@77.68.116.240:/home/themillions/clinicos/backend/)",
       "Bash(scp -q -i ~/.ssh/The-millions /tmp/claude-1000/-home-yadi09-Yaz-project-Clinic-management-system/645e13cd-7bf4-4bdd-bc99-7189bfed4c74/scratchpad/proj.sql themillions@77.68.116.240:/tmp/proj.sql)",
       "Bash(scp -q -i ~/.ssh/The-millions /tmp/claude-1000/-home-yadi09-Yaz-project-Clinic-management-system/645e13cd-7bf4-4bdd-bc99-7189bfed4c74/scratchpad/delta.sql themillions@77.68.116.240:/tmp/delta.sql)",
-      "Bash(node /tmp/claude-1000/-home-yadi09-Yaz-project-Clinic-management-system/645e13cd-7bf4-4bdd-bc99-7189bfed4c74/scratchpad/smoke.mjs \"https://app.clinicos.cc/patients/pat_e9zdkj34yx7815hzvh3cffpk6c\")"
+      "Bash(node /tmp/claude-1000/-home-yadi09-Yaz-project-Clinic-management-system/645e13cd-7bf4-4bdd-bc99-7189bfed4c74/scratchpad/smoke.mjs \"https://app.clinicos.cc/patients/pat_e9zdkj34yx7815hzvh3cffpk6c\")",
+      "Bash(gofmt -w internal/dental/ports.go)",
+      "Bash(scp -q -i ~/.ssh/The-millions /tmp/claude-1000/-home-yadi09-Yaz-project-Clinic-management-system/645e13cd-7bf4-4bdd-bc99-7189bfed4c74/scratchpad/report.sql themillions@77.68.116.240:/tmp/report.sql)"
     ],
     "additionalDirectories": [
       "/home/yadi09/Yaz_project/Clinic-management-system/backend/internal/billing/repo/queries",

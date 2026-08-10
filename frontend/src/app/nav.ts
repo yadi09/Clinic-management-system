@@ -27,6 +27,7 @@ export const navSections: NavSection[] = [
       { to: "/queue", label: "Queue", icon: ListChecks, perm: ["queue.manage"] },
       { to: "/worklist", label: "My day", icon: Stethoscope, perm: ["encounter.manage"] },
       { to: "/chairside", label: "Chairside", icon: Armchair, perm: ["dental.manage"] },
+      { to: "/dental/unbilled", label: "Unbilled treatment", icon: ReceiptText, perm: ["payment.charge", "payment.collect", "dental.manage"] },
       { to: "/lab/inbox", label: "Results inbox", icon: Inbox, perm: ["lab.order"], badge: "labInbox" },
     ],
   },

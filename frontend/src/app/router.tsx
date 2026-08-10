@@ -19,6 +19,7 @@ import { ReceptionPage } from "@/features/scheduling/pages/ReceptionPage";
 import { TriagePage } from "@/features/scheduling/pages/TriagePage";
 import { WorklistPage } from "@/features/scheduling/pages/WorklistPage";
 import { ChairsidePage } from "@/features/dental/ChairsidePage";
+import { UnbilledPage } from "@/features/dental/pages/UnbilledPage";
 import { EncounterWorkspacePage } from "@/features/clinical/pages/EncounterWorkspacePage";
 import { DispenseQueuePage } from "@/features/pharmacy/pages/DispenseQueuePage";
 import { DispensePage } from "@/features/pharmacy/pages/DispensePage";
@@ -76,6 +77,7 @@ export function AppRoutes() {
           <Route path="/queue" element={<QueuePage />} />
           <Route path="/worklist" element={<WorklistPage />} />
           <Route path="/chairside" element={<ChairsidePage />} />
+          <Route path="/dental/unbilled" element={<UnbilledPage />} />
           <Route path="/encounter/:queueEntryId" element={<EncounterWorkspacePage />} />
           <Route path="/pharmacy/queue" element={<DispenseQueuePage />} />
           <Route path="/pharmacy/dispense/:rxId" element={<DispensePage />} />

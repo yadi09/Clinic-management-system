@@ -595,7 +595,30 @@ func (s *Service) UpdateSession(ctx context.Context, patientID, sessionID uuid.U
 		a := fmtMoney(money(in.AmountDue))
 		amtPtr = &a
 	}
+	_, actor := actorOf(ctx)
+	branch := activeBranchOf(ctx)
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		// The fee is frozen once a charge is live. Without this a session billed and
+		// paid at 2,000 could afterwards be edited to 5,000 while the receipt still
+		// says 2,000, and the two never reconcile. Deliberately narrow: only the
+		// AMOUNT is refused, because blocking the whole update would stop the dentist
+		// writing clinical notes on a visit the desk has already billed — which is
+		// the exact ordering phase 3 removed.
+		if amtPtr != nil {
+			var live bool
+			if e := tx.QueryRow(ctx,
+				`SELECT EXISTS (SELECT 1 FROM treatment_sessions se
+				                JOIN charges c ON c.id = se.charge_id AND c.tenant_id = se.tenant_id
+				                WHERE se.tenant_id = $1 AND se.id = $2 AND c.deleted_at IS NULL
+				                  AND c.status IN ('pending','paid','waived'))`,
+				tid, sessionID).Scan(&live); e != nil {
+				return e
+			}
+			if live {
+				return apperr.Conflict("SESSION_ALREADY_BILLED",
+					"this session's fee has already been billed — undo the charge first, or adjust it from the cashier")
+			}
+		}
 		ct, e := tx.Exec(ctx,
 			`UPDATE treatment_sessions SET
 			   scheduled_date = COALESCE($3::date, scheduled_date),
@@ -605,9 +628,16 @@ func (s *Service) UpdateSession(ctx context.Context, patientID, sessionID uuid.U
 			   tooth = COALESCE($7, tooth),
 			   notes = COALESCE($8, notes),
 			   rx = COALESCE($9, rx),
+			   -- Stamped once, on the transition to done, and never rewritten: COALESCE
+			   -- keeps the original delivery date and clinician when the note is later
+			   -- edited. A bare assignment would reset the report's ageing to zero every
+			   -- time somebody fixed a typo.
+			   completed_at = CASE WHEN $5 = 'done' THEN COALESCE(completed_at, now()) ELSE completed_at END,
+			   completed_by = CASE WHEN $5 = 'done' THEN COALESCE(completed_by, $11) ELSE completed_by END,
+			   branch_id    = CASE WHEN $5 = 'done' THEN COALESCE(branch_id, $12)    ELSE branch_id END,
 			   updated_at = now()
 			 WHERE tenant_id = $1 AND patient_id = $2 AND id = $10`,
-			tid, patientID, datePtr, amtPtr, in.Status, in.Procedure, in.Tooth, in.Notes, in.Rx, sessionID)
+			tid, patientID, datePtr, amtPtr, in.Status, in.Procedure, in.Tooth, in.Notes, in.Rx, sessionID, actor, branch)
 		if e != nil {
 			return e
 		}
@@ -707,8 +737,17 @@ func (s *Service) collectOne(ctx context.Context, patientID, sessionID uuid.UUID
 		if e != nil {
 			return e
 		}
-		if chargeStatus != nil && (*chargeStatus == "pending" || *chargeStatus == "paid") {
-			return apperr.Conflict("SESSION_ALREADY_BILLED", "this session is already sent to the cashier or paid")
+		if chargeStatus != nil {
+			switch *chargeStatus {
+			case "pending", "paid":
+				return apperr.Conflict("SESSION_ALREADY_BILLED", "this session is already sent to the cashier or paid")
+			case "waived":
+				// 'waived' used to fall through this guard, so "Collect all unpaid" raised
+				// a SECOND charge for a fee the clinic had formally forgiven — and the
+				// waived row became unreachable from the session, losing the record of
+				// who forgave it.
+				return apperr.Conflict("SESSION_WAIVED", "this session was written off — reverse the write-off before billing it again")
+			}
 		}
 		amt := money(amount)
 		if amt <= 0 {
@@ -754,7 +793,7 @@ func (s *Service) CollectSessions(ctx context.Context, patientID uuid.UUID, sess
 		      WHERE se.tenant_id = $1 AND se.patient_id = $2
 		        AND se.status <> 'cancelled' AND p.status <> 'cancelled'
 		        AND se.amount_due > 0
-		        AND (c.status IS NULL OR c.status NOT IN ('pending','paid'))`
+		        AND (c.status IS NULL OR c.status NOT IN ('pending','paid','waived'))`
 		args := []any{tid, patientID}
 		if len(sessionIDs) > 0 {
 			q += ` AND se.id = ANY($3)`
@@ -1348,6 +1387,119 @@ func (s *Service) DeleteExam(ctx context.Context, patientID, examID uuid.UUID) e
 		return apperr.Internal(err)
 	}
 	return nil
+}
+
+// UnbilledTreatment: delivered treatment with no live charge against it.
+//
+// Three lanes, because they need three different actions and must never be summed
+// into one number:
+//
+//	never_billed    nobody raised a charge — Collect
+//	bill_withdrawn  a charge existed and the cashier voided it — Collect again
+//	refunded        paid, then given back — Bill again, or write it off deliberately
+//
+// Deliberately NOT included: sessions flagged pay-later that were never delivered.
+// Before the billing gate was removed, "pay later" was how the record form got
+// unlocked, so promises exist against visits that never happened; billing those
+// would charge a patient for treatment they have not had. They are counted
+// separately so the clinic can see them without being told to bill them.
+func (s *Service) UnbilledTreatment(ctx context.Context, from, to string, limit, offset int) (*dental.Unbilled, error) {
+	tid, _ := actorOf(ctx)
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	out := &dental.Unbilled{Rows: []dental.UnbilledRow{}}
+	var fromPtr, toPtr *string
+	if from != "" {
+		fromPtr = &from
+	}
+	if to != "" {
+		toPtr = &to
+	}
+
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		// Totals over the WHOLE set, before paging.
+		if e := tx.QueryRow(ctx, sessionMoneyCTE+`
+			SELECT coalesce(sum(sm.owed_amount) FILTER (WHERE sm.delivered), 0)::text,
+			       count(*) FILTER (WHERE sm.delivered),
+			       coalesce(sum(sm.amount_due) FILTER (WHERE sm.promised_undelivered), 0)::text,
+			       count(*) FILTER (WHERE sm.promised_undelivered)
+			FROM session_money sm
+			JOIN treatment_plans pl ON pl.id = sm.plan_id    AND pl.tenant_id = sm.tenant_id
+			JOIN patients        pt ON pt.id = sm.patient_id AND pt.tenant_id = sm.tenant_id
+			WHERE pt.deleted_at IS NULL AND pl.status <> 'cancelled'
+			  AND sm.session_status <> 'cancelled'
+			  AND sm.pay_state IN ('unpaid','refunded')
+			  AND sm.owed_amount > 0.005
+			  AND ($2::date IS NULL OR coalesce(sm.completed_at::date, sm.scheduled_date) >= $2::date)
+			  AND ($3::date IS NULL OR coalesce(sm.completed_at::date, sm.scheduled_date) <= $3::date)`,
+			tid, fromPtr, toPtr).Scan(&out.Total, &out.Count, &out.PromisedTotal, &out.PromisedCount); e != nil {
+			return e
+		}
+		out.Total = fmtMoney(money(out.Total))
+		out.PromisedTotal = fmtMoney(money(out.PromisedTotal))
+
+		rows, e := tx.Query(ctx, sessionMoneyCTE+`,
+today AS (SELECT (now() AT TIME ZONE 'Africa/Addis_Ababa')::date AS d)
+SELECT sm.session_id, sm.patient_id, pt.mrn,
+       trim(pt.first_name || ' ' || coalesce(pt.last_name,'')),
+       coalesce(pt.phone,''), pl.title, sm.procedure, sm.tooth, sm.seq, pl.session_count,
+       coalesce(sm.completed_at::date, sm.scheduled_date),
+       ((SELECT d FROM today) - coalesce(sm.completed_at::date, sm.scheduled_date))::int,
+       sm.owed_amount::text,
+       CASE WHEN sm.pay_state = 'refunded' THEN 'refunded'
+            WHEN sm.charge_id IS NOT NULL  THEN 'bill_withdrawn'
+            ELSE 'never_billed' END,
+       sm.pay_later, sm.pay_later_note,
+       coalesce(u.full_name,''), coalesce(b.name,'')
+FROM session_money sm
+JOIN treatment_plans pl ON pl.id = sm.plan_id    AND pl.tenant_id = sm.tenant_id
+JOIN patients        pt ON pt.id = sm.patient_id AND pt.tenant_id = sm.tenant_id
+LEFT JOIN users      u  ON u.id  = sm.completed_by AND u.tenant_id = sm.tenant_id
+LEFT JOIN branches   b  ON b.id  = sm.branch_id    AND b.tenant_id = sm.tenant_id
+WHERE pt.deleted_at IS NULL AND pl.status <> 'cancelled'
+  AND sm.session_status <> 'cancelled'
+  AND sm.delivered
+  AND sm.pay_state IN ('unpaid','refunded')
+  AND sm.owed_amount > 0.005
+  AND ($2::date IS NULL OR coalesce(sm.completed_at::date, sm.scheduled_date) >= $2::date)
+  AND ($3::date IS NULL OR coalesce(sm.completed_at::date, sm.scheduled_date) <= $3::date)
+ORDER BY coalesce(sm.completed_at::date, sm.scheduled_date) ASC
+LIMIT $4 OFFSET $5`, tid, fromPtr, toPtr, limit+1, offset)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var r dental.UnbilledRow
+			var td time.Time
+			if e := rows.Scan(&r.SessionID, &r.PatientID, &r.MRN, &r.PatientName, &r.Phone,
+				&r.PlanTitle, &r.Procedure, &r.Tooth, &r.Seq, &r.SessionCount,
+				&td, &r.DaysUnbilled, &r.Amount, &r.Lane, &r.PayLater, &r.PayLaterNote,
+				&r.Clinician, &r.Branch); e != nil {
+				return e
+			}
+			r.TreatmentDate = td.Format("2006-01-02")
+			r.Amount = fmtMoney(money(r.Amount))
+			out.Rows = append(out.Rows, r)
+		}
+		if e := rows.Err(); e != nil {
+			return e
+		}
+		// One extra row was fetched purely to answer "is there another page?".
+		if len(out.Rows) > limit {
+			out.Rows = out.Rows[:limit]
+			out.HasMore = true
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
 }
 
 func (s *Service) Outstanding(ctx context.Context) ([]dental.Outstanding, error) {

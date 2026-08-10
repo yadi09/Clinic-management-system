@@ -31,6 +31,12 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	// whoever books appointments.
 	d.GET("/sessions", httpx.RequireAnyPermission("appointment.manage", "dental.manage", "dental.read"), h.SessionsCalendar)
 
+	// Treatment given and never billed — clinic-wide. This is the control that
+	// replaced the rule requiring payment before a visit could be recorded, so it
+	// follows the money permissions, plus the dentist who has to confirm what was
+	// actually done.
+	d.GET("/unbilled", httpx.RequireAnyPermission("payment.charge", "payment.collect", "dental.manage"), h.UnbilledTreatment)
+
 	// --- billing a session: the dentist or the front desk ---
 	bill := d.Group("", httpx.RequireAnyPermission("dental.manage", "payment.charge"))
 	bill.POST("/patients/:id/sessions/:sid/collect", h.CollectSession)
