@@ -293,6 +293,11 @@ type Charger interface {
 	// VoidChargeTx voids a still-pending charge within the caller's tx — e.g. a
 	// module reversing a mistaken collect. Conflict if the charge isn't pending.
 	VoidChargeTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, reason string) error
+	// WaiveChargeTx writes a charge off within the caller's tx — treatment given and
+	// deliberately not charged for. Conflict if the charge isn't pending; a reason is
+	// required, because "we did not charge for this" must be a recorded decision
+	// rather than an absence.
+	WaiveChargeTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, reason string) error
 	// ChargeStatusTx reports a charge's status ('pending'|'paid'|'waived'|'void')
 	// for a pre-pay gate; returns NotFound if the charge is missing.
 	ChargeStatusTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (string, error)

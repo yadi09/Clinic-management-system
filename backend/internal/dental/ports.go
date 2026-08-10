@@ -316,6 +316,10 @@ type Service interface {
 	// whole treatment plan. Sessions already billed or paid are skipped, not failed.
 	// Passing no ids bills every outstanding session the patient has.
 	CollectSessions(ctx context.Context, patientID uuid.UUID, sessionIDs []uuid.UUID) (billed int, total string, err error)
+	// WriteOffSession records treatment deliberately not charged for (raise + waive,
+	// so the decision is auditable rather than an absence). UndoWriteOff reverses it.
+	WriteOffSession(ctx context.Context, patientID, sessionID uuid.UUID, reason string) error
+	UndoWriteOff(ctx context.Context, patientID, sessionID uuid.UUID) error
 	// SetPayLater flags (or clears) a session as service-given-on-a-promise-to-pay.
 	SetPayLater(ctx context.Context, patientID, sessionID uuid.UUID, on bool, note string) error
 

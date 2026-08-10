@@ -748,16 +748,18 @@ func (s *Service) collectOne(ctx context.Context, patientID, sessionID uuid.UUID
 		// visit — the guard below is a check-then-act and cannot serialise itself.
 		// deleted_at is honoured here too, so this agrees with sessionMoneyCTE instead
 		// of treating a soft-deleted charge as live.
+		var treatedAt *uuid.UUID
 		e := tx.QueryRow(ctx,
 			`SELECT se.amount_due::text, se.seq, p.title, p.session_count, c.status,
 			        (SELECT sum(-r.amount)::text FROM charges r
-			          WHERE r.tenant_id = c.tenant_id AND r.reverses_charge_id = c.id AND r.deleted_at IS NULL)
+			          WHERE r.tenant_id = c.tenant_id AND r.reverses_charge_id = c.id AND r.deleted_at IS NULL),
+			        se.branch_id
 			 FROM treatment_sessions se
 			 JOIN treatment_plans p ON p.id = se.plan_id AND p.tenant_id = se.tenant_id
 			 LEFT JOIN charges c ON c.id = se.charge_id AND c.tenant_id = se.tenant_id AND c.deleted_at IS NULL
 			 WHERE se.tenant_id = $1 AND se.patient_id = $2 AND se.id = $3
 			 FOR UPDATE OF se`,
-			tid, patientID, sessionID).Scan(&amount, &seq, &planTitle, &count, &chargeStatus, &refunded)
+			tid, patientID, sessionID).Scan(&amount, &seq, &planTitle, &count, &chargeStatus, &refunded, &treatedAt)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return apperr.NotFound("SESSION_NOT_FOUND", "session not found")
 		}
@@ -789,8 +791,15 @@ func (s *Service) collectOne(ctx context.Context, patientID, sessionID uuid.UUID
 		if amt <= 0 {
 			return apperr.Validation("set an amount for this session before collecting")
 		}
+		// The revenue belongs to the branch that DID the treatment. Billing from the
+		// clinic-wide report otherwise books it wherever the person clicking happens to
+		// be signed in, quietly moving money between branches' books.
+		bookTo := br
+		if treatedAt != nil {
+			bookTo = treatedAt
+		}
 		cid, e := s.billing.RaiseChargeTx(ctx, tx, billing.ChargeInput{
-			PatientID: patientID, BranchID: br, Source: "dental",
+			PatientID: patientID, BranchID: bookTo, Source: "dental",
 			Description: fmt.Sprintf("%s — session %d/%d", planTitle, seq, count), Amount: fmtMoney(amt),
 		})
 		if e != nil {
@@ -876,6 +885,135 @@ func (s *Service) CollectSessions(ctx context.Context, patientID uuid.UUID, sess
 	return billed, fmtMoney(total), nil
 }
 
+// WriteOffSession records that this treatment will deliberately not be charged for.
+//
+// Implemented as raise-then-waive in one transaction rather than by simply never
+// billing, because the two look identical in the data and mean opposite things: one
+// is a decision, the other is an oversight. Waiving leaves a real charge row with a
+// reason, a person and a timestamp, so the report stops chasing it and the clinic can
+// still answer "why did we not charge for this?" a year later.
+func (s *Service) WriteOffSession(ctx context.Context, patientID, sessionID uuid.UUID, reason string) error {
+	tid, _ := actorOf(ctx)
+	br := activeBranchOf(ctx)
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return apperr.Validation("say why this is not being charged for — it is recorded on the write-off")
+	}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		var amount, planTitle string
+		var seq, count int
+		var chargeStatus *string
+		var treatedAt *uuid.UUID
+		e := tx.QueryRow(ctx,
+			`SELECT se.amount_due::text, se.seq, p.title, p.session_count, c.status, se.branch_id
+			 FROM treatment_sessions se
+			 JOIN treatment_plans p ON p.id = se.plan_id AND p.tenant_id = se.tenant_id
+			 LEFT JOIN charges c ON c.id = se.charge_id AND c.tenant_id = se.tenant_id AND c.deleted_at IS NULL
+			 WHERE se.tenant_id = $1 AND se.patient_id = $2 AND se.id = $3
+			 FOR UPDATE OF se`,
+			tid, patientID, sessionID).Scan(&amount, &seq, &planTitle, &count, &chargeStatus, &treatedAt)
+		if errors.Is(e, pgx.ErrNoRows) {
+			return apperr.NotFound("SESSION_NOT_FOUND", "session not found")
+		}
+		if e != nil {
+			return e
+		}
+		if chargeStatus != nil {
+			switch *chargeStatus {
+			case "paid":
+				return apperr.Conflict("SESSION_PAID", "this session has been paid — refund it from the cashier instead of writing it off")
+			case "waived":
+				return apperr.Conflict("ALREADY_WAIVED", "this session is already written off")
+			case "pending":
+				// Already with the cashier: waive that charge rather than raising a second.
+				if e := s.billing.WaiveChargeTx(ctx, tx, *chargeIDOf(ctx, tx, tid, sessionID), reason); e != nil {
+					return e
+				}
+				return s.publisher.Publish(ctx, tx, &tid, "patient", patientID, "dental.session.written_off",
+					map[string]any{"patient_id": patientID, "session_id": sessionID, "reason": reason})
+			}
+		}
+		bookTo := br
+		if treatedAt != nil {
+			bookTo = treatedAt
+		}
+		cid, e := s.billing.RaiseChargeTx(ctx, tx, billing.ChargeInput{
+			PatientID: patientID, BranchID: bookTo, Source: "dental",
+			Description: fmt.Sprintf("%s — session %d/%d (written off)", planTitle, seq, count),
+			Amount:      fmtMoney(money(amount)),
+		})
+		if e != nil {
+			return e
+		}
+		if e := s.billing.WaiveChargeTx(ctx, tx, cid, reason); e != nil {
+			return e
+		}
+		if _, e := tx.Exec(ctx,
+			`UPDATE treatment_sessions SET charge_id = $1, updated_at = now() WHERE tenant_id = $2 AND id = $3`,
+			cid, tid, sessionID); e != nil {
+			return e
+		}
+		return s.publisher.Publish(ctx, tx, &tid, "charge", cid, "dental.session.written_off",
+			map[string]any{"patient_id": patientID, "session_id": sessionID, "reason": reason, "amount": amount})
+	})
+	if ae, ok := apperr.As(err); ok {
+		return ae
+	}
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}
+
+// chargeIDOf reads the session's currently linked charge inside an open tx.
+func chargeIDOf(ctx context.Context, tx pgx.Tx, tid, sessionID uuid.UUID) *uuid.UUID {
+	var id *uuid.UUID
+	_ = tx.QueryRow(ctx, `SELECT charge_id FROM treatment_sessions WHERE tenant_id = $1 AND id = $2`, tid, sessionID).Scan(&id)
+	return id
+}
+
+// UndoWriteOff detaches a written-off charge so the session can be billed again.
+//
+// A write-off used to be a dead end: 'waived' blocked every billing path and nothing
+// could reverse it, so a mistaken write-off was permanent. The waived charge is kept
+// — it is the record of the decision — and the session is simply unlinked from it.
+func (s *Service) UndoWriteOff(ctx context.Context, patientID, sessionID uuid.UUID) error {
+	tid, _ := actorOf(ctx)
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		var chargeID *uuid.UUID
+		var chargeStatus *string
+		e := tx.QueryRow(ctx,
+			`SELECT se.charge_id, c.status
+			 FROM treatment_sessions se
+			 LEFT JOIN charges c ON c.id = se.charge_id AND c.tenant_id = se.tenant_id AND c.deleted_at IS NULL
+			 WHERE se.tenant_id = $1 AND se.patient_id = $2 AND se.id = $3
+			 FOR UPDATE OF se`, tid, patientID, sessionID).Scan(&chargeID, &chargeStatus)
+		if errors.Is(e, pgx.ErrNoRows) {
+			return apperr.NotFound("SESSION_NOT_FOUND", "session not found")
+		}
+		if e != nil {
+			return e
+		}
+		if chargeID == nil || chargeStatus == nil || *chargeStatus != "waived" {
+			return apperr.Conflict("NOT_WAIVED", "this session is not written off")
+		}
+		if _, e := tx.Exec(ctx,
+			`UPDATE treatment_sessions SET charge_id = NULL, updated_at = now()
+			 WHERE tenant_id = $1 AND id = $2 AND charge_id = $3`, tid, sessionID, chargeID); e != nil {
+			return e
+		}
+		return s.publisher.Publish(ctx, tx, &tid, "charge", *chargeID, "dental.session.write_off_undone",
+			map[string]any{"patient_id": patientID, "session_id": sessionID})
+	})
+	if ae, ok := apperr.As(err); ok {
+		return ae
+	}
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}
+
 // UncollectSession reverses a mistaken collect: voids the still-pending charge (so
 // the cashier can no longer settle it) and detaches it, returning the session to unpaid.
 func (s *Service) UncollectSession(ctx context.Context, patientID, sessionID uuid.UUID) error {
@@ -904,7 +1042,11 @@ func (s *Service) UncollectSession(ctx context.Context, patientID, sessionID uui
 		if e := s.billing.VoidChargeTx(ctx, tx, *chargeID, "reversed by clinician (mistaken collect)"); e != nil {
 			return e
 		}
-		if _, e := tx.Exec(ctx, `UPDATE treatment_sessions SET charge_id = NULL, updated_at = now() WHERE tenant_id = $1 AND id = $2`, tid, sessionID); e != nil {
+		// Scoped to the charge we just voided. A blanket NULL could clear a link that a
+		// concurrent collect had already replaced, orphaning a live pending charge that
+		// no session points at — money on the cashier's queue belonging to nobody.
+		if _, e := tx.Exec(ctx, `UPDATE treatment_sessions SET charge_id = NULL, updated_at = now()
+			 WHERE tenant_id = $1 AND id = $2 AND charge_id = $3`, tid, sessionID, chargeID); e != nil {
 			return e
 		}
 		return s.publisher.Publish(ctx, tx, &tid, "charge", *chargeID, "dental.charge.reversed",

@@ -294,6 +294,16 @@ export function deleteExam(patientId: string, examId: string) {
   return apiFetch<void>(`/dental/patients/${patientId}/exams/${examId}`, { method: "DELETE" });
 }
 
+/** Record treatment deliberately not charged for. Raises then waives a real charge,
+ *  so the decision is auditable rather than being an absence of one. */
+export function writeOffSession(patientId: string, sessionId: string, reason: string) {
+  return apiFetch<void>(`/dental/patients/${patientId}/sessions/${sessionId}/write-off`, { method: "POST", body: { reason } });
+}
+/** Undo a mistaken write-off. The waived charge is kept as the record; the session is unlinked. */
+export function undoWriteOff(patientId: string, sessionId: string) {
+  return apiFetch<void>(`/dental/patients/${patientId}/sessions/${sessionId}/undo-write-off`, { method: "POST" });
+}
+
 // --- treatment given but never billed (clinic-wide) --------------------------
 //
 // The control that replaced the rule requiring payment before a visit could be

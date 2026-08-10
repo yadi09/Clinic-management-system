@@ -816,3 +816,42 @@ func (h *Handlers) UnbilledTreatment(c *gin.Context) {
 		"promised_total": out.PromisedTotal, "promised_count": out.PromisedCount,
 	})
 }
+
+func (h *Handlers) WriteOffSession(c *gin.Context) {
+	pid, ok := decode(c, id.PrefixPatient, c.Param("id"))
+	if !ok {
+		return
+	}
+	sid, ok := decode(c, id.PrefixTreatmentSession, c.Param("sid"))
+	if !ok {
+		return
+	}
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("invalid request"))
+		return
+	}
+	if err := h.svc.WriteOffSession(c.Request.Context(), pid, sid, req.Reason); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+func (h *Handlers) UndoWriteOff(c *gin.Context) {
+	pid, ok := decode(c, id.PrefixPatient, c.Param("id"))
+	if !ok {
+		return
+	}
+	sid, ok := decode(c, id.PrefixTreatmentSession, c.Param("sid"))
+	if !ok {
+		return
+	}
+	if err := h.svc.UndoWriteOff(c.Request.Context(), pid, sid); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}

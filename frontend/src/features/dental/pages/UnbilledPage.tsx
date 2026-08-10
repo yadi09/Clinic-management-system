@@ -31,7 +31,7 @@ import { AppError } from "@/lib/api-client";
 import { useAuth } from "@/app/auth-context";
 import { DualDate } from "@/components/DualDate";
 import { birr } from "@/features/dental/money";
-import { collectSession, unbilledTreatment, type UnbilledLane, type UnbilledRow } from "@/features/dental/api";
+import { collectSession, unbilledTreatment, writeOffSession, type UnbilledLane, type UnbilledRow } from "@/features/dental/api";
 
 const LANE: Record<UnbilledLane, { label: string; hint: string; tone: string }> = {
   never_billed: {
@@ -81,6 +81,23 @@ export function UnbilledPage() {
     },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not send it to the cashier"),
   });
+
+  // The lane hints have promised "or write it off" since this page shipped; this is
+  // that action. A reason is required — an unexplained write-off is indistinguishable
+  // from the oversight this report exists to catch.
+  const writeOff = useMutation({
+    mutationFn: ({ r, reason }: { r: UnbilledRow; reason: string }) => writeOffSession(r.patient_id, r.session_id, reason),
+    onSuccess: () => {
+      toast.success("Written off");
+      qc.invalidateQueries({ queryKey: ["dental-unbilled"] });
+      qc.invalidateQueries({ queryKey: ["dental-outstanding"] });
+    },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not write it off"),
+  });
+  const askWriteOff = (r: UnbilledRow) => {
+    const reason = window.prompt(`Write off ${birr(r.amount)} for ${r.patient_name}?\n\nSay why — it is recorded against the charge.`);
+    if (reason && reason.trim()) writeOff.mutate({ r, reason: reason.trim() });
+  };
 
   const count = (l: UnbilledLane) => (data?.rows ?? []).filter((r) => r.lane === l).length;
   // When a lane is selected the headline must describe THAT lane, not the whole
@@ -206,12 +223,15 @@ export function UnbilledPage() {
                             </a>
                           )}
                           {canCollect && (
-                            <Button size="sm" loading={collect.isPending && collect.variables?.session_id === r.session_id}
-                              onClick={() => collect.mutate(r)}>
-                              {r.lane === "refunded"
-                                ? <><Undo2 className="h-3.5 w-3.5" /> Bill again</>
-                                : <><HandCoins className="h-3.5 w-3.5" /> Send to cashier</>}
-                            </Button>
+                            <>
+                              <Button size="sm" variant="ghost" onClick={() => askWriteOff(r)}>Write off</Button>
+                              <Button size="sm" loading={collect.isPending && collect.variables?.session_id === r.session_id}
+                                onClick={() => collect.mutate(r)}>
+                                {r.lane === "refunded"
+                                  ? <><Undo2 className="h-3.5 w-3.5" /> Bill again</>
+                                  : <><HandCoins className="h-3.5 w-3.5" /> Send to cashier</>}
+                              </Button>
+                            </>
                           )}
                         </div>
                       </div>

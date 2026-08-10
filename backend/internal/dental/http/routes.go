@@ -44,6 +44,10 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	// Take payment for several sessions at once (e.g. the patient settles the whole
 	// treatment plan at the desk).
 	bill.POST("/patients/:id/collect-sessions", h.CollectSessions)
+	// Writing treatment off is a money decision with a reason attached, so it sits
+	// with the other billing actions rather than with the clinical record.
+	bill.POST("/patients/:id/sessions/:sid/write-off", h.WriteOffSession)
+	bill.POST("/patients/:id/sessions/:sid/undo-write-off", h.UndoWriteOff)
 
 	// --- rescheduling a session: the dentist or whoever books appointments ---
 	// Moving a session is a scheduling act, not a clinical one, so appointment.manage

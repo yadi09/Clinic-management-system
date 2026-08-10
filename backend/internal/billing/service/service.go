@@ -616,6 +616,26 @@ func (s *Service) VoidCharge(ctx context.Context, id uuid.UUID, reason string) e
 
 // VoidChargeTx voids a still-pending charge inside the caller's transaction, so a
 // module (e.g. dental reversing a mistaken collect) can undo a bill atomically.
+// WaiveChargeTx writes off a pending charge inside the caller's transaction, so a
+// module can raise-then-waive in one atomic step and leave an auditable "forgiven"
+// row rather than simply never billing.
+func (s *Service) WaiveChargeTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, reason string) error {
+	tenantID, actor := actorOf(ctx)
+	if strings.TrimSpace(reason) == "" {
+		return apperr.Validation("a reason is required to write off a charge")
+	}
+	q := billingdb.New(tx)
+	row, e := q.WaiveCharge(ctx, billingdb.WaiveChargeParams{WaiveReason: strPtr(reason), SettledBy: actor, TenantID: tenantID, ID: id})
+	if errors.Is(e, pgx.ErrNoRows) {
+		return apperr.Conflict("NOT_PENDING", "only a pending charge can be written off")
+	}
+	if e != nil {
+		return e
+	}
+	return s.publisher.Publish(ctx, tx, &tenantID, "charge", row.ID, "billing.charge.waived",
+		map[string]any{"charge_id": row.ID, "reason": reason})
+}
+
 func (s *Service) VoidChargeTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, reason string) error {
 	tenantID, actor := actorOf(ctx)
 	if strings.TrimSpace(reason) == "" {
