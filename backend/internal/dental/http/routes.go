@@ -79,6 +79,10 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	g.POST("/patients/:id/plans", h.CreatePlan)
 	g.PUT("/patients/:id/plans/:pid", h.UpdatePlan)
 	g.DELETE("/patients/:id/plans/:pid", h.DeletePlan)
+	// A course that overruns gains a visit; one that seals early is closed. Both are
+	// clinical decisions about the treatment, so they sit with the dentist.
+	g.POST("/patients/:id/plans/:pid/sessions", h.AddSession)
+	g.POST("/patients/:id/plans/:pid/finish", h.FinishCourse)
 
 	g.PUT("/patients/:id/sessions/:sid", h.UpdateSession)
 	g.POST("/patients/:id/sessions/:sid/pay-later", h.SetPayLater)

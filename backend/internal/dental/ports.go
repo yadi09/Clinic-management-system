@@ -301,6 +301,11 @@ type Service interface {
 	CreatePlan(ctx context.Context, patientID uuid.UUID, in PlanInput) (*Plan, error)
 	UpdatePlan(ctx context.Context, patientID, planID uuid.UUID, in PlanUpdate) error
 	DeletePlan(ctx context.Context, patientID, planID uuid.UUID) error
+	// AddSession appends a visit to a running course (a root canal that needs a
+	// seventh). FinishCourse closes one early, cancelling only the visits that were
+	// never delivered and never billed.
+	AddSession(ctx context.Context, patientID, planID uuid.UUID, in SessionSeed) (*Session, error)
+	FinishCourse(ctx context.Context, patientID, planID uuid.UUID) (int, error)
 	UpdateSession(ctx context.Context, patientID, sessionID uuid.UUID, in SessionUpdate) error
 	// RescheduleSession moves a still-planned session to another date and nothing
 	// else. Split out from UpdateSession so the front desk can answer "can I come

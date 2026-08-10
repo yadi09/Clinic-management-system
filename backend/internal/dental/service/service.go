@@ -557,6 +557,122 @@ func (s *Service) UpdatePlan(ctx context.Context, patientID, planID uuid.UUID, i
 	return nil
 }
 
+// AddSession appends a visit to a running course.
+//
+// Treatment does not always fit the plan: a root canal budgeted for six visits needs
+// a seventh, and until now the only options were to edit the existing schedule (which
+// misdates work already done) or start a second plan (which splits one course in two
+// and breaks "session 4 of 6"). The plan's total and session count move with it, so
+// the header, the progress bar and the course rail keep describing something real.
+func (s *Service) AddSession(ctx context.Context, patientID, planID uuid.UUID, in dental.SessionSeed) (*dental.Session, error) {
+	tid, _ := actorOf(ctx)
+	if _, e := time.Parse("2006-01-02", in.ScheduledDate); e != nil {
+		return nil, apperr.Validation("date must be YYYY-MM-DD")
+	}
+	amt := money(in.AmountDue)
+	if amt < 0 {
+		return nil, apperr.Validation("amount cannot be negative")
+	}
+	out := &dental.Session{Images: []dental.Image{}, Prescriptions: []dental.Prescription{}}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		var status string
+		if e := tx.QueryRow(ctx,
+			`SELECT status FROM treatment_plans WHERE tenant_id = $1 AND patient_id = $2 AND id = $3 FOR UPDATE`,
+			tid, patientID, planID).Scan(&status); e != nil {
+			if errors.Is(e, pgx.ErrNoRows) {
+				return apperr.NotFound("PLAN_NOT_FOUND", "treatment plan not found")
+			}
+			return e
+		}
+		if status == "cancelled" {
+			return apperr.Conflict("PLAN_CANCELLED", "this plan was cancelled — start a new one instead of adding to it")
+		}
+		var id uuid.UUID
+		var sd time.Time
+		if e := tx.QueryRow(ctx,
+			`INSERT INTO treatment_sessions (tenant_id, plan_id, patient_id, seq, scheduled_date, amount_due, status)
+			 SELECT $1, $2, $3, coalesce(max(seq),0)+1, $4::date, $5::numeric, 'planned'
+			 FROM treatment_sessions WHERE tenant_id = $1 AND plan_id = $2
+			 RETURNING id, seq, scheduled_date, amount_due::text, status`,
+			tid, planID, patientID, in.ScheduledDate, fmtMoney(amt)).
+			Scan(&id, &out.Seq, &sd, &out.AmountDue, &out.Status); e != nil {
+			return e
+		}
+		out.ID = id
+		out.ScheduledDate = sd.Format("2006-01-02")
+		out.Payment = "unpaid"
+		// Keep the plan's own numbers honest, including a course that was completed
+		// and is being reopened because the patient needs one more visit.
+		if _, e := tx.Exec(ctx,
+			`UPDATE treatment_plans SET
+			   session_count = (SELECT count(*) FROM treatment_sessions
+			                     WHERE tenant_id = $1 AND plan_id = $2 AND status <> 'cancelled'),
+			   total_amount  = (SELECT coalesce(sum(amount_due),0) FROM treatment_sessions
+			                     WHERE tenant_id = $1 AND plan_id = $2 AND status <> 'cancelled'),
+			   deadline      = (SELECT max(scheduled_date) FROM treatment_sessions
+			                     WHERE tenant_id = $1 AND plan_id = $2 AND status <> 'cancelled'),
+			   status        = CASE WHEN status = 'completed' THEN 'active' ELSE status END,
+			   updated_at    = now()
+			 WHERE tenant_id = $1 AND id = $2`, tid, planID); e != nil {
+			return e
+		}
+		return s.publisher.Publish(ctx, tx, &tid, "patient", patientID, "dental.session.added",
+			map[string]any{"patient_id": patientID, "plan_id": planID, "session_id": id})
+	})
+	if ae, ok := apperr.As(err); ok {
+		return nil, ae
+	}
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+// FinishCourse closes a plan early: the remaining planned visits are cancelled and
+// the plan is marked complete. A course that seals in five visits instead of six
+// should not sit "in progress" forever, and its unused sessions should not keep
+// appearing on the calendar.
+//
+// Money already collected is untouched, and a session that was delivered — done, or
+// carrying a live charge — is never cancelled, so nothing owed can be hidden by
+// closing the course.
+func (s *Service) FinishCourse(ctx context.Context, patientID, planID uuid.UUID) (cancelled int, err error) {
+	tid, _ := actorOf(ctx)
+	err = s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		ct, e := tx.Exec(ctx,
+			`UPDATE treatment_sessions se SET status = 'cancelled', updated_at = now()
+			 WHERE se.tenant_id = $1 AND se.plan_id = $2 AND se.patient_id = $3
+			   AND se.status = 'planned' AND NOT se.pay_later
+			   AND NOT EXISTS (SELECT 1 FROM charges c
+			                    WHERE c.id = se.charge_id AND c.tenant_id = se.tenant_id
+			                      AND c.deleted_at IS NULL AND c.status IN ('pending','paid','waived'))`,
+			tid, planID, patientID)
+		if e != nil {
+			return e
+		}
+		cancelled = int(ct.RowsAffected())
+		pt, e := tx.Exec(ctx,
+			`UPDATE treatment_plans SET status = 'completed', updated_at = now()
+			 WHERE tenant_id = $1 AND patient_id = $2 AND id = $3 AND status = 'active'`,
+			tid, patientID, planID)
+		if e != nil {
+			return e
+		}
+		if pt.RowsAffected() == 0 {
+			return apperr.Conflict("PLAN_NOT_ACTIVE", "this plan is not running")
+		}
+		return s.publisher.Publish(ctx, tx, &tid, "patient", patientID, "dental.plan.completed",
+			map[string]any{"patient_id": patientID, "plan_id": planID, "sessions_cancelled": cancelled})
+	})
+	if ae, ok := apperr.As(err); ok {
+		return 0, ae
+	}
+	if err != nil {
+		return 0, apperr.Internal(err)
+	}
+	return cancelled, nil
+}
+
 func (s *Service) DeletePlan(ctx context.Context, patientID, planID uuid.UUID) error {
 	tid, _ := actorOf(ctx)
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {

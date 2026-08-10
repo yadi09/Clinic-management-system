@@ -43,6 +43,7 @@ PLAN=$(curl -k -sS -H "$HOST" -H "$A" -H "$CT" -X POST $B/dental/patients/$PID/p
   -d '{"title":"RCT E2E","total_amount":"6000","start_date":"2026-08-01","interval_unit":"month","interval_count":1,"session_count":2}')
 S1=$(echo "$PLAN" | jq_py "print(d['data']['sessions'][0]['id'])" 2>/dev/null)
 S2=$(echo "$PLAN" | jq_py "print(d['data']['sessions'][1]['id'])" 2>/dev/null)
+PLANID=$(echo "$PLAN" | jq_py "print(d['data']['id'])" 2>/dev/null)
 { [ -n "$S1" ] && [ -n "$S2" ]; } && ok "plan with 2 sessions (3,000 each)" || { no "plan ($PLAN)"; exit 1; }
 
 bal(){ curl -k -sS -H "$HOST" -H "$A" "$B/dental/patients/$PID/summary" | jq_py "b=d['data']['balance'];print(b['due']+'|'+b['paid']+'|'+b['at_cashier']+'|'+b['waived'])"; }
@@ -91,7 +92,20 @@ REASON=$(q "SELECT waive_reason FROM charges WHERE patient_id='$RAW' AND status=
 UC=$(curl -k -sS -H "$HOST" -H "$A" -H "$CT" -o /dev/null -w "%{http_code}" -X POST $B/dental/patients/$PID/sessions/$S2/undo-write-off)
 [ "$(pay_state $S2)" = "unpaid" ] && ok "write-off undone ($UC) -> billable again" || no "undo ($UC) state=$(pay_state $S2)"
 
-echo "=== 6. the unbilled report sees what is actually owed ==="
+echo "=== 6. add a visit to the running course, then finish it early ==="
+S3=$(curl -k -sS -H "$HOST" -H "$A" -H "$CT" -X POST $B/dental/patients/$PID/plans/$PLANID/sessions \
+  -d '{"scheduled_date":"2026-12-01","amount_due":"1500"}' | jq_py "print(d['data']['id'])" 2>/dev/null)
+[ -n "$S3" ] && ok "third visit added" || no "add-session failed"
+PC=$(curl -k -sS -H "$HOST" -H "$A" "$B/dental/patients/$PID/summary" | jq_py "p=d['data']['plans'][0];print(str(p['session_count'])+'|'+p['total_amount'])")
+[ "$PC" = "3|7500.00" ] && ok "plan total and count moved with it (3 visits, 7,500)" || no "plan header stale: $PC"
+FC=$(curl -k -sS -H "$HOST" -H "$A" -H "$CT" -X POST $B/dental/patients/$PID/plans/$PLANID/finish | jq_py "print(str(d['data']['sessions_cancelled']))" 2>/dev/null)
+[ "$FC" = "1" ] && ok "finished early — 1 unused visit cancelled" || no "finish cancelled $FC (expected 1)"
+DLV=$(curl -k -sS -H "$HOST" -H "$A" "$B/dental/patients/$PID/summary" | jq_py "
+ss=[s for p in d['data']['plans'] for s in p['sessions']]
+print(str(len([s for s in ss if s['status']=='cancelled']))+'|'+str(len([s for s in ss if s['status']=='done'])))")
+[ "$DLV" = "1|2" ] && ok "delivered visits untouched (2 done, only the unused one cancelled)" || no "after finish: $DLV"
+
+echo "=== 7. the unbilled report sees what is actually owed ==="
 REP=$(curl -k -sS -H "$HOST" -H "$A" "$B/dental/unbilled" | jq_py "print(d['data']['total']+'|'+str(d['data']['count']))")
 [ "$REP" = "3000.00|1" ] && ok "report: 3,000 across 1 visit (session 2 only)" || no "report: $REP"
 

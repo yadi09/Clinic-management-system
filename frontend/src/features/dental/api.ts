@@ -294,6 +294,16 @@ export function deleteExam(patientId: string, examId: string) {
   return apiFetch<void>(`/dental/patients/${patientId}/exams/${examId}`, { method: "DELETE" });
 }
 
+/** Append a visit to a running course — a root canal that needs a seventh. The plan's
+ *  total, session count and deadline move with it. */
+export function addSession(patientId: string, planId: string, body: { scheduled_date: string; amount_due: string }) {
+  return apiFetch<Session>(`/dental/patients/${patientId}/plans/${planId}/sessions`, { method: "POST", body });
+}
+/** Close a course early. Cancels only visits never delivered and never billed. */
+export function finishCourse(patientId: string, planId: string) {
+  return apiFetch<{ sessions_cancelled: number }>(`/dental/patients/${patientId}/plans/${planId}/finish`, { method: "POST" });
+}
+
 /** Record treatment deliberately not charged for. Raises then waives a real charge,
  *  so the decision is auditable rather than being an absence of one. */
 export function writeOffSession(patientId: string, sessionId: string, reason: string) {

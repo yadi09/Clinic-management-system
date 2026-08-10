@@ -11,15 +11,22 @@
 // resolved to. A page that silently filters is unrecoverable when it guesses wrong;
 // one that says "OVERDUE · was Thu 7 Aug · 5 days ago" can be argued with.
 import { useState } from "react";
-import { CalendarClock, ChevronRight, FileText } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { CalendarClock, CheckCheck, ChevronRight, FileText, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { toast } from "@/components/ui/sonner";
+import { AppError } from "@/lib/api-client";
+import { EthiopianDateInput } from "@/components/EthiopianDateInput";
 import { cn } from "@/lib/utils";
 import { DualDate } from "@/components/DualDate";
 import { MoveSessionDialog } from "@/features/dental/shared/MoveSessionDialog";
 import { MONEY, birr, sessionMoneyState } from "@/features/dental/money";
-import type { Plan } from "@/features/dental/api";
+import { addSession, finishCourse, type Plan } from "@/features/dental/api";
 import { visitTiming, type FocusResult, type FocusVisit, type Rung } from "@/features/dental/visit/useFocusVisit";
 import { RecordVisitForm, SettleFee } from "@/features/dental/visit/RecordVisitForm";
 
@@ -48,6 +55,8 @@ export function VisitCockpit({
 }) {
   const [recording, setRecording] = useState(false);
   const [moving, setMoving] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [finishing, setFinishing] = useState(false);
   const { focus, rung, others } = resolved;
 
   if (!focus) {
@@ -106,7 +115,18 @@ export function VisitCockpit({
         {/* band 3 — the course, at a glance. Hidden while recording: switching the
             focused visit under an open form would retarget the save to another
             session, filing the note and the fee against a visit that never happened. */}
-        {!recording && <CourseRail plan={plan} currentId={session.id} onPick={onPick} />}
+        {!recording && (
+          <CourseRail plan={plan} currentId={session.id} onPick={onPick} canEdit={editable}
+            onAdd={() => setAdding(true)} />
+        )}
+
+        {editable && plan.status === "active" && !recording && (
+          <div className="flex justify-end">
+            <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setFinishing(true)}>
+              <CheckCheck className="h-3.5 w-3.5" /> Finish course
+            </Button>
+          </div>
+        )}
 
         {/* band 4/5 — read what happened last time, then record today */}
         {recording ? (
@@ -161,6 +181,19 @@ export function VisitCockpit({
         )}
       </div>
 
+      {adding && (
+        <AddSessionDialog
+          patientId={patientId} planId={plan.id} planTitle={plan.title}
+          suggestDate={nextFreeDate(plan)} suggestAmount={typicalFee(plan)}
+          onClose={() => setAdding(false)} onAdded={onChanged}
+        />
+      )}
+      {finishing && (
+        <FinishCourseDialog
+          patientId={patientId} plan={plan}
+          onClose={() => setFinishing(false)} onDone={onChanged}
+        />
+      )}
       {moving && (
         <MoveSessionDialog
           patientId={patientId} sessionId={session.id} planTitle={plan.title}
@@ -184,8 +217,8 @@ const todayISO = () => {
  * the clinician's page never showed it. Each dot is clickable, so switching to
  * another visit in the same course costs one click instead of a scroll and a hunt.
  */
-function CourseRail({ plan, currentId, onPick }: {
-  plan: Plan; currentId: string; onPick: (id: string) => void;
+function CourseRail({ plan, currentId, onPick, onAdd, canEdit }: {
+  plan: Plan; currentId: string; onPick: (id: string) => void; onAdd?: () => void; canEdit: boolean;
 }) {
   // Calendar order, so the rail and the plan list below tell the same story about
   // a course whose sessions have been rescheduled out of their original sequence.
@@ -219,6 +252,12 @@ function CourseRail({ plan, currentId, onPick }: {
             </button>
           );
         })}
+        {canEdit && onAdd && (
+          <button type="button" onClick={onAdd} title="Add a visit to this course"
+            className="flex h-7 items-center gap-1 rounded-full border border-dashed px-2 text-xs font-medium text-muted-foreground hover:bg-muted">
+            <Plus className="h-3 w-3" /> visit
+          </button>
+        )}
       </div>
       <p className="text-xs text-muted-foreground tabular-nums">
         paid {birr(paid)} of {birr(plan.total_amount)}
@@ -285,5 +324,114 @@ function OtherVisit({ visit, onPick }: { visit: FocusVisit; onPick: (id: string)
       <span className={cn("text-xs", t.days < 0 ? "font-medium text-destructive" : "text-muted-foreground")}>{t.text}</span>
       <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-muted-foreground" />
     </button>
+  );
+}
+
+/** The next sensible date for an extra visit: one interval after the last one. */
+function nextFreeDate(plan: Plan): string {
+  const live = plan.sessions.filter((s) => s.status !== "cancelled");
+  const last = live.map((s) => s.scheduled_date).sort().pop() ?? todayISO();
+  const d = new Date(`${last}T00:00:00`);
+  const n = Math.max(1, plan.interval_count || 1);
+  if (plan.interval_unit === "month") d.setMonth(d.getMonth() + n);
+  else if (plan.interval_unit === "week") d.setDate(d.getDate() + 7 * n);
+  else d.setDate(d.getDate() + n);
+  const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return iso > todayISO() ? iso : todayISO();
+}
+
+/** What this course charges per visit, so the extra one is not typed from scratch. */
+function typicalFee(plan: Plan): string {
+  const live = plan.sessions.filter((s) => s.status !== "cancelled");
+  if (live.length === 0) return "0";
+  const counts = new Map<string, number>();
+  for (const s of live) counts.set(s.amount_due, (counts.get(s.amount_due) ?? 0) + 1);
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+}
+
+function AddSessionDialog({ patientId, planId, planTitle, suggestDate, suggestAmount, onClose, onAdded }: {
+  patientId: string; planId: string; planTitle: string; suggestDate: string; suggestAmount: string;
+  onClose: () => void; onAdded: () => void;
+}) {
+  const [date, setDate] = useState(suggestDate);
+  const [amount, setAmount] = useState(suggestAmount);
+  const add = useMutation({
+    mutationFn: () => addSession(patientId, planId, { scheduled_date: date, amount_due: amount }),
+    onSuccess: () => { toast.success("Visit added to the course"); onAdded(); onClose(); },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not add the visit"),
+  });
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Add a visit to {planTitle}</DialogTitle></DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          Treatment does not always fit the plan. The course total and its visit count move with
+          this, so “session 4 of 6” keeps describing something real.
+        </p>
+        <div className="space-y-1.5">
+          <Label htmlFor="add-date">Date</Label>
+          <EthiopianDateInput id="add-date" value={date} onChange={setDate} showAge={false} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="add-amount">Fee (ETB)</Label>
+          <Input id="add-amount" type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <p className="text-xs text-muted-foreground">Pre-filled with what this course usually charges per visit.</p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button loading={add.isPending} disabled={!date} onClick={() => add.mutate()}>Add visit</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function FinishCourseDialog({ patientId, plan, onClose, onDone }: {
+  patientId: string; plan: Plan; onClose: () => void; onDone: () => void;
+}) {
+  // Enumerate the effect rather than describing it. "Some sessions will be
+  // cancelled" is not something anyone can check before agreeing to it.
+  const willCancel = plan.sessions.filter(
+    (s) => s.status === "planned" && !s.pay_later && s.payment !== "billed" && s.payment !== "paid" && s.payment !== "waived",
+  );
+  const finish = useMutation({
+    mutationFn: () => finishCourse(patientId, plan.id),
+    onSuccess: (r) => {
+      toast.success(r.sessions_cancelled > 0
+        ? `Course finished — ${r.sessions_cancelled} unused visit${r.sessions_cancelled === 1 ? "" : "s"} cancelled`
+        : "Course finished");
+      onDone(); onClose();
+    },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not finish the course"),
+  });
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Finish {plan.title}?</DialogTitle></DialogHeader>
+        {willCancel.length > 0 ? (
+          <div className="space-y-2">
+            <p className="text-sm">These booked visits will be cancelled:</p>
+            <ul className="space-y-1 rounded-md border bg-muted/40 p-2 text-sm">
+              {willCancel.map((s) => (
+                <li key={s.id} className="flex items-center justify-between gap-2">
+                  <span>Session {s.seq} · <DualDate iso={s.scheduled_date} /></span>
+                  <span className="tabular-nums text-muted-foreground">{birr(s.amount_due)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Every visit in this course is already done.</p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          Nothing already collected changes, and any visit that was delivered or billed is left
+          exactly as it is — finishing a course cannot hide money that is owed.
+        </p>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button loading={finish.isPending} onClick={() => finish.mutate()}>Finish course</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

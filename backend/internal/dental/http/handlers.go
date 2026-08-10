@@ -855,3 +855,46 @@ func (h *Handlers) UndoWriteOff(c *gin.Context) {
 	}
 	httpx.NoContent(c)
 }
+
+func (h *Handlers) AddSession(c *gin.Context) {
+	pid, ok := decode(c, id.PrefixPatient, c.Param("id"))
+	if !ok {
+		return
+	}
+	plid, ok := decode(c, id.PrefixTreatmentPlan, c.Param("pid"))
+	if !ok {
+		return
+	}
+	var req struct {
+		ScheduledDate string `json:"scheduled_date"`
+		AmountDue     string `json:"amount_due"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("invalid request"))
+		return
+	}
+	out, err := h.svc.AddSession(c.Request.Context(), pid, plid,
+		dental.SessionSeed{ScheduledDate: req.ScheduledDate, AmountDue: req.AmountDue})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.Created(c, sessionDTO(*out))
+}
+
+func (h *Handlers) FinishCourse(c *gin.Context) {
+	pid, ok := decode(c, id.PrefixPatient, c.Param("id"))
+	if !ok {
+		return
+	}
+	plid, ok := decode(c, id.PrefixTreatmentPlan, c.Param("pid"))
+	if !ok {
+		return
+	}
+	n, err := h.svc.FinishCourse(c.Request.Context(), pid, plid)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"sessions_cancelled": n})
+}
