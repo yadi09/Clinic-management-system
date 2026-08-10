@@ -453,11 +453,17 @@ func (h *Handlers) PatientCharges(c *gin.Context) {
 		httpx.Fail(c, err)
 		return
 	}
-	out := make([]chargeRowDTO, 0, len(items))
-	for _, ch := range items {
+	out := make([]chargeRowDTO, 0, len(items.Rows))
+	for _, ch := range items.Rows {
 		out = append(out, chargeRowDTO{ID: id.Encode(id.PrefixCharge, ch.ID), ChargeRow: ch})
 	}
-	httpx.OK(c, out)
+	// Rows are a page; the totals cover the whole account. The printed statement uses
+	// the totals, so it can no longer understate a long-standing patient.
+	httpx.OK(c, gin.H{
+		"rows": out, "charged": items.Charged, "paid": items.Paid, "refunded": items.Refunded,
+		"awaiting": items.Awaiting, "waived": items.Waived,
+		"total_count": items.TotalCount, "truncated": items.Truncated,
+	})
 }
 
 func (h *Handlers) SettleCharge(c *gin.Context) {

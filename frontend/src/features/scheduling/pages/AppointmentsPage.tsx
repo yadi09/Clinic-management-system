@@ -64,9 +64,17 @@ const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 // Dental treatment session: a visually distinct layer from appointments, coloured
 // by money state so the doctor spots owed/paid at a glance.
-function sessOwes(s: DentalSessionCal) { return (s.status === "done" || s.pay_later) && s.payment !== "paid"; }
+//
+// "Owes" is the SAME predicate the server uses for `due`: treatment delivered, with
+// nothing live at the cashier. It previously painted a session red when the fee was
+// already queued for payment, and when the patient had merely promised to pay for a
+// visit that had not happened yet — both of which read as "chase this patient".
+function sessOwes(s: DentalSessionCal) {
+  return s.status === "done" && (s.payment === "unpaid" || s.payment === "refunded");
+}
 function sessAccent(s: DentalSessionCal) {
   if (s.payment === "paid") return "border-l-emerald-500 bg-emerald-50";
+  if (s.payment === "waived") return "border-l-slate-400 bg-slate-50";
   if (sessOwes(s)) return "border-l-rose-500 bg-rose-50";
   if (s.payment === "billed") return "border-l-amber-500 bg-amber-50";
   return "border-l-violet-500 bg-violet-50";

@@ -132,6 +132,25 @@ type ChargeRow struct {
 	SettledBy string `json:"settled_by,omitempty"`
 }
 
+// PatientLedger is a patient's charges plus the totals of the WHOLE account.
+//
+// The rows are a page (newest 50); the totals are not. A printed statement carries a
+// signature and a stamp, and one that silently totals only the newest fifty charges
+// understates a long-standing patient's account by however much came before — under
+// a heading that says otherwise.
+type PatientLedger struct {
+	Rows []ChargeRow `json:"rows"`
+	// Every non-void, non-refund charge ever raised for this patient.
+	Charged string `json:"charged"`
+	// Settled minus refunded — what the clinic actually holds.
+	Paid       string `json:"paid"`
+	Refunded   string `json:"refunded"`
+	Awaiting   string `json:"awaiting"`
+	Waived     string `json:"waived"`
+	TotalCount int    `json:"total_count"`
+	Truncated  bool   `json:"truncated"`
+}
+
 // PaidLine is one service on a completed payment.
 type PaidLine struct {
 	Description string `json:"description"`
@@ -263,7 +282,7 @@ type Service interface {
 	RaiseCharge(ctx context.Context, in ChargeInput) (uuid.UUID, error)
 	RaiseChargeBatch(ctx context.Context, in ChargeBatchInput) ([]uuid.UUID, error)
 	PendingCharges(ctx context.Context) ([]PendingCharge, error)
-	PatientCharges(ctx context.Context, patientID uuid.UUID) ([]ChargeRow, error)
+	PatientCharges(ctx context.Context, patientID uuid.UUID) (*PatientLedger, error)
 	SettleCharge(ctx context.Context, id uuid.UUID, method string) error
 	SettleVisit(ctx context.Context, patientID uuid.UUID, method string) (*VisitSettlement, error)
 	WaiveCharge(ctx context.Context, id uuid.UUID, reason string) error

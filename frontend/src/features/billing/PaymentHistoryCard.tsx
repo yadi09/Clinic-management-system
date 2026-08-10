@@ -56,20 +56,20 @@ export function PaymentHistoryCard({ patientId }: { patientId: string }) {
   const branches = useQuery({ queryKey: ["branches"], queryFn: listBranches });
   const [showCancelled, setShowCancelled] = useState(false);
 
-  const all = q.data ?? [];
+  const all = q.data?.rows ?? [];
+  // The server's totals cover the whole account; `all` is only the newest page.
+  const led = q.data;
 
   // Money maths, stated once so the tiles, the list and the printed statement can
   // never disagree. Cancelled and waived bills are excluded from "charged": no
   // money was ever expected for them.
-  const totals = useMemo(() => {
-    let charged = 0, paidGross = 0, refunded = 0, awaiting = 0;
-    for (const c of all) {
-      if (isRefund(c)) { if (c.status === "paid") refunded += Math.abs(num(c.amount)); continue; }
-      if (c.status === "paid") { charged += num(c.amount); paidGross += num(c.amount); }
-      else if (c.status === "pending") { charged += num(c.amount); awaiting += num(c.amount); }
-    }
-    return { charged, paid: paidGross - refunded, refunded, awaiting };
-  }, [all]);
+  // Taken from the server, over every charge this patient has ever had — not summed
+  // from the page. Summing the page understated the account of anyone with more than
+  // fifty charges, and printed that figure under a signature block.
+  const totals = useMemo(() => ({
+    charged: num(led?.charged), paid: num(led?.paid),
+    refunded: num(led?.refunded), awaiting: num(led?.awaiting),
+  }), [led]);
 
   const cancelled = all.filter((c) => c.status === "void");
   const visible = showCancelled ? all : all.filter((c) => c.status !== "void");

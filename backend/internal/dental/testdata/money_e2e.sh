@@ -57,7 +57,10 @@ curl -k -sS -H "$HOST" -H "$A" -H "$CT" -o /dev/null -X POST $B/dental/patients/
 echo "=== 2. cashier settles ==="
 # Take the encoded id from the API rather than re-implementing the id codec in bash.
 CID=$(q "SELECT charge_id FROM treatment_sessions WHERE patient_id='$RAW' AND seq=1;")
-ENC=$(curl -k -sS -H "$HOST" -H "$A" "$B/billing/charges?patient=$PID" | jq_py "print([c['id'] for c in d['data'] if c['status']=='pending'][0])" 2>/dev/null)
+# NOTE: /billing/charges returns { rows, charged, paid, ... } — the totals cover the
+# whole account while rows are a page. TypeScript caught the frontend consumers of
+# this shape change; this script was not type-checked and silently 404'd instead.
+ENC=$(curl -k -sS -H "$HOST" -H "$A" "$B/billing/charges?patient=$PID" | jq_py "print([c['id'] for c in d['data']['rows'] if c['status']=='pending'][0])" 2>/dev/null)
 [ -n "$ENC" ] && ok "found the pending charge ($ENC)" || no "no pending charge to settle"
 SC=$(curl -k -sS -H "$HOST" -H "$A" -H "$CT" -o /dev/null -w "%{http_code}" -X POST "$B/billing/charges/$ENC/settle" -d '{"method":"cash"}')
 [ "$SC" = "204" ] || [ "$SC" = "200" ] && ok "settled ($SC)" || no "settle failed ($SC)"

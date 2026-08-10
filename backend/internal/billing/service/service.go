@@ -455,10 +455,26 @@ func (s *Service) PendingCharges(ctx context.Context) ([]billing.PendingCharge, 
 	return out, nil
 }
 
-func (s *Service) PatientCharges(ctx context.Context, patientID uuid.UUID) ([]billing.ChargeRow, error) {
+func (s *Service) PatientCharges(ctx context.Context, patientID uuid.UUID) (*billing.PatientLedger, error) {
 	tenantID, _ := actorOf(ctx)
-	out := []billing.ChargeRow{}
+	led := &billing.PatientLedger{Rows: []billing.ChargeRow{}}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		// Totals over the WHOLE account, not the page below. A statement that totals
+		// fifty rows and prints a signature block under it is worse than no statement.
+		if e := tx.QueryRow(ctx,
+			`SELECT coalesce(sum(amount) FILTER (WHERE source <> 'refund' AND status IN ('paid','pending')),0)::text,
+			        coalesce(sum(amount) FILTER (WHERE source <> 'refund' AND status = 'paid'),0)::text,
+			        coalesce(sum(-amount) FILTER (WHERE source = 'refund' AND status = 'paid'),0)::text,
+			        coalesce(sum(amount) FILTER (WHERE source <> 'refund' AND status = 'pending'),0)::text,
+			        coalesce(sum(amount) FILTER (WHERE status = 'waived'),0)::text,
+			        count(*)
+			 FROM charges WHERE tenant_id = $1 AND patient_id = $2 AND deleted_at IS NULL`,
+			tenantID, patientID).Scan(&led.Charged, &led.Paid, &led.Refunded, &led.Awaiting, &led.Waived, &led.TotalCount); e != nil {
+			return e
+		}
+		// Paid is what the clinic HOLDS: settled minus refunded.
+		led.Paid = fmtMoney2(parseMoneyB(led.Paid) - parseMoneyB(led.Refunded))
+
 		// Raw pgx rather than the generated query: this needs the settling cashier's
 		// name, and sqlc is not available in this environment to regenerate.
 		rows, e := tx.Query(ctx,
@@ -481,15 +497,22 @@ func (s *Service) PatientCharges(ctx context.Context, patientID uuid.UUID) ([]bi
 				return e
 			}
 			r.PaymentMethod, r.WaiveReason = deref(method), deref(waive)
-			out = append(out, r)
+			led.Rows = append(led.Rows, r)
 		}
-		return rows.Err()
+		if e := rows.Err(); e != nil {
+			return e
+		}
+		led.Truncated = led.TotalCount > len(led.Rows)
+		return nil
 	})
 	if err != nil {
 		return nil, apperr.Internal(err)
 	}
-	return out, nil
+	return led, nil
 }
+
+// fmtMoney2 formats a float as a 2dp money string.
+func fmtMoney2(f float64) string { return money2(f) }
 
 // SettleCharge marks a pending charge paid and, for a routed consultation charge,
 // enqueues the patient (auto-advance after payment).

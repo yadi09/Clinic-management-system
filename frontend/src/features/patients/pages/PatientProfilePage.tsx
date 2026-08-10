@@ -237,7 +237,7 @@ function BillingSection({ patientId, patientName, mrn, canRefund }: { patientId:
     },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not refund"),
   });
-  const rows = q.data ?? [];
+  const rows = q.data?.rows ?? [];
   return (
     <SectionCard title="Billing" empty={rows.length === 0 ? "No charges yet." : undefined}>
       {rows.map((c) => {

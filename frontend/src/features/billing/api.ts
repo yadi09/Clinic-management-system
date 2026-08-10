@@ -187,8 +187,25 @@ export function raiseChargeBatch(body: {
 export function pendingCharges() {
   return apiFetch<PendingCharge[]>("/billing/charges/pending");
 }
+/**
+ * A patient's charges, plus totals over the WHOLE account.
+ *
+ * `rows` is a page (newest 50). The totals are not, and the printed statement uses
+ * them — a signature-and-stamp document that silently totalled only the newest fifty
+ * charges understated every long-standing patient.
+ */
+export interface PatientLedger {
+  rows: ChargeRow[];
+  charged: string;
+  paid: string; // settled minus refunded
+  refunded: string;
+  awaiting: string;
+  waived: string;
+  total_count: number;
+  truncated: boolean;
+}
 export function patientCharges(patientId: string) {
-  return apiFetch<ChargeRow[]>(`/billing/charges?patient=${patientId}`);
+  return apiFetch<PatientLedger>(`/billing/charges?patient=${patientId}`);
 }
 export function settleCharge(id: string, method: string) {
   return apiFetch<void>(`/billing/charges/${id}/settle`, { method: "POST", body: { method } });

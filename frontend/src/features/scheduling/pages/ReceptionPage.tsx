@@ -92,7 +92,7 @@ export function ReceptionPage() {
     queryKey: ["patient-pending", patient?.id],
     queryFn: () => patientCharges(patient!.id),
     enabled: !!patient,
-    select: (rows) => rows.filter((r) => r.status === "pending"),
+    select: (led) => led.rows.filter((r) => r.status === "pending"),
   });
   const pendingList = patientPending.data ?? [];
   const hasPending = pendingList.length > 0;

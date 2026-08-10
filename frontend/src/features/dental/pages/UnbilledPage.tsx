@@ -66,8 +66,17 @@ export function UnbilledPage() {
   const { can } = useAuth();
   const canCollect = can("payment.charge") || can("dental.manage");
   const [lens, setLens] = useState<Lens>("all");
+  // Paging is real rather than a dead end: the server already reports has_more, and
+  // without a control the oldest debt beyond the first page was simply unreachable —
+  // on a report whose entire purpose is that nothing gets forgotten.
+  const [page, setPage] = useState(0);
+  const PER = 100;
 
-  const q = useQuery({ queryKey: ["dental-unbilled"], queryFn: () => unbilledTreatment({ limit: 200 }) });
+  const q = useQuery({
+    queryKey: ["dental-unbilled", page],
+    queryFn: () => unbilledTreatment({ limit: PER, offset: page * PER }),
+    placeholderData: (prev) => prev,
+  });
   const data = q.data;
   const rows = (data?.rows ?? []).filter((r) => lens === "all" || r.lane === lens);
 
@@ -104,6 +113,8 @@ export function UnbilledPage() {
   // report — a header reading 11,500 over rows totalling 4,000 is a number nobody
   // can reconcile. Unfiltered, the server's total is authoritative because it covers
   // rows beyond this page.
+  // The lane filter narrows the loaded page, not the whole report. Said out loud
+  // below rather than left to be discovered.
   const filtered = lens !== "all";
   const shownTotal = filtered ? rows.reduce((a, r) => a + Number(r.amount || 0), 0) : Number(data?.total ?? 0);
   const shownCount = filtered ? rows.length : (data?.count ?? 0);
@@ -239,10 +250,18 @@ export function UnbilledPage() {
                   </div>
                 ))
               )}
-              {data?.has_more && (
-                <p className="pt-2 text-center text-xs text-muted-foreground">
-                  Showing the oldest {data.rows.length} of {data.count}. Narrow the dates to see the rest.
-                </p>
+              {(data?.has_more || page > 0) && (
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-xs">
+                  <span className="text-muted-foreground">
+                    Oldest first · showing {page * PER + 1}–{page * PER + (data?.rows.length ?? 0)} of {data?.count ?? 0}
+                  </span>
+                  <span className="flex gap-2">
+                    <Button size="sm" variant="outline" disabled={page === 0 || q.isFetching}
+                      onClick={() => setPage((p) => Math.max(0, p - 1))}>Newer</Button>
+                    <Button size="sm" variant="outline" disabled={!data?.has_more || q.isFetching}
+                      onClick={() => setPage((p) => p + 1)}>Older</Button>
+                  </span>
+                </div>
               )}
             </CardContent>
           </Card>
