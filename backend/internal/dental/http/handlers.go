@@ -86,6 +86,11 @@ func planDTO(p dental.Plan) gin.H {
 		"total_amount": p.TotalAmount, "start_date": p.StartDate, "interval_unit": p.IntervalUnit,
 		"interval_count": p.IntervalCount, "session_count": p.SessionCount, "deadline": p.Deadline,
 		"status": p.Status, "note": p.Note, "created_at": p.CreatedAt, "sessions": sessions,
+		// Money from the ledger, not summed from the sessions' planned fees.
+		"money": gin.H{
+			"planned": p.Money.Planned, "collected": p.Money.Collected,
+			"at_cashier": p.Money.AtCashier, "due": p.Money.Due, "waived": p.Money.Waived,
+		},
 	}
 }
 

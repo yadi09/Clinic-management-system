@@ -287,6 +287,43 @@ func (s *Service) loadPlansTx(ctx context.Context, tx pgx.Tx, tid, patientID uui
 		return plans, nil
 	}
 
+	// per-plan money, from the same projection as everything else
+	mrows, e := tx.Query(ctx, sessionMoneyCTE+`
+		SELECT sm.plan_id,
+		  coalesce(sum(sm.amount_due)    FILTER (WHERE sm.session_status <> 'cancelled'
+		                                           AND sm.pay_state <> 'waived'), 0)::text,
+		  coalesce(sum(sm.net_paid), 0)::text,
+		  coalesce(sum(sm.charge_amount) FILTER (WHERE sm.pay_state = 'billed'), 0)::text,
+		  coalesce(sum(sm.owed_amount)   FILTER (WHERE sm.session_status <> 'cancelled'
+		                                           AND sm.delivered
+		                                           AND sm.pay_state IN ('unpaid','refunded')), 0)::text,
+		  coalesce(sum(sm.amount_due)    FILTER (WHERE sm.session_status <> 'cancelled'
+		                                           AND sm.pay_state = 'waived'), 0)::text
+		FROM session_money sm
+		WHERE sm.patient_id = $2
+		GROUP BY sm.plan_id`, tid, patientID)
+	if e != nil {
+		return nil, e
+	}
+	defer mrows.Close()
+	for mrows.Next() {
+		var planID uuid.UUID
+		var m dental.PlanMoney
+		if e := mrows.Scan(&planID, &m.Planned, &m.Collected, &m.AtCashier, &m.Due, &m.Waived); e != nil {
+			return nil, e
+		}
+		// Same 2dp formatting as Balance: a raw ::text cast yields "0" for an empty sum
+		// and "0.00" otherwise, so the same field changed shape depending on the data.
+		m.Planned, m.Collected = fmtMoney(money(m.Planned)), fmtMoney(money(m.Collected))
+		m.AtCashier, m.Due, m.Waived = fmtMoney(money(m.AtCashier)), fmtMoney(money(m.Due)), fmtMoney(money(m.Waived))
+		if pi, ok := idx[planID]; ok {
+			plans[pi].Money = m
+		}
+	}
+	if e := mrows.Err(); e != nil {
+		return nil, e
+	}
+
 	// sessions (+ payment state from the linked charge)
 	sidx := map[uuid.UUID][2]int{} // session id → (plan index, session index)
 	srows, e := tx.Query(ctx, sessionMoneyCTE+`

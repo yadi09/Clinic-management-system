@@ -92,6 +92,21 @@ type Session struct {
 	Prescriptions []Prescription `json:"prescriptions"`
 }
 
+// PlanMoney is one plan's money, computed server-side from the CHARGE LEDGER.
+//
+// The client used to reduce treatment_sessions.amount_due — the plan's intent — and
+// label the result "Collected". After a refund that disagreed with the receipts on
+// the same screen, because a refund never touches the original charge. Collected is
+// now settled minus refunded, so it goes DOWN when money goes back, which is the
+// whole point.
+type PlanMoney struct {
+	Planned   string `json:"planned"`
+	Collected string `json:"collected"`
+	AtCashier string `json:"at_cashier"`
+	Due       string `json:"due"`
+	Waived    string `json:"waived"`
+}
+
 // Plan is a scheduled dental treatment (parent of sessions).
 type Plan struct {
 	ID            uuid.UUID `json:"-"`
@@ -106,6 +121,7 @@ type Plan struct {
 	Status        string    `json:"status"` // active | completed | cancelled
 	Note          string    `json:"note,omitempty"`
 	CreatedAt     string    `json:"created_at"`
+	Money         PlanMoney `json:"money"`
 	Sessions      []Session `json:"sessions"`
 }
 

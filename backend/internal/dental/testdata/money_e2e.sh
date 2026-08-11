@@ -105,7 +105,15 @@ ss=[s for p in d['data']['plans'] for s in p['sessions']]
 print(str(len([s for s in ss if s['status']=='cancelled']))+'|'+str(len([s for s in ss if s['status']=='done'])))")
 [ "$DLV" = "1|2" ] && ok "delivered visits untouched (2 done, only the unused one cancelled)" || no "after finish: $DLV"
 
-echo "=== 7. the unbilled report sees what is actually owed ==="
+echo "=== 7. per-plan money comes from the ledger, not the planned fees ==="
+PM=$(curl -k -sS -H "$HOST" -H "$A" "$B/dental/patients/$PID/summary" | jq_py "
+m=d['data']['plans'][0]['money']
+print(m['planned']+'|'+m['collected']+'|'+m['at_cashier']+'|'+m['due']+'|'+m['waived'])")
+# S1 was paid then refunded then re-billed (now at the cashier); S2 is delivered+unpaid
+# after the write-off was undone; the added visit was cancelled by finishing the course.
+[ "$PM" = "6000.00|0.00|3000.00|3000.00|0.00" ] && ok "plan money: collected 0 after refund, 3,000 queued, 3,000 owed" || no "plan money: $PM"
+
+echo "=== 8. the unbilled report sees what is actually owed ==="
 REP=$(curl -k -sS -H "$HOST" -H "$A" "$B/dental/unbilled" | jq_py "print(d['data']['total']+'|'+str(d['data']['count']))")
 [ "$REP" = "3000.00|1" ] && ok "report: 3,000 across 1 visit (session 2 only)" || no "report: $REP"
 

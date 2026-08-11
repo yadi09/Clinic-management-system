@@ -83,6 +83,16 @@ export interface Session {
   prescriptions: Prescription[];
 }
 
+/** One plan's money, computed server-side from the charge ledger. `collected` is
+ *  settled minus refunded, so it goes down when money goes back. */
+export interface PlanMoney {
+  planned: string;
+  collected: string;
+  at_cashier: string;
+  due: string;
+  waived: string;
+}
+
 export interface Plan {
   id: string;
   title: string;
@@ -96,6 +106,7 @@ export interface Plan {
   status: "active" | "completed" | "cancelled";
   note?: string;
   created_at: string;
+  money: PlanMoney;
   sessions: Session[];
 }
 

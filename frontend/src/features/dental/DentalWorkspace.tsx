@@ -484,28 +484,18 @@ function PlanCard({ patientId, plan, teeth, editable, canCollect, canReschedule,
   // this list is reference material. Expanded-by-default made a three-plan
   // patient roughly seven screens tall.
   const [open, setOpen] = useState(false);
-  const total = num(plan.total_amount);
-  const paid = plan.sessions.filter((s) => s.payment === "paid").reduce((a, s) => a + num(s.amount_due), 0);
+  // Every figure here comes from the SERVER, computed from the charge ledger. The
+  // client used to reduce each session's amount_due — the plan's intent — and call
+  // the result "Collected", which disagreed with the receipts after any refund
+  // because a refund never touches the original charge. This was the last surface
+  // still doing that.
+  const money = plan.money;
+  const total = num(money.planned);
+  const paid = num(money.collected);
   const pct = total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0;
-  const owes = plan.sessions.some((s) => s.status === "done" && s.payment !== "paid");
-
-  // The header and the money strip always describe the WHOLE plan; only the session
-  // list below follows the date scope.
-  const money = useMemo(() => {
-    const live = plan.sessions.filter((s) => s.status !== "cancelled");
-    const sum = (pick: (s: Session) => boolean) => live.filter(pick).reduce((a, s) => a + num(s.amount_due), 0);
-    return {
-      collected: sum((s) => s.payment === "paid"),
-      awaiting: sum((s) => s.payment === "billed"),
-      // Neither queued money nor a written-off fee is outstanding: counting them here
-      // re-created, per plan, the double-chase the server-side projection removed.
-      outstanding: sum((s) => s.payment === "unpaid" || s.payment === "refunded"),
-      // Treatment already given and not settled — the only genuinely owed figure.
-      overdue: sum((s) => s.status === "done" && (s.payment === "unpaid" || s.payment === "refunded")),
-      done: live.filter((s) => s.status === "done").length,
-      count: live.length,
-    };
-  }, [plan.sessions]);
+  const owes = num(money.due) > 0.005;
+  // Counting visits stays client-side: it is not money, and the sessions are already here.
+  const liveSessions = plan.sessions.filter((s) => s.status !== "cancelled");
 
   // Every session, always. The date scope that used to filter this list is gone:
   // the cockpit answers "what is happening now", so the plan below it is the full
@@ -575,17 +565,17 @@ function PlanCard({ patientId, plan, teeth, editable, canCollect, canReschedule,
           {/* Money at a glance: the desk must answer "what do I owe?" without opening
               every session. Whole-plan figures, independent of the date scope. */}
           <div className="grid grid-cols-2 gap-px bg-border sm:grid-cols-4">
-            <PlanStat label="Plan total" value={birr(plan.total_amount)} />
-            <PlanStat label="Collected" value={birr(String(money.collected))} tone={money.collected > 0.005 ? "ok" : undefined} />
-            <PlanStat label="Outstanding" value={birr(String(money.outstanding))} tone={money.outstanding > 0.005 ? "warn" : undefined}
-              hint={money.awaiting > 0.005 ? `${birr(String(money.awaiting))} with the cashier` : undefined} />
+            <PlanStat label="Plan total" value={birr(money.planned)} />
+            <PlanStat label="Collected" value={birr(money.collected)} tone={num(money.collected) > 0.005 ? "ok" : undefined} />
+            <PlanStat label="Outstanding" value={birr(money.due)} tone={num(money.due) > 0.005 ? "warn" : undefined}
+              hint={num(money.at_cashier) > 0.005 ? `${birr(money.at_cashier)} with the cashier` : undefined} />
             {/* "Due now" not "Overdue": SessionRow already uses "overdue" for a session
                 past its date. Same wording as the Balance card above, same meaning. */}
-            <PlanStat label="Due now" value={birr(String(money.overdue))} tone={money.overdue > 0.005 ? "bad" : undefined}
-              hint={money.overdue > 0.005 ? "treatment already given" : undefined} />
+            <PlanStat label="Due now" value={birr(money.due)} tone={num(money.due) > 0.005 ? "bad" : undefined}
+              hint={num(money.due) > 0.005 ? "treatment already given" : undefined} />
           </div>
           <div className="border-b bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
-            {money.done} of {money.count} sessions done
+            {liveSessions.filter((s) => s.status === "done").length} of {liveSessions.length} sessions done
           </div>
           {shownSessions.length === 0 ? (
             <p className="px-3 py-6 text-center text-xs text-muted-foreground">This plan has no sessions.</p>
