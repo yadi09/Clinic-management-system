@@ -12,6 +12,7 @@ import (
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
 	"github.com/reicb/clinicsaas/internal/kernel/httpx"
 	"github.com/reicb/clinicsaas/internal/kernel/id"
+	"github.com/reicb/clinicsaas/internal/kernel/tenancy"
 )
 
 type Handlers struct{ svc dental.Service }
@@ -58,7 +59,21 @@ func prescriptionDTO(rx dental.Prescription) gin.H {
 	return gin.H{"id": id.Encode(id.PrefixDentalRx, rx.ID), "note": rx.Note, "created_at": rx.CreatedAt, "items": items}
 }
 
-func sessionDTO(se dental.Session) gin.H {
+// clinical reports whether this caller may see the clinical record, as opposed to
+// only the schedule and the money.
+//
+// Until now the SEAL WAS ONLY IN THE UI: /dental/patients/:id/summary is open to
+// dental.read, and the DTO shipped procedure, tooth, notes, rx, prescriptions and
+// image URLs to everyone. The front desk's browser was receiving the full clinical
+// record and merely not drawing it — one devtools tab away from a patient's notes.
+// The reception view is about to share components with the clinician's, so a
+// UI-shaped seal is not something to keep relying on.
+func clinical(c *gin.Context) bool {
+	p, ok := tenancy.PrincipalFromContext(c.Request.Context())
+	return ok && p.HasPermission("dental.manage")
+}
+
+func sessionDTO(se dental.Session, clinical bool) gin.H {
 	images := make([]gin.H, 0, len(se.Images))
 	for _, im := range se.Images {
 		images = append(images, imageDTO(im))
@@ -67,19 +82,28 @@ func sessionDTO(se dental.Session) gin.H {
 	for _, rx := range se.Prescriptions {
 		rxs = append(rxs, prescriptionDTO(rx))
 	}
-	return gin.H{
+	out := gin.H{
 		"id": id.Encode(id.PrefixTreatmentSession, se.ID), "seq": se.Seq, "scheduled_date": se.ScheduledDate,
 		"amount_due": se.AmountDue, "status": se.Status, "payment": se.Payment,
-		"procedure": se.Procedure, "tooth": se.Tooth, "notes": se.Notes, "rx": se.Rx,
+		// The desk needs the promise to chase it; it is a money note, not a clinical one.
 		"pay_later": se.PayLater, "pay_later_note": se.PayLaterNote,
-		"images": images, "prescriptions": rxs,
 	}
+	if !clinical {
+		// Empty rather than absent: the client's Session type keeps its shape, so a
+		// desk surface renders "no note" instead of crashing on undefined.
+		out["procedure"], out["tooth"], out["notes"], out["rx"] = "", "", "", ""
+		out["images"], out["prescriptions"] = []gin.H{}, []gin.H{}
+		return out
+	}
+	out["procedure"], out["tooth"], out["notes"], out["rx"] = se.Procedure, se.Tooth, se.Notes, se.Rx
+	out["images"], out["prescriptions"] = images, rxs
+	return out
 }
 
-func planDTO(p dental.Plan) gin.H {
+func planDTO(p dental.Plan, clinical bool) gin.H {
 	sessions := make([]gin.H, 0, len(p.Sessions))
 	for _, se := range p.Sessions {
-		sessions = append(sessions, sessionDTO(se))
+		sessions = append(sessions, sessionDTO(se, clinical))
 	}
 	return gin.H{
 		"id": id.Encode(id.PrefixTreatmentPlan, p.ID), "title": p.Title, "tooth": p.Tooth,
@@ -97,6 +121,7 @@ func planDTO(p dental.Plan) gin.H {
 // --- summary ---
 
 func (h *Handlers) Summary(c *gin.Context) {
+	clin := clinical(c)
 	pid, ok := decode(c, id.PrefixPatient, c.Param("id"))
 	if !ok {
 		return
@@ -108,7 +133,7 @@ func (h *Handlers) Summary(c *gin.Context) {
 	}
 	plans := make([]gin.H, 0, len(sum.Plans))
 	for _, p := range sum.Plans {
-		plans = append(plans, planDTO(p))
+		plans = append(plans, planDTO(p, clin))
 	}
 	httpx.OK(c, gin.H{"chart": chartDTO(sum.Chart), "plans": plans, "balance": balanceDTO(sum.Balance), "image_limit": sum.ImageLimit})
 }
@@ -151,6 +176,7 @@ func (h *Handlers) SaveChart(c *gin.Context) {
 // --- treatment plans ---
 
 func (h *Handlers) ListPlans(c *gin.Context) {
+	clin := clinical(c)
 	pid, ok := decode(c, id.PrefixPatient, c.Param("id"))
 	if !ok {
 		return
@@ -162,7 +188,7 @@ func (h *Handlers) ListPlans(c *gin.Context) {
 	}
 	out := make([]gin.H, 0, len(plans))
 	for _, p := range plans {
-		out = append(out, planDTO(p))
+		out = append(out, planDTO(p, clin))
 	}
 	httpx.OK(c, out)
 }
@@ -202,7 +228,7 @@ func (h *Handlers) CreatePlan(c *gin.Context) {
 		httpx.Fail(c, err)
 		return
 	}
-	httpx.Created(c, planDTO(*p))
+	httpx.Created(c, planDTO(*p, true))
 }
 
 func (h *Handlers) UpdatePlan(c *gin.Context) {
@@ -884,7 +910,7 @@ func (h *Handlers) AddSession(c *gin.Context) {
 		httpx.Fail(c, err)
 		return
 	}
-	httpx.Created(c, sessionDTO(*out))
+	httpx.Created(c, sessionDTO(*out, true))
 }
 
 func (h *Handlers) FinishCourse(c *gin.Context) {
