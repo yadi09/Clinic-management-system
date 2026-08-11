@@ -28,6 +28,7 @@ import { DualDate } from "@/components/DualDate";
 import { collectSession, setPayLater, updateSession, type Session } from "@/features/dental/api";
 import { birr } from "@/features/dental/money";
 import { FLAT_TEETH, parseCsv, ProcedureMultiSelect, ToothMultiSelect } from "@/features/dental/shared/pickers";
+import { PrescriptionSection, SessionImages } from "@/features/dental/shared/visitRecord";
 
 const todayISO = () => {
   const d = new Date();
@@ -37,12 +38,14 @@ const todayISO = () => {
 interface Draft { procedure: string[]; tooth: string[]; notes: string }
 
 export function RecordVisitForm({
-  patientId, session, planTitle, teeth, onSaved, onCancel,
+  patientId, session, planTitle, teeth, imageLimit, onSaved, onCancel,
 }: {
   patientId: string;
   session: Session;
   planTitle: string;
   teeth: Record<string, string>;
+  /** Per-patient image cap from the plan; -1 = unlimited. */
+  imageLimit: number;
   /** Refresh the data. Does NOT dismiss the form — the fee panel must follow. */
   onSaved: () => void;
   onCancel: () => void;
@@ -158,6 +161,14 @@ export function RecordVisitForm({
         <Label htmlFor="visit-notes">Notes</Label>
         <Textarea id="visit-notes" rows={4} value={notes} onChange={(e) => { setNotes(e.target.value); setDirty(true); }}
           placeholder="What was done, what was found, what happens next visit" />
+      </div>
+
+      {/* Attach while the patient is still in the chair. These lived only inside the
+          old plan list's expandable row, so a dentist recording here could write the
+          note but not print the script or keep the X-ray. */}
+      <div className="space-y-3 border-t pt-3">
+        <PrescriptionSection patientId={patientId} session={session} editable onChanged={onSaved} />
+        <SessionImages patientId={patientId} session={session} editable imageLimit={imageLimit} onChanged={onSaved} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-t pt-3">

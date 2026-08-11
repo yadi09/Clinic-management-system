@@ -41,7 +41,7 @@ const RUNG_META: Record<Rung, { label: string; tone: string }> = {
 };
 
 export function VisitCockpit({
-  patientId, resolved, teeth, editable, canCollect, canReschedule, onPick, onChanged,
+  patientId, resolved, teeth, editable, canCollect, canReschedule, imageLimit, onPick, onChanged,
 }: {
   patientId: string;
   resolved: FocusResult;
@@ -49,6 +49,7 @@ export function VisitCockpit({
   editable: boolean;
   canCollect: boolean;
   canReschedule: boolean;
+  imageLimit: number;
   /** Switch the cockpit to another visit; writes ?visit= so it survives a refresh. */
   onPick: (sessionId: string | null) => void;
   onChanged: () => void;
@@ -136,6 +137,7 @@ export function VisitCockpit({
             session={session}
             planTitle={plan.title}
             teeth={teeth}
+            imageLimit={imageLimit}
             onSaved={() => { setRecording(false); onChanged(); }}
             onCancel={() => setRecording(false)}
           />
