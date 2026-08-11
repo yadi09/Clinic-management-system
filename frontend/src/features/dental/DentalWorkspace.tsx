@@ -126,7 +126,12 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
   // and the back button, and it is what a chairside hand-off can point at.
   const [params, setParams] = useSearchParams();
   const todayISO = isoLocal(new Date());
+  // A note open in the cockpit means switching the focused visit would retarget where
+  // it saves — the same fault the course rail had. The rail hides itself; the timeline
+  // is on another surface entirely, so this guard has to live here.
+  const [recording, setRecording] = useState(false);
   const pickVisit = (sessionId: string | null) => {
+    if (recording && !window.confirm("A visit note is open. Switching visits will close it — what you typed is kept as a draft. Switch anyway?")) return;
     const next = new URLSearchParams(params);
     if (sessionId) next.set("visit", sessionId); else next.delete("visit");
     setParams(next, { replace: true });
@@ -330,6 +335,7 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
         patientId={patientId} resolved={resolved} teeth={teeth} editable={editable}
         canCollect={canCollect} canReschedule={canReschedule} imageLimit={summary.data.image_limit}
         onNewPlan={editable ? () => setNewPlan(true) : undefined}
+        onRecordingChange={setRecording}
         onPick={pickVisit} onChanged={invalidate}
       />
 
@@ -357,8 +363,9 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
             render: () => <ExaminationCard patientId={patientId} editable={editable} bare />,
           }] : []),
           ...(editable ? [{
+            // No badge: the summary carries only session images, so counting here
+            // reported 0 for a patient whose X-rays are all filed at patient level.
             key: "images", label: "Images", icon: SHELF_ICONS.Images,
-            badge: plans.reduce((n, pl) => n + pl.sessions.reduce((m, s) => m + s.images.length, 0), 0) || undefined,
             render: () => <PatientImagesCard patientId={patientId} plans={plans} editable={editable} imageLimit={summary.data!.image_limit} bare />,
           }] : []),
           {

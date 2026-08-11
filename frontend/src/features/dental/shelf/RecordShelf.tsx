@@ -39,9 +39,17 @@ export function RecordShelf({ patientId, panels }: { patientId: string; panels: 
   }, [storeKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pick = (k: string) => { setActive(k); sessionStorage.setItem(storeKey, k); };
+  // Panels stay mounted once opened, hidden rather than unmounted.
+  //
+  // Rendering only the active panel destroyed anything in progress inside the others:
+  // switching to the chart to check a tooth mid-examination threw the half-written
+  // examination away, silently, with no warning and no draft. Keeping visited panels
+  // alive is cheaper than teaching every panel to persist its own form.
+  const [visited, setVisited] = useState<Set<string>>(() => new Set());
   // A panel can disappear (images revoked, examinations hidden from the desk); never
   // render a blank shelf because the remembered choice no longer exists.
   const current = panels.find((p) => p.key === active) ?? panels[0];
+  useEffect(() => { if (current) setVisited((v) => (v.has(current.key) ? v : new Set(v).add(current.key))); }, [current?.key]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!current) return null;
 
   return (
@@ -77,7 +85,13 @@ export function RecordShelf({ patientId, panels }: { patientId: string; panels: 
             );
           })}
         </nav>
-        <CardContent className="min-w-0 flex-1 p-4">{current.render()}</CardContent>
+        <CardContent className="min-w-0 flex-1 p-4">
+          {panels.filter((p) => visited.has(p.key) || p.key === current.key).map((p) => (
+            <div key={p.key} hidden={p.key !== current.key} aria-hidden={p.key !== current.key}>
+              {p.render()}
+            </div>
+          ))}
+        </CardContent>
       </div>
     </Card>
   );

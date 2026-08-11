@@ -14,7 +14,7 @@ import { Stethoscope } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { DualDate, dayDiff } from "@/components/DualDate";
+import { DualDate, dayDiff, relativeDay } from "@/components/DualDate";
 import { MONEY, birr, sessionMoneyState } from "@/features/dental/money";
 import type { Plan, Session } from "@/features/dental/api";
 
@@ -51,6 +51,12 @@ export function TimelinePanel({ plans, todayISO, onOpenVisit }: {
     for (const plan of plans) {
       const live = plan.sessions.filter((s) => s.status !== "cancelled");
       live.forEach((session, i) => all.push({ session, plan, n: i + 1, of: live.length }));
+      // Cancelled visits still belong to the record — one may carry a charge, a note
+      // or an image, and hiding it made that unreachable from anywhere on the page.
+      // Shown struck through and out of the numbering, not deleted from history.
+      for (const session of plan.sessions.filter((s) => s.status === "cancelled")) {
+        all.push({ session, plan, n: 0, of: live.length });
+      }
     }
     const byDate = (a: Entry, b: Entry) => a.session.scheduled_date.localeCompare(b.session.scheduled_date);
     return {
@@ -114,19 +120,22 @@ function Row({ e, todayISO, onOpen }: { e: Entry; todayISO: string; onOpen: (id:
     <button
       type="button"
       onClick={() => onOpen(s.id)}
-      className="flex w-full items-start gap-3 rounded-md px-2 py-2 text-left hover:bg-muted/60"
+      className={cn("flex w-full items-start gap-3 rounded-md px-2 py-2 text-left hover:bg-muted/60",
+        m.key === "cancelled" && "opacity-60")}
     >
       <span className={cn("mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full", m.dot)} aria-hidden />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <span className="text-sm font-medium">{e.plan.title}</span>
-          <span className="text-xs text-muted-foreground">visit {e.n} of {e.of}</span>
+          {e.n > 0
+            ? <span className="text-xs text-muted-foreground">visit {e.n} of {e.of}</span>
+            : <Badge variant="outline">Cancelled</Badge>}
           {m.key === "missed" && <Badge variant="destructive">Missed</Badge>}
-          {m.key === "unsettled" && <Badge variant="warning">{money.label}</Badge>}
+          {m.key === "unsettled" && <Badge variant={money.countsAsOwed ? "destructive" : "warning"}>{money.label}</Badge>}
         </div>
         <p className="text-xs text-muted-foreground">
           <DualDate iso={s.scheduled_date} />
-          {days !== 0 && <span> · {days > 0 ? `in ${days} days` : `${Math.abs(days)} days ago`}</span>}
+          {days !== 0 && <span> · {relativeDay(s.scheduled_date)}</span>}
         </p>
         {said && <p className="mt-0.5 text-sm">{said}</p>}
         {/* The note is the point of a clinical timeline; clamped so one long entry

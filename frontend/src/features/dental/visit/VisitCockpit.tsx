@@ -10,7 +10,7 @@
 // This answers all three above the fold, and — importantly — NAMES the rung it
 // resolved to. A page that silently filters is unrecoverable when it guesses wrong;
 // one that says "OVERDUE · was Thu 7 Aug · 5 days ago" can be argued with.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { CalendarClock, CheckCheck, ChevronRight, FileText, Plus } from "lucide-react";
 
@@ -42,7 +42,7 @@ const RUNG_META: Record<Rung, { label: string; tone: string }> = {
 };
 
 export function VisitCockpit({
-  patientId, resolved, teeth, editable, canCollect, canReschedule, imageLimit, onNewPlan, onPick, onChanged,
+  patientId, resolved, teeth, editable, canCollect, canReschedule, imageLimit, onNewPlan, onRecordingChange, onPick, onChanged,
 }: {
   patientId: string;
   resolved: FocusResult;
@@ -53,11 +53,16 @@ export function VisitCockpit({
   imageLimit: number;
   /** Opens the create-plan dialog. Omit for read-only viewers. */
   onNewPlan?: () => void;
+  /** Reports whether a visit note is open, so other surfaces can guard switching. */
+  onRecordingChange?: (recording: boolean) => void;
   /** Switch the cockpit to another visit; writes ?visit= so it survives a refresh. */
   onPick: (sessionId: string | null) => void;
   onChanged: () => void;
 }) {
   const [recording, setRecording] = useState(false);
+  // The timeline lives outside this component and can also switch the focused visit,
+  // so the guard cannot be local: the page needs to know a note is open.
+  useEffect(() => { onRecordingChange?.(recording); }, [recording, onRecordingChange]);
   const [moving, setMoving] = useState(false);
   const [adding, setAdding] = useState(false);
   const [finishing, setFinishing] = useState(false);
