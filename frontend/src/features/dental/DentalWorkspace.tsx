@@ -22,6 +22,7 @@ import { getPatient } from "@/features/patients/api";
 import { PatientEditDialog } from "@/features/patients/components/PatientEditDialog";
 import { PaymentHistoryCard } from "@/features/billing/PaymentHistoryCard";
 import { PanelBody, PanelCard, PanelHeader, RecordShelf, SHELF_ICONS } from "@/features/dental/shelf/RecordShelf";
+import { DeskActions } from "@/features/dental/desk/DeskActions";
 import { TimelinePanel, timelineCount } from "@/features/dental/shelf/TimelinePanel";
 import { useScrolledPast } from "@/features/patients/components/StickyAlertBar";
 import { SafetyStrip, PatientAllergyLine } from "@/features/dental/SafetyStrip";
@@ -338,6 +339,14 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
         onRecordingChange={setRecording}
         onPick={pickVisit} onChanged={invalidate}
       />
+
+      {/* The front desk's two jobs — take payment, rebook a missed visit. The
+          clinician has the cockpit and the unbilled report for both, so this only
+          appears for the desk rather than re-crowding the page just decluttered. */}
+      {!editable && (
+        <DeskActions patientId={patientId} plans={plans} todayISO={todayISO}
+          canCollect={canCollect} canReschedule={canReschedule} onChanged={invalidate} />
+      )}
 
       {/* The record: one panel at a time, instead of six stacked cards. */}
       <RecordShelf

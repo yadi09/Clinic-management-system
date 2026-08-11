@@ -29,7 +29,6 @@ import { AppError } from "@/lib/api-client";
 import { formatEthiopian } from "@/lib/ethiopian";
 import { PregnancyDatingCard } from "@/features/maternity/PregnancyCalculator";
 import { DentalWorkspace } from "@/features/dental/DentalWorkspace";
-import { ReceptionDentalView } from "@/features/dental/ReceptionDentalView";
 import { PatientEditDialog } from "@/features/patients/components/PatientEditDialog";
 import { StickyAlertBar, useScrolledPast, type ClinicalAlert } from "@/features/patients/components/StickyAlertBar";
 import { listHistory } from "@/features/clinical/api";
@@ -57,13 +56,19 @@ export function PatientProfilePage() {
   // Dental clinics get a dedicated workspace in place of the general-medical
   // profile. All hooks above have already run, so this render-time branch is safe.
   // The
-  // dentist sees the clinical one; the front desk gets a money-and-scheduling view
-  // built for their job rather than the clinical page with parts hidden.
-  if (flagOn("dental")) {
-    return can("dental.manage")
-      ? <DentalWorkspace patientId={id} />
-      : <ReceptionDentalView patientId={id} />;
-  }
+  // ONE dental patient page for both roles.
+  //
+  // There were two — a 745-line clinical page and a 474-line desk page showing the
+  // same patient — and they drifted: the same session read "Due" on one screen and
+  // "Unpaid" on the other, and every fix had to be made twice. The shared page
+  // branches on `dental.manage` internally: the clinician gets the chart,
+  // examinations and images; the desk gets the money strip and the missed-visit list.
+  //
+  // What makes this safe is that the seal is no longer the UI's job. sessionDTO
+  // withholds notes, procedure, tooth, prescriptions and image URLs from anyone
+  // without dental.manage, proved by reception_seal_e2e.sh — so the desk cannot see
+  // the clinical record even though it now runs the clinical page's code.
+  if (flagOn("dental")) return <DentalWorkspace patientId={id} />;
 
   if (isLoading) {
     return (
