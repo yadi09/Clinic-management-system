@@ -113,6 +113,11 @@ export function PaymentHistoryCard({ patientId }: { patientId: string }) {
       charged: String(totals.charged), paid: String(totals.paid),
       refunded: String(totals.refunded), outstanding: String(totals.awaiting),
       issuedBy: user?.full_name,
+      // The totals cover the whole account; the lines are the newest page. Saying so
+      // on the document is the difference between an abridged statement and a wrong one.
+      note: led?.truncated
+        ? `Showing the ${all.length} most recent entries of ${led.total_count}. The totals above cover the full account.`
+        : undefined,
     });
 
   return (

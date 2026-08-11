@@ -44,10 +44,18 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	// Take payment for several sessions at once (e.g. the patient settles the whole
 	// treatment plan at the desk).
 	bill.POST("/patients/:id/collect-sessions", h.CollectSessions)
-	// Writing treatment off is a money decision with a reason attached, so it sits
-	// with the other billing actions rather than with the clinical record.
-	bill.POST("/patients/:id/sessions/:sid/write-off", h.WriteOffSession)
-	bill.POST("/patients/:id/sessions/:sid/undo-write-off", h.UndoWriteOff)
+	// --- forgiving a fee: payment.waive, the same as everywhere else ---
+	//
+	// These shipped inside the `bill` group (dental.manage OR payment.charge), which
+	// handed the power to extinguish a fee to every dentist and receptionist. The
+	// product already has one permission for that act — payment.waive, held by the
+	// cashier, the branch manager and the owner — and POST /billing/charges/:id/waive
+	// is gated on it. A dental write-off is the same act by another door, so it uses
+	// the same key. If a clinic wants its dentists to forgive fees, that is a role
+	// grant somebody makes on purpose, not something dental.manage quietly implies.
+	waive := d.Group("", httpx.RequirePermission("payment.waive"))
+	waive.POST("/patients/:id/sessions/:sid/write-off", h.WriteOffSession)
+	waive.POST("/patients/:id/sessions/:sid/undo-write-off", h.UndoWriteOff)
 
 	// --- rescheduling a session: the dentist or whoever books appointments ---
 	// Moving a session is a scheduling act, not a clinical one, so appointment.manage

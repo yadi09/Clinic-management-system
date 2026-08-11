@@ -92,12 +92,26 @@ REASON=$(q "SELECT waive_reason FROM charges WHERE patient_id='$RAW' AND status=
 UC=$(curl -k -sS -H "$HOST" -H "$A" -H "$CT" -o /dev/null -w "%{http_code}" -X POST $B/dental/patients/$PID/sessions/$S2/undo-write-off)
 [ "$(pay_state $S2)" = "unpaid" ] && ok "write-off undone ($UC) -> billable again" || no "undo ($UC) state=$(pay_state $S2)"
 
+echo "=== 5b. a refunded session can be written off (the lane the report offers it for) ==="
+# S1 is currently at the cashier from the re-bill; pull it back and refund-state it again
+curl -k -sS -H "$HOST" -H "$A" -H "$CT" -o /dev/null -X POST $B/dental/patients/$PID/sessions/$S1/uncollect
+RWC=$(curl -k -sS -H "$HOST" -H "$A" -H "$CT" -o /dev/null -w "%{http_code}" -X POST $B/dental/patients/$PID/sessions/$S1/write-off -d '{"reason":"service failure — not charging"}')
+[ "$RWC" = "204" ] && ok "written off after refund ($RWC)" || no "write-off after refund rejected ($RWC)"
+[ "$(pay_state $S1)" = "waived" ] && ok "reads waived" || no "state: $(pay_state $S1)"
+UW=$(curl -k -sS -H "$HOST" -H "$A" -H "$CT" -o /dev/null -w "%{http_code}" -X POST $B/dental/patients/$PID/sessions/$S1/undo-write-off)
+WV=$(curl -k -sS -H "$HOST" -H "$A" "$B/dental/patients/$PID/summary" | jq_py "print(d['data']['balance']['waived'])")
+[ "$WV" = "0.00" ] && ok "undoing a write-off stops it counting as forgiven ($UW)" || no "still counted as waived: $WV"
+
 echo "=== 6. add a visit to the running course, then finish it early ==="
 S3=$(curl -k -sS -H "$HOST" -H "$A" -H "$CT" -X POST $B/dental/patients/$PID/plans/$PLANID/sessions \
   -d '{"scheduled_date":"2026-12-01","amount_due":"1500"}' | jq_py "print(d['data']['id'])" 2>/dev/null)
 [ -n "$S3" ] && ok "third visit added" || no "add-session failed"
 PC=$(curl -k -sS -H "$HOST" -H "$A" "$B/dental/patients/$PID/summary" | jq_py "p=d['data']['plans'][0];print(str(p['session_count'])+'|'+p['total_amount'])")
 [ "$PC" = "3|7500.00" ] && ok "plan total and count moved with it (3 visits, 7,500)" || no "plan header stale: $PC"
+NM=$(curl -k -sS -H "$HOST" -H "$A" "$B/dental/patients/$PID/summary" | jq_py "
+p=d['data']['plans'][0]
+print(str(max(s['seq'] for s in p['sessions'] if s['status']!='cancelled') <= p['session_count']))")
+[ "$NM" = "True" ] && ok "no session numbered past the plan count (no 'session 4 of 3')" || no "seq exceeds session_count"
 FC=$(curl -k -sS -H "$HOST" -H "$A" -H "$CT" -X POST $B/dental/patients/$PID/plans/$PLANID/finish | jq_py "print(str(d['data']['sessions_cancelled']))" 2>/dev/null)
 [ "$FC" = "1" ] && ok "finished early — 1 unused visit cancelled" || no "finish cancelled $FC (expected 1)"
 DLV=$(curl -k -sS -H "$HOST" -H "$A" "$B/dental/patients/$PID/summary" | jq_py "
@@ -109,13 +123,15 @@ echo "=== 7. per-plan money comes from the ledger, not the planned fees ==="
 PM=$(curl -k -sS -H "$HOST" -H "$A" "$B/dental/patients/$PID/summary" | jq_py "
 m=d['data']['plans'][0]['money']
 print(m['planned']+'|'+m['collected']+'|'+m['at_cashier']+'|'+m['due']+'|'+m['waived'])")
-# S1 was paid then refunded then re-billed (now at the cashier); S2 is delivered+unpaid
-# after the write-off was undone; the added visit was cancelled by finishing the course.
-[ "$PM" = "6000.00|0.00|3000.00|3000.00|0.00" ] && ok "plan money: collected 0 after refund, 3,000 queued, 3,000 owed" || no "plan money: $PM"
+# By this point BOTH delivered visits are owed and nothing is queued: S1 was paid,
+# refunded, re-billed, pulled back, written off and un-written-off; S2 was written off
+# and un-written-off. The added third visit was cancelled by finishing the course, so
+# it leaves the plan total. Collected is 0 because the only settled money was refunded.
+[ "$PM" = "6000.00|0.00|0.00|6000.00|0.00" ] && ok "plan money: collected 0 after refund, 6,000 owed, nothing queued or forgiven" || no "plan money: $PM"
 
 echo "=== 8. the unbilled report sees what is actually owed ==="
 REP=$(curl -k -sS -H "$HOST" -H "$A" "$B/dental/unbilled" | jq_py "print(d['data']['total']+'|'+str(d['data']['count']))")
-[ "$REP" = "3000.00|1" ] && ok "report: 3,000 across 1 visit (session 2 only)" || no "report: $REP"
+[ "$REP" = "6000.00|2" ] && ok "report: 6,000 across both delivered visits" || no "report: $REP"
 
 echo; echo "=== $pass passed, $fail failed ==="
 [ "$fail" = "0" ]

@@ -317,6 +317,9 @@ type Charger interface {
 	// required, because "we did not charge for this" must be a recorded decision
 	// rather than an absence.
 	WaiveChargeTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, reason string) error
+	// UnwaiveChargeTx voids a written-off charge, so reversing a write-off also stops
+	// it counting as money the clinic forgave.
+	UnwaiveChargeTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, reason string) error
 	// ChargeStatusTx reports a charge's status ('pending'|'paid'|'waived'|'void')
 	// for a pre-pay gate; returns NotFound if the charge is missing.
 	ChargeStatusTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (string, error)

@@ -659,6 +659,28 @@ func (s *Service) WaiveChargeTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, re
 		map[string]any{"charge_id": row.ID, "reason": reason})
 }
 
+// UnwaiveChargeTx reverses a write-off by voiding the waived charge.
+//
+// The row is kept and marked void rather than deleted: "we forgave this, then we
+// changed our minds" is two decisions and both belong in the ledger. Voiding is what
+// takes it out of the waived totals — leaving it waived meant an undone write-off was
+// still counted as money the clinic had given away.
+func (s *Service) UnwaiveChargeTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, reason string) error {
+	tenantID, actor := actorOf(ctx)
+	ct, e := tx.Exec(ctx,
+		`UPDATE charges SET status = 'void', void_reason = $3, voided_by = $4, voided_at = now(), updated_at = now()
+		 WHERE tenant_id = $1 AND id = $2 AND status = 'waived' AND deleted_at IS NULL`,
+		tenantID, id, reason, actor)
+	if e != nil {
+		return e
+	}
+	if ct.RowsAffected() == 0 {
+		return apperr.Conflict("NOT_WAIVED", "only a written-off charge can be reinstated")
+	}
+	return s.publisher.Publish(ctx, tx, &tenantID, "charge", id, "billing.charge.unwaived",
+		map[string]any{"charge_id": id, "reason": reason})
+}
+
 func (s *Service) VoidChargeTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, reason string) error {
 	tenantID, actor := actorOf(ctx)
 	if strings.TrimSpace(reason) == "" {

@@ -642,7 +642,11 @@ func (s *Service) AddSession(ctx context.Context, patientID, planID uuid.UUID, i
 		// and is being reopened because the patient needs one more visit.
 		if _, e := tx.Exec(ctx,
 			`UPDATE treatment_plans SET
-			   session_count = (SELECT count(*) FROM treatment_sessions
+			   -- max(seq), not count(*): seq is assigned over ALL sessions including
+			   -- cancelled ones, so a plan that lost a visit and gained another counted
+			   -- 2 while numbering the new one 3, and every receipt and badge read
+			   -- "session 3 of 2".
+			   session_count = (SELECT coalesce(max(seq),0) FROM treatment_sessions
 			                     WHERE tenant_id = $1 AND plan_id = $2 AND status <> 'cancelled'),
 			   total_amount  = (SELECT coalesce(sum(amount_due),0) FROM treatment_sessions
 			                     WHERE tenant_id = $1 AND plan_id = $2 AND status <> 'cancelled'),
@@ -676,10 +680,25 @@ func (s *Service) AddSession(ctx context.Context, patientID, planID uuid.UUID, i
 func (s *Service) FinishCourse(ctx context.Context, patientID, planID uuid.UUID) (cancelled int, err error) {
 	tid, _ := actorOf(ctx)
 	err = s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		// Same lock AddSession takes, so the two cannot interleave and leave a fresh
+		// visit sitting inside a course that was just closed.
+		var st string
+		if e := tx.QueryRow(ctx,
+			`SELECT status FROM treatment_plans WHERE tenant_id = $1 AND patient_id = $2 AND id = $3 FOR UPDATE`,
+			tid, patientID, planID).Scan(&st); e != nil {
+			if errors.Is(e, pgx.ErrNoRows) {
+				return apperr.NotFound("PLAN_NOT_FOUND", "treatment plan not found")
+			}
+			return e
+		}
 		ct, e := tx.Exec(ctx,
 			`UPDATE treatment_sessions se SET status = 'cancelled', updated_at = now()
 			 WHERE se.tenant_id = $1 AND se.plan_id = $2 AND se.patient_id = $3
-			   AND se.status = 'planned' AND NOT se.pay_later
+			   -- 'planned' is the whole test, matching the projection's delivered flag.
+			   -- pay_later was excluded here, which stranded a promised-but-never-given
+			   -- visit inside a closed course: not cancelled, never delivered, and
+			   -- invisible to a report that only looks at active plans.
+			   AND se.status = 'planned'
 			   AND NOT EXISTS (SELECT 1 FROM charges c
 			                    WHERE c.id = se.charge_id AND c.tenant_id = se.tenant_id
 			                      AND c.deleted_at IS NULL AND c.status IN ('pending','paid','waived'))`,
@@ -688,8 +707,18 @@ func (s *Service) FinishCourse(ctx context.Context, patientID, planID uuid.UUID)
 			return e
 		}
 		cancelled = int(ct.RowsAffected())
+		// Recompute alongside the close, exactly as AddSession does. Cancelling three
+		// visits and leaving total_amount, session_count and deadline describing them
+		// left the header promising treatment the course no longer contains.
 		pt, e := tx.Exec(ctx,
-			`UPDATE treatment_plans SET status = 'completed', updated_at = now()
+			`UPDATE treatment_plans SET status = 'completed',
+			   session_count = (SELECT coalesce(max(seq),0) FROM treatment_sessions
+			                     WHERE tenant_id = $1 AND plan_id = $3 AND status <> 'cancelled'),
+			   total_amount  = (SELECT coalesce(sum(amount_due),0) FROM treatment_sessions
+			                     WHERE tenant_id = $1 AND plan_id = $3 AND status <> 'cancelled'),
+			   deadline      = (SELECT max(scheduled_date) FROM treatment_sessions
+			                     WHERE tenant_id = $1 AND plan_id = $3 AND status <> 'cancelled'),
+			   updated_at = now()
 			 WHERE tenant_id = $1 AND patient_id = $2 AND id = $3 AND status = 'active'`,
 			tid, patientID, planID)
 		if e != nil {
@@ -1056,22 +1085,29 @@ func (s *Service) WriteOffSession(ctx context.Context, patientID, sessionID uuid
 		var amount, planTitle string
 		var seq, count int
 		var chargeStatus *string
-		var treatedAt *uuid.UUID
+		var treatedAt, existingCharge *uuid.UUID
+		var refunded *string
 		e := tx.QueryRow(ctx,
-			`SELECT se.amount_due::text, se.seq, p.title, p.session_count, c.status, se.branch_id
+			`SELECT se.amount_due::text, se.seq, p.title, p.session_count, c.status, se.branch_id, se.charge_id,
+			        (SELECT sum(-r.amount)::text FROM charges r
+			          WHERE r.tenant_id = c.tenant_id AND r.reverses_charge_id = c.id AND r.deleted_at IS NULL)
 			 FROM treatment_sessions se
 			 JOIN treatment_plans p ON p.id = se.plan_id AND p.tenant_id = se.tenant_id
 			 LEFT JOIN charges c ON c.id = se.charge_id AND c.tenant_id = se.tenant_id AND c.deleted_at IS NULL
 			 WHERE se.tenant_id = $1 AND se.patient_id = $2 AND se.id = $3
 			 FOR UPDATE OF se`,
-			tid, patientID, sessionID).Scan(&amount, &seq, &planTitle, &count, &chargeStatus, &treatedAt)
+			tid, patientID, sessionID).Scan(&amount, &seq, &planTitle, &count, &chargeStatus, &treatedAt, &existingCharge, &refunded)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return apperr.NotFound("SESSION_NOT_FOUND", "session not found")
 		}
 		if e != nil {
 			return e
 		}
-		if chargeStatus != nil {
+		// A refunded charge stays 'paid' forever, so judging by status alone rejected
+		// exactly the lane the report offers write-off for: "paid, then given back —
+		// bill again, or write it off". Same detection collectOne uses.
+		wasRefunded := chargeStatus != nil && *chargeStatus == "paid" && refunded != nil
+		if chargeStatus != nil && !wasRefunded {
 			switch *chargeStatus {
 			case "paid":
 				return apperr.Conflict("SESSION_PAID", "this session has been paid — refund it from the cashier instead of writing it off")
@@ -1079,12 +1115,21 @@ func (s *Service) WriteOffSession(ctx context.Context, patientID, sessionID uuid
 				return apperr.Conflict("ALREADY_WAIVED", "this session is already written off")
 			case "pending":
 				// Already with the cashier: waive that charge rather than raising a second.
-				if e := s.billing.WaiveChargeTx(ctx, tx, *chargeIDOf(ctx, tx, tid, sessionID), reason); e != nil {
+				// existingCharge comes from the same locked read, so it cannot be nil here.
+				if existingCharge == nil {
+					return apperr.Conflict("SESSION_NOT_BILLED", "this session has no charge to write off")
+				}
+				if e := s.billing.WaiveChargeTx(ctx, tx, *existingCharge, reason); e != nil {
 					return e
 				}
 				return s.publisher.Publish(ctx, tx, &tid, "patient", patientID, "dental.session.written_off",
 					map[string]any{"patient_id": patientID, "session_id": sessionID, "reason": reason})
 			}
+		}
+		// Write off what is actually owed: for a refunded session that is the amount
+		// returned, which is what the report displays.
+		if wasRefunded {
+			amount = *refunded
 		}
 		bookTo := br
 		if treatedAt != nil {
@@ -1101,9 +1146,12 @@ func (s *Service) WriteOffSession(ctx context.Context, patientID, sessionID uuid
 		if e := s.billing.WaiveChargeTx(ctx, tx, cid, reason); e != nil {
 			return e
 		}
+		// Scoped to the link we read under FOR UPDATE, so a concurrent collect cannot
+		// have its charge silently replaced and left live with nothing pointing at it.
 		if _, e := tx.Exec(ctx,
-			`UPDATE treatment_sessions SET charge_id = $1, updated_at = now() WHERE tenant_id = $2 AND id = $3`,
-			cid, tid, sessionID); e != nil {
+			`UPDATE treatment_sessions SET charge_id = $1, updated_at = now()
+			 WHERE tenant_id = $2 AND id = $3 AND charge_id IS NOT DISTINCT FROM $4`,
+			cid, tid, sessionID, existingCharge); e != nil {
 			return e
 		}
 		return s.publisher.Publish(ctx, tx, &tid, "charge", cid, "dental.session.written_off",
@@ -1116,13 +1164,6 @@ func (s *Service) WriteOffSession(ctx context.Context, patientID, sessionID uuid
 		return apperr.Internal(err)
 	}
 	return nil
-}
-
-// chargeIDOf reads the session's currently linked charge inside an open tx.
-func chargeIDOf(ctx context.Context, tx pgx.Tx, tid, sessionID uuid.UUID) *uuid.UUID {
-	var id *uuid.UUID
-	_ = tx.QueryRow(ctx, `SELECT charge_id FROM treatment_sessions WHERE tenant_id = $1 AND id = $2`, tid, sessionID).Scan(&id)
-	return id
 }
 
 // UndoWriteOff detaches a written-off charge so the session can be billed again.
@@ -1149,6 +1190,12 @@ func (s *Service) UndoWriteOff(ctx context.Context, patientID, sessionID uuid.UU
 		}
 		if chargeID == nil || chargeStatus == nil || *chargeStatus != "waived" {
 			return apperr.Conflict("NOT_WAIVED", "this session is not written off")
+		}
+		// Void it, do not merely unlink it. An orphaned 'waived' row kept counting in
+		// the patient's Written-off total and in Finance, so undoing a write-off still
+		// read as money the clinic had given away.
+		if e := s.billing.UnwaiveChargeTx(ctx, tx, *chargeID, "write-off reversed"); e != nil {
+			return e
 		}
 		if _, e := tx.Exec(ctx,
 			`UPDATE treatment_sessions SET charge_id = NULL, updated_at = now()

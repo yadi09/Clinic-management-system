@@ -126,6 +126,8 @@ export function printStatement(o: {
   refunded: string;
   outstanding: string;
   issuedBy?: string;
+  /** Printed under the lines when they are a page and the totals are the whole account. */
+  note?: string;
 }) {
   const money = (v: string) => `${esc(o.currency)} ${Number(v || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const rows = o.lines
@@ -169,6 +171,7 @@ export function printStatement(o: {
       ${Number(o.refunded || 0) > 0 ? `<tr><td>Refunded</td><td class="r">− ${money(o.refunded)}</td></tr>` : ""}
       <tr class="grand"><td>Balance outstanding</td><td class="r">${money(o.outstanding)}</td></tr>
     </table>
+    ${o.note ? `<div class="muted" style="margin-top:10px">${esc(o.note)}</div>` : ""}
     <div class="foot">
       <div class="muted">This statement reflects charges recorded at the clinic as of the issue date.
       Amounts still to be scheduled on an ongoing treatment plan are not included until billed.</div>

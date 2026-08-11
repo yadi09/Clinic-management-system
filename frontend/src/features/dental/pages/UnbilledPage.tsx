@@ -15,7 +15,7 @@
 //   never billed    nobody raised a charge      -> send it to the cashier
 //   bill withdrawn  the cashier voided it       -> send it again
 //   refunded        paid, then given back       -> bill again, or write it off
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, HandCoins, Phone, Receipt, Undo2 } from "lucide-react";
@@ -65,6 +65,10 @@ export function UnbilledPage() {
   const navigate = useNavigate();
   const { can } = useAuth();
   const canCollect = can("payment.charge") || can("dental.manage");
+  // Forgiving a fee is payment.waive — the same permission the cashier's waive button
+  // uses. Showing this to everyone who can raise a charge handed the power to zero out
+  // a course of treatment to every dentist and receptionist.
+  const canWaive = can("payment.waive");
   const [lens, setLens] = useState<Lens>("all");
   // Paging is real rather than a dead end: the server already reports has_more, and
   // without a control the oldest debt beyond the first page was simply unreachable —
@@ -115,6 +119,12 @@ export function UnbilledPage() {
   // rows beyond this page.
   // The lane filter narrows the loaded page, not the whole report. Said out loud
   // below rather than left to be discovered.
+  // Collecting the last rows on page 3 leaves page 3 empty while the header still
+  // reports a total — an all-clear the report itself contradicts.
+  useEffect(() => {
+    if (page > 0 && !q.isFetching && (data?.rows.length ?? 0) === 0) setPage(0);
+  }, [page, q.isFetching, data?.rows.length]);
+
   const filtered = lens !== "all";
   const shownTotal = filtered ? rows.reduce((a, r) => a + Number(r.amount || 0), 0) : Number(data?.total ?? 0);
   const shownCount = filtered ? rows.length : (data?.count ?? 0);
@@ -143,7 +153,7 @@ export function UnbilledPage() {
                 <p className="mt-1 text-3xl font-bold tabular-nums text-destructive">{birr(shownTotal)}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   across {shownCount} visit{shownCount === 1 ? "" : "s"}
-                  {filtered && <span> · {LANE[lens as UnbilledLane].label.toLowerCase()} only</span>}
+                  {filtered && <span> · {LANE[lens as UnbilledLane].label.toLowerCase()} on this page</span>}
                 </p>
               </CardContent>
             </Card>
@@ -235,7 +245,7 @@ export function UnbilledPage() {
                           )}
                           {canCollect && (
                             <>
-                              <Button size="sm" variant="ghost" onClick={() => askWriteOff(r)}>Write off</Button>
+                              {canWaive && <Button size="sm" variant="ghost" onClick={() => askWriteOff(r)}>Write off</Button>}
                               <Button size="sm" loading={collect.isPending && collect.variables?.session_id === r.session_id}
                                 onClick={() => collect.mutate(r)}>
                                 {r.lane === "refunded"

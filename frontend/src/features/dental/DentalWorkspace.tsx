@@ -567,8 +567,8 @@ function PlanCard({ patientId, plan, teeth, editable, canCollect, canReschedule,
           <div className="grid grid-cols-2 gap-px bg-border sm:grid-cols-4">
             <PlanStat label="Plan total" value={birr(money.planned)} />
             <PlanStat label="Collected" value={birr(money.collected)} tone={num(money.collected) > 0.005 ? "ok" : undefined} />
-            <PlanStat label="Outstanding" value={birr(money.due)} tone={num(money.due) > 0.005 ? "warn" : undefined}
-              hint={num(money.at_cashier) > 0.005 ? `${birr(money.at_cashier)} with the cashier` : undefined} />
+            <PlanStat label="Remaining" value={birr(String(Math.max(0, num(money.planned) - num(money.collected) - num(money.waived))))} tone={undefined}
+              hint={num(money.at_cashier) > 0.005 ? `${birr(money.at_cashier)} with the cashier` : "still to collect over the course"} />
             {/* "Due now" not "Overdue": SessionRow already uses "overdue" for a session
                 past its date. Same wording as the Balance card above, same meaning. */}
             <PlanStat label="Due now" value={birr(money.due)} tone={num(money.due) > 0.005 ? "bad" : undefined}
