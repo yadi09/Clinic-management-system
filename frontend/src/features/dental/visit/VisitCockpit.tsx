@@ -29,6 +29,7 @@ import { MONEY, birr, sessionMoneyState } from "@/features/dental/money";
 import { addSession, finishCourse, type Plan } from "@/features/dental/api";
 import { visitTiming, type FocusResult, type FocusVisit, type Rung } from "@/features/dental/visit/useFocusVisit";
 import { RecordVisitForm, SettleFee } from "@/features/dental/visit/RecordVisitForm";
+import { VisitActions } from "@/features/dental/visit/VisitActions";
 
 /** How the resolution reads at the top of the cockpit. */
 const RUNG_META: Record<Rung, { label: string; tone: string }> = {
@@ -41,7 +42,7 @@ const RUNG_META: Record<Rung, { label: string; tone: string }> = {
 };
 
 export function VisitCockpit({
-  patientId, resolved, teeth, editable, canCollect, canReschedule, imageLimit, onPick, onChanged,
+  patientId, resolved, teeth, editable, canCollect, canReschedule, imageLimit, onNewPlan, onPick, onChanged,
 }: {
   patientId: string;
   resolved: FocusResult;
@@ -50,6 +51,8 @@ export function VisitCockpit({
   canCollect: boolean;
   canReschedule: boolean;
   imageLimit: number;
+  /** Opens the create-plan dialog. Omit for read-only viewers. */
+  onNewPlan?: () => void;
   /** Switch the cockpit to another visit; writes ?visit= so it survives a refresh. */
   onPick: (sessionId: string | null) => void;
   onChanged: () => void;
@@ -64,9 +67,12 @@ export function VisitCockpit({
     return (
       <div className="rounded-lg border border-dashed p-6 text-center">
         <p className="text-sm font-medium">No treatment planned yet</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Examine the patient, then create a treatment plan — its sessions become the visits shown here.
+        <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+          Examine the patient, then create a treatment plan — its visits become the schedule shown here.
         </p>
+        {editable && onNewPlan && (
+          <Button className="mt-3" onClick={onNewPlan}><Plus className="h-4 w-4" /> New treatment plan</Button>
+        )}
       </div>
     );
   }
@@ -90,6 +96,11 @@ export function VisitCockpit({
           {timing.text}
         </span>
         <div className="ml-auto flex items-center gap-2">
+          {editable && onNewPlan && (
+            <Button size="sm" variant="outline" onClick={onNewPlan} title="Start another course of treatment">
+              <Plus className="h-3.5 w-3.5" /> New plan
+            </Button>
+          )}
           {rung === "chosen" && (
             <Button size="sm" variant="ghost" onClick={() => onPick(null)} title="Go back to the visit this page would pick on its own">
               Clear selection
@@ -146,6 +157,10 @@ export function VisitCockpit({
             {editable && (
               <SettleFee patientId={patientId} session={session} canCollect={canCollect} onSettled={onChanged} />
             )}
+            {/* Repairs the deleted plan list used to offer: status, fee, date, undo a
+                mistaken collect, record or clear a pay-later promise. */}
+            <VisitActions patientId={patientId} session={session} canCollect={canCollect}
+              editable={editable} onChanged={onChanged} />
             <VisitReader plan={plan} before={session} />
             <div className="flex flex-wrap items-center gap-3">
               {editable && session.status === "planned" && (
