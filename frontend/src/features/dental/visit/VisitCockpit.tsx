@@ -12,10 +12,11 @@
 // one that says "OVERDUE · was Thu 7 Aug · 5 days ago" can be argued with.
 import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { CalendarClock, CheckCheck, ChevronRight, FileText, Plus } from "lucide-react";
+import { CalendarClock, ChevronRight, FileText, MoreHorizontal, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -66,6 +67,7 @@ export function VisitCockpit({
   const [moving, setMoving] = useState(false);
   const [adding, setAdding] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const [correcting, setCorrecting] = useState(false);
   const { focus, rung, others } = resolved;
 
   if (!focus) {
@@ -85,68 +87,93 @@ export function VisitCockpit({
   const { session, plan, seq, count } = focus;
   const meta = RUNG_META[rung];
   const timing = visitTiming(session.scheduled_date, todayISO());
-  const money = MONEY[sessionMoneyState(session)];
   // Cancelled sessions are not part of the course the patient is being told about.
   const liveCount = plan.sessions.filter((s) => s.status !== "cancelled").length || count;
+  // Another course is worth naming only when it needs something now: overdue, or
+  // delivered and unpaid. "Open" was true of every future visit the patient had.
+  const needsAttention = others.filter((o) =>
+    (o.session.status === "planned" && o.session.scheduled_date < todayISO()) ||
+    MONEY[sessionMoneyState(o.session)].countsAsOwed);
+
+  // ONE PANEL, THREE STATES.
+  //
+  // It used to render every part in every situation, which is why it read as a pile:
+  // the money consequence of recording a visit sat ABOVE the button that records it,
+  // "Record today's work" appeared on a visit eleven days away, and the fee was
+  // printed three times in three vocabularies. Worst of all the settle band — the
+  // largest, loudest element — rendered for visits that had not happened, telling the
+  // clinician "Visit recorded" about a booking and offering to bill for it.
+  //
+  // A visit is only ever in one of three states, and each has exactly one thing you
+  // would want to do:
+  //
+  //   upcoming   not happened yet   -> start it, or move it. No money question exists.
+  //   recording  being written now  -> the form.
+  //   recorded   it happened        -> read it back; settle the fee if it is unsettled.
+  const state: "upcoming" | "recording" | "recorded" =
+    recording ? "recording" : session.status === "done" ? "recorded" : "upcoming";
+  const isToday = session.scheduled_date === todayISO();
 
   return (
     <section className="rounded-lg border bg-card shadow-card">
-      {/* band 1 — the resolution verdict. Never a silent filter. */}
+      {/* WHEN — the resolution verdict, never a silent filter. */}
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-2.5">
-        <span className={cn("rounded-md px-2 py-1 text-[11px] font-bold uppercase tracking-widest", meta.tone)}>
-          {meta.label}
+        <span className={cn("rounded-md px-2 py-1 text-[11px] font-bold uppercase tracking-widest",
+          state === "recorded" ? "bg-emerald-600 text-white" : meta.tone)}>
+          {state === "recording" ? "Recording" : state === "recorded" ? "✓ Recorded" : meta.label}
         </span>
         <DualDate iso={session.scheduled_date} long className="text-sm font-medium" />
         <span className={cn("text-xs", timing.days < 0 ? "font-medium text-destructive" : "text-muted-foreground")}>
           {timing.text}
         </span>
         <div className="ml-auto flex items-center gap-2">
-          {editable && onNewPlan && (
-            <Button size="sm" variant="outline" onClick={onNewPlan} title="Start another course of treatment">
-              <Plus className="h-3.5 w-3.5" /> New plan
-            </Button>
-          )}
           {rung === "chosen" && (
-            <Button size="sm" variant="ghost" onClick={() => onPick(null)} title="Go back to the visit this page would pick on its own">
-              Clear selection
-            </Button>
+            <Button size="sm" variant="ghost" onClick={() => onPick(null)}
+              title="Go back to the visit this page would pick on its own">Clear selection</Button>
           )}
-          {canReschedule && session.status === "planned" && (
+          {canReschedule && session.status === "planned" && state !== "recording" && (
             <Button size="sm" variant="outline" onClick={() => setMoving(true)}>
               <CalendarClock className="h-3.5 w-3.5" /> Move
             </Button>
+          )}
+          {/* Four rare actions in one menu. They used to take three separate rows of
+              prime vertical space in the middle of the everyday path. */}
+          {editable && state !== "recording" && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="icon" variant="ghost" aria-label="More actions"><MoreHorizontal className="h-4 w-4" /></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setCorrecting((v) => !v)}>Correct this visit</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setAdding(true)}>Add a visit to this course</DropdownMenuItem>
+                {plan.status === "active" && (
+                  <DropdownMenuItem onClick={() => setFinishing(true)}>Finish this course</DropdownMenuItem>
+                )}
+                {onNewPlan && <DropdownMenuItem onClick={onNewPlan}>New treatment plan</DropdownMenuItem>}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
       </header>
 
       <div className="space-y-4 p-4">
-        {/* band 2 — the work line */}
+        {/* WHICH COURSE — title, tooth, position and this visit's fee, stated once. */}
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h3 className="text-lg font-semibold leading-tight">{plan.title}</h3>
           {plan.tooth && <Badge variant="outline">{plan.tooth}</Badge>}
           <span className="ml-auto text-sm text-muted-foreground">
-            session <b className="text-foreground">{seq}</b> of {liveCount} · {birr(session.amount_due)}
+            visit <b className="text-foreground">{seq}</b> of {liveCount} · <b className="text-foreground tabular-nums">{birr(session.amount_due)}</b>
           </span>
         </div>
 
-        {/* band 3 — the course, at a glance. Hidden while recording: switching the
-            focused visit under an open form would retarget the save to another
-            session, filing the note and the fee against a visit that never happened. */}
-        {!recording && (
+        {/* WHERE IN THE COURSE. Hidden while recording: switching the focused visit
+            under an open form would retarget the save to another session. */}
+        {state !== "recording" && (
           <CourseRail plan={plan} currentId={session.id} onPick={onPick} canEdit={editable}
             onAdd={() => setAdding(true)} />
         )}
 
-        {editable && plan.status === "active" && !recording && (
-          <div className="flex justify-end">
-            <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setFinishing(true)}>
-              <CheckCheck className="h-3.5 w-3.5" /> Finish course
-            </Button>
-          </div>
-        )}
-
-        {/* band 4/5 — read what happened last time, then record today */}
-        {recording ? (
+        {state === "recording" && (
           <RecordVisitForm
             key={session.id}
             patientId={patientId}
@@ -157,51 +184,63 @@ export function VisitCockpit({
             onSaved={() => { setRecording(false); onChanged(); }}
             onCancel={() => setRecording(false)}
           />
-        ) : (
+        )}
+
+        {state === "upcoming" && (
           <>
-            {editable && (
-              <SettleFee patientId={patientId} session={session} canCollect={canCollect} onSettled={onChanged} />
-            )}
-            {/* Repairs the deleted plan list used to offer: status, fee, date, undo a
-                mistaken collect, record or clear a pay-later promise. */}
-            <VisitActions patientId={patientId} session={session} canCollect={canCollect}
-              editable={editable} onChanged={onChanged} />
+            {/* WHAT HAPPENED LAST — the question this panel exists to answer. */}
             <VisitReader plan={plan} before={session} />
-            <div className="flex flex-wrap items-center gap-3">
-              {editable && session.status === "planned" && (
+            {editable && (
+              <div className="flex flex-wrap items-center gap-3">
                 <Button onClick={() => setRecording(true)}>
-                  <FileText className="h-4 w-4" /> Record today's work
+                  <FileText className="h-4 w-4" /> {isToday ? "Record today's work" : "Start this visit now"}
                 </Button>
-              )}
-              {editable && session.status === "done" && (
-                <Button variant="outline" onClick={() => setRecording(true)}>
-                  <FileText className="h-4 w-4" /> Edit this visit
-                </Button>
-              )}
-              <span className="text-sm">
-                <span className="text-muted-foreground">Fee </span>
-                <b className="tabular-nums">{birr(session.amount_due)}</b>
-                <span className={cn("ml-2 rounded px-1.5 py-0.5 text-xs font-medium",
-                  money.countsAsOwed ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground")}>
-                  {money.label}
-                </span>
-              </span>
-            </div>
+                {!isToday && (
+                  <span className="text-xs text-muted-foreground">
+                    Booked for <DualDate iso={session.scheduled_date} />. Recording it keeps that date.
+                  </span>
+                )}
+              </div>
+            )}
           </>
         )}
 
-        {/* Demoted candidates are named, never hidden — the resolver can be wrong.
-            Hidden while recording for the same reason as the rail: switching the
-            focused visit under an open note retargets where it is saved. */}
-        {!recording && others.length > 0 && (
+        {state === "recorded" && (
+          <>
+            {/* WHAT WAS DONE, read back. */}
+            <RecordedSummary session={session} />
+            {/* WHAT IT COSTS — the only place money is asked about, and only now that
+                there is a visit to ask about. */}
+            {editable && (
+              <SettleFee patientId={patientId} session={session} canCollect={canCollect} onSettled={onChanged} />
+            )}
+            {editable && (
+              <Button variant="outline" size="sm" onClick={() => setRecording(true)}>
+                <FileText className="h-4 w-4" /> Edit this visit
+              </Button>
+            )}
+          </>
+        )}
+
+        {/* Repairs, opened from the ⋯ menu rather than sitting in the reading path. */}
+        {correcting && state !== "recording" && (
+          <VisitActions patientId={patientId} session={session} canCollect={canCollect}
+            editable={editable} onChanged={onChanged} />
+        )}
+
+        {/* Another course only earns a mention when it needs something TODAY. Listing
+            every open visit made a table of contents out of a to-do list — and the
+            timeline panel below already lists them all, in order. */}
+        {state !== "recording" && needsAttention.length > 0 && (
           <div className="space-y-1 border-t pt-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Also open</p>
-            {others.slice(0, 4).map((o) => (
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">Also needs attention</p>
+            {needsAttention.slice(0, 3).map((o) => (
               <OtherVisit key={o.session.id} visit={o} onPick={onPick} />
             ))}
           </div>
         )}
       </div>
+
 
       {adding && (
         <AddSessionDialog
@@ -296,6 +335,20 @@ function CourseRail({ plan, currentId, onPick, onAdd, canEdit }: {
  * surface and the writing surface were the same control on the old page, which is
  * how a clinician reviewing history ends up overwriting it.
  */
+/** What was recorded, read back. Short on purpose: the timeline holds the history. */
+function RecordedSummary({ session }: { session: { procedure?: string; tooth?: string; notes?: string } }) {
+  const said = [session.procedure, session.tooth].filter(Boolean).join(" · ");
+  if (!said && !session.notes) {
+    return <p className="text-sm text-muted-foreground">Marked done with no clinical note.</p>;
+  }
+  return (
+    <div className="space-y-0.5">
+      {said && <p className="text-sm font-medium">{said}</p>}
+      {session.notes && <p className="whitespace-pre-wrap text-sm text-muted-foreground">{session.notes}</p>}
+    </div>
+  );
+}
+
 function VisitReader({ plan, before }: { plan: Plan; before: { id: string; scheduled_date: string } }) {
   // By DATE, not by seq. Rescheduling moves dates without renumbering, so seq 3 can
   // sit before seq 2 on the calendar — and "last time" must mean the visit that

@@ -1,0 +1,173 @@
+<title>ClinicOS · The visit panel, rethought</title>
+<style>
+:root{--bg:#faf9f7;--ink:#16130f;--muted:#6b6560;--line:#e3ded7;--card:#fff;--brand:#14532d;--accent:#b45309;--rose:#9f1239;--code:#f4f1ec}
+:root:not([data-theme="light"]){@media(prefers-color-scheme:dark){--bg:#14120f;--ink:#f0ece5;--muted:#a09890;--line:#2e2a25;--card:#1c1915;--brand:#5eb888;--accent:#e0a355;--rose:#f0879f;--code:#221e19}}
+:root[data-theme="dark"]{--bg:#14120f;--ink:#f0ece5;--muted:#a09890;--line:#2e2a25;--card:#1c1915;--brand:#5eb888;--accent:#e0a355;--rose:#f0879f;--code:#221e19}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);margin:0;padding:0 20px 90px;font:16px/1.62 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
+.w{max-width:1120px;margin:0 auto}
+header.top{padding:56px 0 26px;border-bottom:3px solid var(--brand)}
+.kicker{font:600 11px/1 ui-monospace,monospace;letter-spacing:.22em;text-transform:uppercase;color:var(--brand)}
+h1{font-size:clamp(28px,5vw,42px);line-height:1.07;margin:12px 0 8px;letter-spacing:-.02em}
+.dek{color:var(--muted);font-size:18px;max-width:62ch;margin:0}
+h2{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--brand);margin:56px 0 6px;padding-bottom:7px;border-bottom:1px solid var(--line)}
+p{margin:0 0 11px}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--card);margin:14px 0}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font:600 10px/1 ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:12px 14px;border-bottom:1px solid var(--line)}
+td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+.why{color:var(--muted);font-size:13.5px;margin-top:5px}
+.fix{font-size:13.5px;min-width:15rem}
+.sev{font:600 10px/1 ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;padding:4px 7px;border-radius:4px;white-space:nowrap}
+.s-critical{background:var(--rose);color:#fff} .s-high{background:var(--accent);color:#fff}
+.s-medium{background:var(--line);color:var(--ink)} .s-low{background:transparent;color:var(--muted);border:1px solid var(--line)}
+pre{background:var(--code);border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;margin:12px 0}
+.state{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:10px;padding:16px 20px;margin:18px 0}
+.state h3{margin:0 0 4px;font-size:19px}
+.state .when{color:var(--muted);font-size:14px;margin:0 0 10px}
+.rule{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:10px 0}
+.rule b{color:var(--brand)}
+footer{margin-top:64px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}
+</style>
+<div class="w">
+<header class="top">
+<div class="kicker">ClinicOS · design proposal · awaiting approval</div>
+<h1>The visit panel does<br>four jobs at once</h1>
+<p class="dek">It is the first thing on the patient page and the hardest thing to read. The cause is not decoration — the panel renders every one of its parts in every situation, including the parts that contradict each other.</p>
+</header>
+
+<h2>The bug underneath the crowding</h2>
+<p>Before any design question: the panel in your screenshot is describing a visit booked for <b>22 August — eleven days away</b>, and it says <b>“Visit recorded.”</b> Directly beneath, the same visit is labelled <b>“Not yet due.”</b></p>
+<p><code>SettleFee</code> renders whenever a session is not paid, not queued and not flagged pay-later. It never checks whether the visit happened. So the product asserts a clinical event that has not occurred and offers two buttons to bill for it — the exact failure the money work spent a day removing everywhere else, reappearing in the newest surface.</p>
+<p>That single fault explains most of what makes the panel feel crowded: an entire tinted band, the loudest element on screen, should not be there at all.</p>
+
+<h2>What the audit found</h2>
+<div class="scroll"><table>
+<thead><tr><th>Sev</th><th>Finding</th><th>Direction</th></tr></thead>
+<tbody><tr><td><span class="sev s-critical">critical</span></td><td><b>The panel tells you a visit happened when it has not</b><div class="why">SettleFee renders whenever a session is not paid/queued/pay-later, with no check that it was ever delivered. The screenshot shows a visit booked for 22 August — eleven days away, status &#x27;planned&#x27; — under the sentence &quot;Visit recorded. 4,000 ETB for it is not settled — how is it handled?&quot; Both halves are false, and its two buttons offer to bill a patient for treatment they have not received. This is the same fault the money work spent a day removing everywhere else.</div></td><td class="fix">SettleFee renders only when session.status === &#x27;done&#x27;.</td></tr>
+<tr><td><span class="sev s-high">high</span></td><td><b>Two contradictory money statements, ten pixels apart</b><div class="why">The amber band says the 4,000 is unsettled and demands a decision. The fee line directly beneath it reads &quot;Not yet due&quot;. Both are generated from the same session. A user cannot reconcile them, and the correct one is the quiet one.</div></td><td class="fix">One money statement per state. Before the visit: the fee on the work line, nothing else. After: the settle band, nothing else.</td></tr>
+<tr><td><span class="sev s-high">high</span></td><td><b>The primary action is a lie on most visits</b><div class="why">&quot;Record today&#x27;s work&quot; is rendered for any planned session, including one eleven days out. Pressing it opens a form that will stamp a visit that has not happened.</div></td><td class="fix">Label the action for the state: &quot;Start this visit now&quot; for a future visit, with the date consequence stated; &quot;Record today&#x27;s work&quot; only when it is actually today.</td></tr>
+<tr><td><span class="sev s-high">high</span></td><td><b>Effect is printed above cause</b><div class="why">Reading top to bottom: the money consequence of recording a visit, then a link to correct the visit, then what happened last time, then the button that records the visit. The panel is in reverse causal order, which is why it reads as a pile rather than a sequence.</div></td><td class="fix">One order, always: when → what course → what happened last → do the work → what it costs.</td></tr>
+<tr><td><span class="sev s-high">high</span></td><td><b>No focal point, and the loudest element is the wrong one</b><div class="why">Five bordered or tinted regions stack with no hierarchy. The largest and most saturated is the amber money band, which in this state should not be on screen at all. A first-time user&#x27;s eye lands on the one thing that does not apply.</div></td><td class="fix">Exactly one filled primary button per state, and one tinted band at most — reserved for a real, current obligation.</td></tr>
+<tr><td><span class="sev s-medium">medium</span></td><td><b>4,000 ETB is printed three times, in three vocabularies</b><div class="why">Header right (&#x27;4,000 ETB&#x27;), the amber band (&#x27;4,000 ETB for it is not settled&#x27;), and the fee line (&#x27;Fee 4,000 ETB · Not yet due&#x27;). Course money adds a fourth register in 11px grey: &#x27;paid 4,000 ETB of 12,000 ETB · 1 unsettled&#x27;.</div></td><td class="fix">The visit fee once, on the work line. The course total once, under the rail. The settle band names the amount only when it is asking a question about it.</td></tr>
+<tr><td><span class="sev s-medium">medium</span></td><td><b>Rare repairs occupy prime vertical space</b><div class="why">&#x27;Correct this visit&#x27; sits between the money band and the reader; &#x27;Finish course&#x27; floats alone on its own row; &#x27;+ visit&#x27; is an unlabelled chip on the rail. Three rarely-used controls interrupt the everyday path.</div></td><td class="fix">Collapse into one ⋯ menu on the header: Correct this visit · Add a visit · Finish course · New plan.</td></tr>
+<tr><td><span class="sev s-medium">medium</span></td><td><b>&quot;Also open&quot; reads as a to-do list and is a table of contents</b><div class="why">Both entries are 45 days away and need nothing. The Timeline panel on the same page already lists them in order.</div></td><td class="fix">Show it only when another course is overdue or owed, and say which and why. Otherwise show nothing.</td></tr>
+<tr><td><span class="sev s-low">low</span></td><td><b>The course rail is the smallest thing on the panel</b><div class="why">The dots and &#x27;paid 4,000 of 12,000 · 1 unsettled&#x27; are 11px, directly under a 20px title — yet &#x27;where are we in this course&#x27; is one of the three questions the panel exists to answer.</div></td><td class="fix">Give the rail its own line at readable size with the money beside it, since they answer the same question.</td></tr></tbody></table></div>
+
+<h2>The proposal: one panel, three states</h2>
+<p>The panel currently renders as though every visit is in every state at once. A visit is only ever in one of three, and each has exactly one thing you would want to do.</p>
+
+<div class="rule"><b>Rule 1.</b> One filled primary button per state. If two things look equally important, neither is.</div>
+<div class="rule"><b>Rule 2.</b> One money statement per state — never two, never in two vocabularies.</div>
+<div class="rule"><b>Rule 3.</b> One tinted band at most, reserved for a real obligation that exists right now.</div>
+<div class="rule"><b>Rule 4.</b> Rare repairs live in a ⋯ menu. Frequency decides prominence.</div>
+<div class="rule"><b>Rule 5.</b> Reading order follows causal order: when → which course → what happened last → do the work → what it costs.</div>
+
+<div class="state">
+<h3>State A · The visit has not happened</h3>
+<p class="when">Booked for a future day. This is the state in your screenshot, and the most common one.</p>
+<pre>
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│  NEXT VISIT     Sat 22 Aug 2026 · 16 ነሐሴ 2018 · in 11 days              [ ⋯ ]       │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                     │
+│  Treatment 3   ⟨UR4⟩                                        visit 3 of 3 · 4,000 ETB │
+│  ●━━●━━◉                                    paid 4,000 of 12,000 · 1 visit unsettled │
+│                                                                                     │
+│  ┌ LAST TIME · visit 2 · Sat 8 Aug · 2 ነሐሴ ─────────────────────────────────────┐   │
+│  │ Consultation, cleaning &amp; polishing · UR8 UR7 UR6 UR5 UR3                     │   │
+│  │ &quot;This is a notice to the…&quot;                                    🖼1   [ read ] │   │
+│  └──────────────────────────────────────────────────────────────────────────────┘   │
+│                                                                                     │
+│  ┌──────────────────────────┐                                                       │
+│  │  ▶ Start this visit now  │   or   [ Move to another day ]                        │
+│  └──────────────────────────┘                                                       │
+│  Booked for 22 Aug. Starting now records it as today.                               │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+   ⋯  =  Correct this visit · Add a visit to the course · Finish course · New plan
+         (four rare actions, one menu, out of the way of the one you want)
+
+   NOT SHOWN, because none of it applies to a visit that has not happened:
+     · &quot;Visit recorded — how is it handled?&quot;     the visit is 11 days away
+     · &quot;Record today&#x27;s work&quot;                     it is not today
+     · &quot;Fee 4,000 ETB · Not yet due&quot;             the fee is already on the work line
+</pre>
+</div>
+
+<div class="state">
+<h3>State B · Recording</h3>
+<p class="when">Today, or a future visit the dentist deliberately started early.</p>
+<pre>
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│  RECORDING      Tue 11 Aug 2026 · 5 ነሐሴ 2018 · today                     [ cancel ] │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│  Treatment 3 · visit 3 of 3                                                         │
+│  ⟨ last time: cleaning &amp; polishing, UR8–UR3 ⟩                              more ›   │
+│                                                                                     │
+│  Tooth      [ UR4 ✕ ]  [ + ]              Procedure  [ Extraction ✕ ]  [ + ]        │
+│  Notes      ┌───────────────────────────────────────────────────────────────────┐   │
+│             │ Uneventful. Haemostasis achieved. Post-op given.                  │   │
+│             └───────────────────────────────────────────────────────────────────┘   │
+│             ⟳ draft saved 14:38                                                     │
+│  Attach     [ 🖼 image ]   [ ℞ prescription ]   [ ✎ full examination ]              │
+│                                                                                     │
+│  ┌────────────────────────┐                                                         │
+│  │  ✓ Save this visit     │    Fee 4,000 ETB — you choose how it is settled next    │
+│  └────────────────────────┘                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+</pre>
+</div>
+
+<div class="state">
+<h3>State C · Recorded</h3>
+<p class="when">The visit exists. Only now is the money question legitimate — and it is the only band on screen.</p>
+<pre>
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│  ✓ RECORDED     Tue 11 Aug 2026 · 5 ነሐሴ 2018 · today                     [ ⋯ ]      │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│  Treatment 3 · visit 3 of 3      Extraction · UR4                        [ edit ]   │
+│  Uneventful. Haemostasis achieved. Post-op given.                                   │
+│  ●━━●━━●                                              paid 4,000 of 12,000 · course  │
+│                                                                        complete →   │
+│  ┌─ 4,000 ETB for this visit is not settled ─────────────────────────────────────┐  │
+│  │  ┌───────────────────────────┐  ┌──────────────────────┐                      │  │
+│  │  │ ▶ Send to the front desk  │  │ Patient pays later   │   when? ______       │  │
+│  │  └───────────────────────────┘  └──────────────────────┘                      │  │
+│  │  Stays flagged as owing until collected. Nothing is written off here.         │  │
+│  └───────────────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+   This band is the ONLY place the money question appears, and it appears only after
+   the visit exists. Once settled it disappears entirely and the panel is state C
+   without it.
+</pre>
+</div>
+
+<h2>“Also open”</h2>
+<pre>
+Today the panel ends with:
+
+    ALSO OPEN
+    treatment Two   session 3 of 6 · Sep 25, 2026 · in 45 days              ›
+    Root Canal      session 2 of 6 · Sep 25, 2026 · in 45 days              ›
+
+Both are 45 days away. Nothing is open. It reads as a to-do list and is a table of
+contents — and the Timeline panel already lists them, in order, on the same page.
+
+Proposed: this appears ONLY when another course needs attention today, and says why.
+
+    ⚠ Also needs attention
+      Root Canal · visit 2 was due 5 days ago                    [ switch to it ]
+
+Otherwise: nothing. Silence is information.
+</pre>
+
+<h2>What this does not change</h2>
+<p>The resolver, the money model, the safety strip and the shelf all stay exactly as they are. This is a rewrite of one component's layout and render conditions — roughly <code>VisitCockpit.tsx</code> and the placement of <code>SettleFee</code>. No backend change, no migration, no change to what anything means.</p>
+<p>The one behavioural change is the bug fix: a visit that has not happened will no longer offer to be billed.</p>
+
+<footer>Proposal only — nothing implemented. Approve, amend, or reject any part.<br>
+Current implementation: <code>frontend/src/features/dental/visit/VisitCockpit.tsx</code>, <code>RecordVisitForm.tsx</code>.</footer>
+</div>

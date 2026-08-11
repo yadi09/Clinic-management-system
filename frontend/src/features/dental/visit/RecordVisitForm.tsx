@@ -208,14 +208,21 @@ export function SettleFee({ patientId, session, canCollect, onSettled }: {
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not record the promise"),
   });
 
-  // Settled or already queued: nothing to ask.
+  // Nothing to ask about a visit that has not happened.
+  //
+  // This checked only the MONEY state, never whether the treatment was delivered, so
+  // a visit booked eleven days out rendered "Visit recorded. 4,000 ETB for it is not
+  // settled" with two buttons offering to bill a patient for treatment they had not
+  // received — while the fee line ten pixels below read "Not yet due". The panel is
+  // now mounted only in the recorded state, and this is the second guard.
+  if (session.status !== "done") return null;
   if (settled || queued || session.pay_later) return null;
 
   return (
     <div className="space-y-3 rounded-md border border-amber-300 bg-amber-50 p-3">
       <p className="flex items-start gap-2 text-sm font-medium text-amber-900">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-        Visit recorded. {birr(session.amount_due)} for it is not settled — how is it handled?
+{birr(session.amount_due)} for this visit is not settled — how is it handled?
       </p>
       <div className="flex flex-wrap gap-2">
         {canCollect && (
