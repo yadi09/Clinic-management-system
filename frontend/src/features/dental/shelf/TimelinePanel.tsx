@@ -9,10 +9,11 @@
 // Read-only, deliberately. The cockpit above is where a visit is recorded; this is
 // where it is read. Making the reading surface editable is how a clinician reviewing
 // history ends up overwriting it.
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Stethoscope } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Segmented } from "@/components/ui/segmented";
 import { cn } from "@/lib/utils";
 import { DualDate, dayDiff, relativeDay } from "@/components/DualDate";
 import { MONEY, birr, sessionMoneyState } from "@/features/dental/money";
@@ -41,11 +42,36 @@ function mark(e: Entry, todayISO: string) {
   return { key: "planned", dot: "bg-border", label: "Booked" };
 }
 
-export function TimelinePanel({ plans, todayISO, onOpenVisit }: {
+/**
+ * How far out to look. A course can run two years, so the near-term visits — the
+ * only ones anyone acts on this week — end up buried under a long tail.
+ *
+ * Windows, not frequencies: "every two weeks" describes how a course is scheduled,
+ * which is already on the plan; it is not a way to look at a list.
+ */
+const WINDOWS = [
+  { value: "7", label: "Week", days: 7 },
+  { value: "30", label: "Month", days: 30 },
+  { value: "90", label: "3 months", days: 90 },
+  { value: "all", label: "All", days: Infinity },
+] as const;
+type WindowKey = (typeof WINDOWS)[number]["value"];
+
+export function TimelinePanel({ patientId, plans, todayISO, onOpenVisit }: {
+  patientId: string;
   plans: Plan[];
   todayISO: string;
   onOpenVisit: (sessionId: string) => void;
 }) {
+  // Remembered per patient, like the shelf panel: someone reviewing a long course
+  // should not have to re-widen it on every visit to that patient.
+  const winKey = `dental-tl-window:${patientId}`;
+  const [win, setWin] = useState<WindowKey>("30");
+  useEffect(() => {
+    const saved = sessionStorage.getItem(winKey) as WindowKey | null;
+    if (saved && WINDOWS.some((w) => w.value === saved)) setWin(saved);
+  }, [winKey]);
+  const pickWindow = (v: WindowKey) => { setWin(v); sessionStorage.setItem(winKey, v); };
   const { past, today, upcoming } = useMemo(() => {
     const all: Entry[] = [];
     for (const plan of plans) {
@@ -71,6 +97,22 @@ export function TimelinePanel({ plans, todayISO, onOpenVisit }: {
     };
   }, [plans, todayISO]);
 
+  // The window hides distance, never importance. A missed visit and an unsettled fee
+  // are work someone still owes the patient — filtering them out of sight is how a
+  // debt or a no-show gets forgotten, which is the opposite of the point.
+  const days = WINDOWS.find((w) => w.value === win)!.days;
+  const mustShow = (e: Entry) =>
+    (e.session.status === "planned" && e.session.scheduled_date < todayISO) ||
+    (e.session.status === "done" && MONEY[sessionMoneyState(e.session)].countsAsOwed);
+  const inWindow = (e: Entry) => Math.abs(dayDiff(e.session.scheduled_date)) <= days;
+  const keep = (e: Entry) => inWindow(e) || mustShow(e);
+
+  const shownUpcoming = upcoming.filter(keep);
+  // The most recent visit always survives: "what did I do last time" is the question
+  // this panel exists to answer, whatever window is selected.
+  const shownPast = past.filter((e, i) => i === 0 || keep(e));
+  const hidden = (upcoming.length - shownUpcoming.length) + (past.length - shownPast.length);
+
   if (past.length === 0 && upcoming.length === 0 && today.length === 0) {
     return (
       <div className="rounded-lg border border-dashed p-8 text-center">
@@ -85,6 +127,19 @@ export function TimelinePanel({ plans, todayISO, onOpenVisit }: {
 
   return (
     <div className="space-y-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-1">
+        <p className="text-xs text-muted-foreground">
+          Booked and completed visits, nearest first.
+        </p>
+        <Segmented
+          size="sm"
+          ariaLabel="How far ahead and back to show"
+          value={win}
+          onChange={(v) => pickWindow(v as WindowKey)}
+          options={WINDOWS.map((w) => ({ value: w.value, label: w.label }))}
+        />
+      </div>
+
       {/* Today leads: it is the only section that is about right now. */}
       {today.length > 0 && (
         <>
@@ -93,19 +148,27 @@ export function TimelinePanel({ plans, todayISO, onOpenVisit }: {
         </>
       )}
 
-      {upcoming.length > 0 && (
+      {shownUpcoming.length > 0 && (
         <>
           {/* Nearest first: the next visit is the one a clinician is looking for. */}
-          <SectionLabel>Next{upcoming.length > 1 ? ` · ${upcoming.length} booked` : ""}</SectionLabel>
-          {upcoming.map((e) => <Row key={e.session.id} e={e} todayISO={todayISO} onOpen={onOpenVisit} />)}
+          <SectionLabel>Next{shownUpcoming.length > 1 ? ` · ${shownUpcoming.length} booked` : ""}</SectionLabel>
+          {shownUpcoming.map((e) => <Row key={e.session.id} e={e} todayISO={todayISO} onOpen={onOpenVisit} />)}
         </>
       )}
 
-      {past.length > 0 && (
+      {shownPast.length > 0 && (
         <>
           <SectionLabel>Earlier · most recent first</SectionLabel>
-          {past.map((e) => <Row key={e.session.id} e={e} todayISO={todayISO} onOpen={onOpenVisit} />)}
+          {shownPast.map((e) => <Row key={e.session.id} e={e} todayISO={todayISO} onOpen={onOpenVisit} />)}
         </>
+      )}
+
+      {/* Never let the window hide something silently. */}
+      {hidden > 0 && (
+        <button type="button" onClick={() => pickWindow("all")}
+          className="mt-2 w-full rounded-md border border-dashed py-2 text-xs text-muted-foreground hover:bg-muted">
+          {hidden} more visit{hidden === 1 ? "" : "s"} outside this window — show everything
+        </button>
       )}
       {past.length === 0 && today.length === 0 && (
         <p className="py-4 text-center text-sm text-muted-foreground">No visits recorded yet.</p>

@@ -346,7 +346,7 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
           {
             key: "timeline", label: "Timeline", icon: SHELF_ICONS.CalendarRange,
             badge: timelineCount(plans) || undefined,
-            render: () => <TimelinePanel plans={plans} todayISO={todayISO} onOpenVisit={pickVisit} />,
+            render: () => <TimelinePanel patientId={patientId} plans={plans} todayISO={todayISO} onOpenVisit={pickVisit} />,
           },
           ...(editable ? [{
             key: "chart", label: "Tooth chart", icon: SHELF_ICONS.Grid3x3,
