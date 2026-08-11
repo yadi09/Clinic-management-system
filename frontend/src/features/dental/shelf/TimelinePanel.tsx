@@ -46,7 +46,7 @@ export function TimelinePanel({ plans, todayISO, onOpenVisit }: {
   todayISO: string;
   onOpenVisit: (sessionId: string) => void;
 }) {
-  const { past, upcoming } = useMemo(() => {
+  const { past, today, upcoming } = useMemo(() => {
     const all: Entry[] = [];
     for (const plan of plans) {
       const live = plan.sessions.filter((s) => s.status !== "cancelled");
@@ -59,14 +59,19 @@ export function TimelinePanel({ plans, todayISO, onOpenVisit }: {
       }
     }
     const byDate = (a: Entry, b: Entry) => a.session.scheduled_date.localeCompare(b.session.scheduled_date);
+    // Ordered by DISTANCE FROM NOW, in both directions, so the list reads outwards
+    // from today: what is happening now, then what is next, then what came before.
+    // It previously put the farthest visit at the top of Upcoming — the reasoning was
+    // that the nearest one should sit adjacent to the TODAY rule underneath it, which
+    // is not how anyone reads a list.
     return {
-      // Upcoming reads forwards (what is next); past reads backwards (what just happened).
+      today: all.filter((e) => e.session.scheduled_date === todayISO).sort(byDate),
       upcoming: all.filter((e) => e.session.scheduled_date > todayISO).sort(byDate),
-      past: all.filter((e) => e.session.scheduled_date <= todayISO).sort((a, b) => byDate(b, a)),
+      past: all.filter((e) => e.session.scheduled_date < todayISO).sort((a, b) => byDate(b, a)),
     };
   }, [plans, todayISO]);
 
-  if (past.length === 0 && upcoming.length === 0) {
+  if (past.length === 0 && upcoming.length === 0 && today.length === 0) {
     return (
       <div className="rounded-lg border border-dashed p-8 text-center">
         <Stethoscope className="mx-auto h-6 w-6 text-muted-foreground" />
@@ -80,33 +85,43 @@ export function TimelinePanel({ plans, todayISO, onOpenVisit }: {
 
   return (
     <div className="space-y-1">
-      {upcoming.length > 0 && (
+      {/* Today leads: it is the only section that is about right now. */}
+      {today.length > 0 && (
         <>
-          <SectionLabel>Upcoming</SectionLabel>
-          {/* Nearest first, so the next appointment is the one adjacent to today. */}
-          {[...upcoming].reverse().map((e) => (
-            <Row key={e.session.id} e={e} todayISO={todayISO} onOpen={onOpenVisit} />
-          ))}
+          <SectionLabel tone="brand">Today · <DualDate iso={todayISO} /></SectionLabel>
+          {today.map((e) => <Row key={e.session.id} e={e} todayISO={todayISO} onOpen={onOpenVisit} />)}
         </>
       )}
 
-      <div className="my-2 flex items-center gap-3">
-        <span className="text-[11px] font-bold uppercase tracking-widest text-brand">Today</span>
-        <span className="text-xs text-muted-foreground"><DualDate iso={todayISO} /></span>
-        <span className="h-px flex-1 bg-brand/30" />
-      </div>
+      {upcoming.length > 0 && (
+        <>
+          {/* Nearest first: the next visit is the one a clinician is looking for. */}
+          <SectionLabel>Next{upcoming.length > 1 ? ` · ${upcoming.length} booked` : ""}</SectionLabel>
+          {upcoming.map((e) => <Row key={e.session.id} e={e} todayISO={todayISO} onOpen={onOpenVisit} />)}
+        </>
+      )}
 
-      {past.length === 0 ? (
-        <p className="py-4 text-center text-sm text-muted-foreground">No visits yet.</p>
-      ) : (
-        past.map((e) => <Row key={e.session.id} e={e} todayISO={todayISO} onOpen={onOpenVisit} />)
+      {past.length > 0 && (
+        <>
+          <SectionLabel>Earlier · most recent first</SectionLabel>
+          {past.map((e) => <Row key={e.session.id} e={e} todayISO={todayISO} onOpen={onOpenVisit} />)}
+        </>
+      )}
+      {past.length === 0 && today.length === 0 && (
+        <p className="py-4 text-center text-sm text-muted-foreground">No visits recorded yet.</p>
       )}
     </div>
   );
 }
 
-function SectionLabel({ children }: { children: ReactNode }) {
-  return <p className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{children}</p>;
+function SectionLabel({ children, tone }: { children: ReactNode; tone?: "brand" }) {
+  return (
+    <p className={cn("flex items-center gap-2 pt-3 text-[11px] font-semibold uppercase tracking-wide",
+      tone === "brand" ? "text-brand" : "text-muted-foreground")}>
+      {children}
+      <span className={cn("h-px flex-1", tone === "brand" ? "bg-brand/30" : "bg-border")} />
+    </p>
+  );
 }
 
 function Row({ e, todayISO, onOpen }: { e: Entry; todayISO: string; onOpen: (id: string) => void }) {
