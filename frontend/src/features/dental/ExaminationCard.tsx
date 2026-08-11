@@ -18,7 +18,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, ClipboardList, Pencil, Plus, Printer, Stethoscope, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardTitle } from "@/components/ui/card";
+import { PanelBody, PanelCard, PanelHeader } from "@/features/dental/shelf/RecordShelf";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -69,7 +70,7 @@ function dualDate(iso: string) {
   }
 }
 
-export function ExaminationCard({ patientId, editable }: { patientId: string; editable: boolean }) {
+export function ExaminationCard({ patientId, editable, bare }: { patientId: string; editable: boolean; bare?: boolean }) {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["dental-exams", patientId], queryFn: () => listExams(patientId) });
   const [composing, setComposing] = useState(false);
@@ -79,12 +80,12 @@ export function ExaminationCard({ patientId, editable }: { patientId: string; ed
   const refresh = () => qc.invalidateQueries({ queryKey: ["dental-exams", patientId] });
 
   if (q.isLoading) {
-    return <Card><CardContent className="p-4"><Skeleton className="h-24 w-full" /></CardContent></Card>;
+    return <PanelCard bare={bare}><PanelBody bare={bare} className="p-4"><Skeleton className="h-24 w-full" /></PanelBody></PanelCard>;
   }
 
   return (
-    <Card>
-      <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
+    <PanelCard bare={bare}>
+      <PanelHeader bare={bare} className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
         <CardTitle className="flex items-center gap-2">
           <Stethoscope className="h-4 w-4 text-muted-foreground" />
           Clinical examinations
@@ -95,8 +96,8 @@ export function ExaminationCard({ patientId, editable }: { patientId: string; ed
             <Plus className="h-3.5 w-3.5" /> New examination
           </Button>
         )}
-      </CardHeader>
-      <CardContent className="space-y-3">
+      </PanelHeader>
+      <PanelBody bare={bare} className="space-y-3">
         {composing && (
           <ExamForm
             patientId={patientId}
@@ -139,8 +140,8 @@ export function ExaminationCard({ patientId, editable }: { patientId: string; ed
             />
           ),
         )}
-      </CardContent>
-    </Card>
+      </PanelBody>
+    </PanelCard>
   );
 }
 
@@ -362,7 +363,7 @@ function ExamForm({ patientId, examId, initial, onCancel, onSaved }: {
           <Input value={f.diagnosis ?? ""} onChange={(e) => set({ diagnosis: e.target.value })}
                  placeholder="e.g. Irreversible pulpitis — 46" />
         </Field>
-        <Field label="Treatment plan" hint="The intended course. Schedule and price it under Treatment plans below.">
+        <Field label="Treatment plan" hint="The intended course. Create it as a treatment plan from the visit panel at the top of the page, where it gets its dates and fees.">
           <Textarea rows={3} value={f.treatment_plan ?? ""} onChange={(e) => set({ treatment_plan: e.target.value })} />
         </Field>
       </FormSection>

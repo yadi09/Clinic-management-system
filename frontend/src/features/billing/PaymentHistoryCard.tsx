@@ -10,7 +10,8 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, FileText, Printer, RotateCcw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardTitle } from "@/components/ui/card";
+import { PanelBody, PanelCard, PanelHeader } from "@/features/dental/shelf/RecordShelf";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/app/auth-context";
@@ -48,7 +49,7 @@ function dayHeading(iso: string) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
 }
 
-export function PaymentHistoryCard({ patientId }: { patientId: string }) {
+export function PaymentHistoryCard({ patientId, bare }: { patientId: string; bare?: boolean }) {
   const { user } = useAuth();
   const q = useQuery({ queryKey: ["patient-charges", patientId], queryFn: () => patientCharges(patientId) });
   const patient = useQuery({ queryKey: ["patient", patientId], queryFn: () => getPatient(patientId) });
@@ -121,16 +122,16 @@ export function PaymentHistoryCard({ patientId }: { patientId: string }) {
     });
 
   return (
-    <Card>
-      <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
+    <PanelCard bare={bare}>
+      <PanelHeader bare={bare} className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
         <CardTitle>Payment history</CardTitle>
         {all.length > 0 && (
           <Button size="sm" variant="outline" onClick={statement}>
             <FileText className="h-4 w-4" /> Print statement
           </Button>
         )}
-      </CardHeader>
-      <CardContent className="space-y-4">
+      </PanelHeader>
+      <PanelBody bare={bare} className="space-y-4">
         {q.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : all.length === 0 ? (
@@ -197,8 +198,8 @@ export function PaymentHistoryCard({ patientId }: { patientId: string }) {
             )}
           </>
         )}
-      </CardContent>
-    </Card>
+      </PanelBody>
+    </PanelCard>
   );
 }
 

@@ -1,15 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, CalendarClock, ChevronDown, HandCoins, ImagePlus, Pencil, Plus, Trash2, Undo2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CalendarClock, ImagePlus, Pencil, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -23,6 +21,8 @@ import { ETH_MONTHS, ethiopianDaysInMonth, ethiopianToGregorianISO, formatEthiop
 import { getPatient } from "@/features/patients/api";
 import { PatientEditDialog } from "@/features/patients/components/PatientEditDialog";
 import { PaymentHistoryCard } from "@/features/billing/PaymentHistoryCard";
+import { PanelBody, PanelCard, PanelHeader, RecordShelf, SHELF_ICONS } from "@/features/dental/shelf/RecordShelf";
+import { TimelinePanel, timelineCount } from "@/features/dental/shelf/TimelinePanel";
 import { useScrolledPast } from "@/features/patients/components/StickyAlertBar";
 import { SafetyStrip, PatientAllergyLine } from "@/features/dental/SafetyStrip";
 import { VisitCockpit } from "@/features/dental/visit/VisitCockpit";
@@ -31,43 +31,19 @@ import { AllergyDialog } from "@/features/dental/AllergyDialog";
 import { ExaminationCard } from "@/features/dental/ExaminationCard";
 import { invalidateDental } from "@/features/dental/invalidate";
 import { ToothChart } from "@/features/dental/ToothChart";
-import { FLAT_TEETH, parseCsv, ProcedureMultiSelect, ToothMultiSelect } from "@/features/dental/shared/pickers";
-import { ImageGallery, PrescriptionSection, SessionImages } from "@/features/dental/shared/visitRecord";
-import { isBillable, MONEY, sessionMoneyState } from "@/features/dental/money";
-import { MoveSessionDialog } from "@/features/dental/shared/MoveSessionDialog";
+import { FLAT_TEETH, ToothMultiSelect } from "@/features/dental/shared/pickers";
+import { ImageGallery } from "@/features/dental/shared/visitRecord";
+
 import {
-  collectSession, collectSessions, createPlan, deleteDentalImage, deletePlan, dentalSummary,
-  listDentalImages, saveChart, setPayLater, uncollectSession, updateSession, uploadDentalImage,
-  type Plan, type Session, type SessionStatus,
+  createPlan, deleteDentalImage, dentalSummary,
+  listDentalImages, saveChart, uploadDentalImage,
+  type Balance, type Plan,
 } from "@/features/dental/api";
 
 const num = (s?: string) => Number(s || 0);
 const birr = (s?: string) => `${num(s).toLocaleString(undefined, { maximumFractionDigits: 2 })} ETB`;
 
-const SESSION_STATUSES: SessionStatus[] = ["planned", "done", "cancelled"];
-const SESSION_STATUS_LABEL: Record<SessionStatus, string> = { planned: "Planned", done: "Done", cancelled: "Cancelled" };
 
-// Where a plan sits in its lifecycle, derived from its sessions:
-//   not_started — created, nothing done or paid yet
-//   in_progress — treatment underway (a session done or money moved), not finished
-//   done        — every session done + paid, or the plan was completed/cancelled
-type PlanPhase = "not_started" | "in_progress" | "done";
-// Which sessions the Not-started / In-progress tabs show. "today" is the clinic-day
-// view; "upcoming" is what the front desk needs to answer "when do I come back?"
-// across every future date, not just the next one.
-function planPhase(plan: Plan): PlanPhase {
-  if (plan.status === "cancelled") return "done";
-  const active = plan.sessions.filter((s) => s.status !== "cancelled");
-  const started = active.some((s) => s.status === "done" || s.payment !== "unpaid");
-  const allDone = active.length > 0 && active.every((s) => s.status === "done" && s.payment === "paid");
-  if (plan.status === "completed" || allDone) return "done";
-  return started ? "in_progress" : "not_started";
-}
-const PHASE_META: Record<PlanPhase, { label: string; variant: "outline" | "warning" | "success" }> = {
-  not_started: { label: "Not started", variant: "outline" },
-  in_progress: { label: "In progress", variant: "warning" },
-  done: { label: "Completed", variant: "success" },
-};
 
 const FREQS = [
   { key: "weekly", unit: "week", count: 1, label: "Weekly" },
@@ -92,17 +68,6 @@ function age(dob: string) {
 }
 function isoLocal(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-/** "Today" / "Tomorrow" / the date. A past date is only overdue if something on it
- *  is still outstanding — now that the list is unfiltered it also carries completed
- *  visits, and labelling a finished session "overdue" is simply wrong. */
-function dateLabel(date: string, todayISO: string, items: Session[] = []): string {
-  if (date === todayISO) return "Today";
-  const t = new Date(`${todayISO}T00:00:00`);
-  t.setDate(t.getDate() + 1);
-  if (date === isoLocal(t)) return "Tomorrow";
-  const missed = date < todayISO && items.some((s) => s.status === "planned" && !s.pay_later);
-  return missed ? `${date} · overdue` : date;
 }
 function addInterval(base: Date, unit: string, count: number): Date {
   const d = new Date(base);
@@ -295,8 +260,6 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
 
   const bal = summary.data.balance;
   const plans = summary.data.plans;
-  const owed = num(bal.owed);
-  const pct = owed > 0 ? Math.min(100, Math.round((num(bal.paid) / owed) * 100)) : 0;
 
 
   return (
@@ -369,86 +332,46 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
         onPick={pickVisit} onChanged={invalidate}
       />
 
-      {/* Odontogram + balance — side by side, equal height */}
-      <div className="grid items-stretch gap-6 lg:grid-cols-3">
-        {editable && (
-          <Card className="lg:col-span-2">
-            <CardHeader className="flex-row items-center justify-between space-y-0">
-              <CardTitle>Tooth chart · Palmer</CardTitle>
-              <span className="text-xs text-muted-foreground">Click a tooth to update</span>
-            </CardHeader>
-            <CardContent>
-              <ToothChart teeth={teeth} editable={editable} onToggle={toggleTooth} />
-            </CardContent>
-          </Card>
-        )}
-
-        <Card className={cn("flex flex-col", editable ? "lg:col-span-1" : "lg:col-span-3")}>
-          <CardHeader><CardTitle>Balance</CardTitle></CardHeader>
-          <CardContent className="flex flex-1 flex-col justify-center space-y-4">
-            <div className="text-center">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Due now</p>
-              <p className={`mt-1 text-3xl font-bold tabular-nums ${bal.overdue ? "text-rose-600" : "text-emerald-600"}`}>{birr(bal.due)}</p>
-              <p className="mt-1 text-xs text-muted-foreground">Planned {birr(bal.owed)} · Paid {birr(bal.paid)} · Remaining {birr(bal.balance)}</p>
-              {/* Money already queued is stated, and deliberately not inside "Due now":
-                  counting it there is what had the desk asking patients for money they
-                  had just been sent to pay. */}
-              {num(bal.at_cashier) > 0.005 && (
-                <p className="mt-0.5 text-xs font-medium text-amber-700">{birr(bal.at_cashier)} with the cashier — not counted above</p>
-              )}
-              {num(bal.waived) > 0.005 && (
-                <p className="mt-0.5 text-xs text-muted-foreground">{birr(bal.waived)} written off</p>
-              )}
-            </div>
-            {owed > 0 && (
-              <div className="flex items-center gap-2">
-                <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
-                  <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
-                </div>
-                <span className="text-xs font-semibold text-emerald-600">{pct}%</span>
+      {/* The record: one panel at a time, instead of six stacked cards. */}
+      <RecordShelf
+        patientId={patientId}
+        panels={[
+          {
+            key: "timeline", label: "Timeline", icon: SHELF_ICONS.CalendarRange,
+            badge: timelineCount(plans) || undefined,
+            render: () => <TimelinePanel plans={plans} todayISO={todayISO} onOpenVisit={pickVisit} />,
+          },
+          ...(editable ? [{
+            key: "chart", label: "Tooth chart", icon: SHELF_ICONS.Grid3x3,
+            badge: Object.keys(teeth).length || undefined,
+            render: () => (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">Click a tooth to cycle its condition. Saved automatically.</p>
+                <div className="overflow-x-auto"><ToothChart teeth={teeth} editable={editable} onToggle={toggleTooth} /></div>
               </div>
-            )}
-            {bal.overdue ? (
-              <div className="rounded-md bg-rose-50 px-3 py-2 text-center text-xs font-medium text-rose-700">
-                Owes {birr(bal.due)} for treatment already given. Collect per session below.
+            ),
+          }] : []),
+          ...(editable ? [{
+            key: "exams", label: "Examinations", icon: SHELF_ICONS.ClipboardList,
+            render: () => <ExaminationCard patientId={patientId} editable={editable} bare />,
+          }] : []),
+          ...(editable ? [{
+            key: "images", label: "Images", icon: SHELF_ICONS.Images,
+            badge: plans.reduce((n, pl) => n + pl.sessions.reduce((m, s) => m + s.images.length, 0), 0) || undefined,
+            render: () => <PatientImagesCard patientId={patientId} plans={plans} editable={editable} imageLimit={summary.data!.image_limit} bare />,
+          }] : []),
+          {
+            key: "money", label: "Money", icon: SHELF_ICONS.Receipt,
+            badge: bal.overdue ? "!" : undefined,
+            render: () => (
+              <div className="space-y-4">
+                <BalanceSummary bal={bal} plans={plans} />
+                <PaymentHistoryCard patientId={patientId} bare />
               </div>
-            ) : num(bal.balance) > 0.005 ? (
-              <div className="text-center text-xs text-muted-foreground">Nothing due yet — {birr(bal.balance)} remaining across the plan.</div>
-            ) : owed > 0 ? (
-              <div className="text-center text-xs font-semibold text-emerald-600">✓ Fully paid</div>
-            ) : null}
-            <p className="text-center text-[11px] text-muted-foreground">Each session's payment is collected by the cashier.</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* The clinical assessment sits between the history and the plans, because
-          that is the order the work happens in: history -> examination -> diagnosis
-          -> the treatment plan the diagnosis justifies. Clinician only. */}
-      {editable && <ExaminationCard patientId={patientId} editable={editable} />}
-
-      {/* Treatment plans — full width */}
-      <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <CardTitle>Treatment plans</CardTitle>
-          {editable && <Button size="sm" onClick={() => setNewPlan(true)}><Plus className="h-4 w-4" /> New plan</Button>}
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {plans.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">No treatment plans yet.</p>
-          ) : (
-            plans.map((plan) => (
-              <PlanCard key={plan.id} patientId={patientId} plan={plan} teeth={teeth} editable={editable} canCollect={canCollect} canReschedule={canReschedule} imageLimit={summary.data!.image_limit} todayISO={todayISO} onChanged={invalidate} />
-            ))
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Payment history — what they've been billed and what they've paid. */}
-      <PaymentHistoryCard patientId={patientId} />
-
-      {/* Patient images — clinical records, so the dentist only. */}
-      {editable && <PatientImagesCard patientId={patientId} plans={plans} editable={editable} imageLimit={summary.data.image_limit} />}
+            ),
+          },
+        ]}
+      />
 
       {newPlan && <NewPlanDialog patientId={patientId} teeth={teeth} onClose={() => setNewPlan(false)} onSaved={() => { setNewPlan(false); invalidate(); }} />}
       {editingPatient && (
@@ -464,403 +387,67 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
   );
 }
 
-// --- plan card ---
-
-function PlanCard({ patientId, plan, teeth, editable, canCollect, canReschedule, imageLimit, todayISO, onChanged }: { patientId: string; plan: Plan; teeth: Record<string, string>; editable: boolean; canCollect: boolean; canReschedule: boolean; imageLimit: number; todayISO: string; onChanged: () => void }) {
-  const phase = planPhase(plan);
-  // Collapsed by default: the cockpit above answers "what is happening now", so
-  // this list is reference material. Expanded-by-default made a three-plan
-  // patient roughly seven screens tall.
-  const [open, setOpen] = useState(false);
-  // Every figure here comes from the SERVER, computed from the charge ledger. The
-  // client used to reduce each session's amount_due — the plan's intent — and call
-  // the result "Collected", which disagreed with the receipts after any refund
-  // because a refund never touches the original charge. This was the last surface
-  // still doing that.
-  const money = plan.money;
-  const total = num(money.planned);
-  const paid = num(money.collected);
-  const pct = total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0;
-  const owes = num(money.due) > 0.005;
-  // Counting visits stays client-side: it is not money, and the sessions are already here.
-  const liveSessions = plan.sessions.filter((s) => s.status !== "cancelled");
-
-  // Every session, always. The date scope that used to filter this list is gone:
-  // the cockpit answers "what is happening now", so the plan below it is the full
-  // record of the course rather than a second, competing filtered view of it.
-  const shownSessions = useMemo(
-    () => [...plan.sessions].sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date) || a.seq - b.seq),
-    [plan.sessions],
-  );
-  // Group by date so several sessions on one day read as one visit, and a course
-  // spread over weeks reads as a schedule rather than a flat list.
-  const dateGroups = useMemo(() => {
-    const byDate = new Map<string, Session[]>();
-    for (const s of shownSessions) {
-      const bucket = byDate.get(s.scheduled_date);
-      if (bucket) bucket.push(s); else byDate.set(s.scheduled_date, [s]);
-    }
-    return Array.from(byDate, ([date, items]) => ({ date, items }));
-  }, [shownSessions]);
-  const showDateHeaders = dateGroups.length > 1; // a single date needs no header
-
-  const del = useMutation({
-    mutationFn: () => deletePlan(patientId, plan.id),
-    onSuccess: () => { toast.success("Plan deleted"); onChanged(); },
-    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not delete the plan"),
-  });
-  const [confirmDel, setConfirmDel] = useState(false);
-
-  // The patient may want to settle the whole course at the desk in one go.
-  const unbilled = plan.sessions.filter((s) => s.status !== "cancelled" && isBillable(s));
-  const unbilledTotal = unbilled.reduce((a, s) => a + num(s.amount_due), 0);
-  const collectAll = useMutation({
-    mutationFn: () => collectSessions(patientId, unbilled.map((s) => s.id)),
-    onSuccess: (r) => { toast.success(`${r.billed} session${r.billed === 1 ? "" : "s"} sent to the cashier · ${birr(r.total)}`); onChanged(); },
-    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not collect"),
-  });
-
+/** The money headline, lifted out of its old card so it can live on the shelf. */
+function BalanceSummary({ bal, plans }: { bal: Balance; plans: Plan[] }) {
+  const owed = num(bal.owed);
+  const pct = owed > 0 ? Math.min(100, Math.round((num(bal.paid) / owed) * 100)) : 0;
+  const live = plans.filter((pl) => pl.status !== "cancelled");
   return (
-    <div className="rounded-lg border">
-      <button type="button" className="flex w-full items-center gap-3 p-3 text-left" onClick={() => setOpen((o) => !o)}>
-        <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", !open && "-rotate-90")} />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold">{plan.title}</span>
-            {/* Which teeth are being worked on is clinical detail — not for the desk. */}
-            {editable && plan.tooth && <span className="text-xs text-muted-foreground">{plan.tooth}</span>}
-            {plan.status === "cancelled"
-              ? <Badge variant="outline">Cancelled</Badge>
-              : <Badge variant={PHASE_META[phase].variant}>{PHASE_META[phase].label}</Badge>}
-            {owes && <Badge variant="destructive">Owes</Badge>}
-          </div>
-          <div className="mt-0.5 flex items-center gap-3 text-xs text-muted-foreground">
-            <span className="tabular-nums">{birr(plan.total_amount)}</span>
-            <span>· {plan.sessions.length} sessions</span>
-            {plan.deadline && <span className="flex items-center gap-1"><CalendarClock className="h-3 w-3" /> ends {plan.deadline}</span>}
-          </div>
-        </div>
-        <div className="hidden w-40 items-center gap-2 sm:flex">
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-            <div className="h-full rounded-full bg-emerald-500" style={{ width: `${pct}%` }} />
+    <div className="space-y-3">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Due now</p>
+        <p className={cn("mt-1 text-3xl font-bold tabular-nums", bal.overdue ? "text-rose-600" : "text-emerald-600")}>{birr(bal.due)}</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Planned {birr(bal.owed)} · Paid {birr(bal.paid)} · Remaining {birr(bal.balance)}
+        </p>
+        {/* Queued money is stated and deliberately kept out of "Due now": counting it
+            there is what had the desk asking patients for money they had just been
+            sent to pay. */}
+        {num(bal.at_cashier) > 0.005 && (
+          <p className="mt-0.5 text-xs font-medium text-amber-700">{birr(bal.at_cashier)} with the cashier — not counted above</p>
+        )}
+        {num(bal.waived) > 0.005 && <p className="mt-0.5 text-xs text-muted-foreground">{birr(bal.waived)} written off</p>}
+      </div>
+      {owed > 0 && (
+        <div className="flex items-center gap-2">
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+            <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
           </div>
           <span className="text-xs font-semibold text-emerald-600">{pct}%</span>
         </div>
-      </button>
-
-      {open && (
-        <div className="border-t">
-          {/* Money at a glance: the desk must answer "what do I owe?" without opening
-              every session. Whole-plan figures, independent of the date scope. */}
-          <div className="grid grid-cols-2 gap-px bg-border sm:grid-cols-4">
-            <PlanStat label="Plan total" value={birr(money.planned)} />
-            <PlanStat label="Collected" value={birr(money.collected)} tone={num(money.collected) > 0.005 ? "ok" : undefined} />
-            <PlanStat label="Remaining" value={birr(String(Math.max(0, num(money.planned) - num(money.collected) - num(money.waived))))} tone={undefined}
-              hint={num(money.at_cashier) > 0.005 ? `${birr(money.at_cashier)} with the cashier` : "still to collect over the course"} />
-            {/* "Due now" not "Overdue": SessionRow already uses "overdue" for a session
-                past its date. Same wording as the Balance card above, same meaning. */}
-            <PlanStat label="Due now" value={birr(money.due)} tone={num(money.due) > 0.005 ? "bad" : undefined}
-              hint={num(money.due) > 0.005 ? "treatment already given" : undefined} />
-          </div>
-          <div className="border-b bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
-            {liveSessions.filter((s) => s.status === "done").length} of {liveSessions.length} sessions done
-          </div>
-          {shownSessions.length === 0 ? (
-            <p className="px-3 py-6 text-center text-xs text-muted-foreground">This plan has no sessions.</p>
-          ) : (
-            dateGroups.map(({ date, items }) => (
-              <div key={date}>
-                {showDateHeaders && (
-                  <div className="flex items-center justify-between border-b bg-muted/50 px-3 py-1.5 text-xs font-medium">
-                    <span className="flex items-center gap-1.5"><CalendarClock className="h-3 w-3" />{dateLabel(date, todayISO, items)}</span>
-                    <span className="tabular-nums text-muted-foreground">{items.length} session{items.length === 1 ? "" : "s"}</span>
-                  </div>
-                )}
-                <div className="divide-y">
-                  {items.map((se) => (
-                    <SessionRow key={se.id} patientId={patientId} session={se} planTitle={plan.title} teeth={teeth} editable={editable} canCollect={canCollect} canReschedule={canReschedule} imageLimit={imageLimit} onChanged={onChanged} />
-                  ))}
-                </div>
-              </div>
-            ))
-          )}
-          {(canCollect || editable) && (
-            <div className="flex flex-wrap items-center justify-end gap-2 p-2">
-              {canCollect && unbilled.length > 1 && (
-                <Button size="sm" variant="outline" loading={collectAll.isPending} onClick={() => collectAll.mutate()}
-                  title="Send every unpaid session of this plan to the cashier at once">
-                  <HandCoins className="h-3.5 w-3.5" /> Collect all {unbilled.length} unpaid · {birr(String(unbilledTotal))}
-                </Button>
-              )}
-              {editable && (
-                <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setConfirmDel(true)}>
-                  <Trash2 className="h-3.5 w-3.5" /> Delete plan
-                </Button>
-              )}
+      )}
+      {bal.overdue && (
+        <p className="rounded-md bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+          Owes {birr(bal.due)} for treatment already given — collect it from the visit above, or from Unbilled treatment.
+        </p>
+      )}
+      {live.length > 0 && (
+        <div className="space-y-1 border-t pt-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">By course</p>
+          {live.map((pl) => (
+            <div key={pl.id} className="flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
+              <span className="min-w-0 truncate">{pl.title}</span>
+              <span className="tabular-nums text-muted-foreground">
+                {birr(pl.money.collected)} of {birr(pl.money.planned)}
+                {num(pl.money.due) > 0.005 && <span className="ml-2 font-medium text-destructive">{birr(pl.money.due)} owed</span>}
+              </span>
             </div>
-          )}
-        </div>
-      )}
-
-      <Dialog open={confirmDel} onOpenChange={(o) => !o && setConfirmDel(false)}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Delete this treatment plan?</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">Removes "{plan.title}" and all its sessions, notes and images. Collected payments stay recorded in Finance. This can't be undone.</p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmDel(false)}>Cancel</Button>
-            <Button variant="destructive" loading={del.isPending} onClick={() => del.mutate()}>Delete</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-/** One figure in the plan's money strip. Tone is presentational only — an amount of
- *  zero stays neutral so a fully-settled plan doesn't shout. */
-function PlanStat({ label, value, tone, hint }: { label: string; value: string; tone?: "ok" | "warn" | "bad"; hint?: string }) {
-  return (
-    <div className="bg-card px-3 py-2">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className={cn("mt-0.5 text-sm font-semibold tabular-nums",
-        tone === "ok" && "text-emerald-600", tone === "warn" && "text-amber-600", tone === "bad" && "text-rose-600")}>
-        {value}
-      </p>
-      {hint && <p className="text-[10px] leading-tight text-muted-foreground">{hint}</p>}
-    </div>
-  );
-}
-
-// --- session row ---
-
-function SessionRow({ patientId, session, planTitle, teeth, editable, canCollect, canReschedule, imageLimit, onChanged }: { patientId: string; session: Session; planTitle: string; teeth: Record<string, string>; editable: boolean; canCollect: boolean; canReschedule: boolean; imageLimit: number; onChanged: () => void }) {
-  const [expanded, setExpanded] = useState(false);
-  const [deferring, setDeferring] = useState(false);
-  const [moving, setMoving] = useState(false);
-  const pay = MONEY[sessionMoneyState(session)];
-  const today = isoLocal(new Date());
-  const owes = (session.status === "done" || !!session.pay_later) && session.payment !== "paid";
-  const overdue = session.status === "planned" && !session.pay_later && session.scheduled_date < today;
-
-  const setStatus = useMutation({
-    mutationFn: (status: SessionStatus) => updateSession(patientId, session.id, { status }),
-    onSuccess: onChanged,
-    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not update"),
-  });
-  const collect = useMutation({
-    mutationFn: () => collectSession(patientId, session.id),
-    onSuccess: () => { toast.success("Sent to the cashier"); onChanged(); },
-    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not collect"),
-  });
-  const uncollect = useMutation({
-    mutationFn: () => uncollectSession(patientId, session.id),
-    onSuccess: () => { toast.success("Reversed — the cashier can no longer collect it"); onChanged(); },
-    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not reverse"),
-  });
-
-
-  return (
-    <div className={cn("p-3 transition-colors", session.status === "cancelled" && "opacity-60", expanded && "border-l-2 border-l-brand bg-muted/40")}>
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold tabular-nums">{session.seq}</span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="font-medium tabular-nums">{session.scheduled_date}</span>
-            <span className="text-muted-foreground">·</span>
-            <span className="tabular-nums font-semibold">{birr(session.amount_due)}</span>
-            {editable && session.procedure && <><span className="text-muted-foreground">·</span><span className="truncate text-muted-foreground">{session.procedure}{session.tooth ? ` (${session.tooth})` : ""}</span></>}
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
-            <Badge variant={pay.variant}>{pay.label}</Badge>
-            {owes && <span className="flex items-center gap-1 text-xs font-medium text-rose-600"><AlertTriangle className="h-3 w-3" /> unpaid — service given</span>}
-            {overdue && <span className="flex items-center gap-1 text-xs font-medium text-rose-600"><AlertTriangle className="h-3 w-3" /> overdue</span>}
-            {editable && session.images.length > 0 && <span className="text-xs text-muted-foreground">{session.images.length} image{session.images.length > 1 ? "s" : ""}</span>}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* Rescheduling is scheduling, not clinical work — the front desk gets this
-              even without dental.manage. Only a session that hasn't happened yet can
-              move; the backend enforces the same rule. */}
-          {canReschedule && session.status === "planned" && (
-            <Button size="sm" variant="ghost" title="Change this session's date"
-              onClick={() => setMoving(true)}>
-              <CalendarClock className="h-3.5 w-3.5" /> Move
-            </Button>
-          )}
-          {/* Clinical controls belong to the dentist; billing is open to the front desk.
-              None of them are gated any more: a session used to be unopenable until it
-              was billed, and unopenable again if it was dated in the future. */}
-          {editable && (
-            <Select value={session.status} onValueChange={(v) => {
-              // Marking a not-yet-due session "done" makes its fee immediately owed.
-              // Recording the visit is the intended path; this is the blunt one, so
-              // it asks rather than silently inventing a debt.
-              if (v === "done" && session.scheduled_date > today &&
-                  !window.confirm(`Session ${session.seq} is scheduled for ${session.scheduled_date}, not today. Mark it done anyway? Its ${birr(session.amount_due)} fee becomes owed straight away.`)) return;
-              setStatus.mutate(v as SessionStatus);
-            }}>
-              <SelectTrigger className="h-8 w-28"><SelectValue /></SelectTrigger>
-              <SelectContent>{SESSION_STATUSES.map((s) => <SelectItem key={s} value={s}>{SESSION_STATUS_LABEL[s]}</SelectItem>)}</SelectContent>
-            </Select>
-          )}
-          {canCollect && session.payment === "billed" && (
-            <Button size="sm" variant="ghost" loading={uncollect.isPending} onClick={() => uncollect.mutate()} title="Undo — pull this back from the cashier">
-              <Undo2 className="h-3.5 w-3.5" /> Undo
-            </Button>
-          )}
-          {canCollect && isBillable(session) && (
-            <Button size="sm" variant="outline" loading={collect.isPending} onClick={() => collect.mutate()}>
-              <HandCoins className="h-3.5 w-3.5" /> Collect
-            </Button>
-          )}
-          {editable && session.payment === "unpaid" && !session.pay_later && (
-            <Button size="sm" variant="outline" className="text-amber-700" onClick={() => setDeferring(true)}>Pay later</Button>
-          )}
-        </div>
-        {editable && (
-          <Button size="sm" variant="ghost" onClick={() => setExpanded((e) => !e)}>
-            {expanded ? "Close" : "Record"}
-            <ChevronDown className={cn("h-4 w-4 transition-transform", !expanded && "-rotate-90")} />
-          </Button>
-        )}
-      </div>
-
-      {deferring && <PayLaterDialog patientId={patientId} session={session} onClose={() => setDeferring(false)} onSaved={() => { setDeferring(false); onChanged(); }} />}
-
-      {moving && (
-        <MoveSessionDialog
-          patientId={patientId} sessionId={session.id} planTitle={planTitle}
-          currentDate={session.scheduled_date} seq={session.seq}
-          onClose={() => setMoving(false)}
-          onMoved={onChanged}
-        />
-      )}
-
-      {expanded && (
-        <div className="mt-3 pl-9">
-          <InlineSessionRecord patientId={patientId} session={session} teeth={teeth} editable={editable} imageLimit={imageLimit} onChanged={onChanged} />
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-// Doctor's deliberate bypass: render the treatment now on a promise to pay later.
-function PayLaterDialog({ patientId, session, onClose, onSaved }: { patientId: string; session: Session; onClose: () => void; onSaved: () => void }) {
-  const [note, setNote] = useState(session.pay_later_note ?? "");
-  const mut = useMutation({
-    mutationFn: () => setPayLater(patientId, session.id, { on: true, note: note.trim() }),
-    onSuccess: () => { toast.success("Recorded — treat now, pay later"); onSaved(); },
-    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not save"),
-  });
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Treat now, pay later</DialogTitle></DialogHeader>
-        <div className="space-y-3">
-          <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>You're treating this session without collecting <b>{birr(session.amount_due)}</b> now, on the patient's promise to pay later. The patient will be flagged as <b>owing</b> until it's paid — here and on the patient list.</span>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Note / promise <span className="text-muted-foreground">(required)</span></Label>
-            <Textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Patient will pay at the next visit / by end of month" />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button disabled={!note.trim()} loading={mut.isPending} onClick={() => mut.mutate()}>Confirm pay later</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 
-// The per-session clinical record, edited INLINE in the expanded row (no modal):
-// procedure, tooth, notes, prescription, plus the visit date and fee. It warns when
-// the session isn't dated today (upcoming or overdue) and offers to move it to today
-// so the doctor can record the visit as it actually happens.
-function InlineSessionRecord({ patientId, session, teeth, editable, imageLimit, onChanged }: { patientId: string; session: Session; teeth: Record<string, string>; editable: boolean; imageLimit: number; onChanged: () => void }) {
-  const [date, setDate] = useState(session.scheduled_date);
-  const [dateKey, setDateKey] = useState(0); // remounts the date picker when we move it to today
-  const [amount, setAmount] = useState(session.amount_due);
-  const [procedureSel, setProcedureSel] = useState<string[]>(parseCsv(session.procedure));
-  const [toothSel, setToothSel] = useState<string[]>(parseCsv(session.tooth));
-  const [notes, setNotes] = useState(session.notes ?? "");
 
-  const today = isoLocal(new Date());
-  const upcoming = date > today;
-  const overdue = date < today && session.status === "planned";
-  const notToday = upcoming || overdue;
-  const moveToday = () => { setDate(today); setDateKey((k) => k + 1); };
 
-  const save = useMutation({
-    mutationFn: () => updateSession(patientId, session.id, {
-      scheduled_date: date, amount_due: amount, procedure: procedureSel.join(", "),
-      tooth: FLAT_TEETH.filter((c) => toothSel.includes(c)).join(", "), notes,
-    }),
-    onSuccess: () => { toast.success("Session record saved"); onChanged(); },
-    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not save"),
-  });
 
-  if (!editable) {
-    return (
-      <div className="space-y-3">
-        {session.procedure || session.tooth || session.notes ? (
-          <div className="space-y-1 text-sm">
-            {session.procedure && <p><span className="text-muted-foreground">Procedure: </span>{session.procedure}</p>}
-            {session.tooth && <p><span className="text-muted-foreground">Tooth: </span>{session.tooth}</p>}
-            {session.notes && <p><span className="text-muted-foreground">Notes: </span>{session.notes}</p>}
-          </div>
-        ) : <p className="text-sm text-muted-foreground">No visit record.</p>}
-        <PrescriptionSection patientId={patientId} session={session} editable={editable} onChanged={onChanged} />
-        <SessionImages patientId={patientId} session={session} editable={editable} imageLimit={imageLimit} onChanged={onChanged} />
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      {session.pay_later && session.payment !== "paid" && (
-        <div className="flex flex-wrap items-center gap-x-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          <span>Treat-now, pay-later — patient owes <b>{birr(session.amount_due)}</b>{session.pay_later_note ? `: ${session.pay_later_note}` : ""}.</span>
-        </div>
-      )}
-      {notToday && (
-        <div className={cn("flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border px-3 py-2 text-sm",
-          overdue ? "border-rose-300 bg-rose-50 text-rose-800" : "border-amber-300 bg-amber-50 text-amber-800")}>
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          {/* Stated, not enforced. Recording a visit on the day it actually happened
-              is normal; the old form disabled every field until this was confirmed. */}
-          <span>Recording this visit on <b>{date}</b> (not today).</span>
-          <button type="button" onClick={moveToday} className="font-medium underline underline-offset-2">Move to today</button>
-        </div>
-      )}
-      <fieldset className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5"><Label>Visit date</Label><EthiopianDateInput key={dateKey} value={date} onChange={setDate} showAge={false} /></div>
-          <div className="space-y-1.5"><Label>Amount (ETB)</Label><Input type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5"><Label>Procedures</Label><ProcedureMultiSelect value={procedureSel} onChange={setProcedureSel} /></div>
-          <div className="space-y-1.5"><Label>Tooth (Palmer)</Label><ToothMultiSelect teeth={teeth} value={toothSel} onChange={setToothSel} /></div>
-        </div>
-        <div className="space-y-1.5"><Label>Clinical notes</Label><Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Findings, treatment done…" /></div>
-        <div className="flex justify-end">
-          <Button size="sm" loading={save.isPending} onClick={() => save.mutate()}>Save record</Button>
-        </div>
-      </fieldset>
-      <div className="border-t pt-3"><PrescriptionSection patientId={patientId} session={session} editable={editable} onChanged={onChanged} /></div>
-      <div className="border-t pt-3"><SessionImages patientId={patientId} session={session} editable={editable} imageLimit={imageLimit} onChanged={onChanged} /></div>
-    </div>
-  );
-}
 
 // --- per-session prescriptions (printable, multiple) ---
 
-function PatientImagesCard({ patientId, plans, editable, imageLimit }: { patientId: string; plans: Plan[]; editable: boolean; imageLimit: number }) {
+function PatientImagesCard({ patientId, plans, editable, imageLimit, bare }: { patientId: string; plans: Plan[]; editable: boolean; imageLimit: number; bare?: boolean }) {
   const qc = useQueryClient();
   const generalQ = useQuery({ queryKey: ["dental-images", patientId], queryFn: () => listDentalImages(patientId) });
   const [busy, setBusy] = useState(false);
@@ -907,8 +494,8 @@ function PatientImagesCard({ patientId, plans, editable, imageLimit }: { patient
   });
 
   return (
-    <Card>
-      <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
+    <PanelCard bare={bare}>
+      <PanelHeader bare={bare} className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
         <CardTitle>Patient images <span className="text-sm font-normal text-muted-foreground">({total}{unlimited ? "" : `/${imageLimit}`})</span></CardTitle>
         <div className="flex items-center gap-2">
           <Select value={filter} onValueChange={setFilter}>
@@ -926,8 +513,8 @@ function PatientImagesCard({ patientId, plans, editable, imageLimit }: { patient
             </label>
           )}
         </div>
-      </CardHeader>
-      <CardContent className="space-y-5">
+      </PanelHeader>
+      <PanelBody bare={bare} className="space-y-5">
         {total === 0 && filter === "all" ? (
           <p className="text-sm text-muted-foreground">No images yet. Add a general X-ray or consult photo here; per-session images are filed under each session and appear grouped by treatment.</p>
         ) : visible.length === 0 ? (
@@ -947,8 +534,8 @@ function PatientImagesCard({ patientId, plans, editable, imageLimit }: { patient
             </div>
           ))
         )}
-      </CardContent>
-    </Card>
+      </PanelBody>
+    </PanelCard>
   );
 }
 
