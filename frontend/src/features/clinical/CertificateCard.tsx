@@ -40,10 +40,10 @@ import {
   type CertKind, type Certificate,
 } from "@/features/clinical/api";
 
-const KINDS: { value: CertKind; label: string; blurb: string }[] = [
-  { value: "sick_leave", label: "Sick leave", blurb: "Unfit for work or study for a stated number of days." },
-  { value: "fitness", label: "Fit to return", blurb: "Fit to resume normal duties — what an employer asks for after leave." },
-  { value: "attendance", label: "Attendance only", blurb: "Attended the clinic on this date. No rest period; usually all a school needs." },
+const KINDS: { value: CertKind; label: string; blurb: string; title: string }[] = [
+  { value: "sick_leave", label: "Sick leave", title: "Medical Certificate", blurb: "Unfit for work or study for a stated number of days." },
+  { value: "fitness", label: "Fit to return", title: "Certificate of Fitness", blurb: "Fit to resume normal duties — what an employer asks for after leave." },
+  { value: "attendance", label: "Attendance only", title: "Certificate of Attendance", blurb: "Attended the clinic on this date. No rest period; usually all a school needs." },
 ];
 
 const todayISO = () => {
@@ -206,10 +206,11 @@ function IssueDialog({ patientId, onClose, onIssued }: {
 
   const p = patient.data;
   const name = p ? [p.first_name, p.middle_name, p.last_name].filter(Boolean).join(" ") : "";
+  const spec = KINDS.find((k) => k.value === kind) ?? KINDS[0];
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-3xl gap-3">
         <DialogHeader><DialogTitle>Issue a medical certificate</DialogTitle></DialogHeader>
 
         {/* Who it is for and who signs it — both facts, neither typed. */}
@@ -220,66 +221,98 @@ function IssueDialog({ patientId, onClose, onIssued }: {
           </div>
         </div>
 
-        <div className="space-y-1.5">
-          <Label className="text-xs">What is it for?</Label>
-          <div className="grid gap-1.5">
-            {KINDS.map((k) => (
-              <button key={k.value} type="button" onClick={() => setKind(k.value)}
-                className={cn("rounded-md border px-3 py-2 text-left text-sm",
-                  kind === k.value ? "border-brand bg-brand/5" : "hover:bg-muted")}>
-                <span className="font-medium">{k.label}</span>
-                <span className="block text-xs text-muted-foreground">{k.blurb}</span>
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* Left: what is being certified, and for how long. Right: the words that
+            end up on the paper, with a preview under the toggle that changes them. */}
+        <div className="grid items-start gap-x-6 gap-y-4 md:grid-cols-2">
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs">What is it for?</Label>
+              <div className="grid gap-1.5">
+                {KINDS.map((k) => (
+                  <button key={k.value} type="button" onClick={() => setKind(k.value)}
+                    className={cn("rounded-md border px-3 py-2 text-left text-sm",
+                      kind === k.value ? "border-brand bg-brand/5" : "hover:bg-muted")}>
+                    <span className="font-medium">{k.label}</span>
+                    <span className="block text-xs text-muted-foreground">{k.blurb}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
 
-        {kind === "sick_leave" && (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs" htmlFor="cert-days">Rest days</Label>
-              <Input id="cert-days" type="number" min={1} max={365} value={restDays}
-                onChange={(e) => setRestDays(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Rest from</Label>
-              <EthiopianDateInput value={restFrom} onChange={setRestFrom} showAge={false} />
-            </div>
-            {restTo && (
-              <p className="sm:col-span-2 text-xs text-muted-foreground">
-                Covers <b><DualDate iso={restFrom} /></b> to <b><DualDate iso={restTo} /></b>, inclusive —
-                the patient returns the next day.
-              </p>
+            {kind === "sick_leave" && (
+              <div className="grid gap-3 sm:grid-cols-[7rem_1fr] sm:items-start">
+                <div className="space-y-1.5">
+                  <Label className="text-xs" htmlFor="cert-days">Rest days</Label>
+                  <Input id="cert-days" type="number" min={1} max={365} value={restDays}
+                    onChange={(e) => setRestDays(e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Rest from</Label>
+                  <EthiopianDateInput value={restFrom} onChange={setRestFrom} showAge={false} />
+                </div>
+              </div>
             )}
           </div>
-        )}
 
-        {kind !== "attendance" && (
-          <div className="space-y-1.5">
-            <Label className="text-xs" htmlFor="cert-dx">Diagnosis / condition</Label>
-            <Textarea id="cert-dx" rows={2} value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)}
-              placeholder="Acute dental pain requiring rest" />
-            <label className="flex items-start gap-2 text-xs text-muted-foreground">
-              <input type="checkbox" className="mt-0.5" checked={showDiagnosis}
-                onChange={(e) => setShowDiagnosis(e.target.checked)} />
-              {/* Off by default: the certificate goes to an employer. */}
-              <span>
-                Print the diagnosis on the certificate. Left off, the paper states the rest period only —
-                the employer sees that the patient is unfit, not what for.
-              </span>
-            </label>
+          <div className="space-y-4">
+            {kind !== "attendance" && (
+              <div className="space-y-1.5">
+                <Label className="text-xs" htmlFor="cert-dx">Diagnosis / condition</Label>
+                <Textarea id="cert-dx" rows={2} value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)}
+                  placeholder="Acute dental pain requiring rest" />
+                <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <input type="checkbox" className="mt-0.5" checked={showDiagnosis}
+                    onChange={(e) => setShowDiagnosis(e.target.checked)} />
+                  {/* Off by default: the certificate goes to an employer. */}
+                  <span>
+                    Print the diagnosis on the certificate. Left off, the paper states the rest period only —
+                    the employer sees that the patient is unfit, not what for.
+                  </span>
+                </label>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label className="text-xs" htmlFor="cert-notes">Extra notes (optional)</Label>
+              <Textarea id="cert-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)}
+                placeholder="Light duties on return · review if symptoms persist" />
+            </div>
+
           </div>
-        )}
-
-        <div className="space-y-1.5">
-          <Label className="text-xs" htmlFor="cert-notes">Extra notes (optional)</Label>
-          <Textarea id="cert-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)}
-            placeholder="Light duties on return · review if symptoms persist" />
         </div>
 
-        <p className="text-xs text-muted-foreground">
-          This is recorded and given a reference number, so the clinic can confirm it if an employer asks.
-        </p>
+        {/* The decision this form really turns on is how much the employer gets told,
+            so show the sentence rather than describing it. It belongs to both columns,
+            not either one, and sits last: fill the form, read the result, then print. */}
+        <div className="rounded-md border bg-muted/30 p-3 sm:flex sm:items-baseline sm:gap-5">
+          <div className="shrink-0 sm:w-48">
+            <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              What the paper will say
+            </div>
+            <div className="text-sm font-semibold">{spec.title}</div>
+          </div>
+          <div className="mt-1.5 space-y-1 text-xs leading-relaxed text-muted-foreground sm:mt-0">
+            <p>
+              Certifies that <b className="text-foreground">{name || "the patient"}</b>{" "}
+              {kind === "sick_leave" && (
+                <>was examined here and is <b className="text-foreground">unfit for work or study</b>
+                  {days >= 1 && <>, requiring rest for <b className="text-foreground">{days} day{days === 1 ? "" : "s"}</b></>}.
+                  {restTo && (
+                    <> Covers <b className="text-foreground"><DualDate iso={restFrom} /></b> to{" "}
+                      <b className="text-foreground"><DualDate iso={restTo} /></b>, inclusive — back the next day.</>
+                  )}</>
+              )}
+              {kind === "fitness" && <>was examined here and is <b className="text-foreground">fit to resume normal duties</b>.</>}
+              {kind === "attendance" && <><b className="text-foreground">attended this clinic</b> today and received medical attention.</>}
+            </p>
+            <p>
+              {kind !== "attendance" && (showDiagnosis && diagnosis.trim()
+                ? <>Diagnosis <b className="text-foreground">is printed</b>: “{diagnosis.trim()}”. </>
+                : <>Diagnosis <b className="text-foreground">is not printed</b>. </>)}
+              Carries a reference number, so the clinic can confirm it if an employer asks.
+            </p>
+          </div>
+        </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
