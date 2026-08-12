@@ -20,6 +20,14 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 
 	// Import a migrated (paper / old-system) patient record as a back-dated visit —
 	// done by whoever onboards old data (patient.create) or a clinician.
+	// Medical certificates. A clinician signs these; reception does not — a
+	// certificate is a clinical attestation, and the name on it must be the person
+	// who actually saw the patient. Reading them is wider: the desk has to be able
+	// to reprint one for a patient who lost it.
+	rg.POST("/patients/:id/certificates", httpx.RequireAnyPermission("encounter.manage", "dental.manage"), h.IssueCertificate)
+	rg.GET("/patients/:id/certificates", httpx.RequireAnyPermission("encounter.manage", "dental.manage", "dental.read", "patient.read"), h.ListCertificates)
+	rg.POST("/certificates/:cid/void", httpx.RequireAnyPermission("encounter.manage", "dental.manage"), h.VoidCertificate)
+
 	rg.POST("/history-import", httpx.RequireAnyPermission("patient.create", "encounter.manage"), h.ImportHistory)
 
 	// Encounter workspace (3b) — doctors.

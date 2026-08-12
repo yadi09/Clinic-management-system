@@ -407,3 +407,42 @@ export function updateCatalogEntry(id: string, body: { category_id: string; code
 export function deleteCatalogEntry(id: string) {
   return apiFetch<void>(`/diagnosis-catalog/${id}`, { method: "DELETE" });
 }
+
+// --- medical certificates ----------------------------------------------------
+
+export type CertKind = "sick_leave" | "fitness" | "attendance";
+
+export interface Certificate {
+  id: string;
+  ref: string; // MC-2026-0041
+  kind: CertKind;
+  patient_name: string;
+  mrn?: string;
+  age?: string;
+  gender?: string;
+  diagnosis?: string;
+  show_diagnosis: boolean;
+  rest_days?: number;
+  rest_from?: string;
+  rest_to?: string;
+  notes?: string;
+  issued_at: string;
+  /** The clinician who signed it — from the session, never typed. */
+  issued_by?: string;
+  branch?: string;
+  status: "active" | "void";
+  void_reason?: string;
+}
+
+export function listCertificates(patientId: string) {
+  return apiFetch<{ items: Certificate[] }>(`/patients/${patientId}/certificates`);
+}
+export function issueCertificate(patientId: string, body: {
+  kind: CertKind; diagnosis?: string; show_diagnosis: boolean;
+  rest_days?: number; rest_from?: string; notes?: string;
+}) {
+  return apiFetch<Certificate>(`/patients/${patientId}/certificates`, { method: "POST", body });
+}
+export function voidCertificate(certId: string, reason: string) {
+  return apiFetch<void>(`/certificates/${certId}/void`, { method: "POST", body: { reason } });
+}

@@ -66,6 +66,7 @@ const (
 	PrefixTreatmentPlan    = "tpl" // dental treatment plan (scheduled)
 	PrefixTreatmentSession = "tss" // dental treatment session (milestone)
 	PrefixDentalRx         = "drx" // dental prescription (printable, per session)
+	PrefixCertificate      = "mcf" // medical certificate (sick leave / fitness / attendance)
 )
 
 // base32 lower-case, no padding. Decoding is case-insensitive.

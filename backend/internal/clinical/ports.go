@@ -289,6 +289,12 @@ type CatalogEntryInput struct {
 
 // Service is the clinical module API.
 type Service interface {
+	// Medical certificates. IssueCertificate computes rest_to from rest_from + days
+	// and stamps a per-tenant, per-year reference.
+	IssueCertificate(ctx context.Context, patientID uuid.UUID, in CertificateInput) (*Certificate, error)
+	ListCertificates(ctx context.Context, patientID uuid.UUID) ([]Certificate, error)
+	VoidCertificate(ctx context.Context, id uuid.UUID, reason string) error
+
 	// RecordVitals opens (or reuses) the encounter for a queue entry and appends
 	// a vitals set.
 	RecordVitals(ctx context.Context, in RecordVitalsInput) (*Encounter, *Vitals, error)
@@ -376,4 +382,50 @@ type VitalFieldInput struct {
 	Low      *float64
 	High     *float64
 	Max      *float64
+}
+
+// --- medical certificates ---------------------------------------------------
+//
+// The note a patient takes to an employer or a school. It is a legal document: it
+// carries a reference number, names the clinician who actually issued it, and is
+// re-printable unchanged, so a doubtful employer who telephones can be answered.
+
+// CertKind is what the clinic is attesting.
+//
+//	sick_leave  unfit for work or school for a stated period
+//	fitness     fit to resume duties (the other half of the same conversation)
+//	attendance  simply attended on a date — usually all a school needs
+type CertKind = string
+
+// Certificate is one issued medical certificate.
+type Certificate struct {
+	ID            uuid.UUID `json:"-"`
+	Ref           string    `json:"ref"` // MC-2026-0041
+	Kind          CertKind  `json:"kind"`
+	PatientName   string    `json:"patient_name"`
+	MRN           string    `json:"mrn"`
+	Age           string    `json:"age,omitempty"`
+	Gender        string    `json:"gender,omitempty"`
+	Diagnosis     string    `json:"diagnosis,omitempty"`
+	ShowDiagnosis bool      `json:"show_diagnosis"`
+	RestDays      int       `json:"rest_days,omitempty"`
+	RestFrom      string    `json:"rest_from,omitempty"`
+	RestTo        string    `json:"rest_to,omitempty"`
+	Notes         string    `json:"notes,omitempty"`
+	IssuedAt      string    `json:"issued_at"`
+	IssuedBy      string    `json:"issued_by,omitempty"` // display name of the clinician
+	Branch        string    `json:"branch,omitempty"`
+	Status        string    `json:"status"`
+	VoidReason    string    `json:"void_reason,omitempty"`
+}
+
+// CertificateInput issues one. The clinician is taken from the session, never from
+// the request: a typed-in doctor name is not attribution, it is a text field.
+type CertificateInput struct {
+	Kind          CertKind
+	Diagnosis     string
+	ShowDiagnosis bool
+	RestDays      int
+	RestFrom      string // YYYY-MM-DD
+	Notes         string
 }

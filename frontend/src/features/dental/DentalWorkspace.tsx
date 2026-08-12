@@ -23,6 +23,7 @@ import { PatientEditDialog } from "@/features/patients/components/PatientEditDia
 import { PaymentHistoryCard } from "@/features/billing/PaymentHistoryCard";
 import { PanelBody, PanelCard, PanelHeader, RecordShelf, SHELF_ICONS } from "@/features/dental/shelf/RecordShelf";
 import { DeskActions } from "@/features/dental/desk/DeskActions";
+import { CertificateCard } from "@/features/clinical/CertificateCard";
 import { TimelinePanel, timelineCount } from "@/features/dental/shelf/TimelinePanel";
 import { useScrolledPast } from "@/features/patients/components/StickyAlertBar";
 import { SafetyStrip, PatientAllergyLine } from "@/features/dental/SafetyStrip";
@@ -377,6 +378,12 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
             key: "images", label: "Images", icon: SHELF_ICONS.Images,
             render: () => <PatientImagesCard patientId={patientId} plans={plans} editable={editable} imageLimit={summary.data!.image_limit} bare />,
           }] : []),
+          {
+            // Also on the desk's shelf, read-only: a patient who lost their
+            // certificate asks the front desk for another copy, not the dentist.
+            key: "certificates", label: "Certificates", icon: SHELF_ICONS.FileCheck2,
+            render: () => <CertificateCard patientId={patientId} canIssue={editable} bare />,
+          },
           {
             key: "money", label: "Money", icon: SHELF_ICONS.Receipt,
             badge: bal.overdue ? "!" : undefined,

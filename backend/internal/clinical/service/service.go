@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -933,4 +934,199 @@ func deref(p *string) string {
 		return ""
 	}
 	return *p
+}
+
+// --- medical certificates ---------------------------------------------------
+
+const certCols = `c.id, c.year, c.serial, c.kind, coalesce(c.diagnosis,''), c.show_diagnosis,
+	coalesce(c.rest_days,0), c.rest_from, c.rest_to, coalesce(c.notes,''),
+	c.issued_at, coalesce(u.full_name,''), coalesce(b.name,''), c.status, coalesce(c.void_reason,''),
+	p.mrn, trim(p.first_name || ' ' || coalesce(p.last_name,'')), p.dob, p.gender`
+
+func scanCert(row interface{ Scan(...any) error }) (clinical.Certificate, error) {
+	var c clinical.Certificate
+	var year, serial int
+	var restFrom, restTo *time.Time
+	var issued time.Time
+	var dob time.Time
+	if err := row.Scan(&c.ID, &year, &serial, &c.Kind, &c.Diagnosis, &c.ShowDiagnosis,
+		&c.RestDays, &restFrom, &restTo, &c.Notes, &issued, &c.IssuedBy, &c.Branch,
+		&c.Status, &c.VoidReason, &c.MRN, &c.PatientName, &dob, &c.Gender); err != nil {
+		return c, err
+	}
+	c.Ref = fmt.Sprintf("MC-%d-%04d", year, serial)
+	c.IssuedAt = issued.Format(time.RFC3339)
+	if restFrom != nil {
+		c.RestFrom = restFrom.Format("2006-01-02")
+	}
+	if restTo != nil {
+		c.RestTo = restTo.Format("2006-01-02")
+	}
+	if !dob.IsZero() {
+		// Whole years, the way a certificate states an age.
+		years := int(time.Since(dob).Hours() / 24 / 365.25)
+		if years >= 0 {
+			c.Age = strconv.Itoa(years)
+		}
+	}
+	return c, nil
+}
+
+var validCertKind = map[string]bool{"sick_leave": true, "fitness": true, "attendance": true}
+
+func (s *Service) IssueCertificate(ctx context.Context, patientID uuid.UUID, in clinical.CertificateInput) (*clinical.Certificate, error) {
+	tid, actor := actorOf(ctx)
+	branch := activeBranchOf(ctx)
+	if !validCertKind[in.Kind] {
+		return nil, apperr.Validation("choose what the certificate is for")
+	}
+	in.Diagnosis, in.Notes = strings.TrimSpace(in.Diagnosis), strings.TrimSpace(in.Notes)
+
+	var restFrom, restTo *string
+	if in.Kind == "sick_leave" {
+		if in.RestDays < 1 {
+			return nil, apperr.Validation("a sick-leave certificate needs at least one rest day")
+		}
+		if in.RestDays > 365 {
+			return nil, apperr.Validation("that is longer than a year — issue a shorter period, or several")
+		}
+		from, e := time.Parse("2006-01-02", in.RestFrom)
+		if e != nil {
+			return nil, apperr.Validation("rest-from must be YYYY-MM-DD")
+		}
+		// Inclusive: three days starting Monday ends Wednesday, which is what both
+		// the patient and the employer count.
+		to := from.AddDate(0, 0, in.RestDays-1).Format("2006-01-02")
+		f := in.RestFrom
+		restFrom, restTo = &f, &to
+	} else {
+		in.RestDays = 0
+	}
+	if in.Kind != "attendance" && in.Diagnosis == "" && in.ShowDiagnosis {
+		return nil, apperr.Validation("write the diagnosis, or turn off showing it on the certificate")
+	}
+
+	var id uuid.UUID
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		year := time.Now().Year()
+		// Atomic increment, same shape as the receipt counter: a max()+1 read hands
+		// two clinicians issuing at once the same reference.
+		var serial int
+		if e := tx.QueryRow(ctx,
+			`INSERT INTO clinical_counters (tenant_id, name, value) VALUES ($1, $2, 1)
+			 ON CONFLICT (tenant_id, name) DO UPDATE SET value = clinical_counters.value + 1
+			 RETURNING value`, tid, fmt.Sprintf("certificate:%d", year)).Scan(&serial); e != nil {
+			return e
+		}
+		return tx.QueryRow(ctx,
+			`INSERT INTO medical_certificates
+			   (tenant_id, patient_id, branch_id, year, serial, kind, diagnosis, show_diagnosis,
+			    rest_days, rest_from, rest_to, notes, issued_by)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,0),$10::date,$11::date,$12,$13)
+			 RETURNING id`,
+			tid, patientID, branch, year, serial, in.Kind, nullIfEmpty(in.Diagnosis), in.ShowDiagnosis,
+			in.RestDays, restFrom, restTo, nullIfEmpty(in.Notes), actor).Scan(&id)
+	})
+	if ae, ok := apperr.As(err); ok {
+		return nil, ae
+	}
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return s.getCertificate(ctx, id)
+}
+
+func (s *Service) getCertificate(ctx context.Context, id uuid.UUID) (*clinical.Certificate, error) {
+	tid, _ := actorOf(ctx)
+	var out clinical.Certificate
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		row := tx.QueryRow(ctx, `SELECT `+certCols+`
+			FROM medical_certificates c
+			JOIN patients p ON p.id = c.patient_id AND p.tenant_id = c.tenant_id
+			LEFT JOIN users u ON u.id = c.issued_by AND u.tenant_id = c.tenant_id
+			LEFT JOIN branches b ON b.id = c.branch_id AND b.tenant_id = c.tenant_id
+			WHERE c.tenant_id = $1 AND c.id = $2`, tid, id)
+		got, e := scanCert(row)
+		if e != nil {
+			return e
+		}
+		out = got
+		return nil
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, apperr.NotFound("CERTIFICATE_NOT_FOUND", "certificate not found")
+	}
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return &out, nil
+}
+
+func (s *Service) ListCertificates(ctx context.Context, patientID uuid.UUID) ([]clinical.Certificate, error) {
+	tid, _ := actorOf(ctx)
+	out := []clinical.Certificate{}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		rows, e := tx.Query(ctx, `SELECT `+certCols+`
+			FROM medical_certificates c
+			JOIN patients p ON p.id = c.patient_id AND p.tenant_id = c.tenant_id
+			LEFT JOIN users u ON u.id = c.issued_by AND u.tenant_id = c.tenant_id
+			LEFT JOIN branches b ON b.id = c.branch_id AND b.tenant_id = c.tenant_id
+			WHERE c.tenant_id = $1 AND c.patient_id = $2
+			ORDER BY c.issued_at DESC`, tid, patientID)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			got, e := scanCert(rows)
+			if e != nil {
+				return e
+			}
+			out = append(out, got)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+// VoidCertificate marks one issued in error. The row and its number are kept: the
+// reference was on paper the moment it printed, and a missing number in a numbered
+// series is worse than a voided one.
+func (s *Service) VoidCertificate(ctx context.Context, id uuid.UUID, reason string) error {
+	tid, actor := actorOf(ctx)
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return apperr.Validation("say why the certificate is being voided — it is kept on the record")
+	}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		ct, e := tx.Exec(ctx,
+			`UPDATE medical_certificates
+			   SET status = 'void', void_reason = $3, voided_by = $4, voided_at = now(), updated_at = now()
+			 WHERE tenant_id = $1 AND id = $2 AND status = 'active'`, tid, id, reason, actor)
+		if e != nil {
+			return e
+		}
+		if ct.RowsAffected() == 0 {
+			return apperr.Conflict("NOT_ACTIVE", "this certificate is already void")
+		}
+		return s.publisher.Publish(ctx, tx, &tid, "certificate", id, "clinical.certificate.voided",
+			map[string]any{"certificate_id": id, "reason": reason})
+	})
+	if ae, ok := apperr.As(err); ok {
+		return ae
+	}
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}
+
+func nullIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

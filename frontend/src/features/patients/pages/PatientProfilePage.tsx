@@ -28,6 +28,7 @@ import { getClinic } from "@/features/admin/api";
 import { AppError } from "@/lib/api-client";
 import { formatEthiopian } from "@/lib/ethiopian";
 import { PregnancyDatingCard } from "@/features/maternity/PregnancyCalculator";
+import { CertificateCard } from "@/features/clinical/CertificateCard";
 import { DentalWorkspace } from "@/features/dental/DentalWorkspace";
 import { PatientEditDialog } from "@/features/patients/components/PatientEditDialog";
 import { StickyAlertBar, useScrolledPast, type ClinicalAlert } from "@/features/patients/components/StickyAlertBar";
@@ -203,6 +204,10 @@ export function PatientProfilePage() {
           {can("encounter.manage") && <VisitHistorySection patientId={id} />}
 
           <DocumentsSection attachments={data.attachments} />
+
+          {/* A general clinic issues far more of these than a dental one — a sick
+              note is the commonest thing a walk-in asks for after the treatment. */}
+          <CertificateCard patientId={id} canIssue={can("encounter.manage")} />
 
           {(can("payment.collect") || can("payment.charge") || can("billing.manage")) && (
             <BillingSection patientId={id} patientName={fullName} mrn={data.mrn} canRefund={can("billing.manage")} />

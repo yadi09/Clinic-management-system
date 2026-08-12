@@ -1116,3 +1116,83 @@ func (h *Handlers) SignReferralUpload(c *gin.Context) {
 	}
 	httpx.OK(c, target)
 }
+
+// --- medical certificates ---------------------------------------------------
+
+func certificateDTO(c clinical.Certificate) gin.H {
+	return gin.H{
+		"id": id.Encode(id.PrefixCertificate, c.ID), "ref": c.Ref, "kind": c.Kind,
+		"patient_name": c.PatientName, "mrn": c.MRN, "age": c.Age, "gender": c.Gender,
+		"diagnosis": c.Diagnosis, "show_diagnosis": c.ShowDiagnosis,
+		"rest_days": c.RestDays, "rest_from": c.RestFrom, "rest_to": c.RestTo,
+		"notes": c.Notes, "issued_at": c.IssuedAt, "issued_by": c.IssuedBy,
+		"branch": c.Branch, "status": c.Status, "void_reason": c.VoidReason,
+	}
+}
+
+func (h *Handlers) IssueCertificate(c *gin.Context) {
+	pid, err := id.Decode(id.PrefixPatient, c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("invalid patient id"))
+		return
+	}
+	var req struct {
+		Kind          string `json:"kind"`
+		Diagnosis     string `json:"diagnosis"`
+		ShowDiagnosis bool   `json:"show_diagnosis"`
+		RestDays      int    `json:"rest_days"`
+		RestFrom      string `json:"rest_from"`
+		Notes         string `json:"notes"`
+	}
+	if e := c.ShouldBindJSON(&req); e != nil {
+		httpx.Fail(c, apperr.Validation("invalid request"))
+		return
+	}
+	out, err := h.svc.IssueCertificate(c.Request.Context(), pid, clinical.CertificateInput{
+		Kind: req.Kind, Diagnosis: req.Diagnosis, ShowDiagnosis: req.ShowDiagnosis,
+		RestDays: req.RestDays, RestFrom: req.RestFrom, Notes: req.Notes,
+	})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.Created(c, certificateDTO(*out))
+}
+
+func (h *Handlers) ListCertificates(c *gin.Context) {
+	pid, err := id.Decode(id.PrefixPatient, c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("invalid patient id"))
+		return
+	}
+	list, err := h.svc.ListCertificates(c.Request.Context(), pid)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out := make([]gin.H, 0, len(list))
+	for _, cert := range list {
+		out = append(out, certificateDTO(cert))
+	}
+	httpx.OK(c, gin.H{"items": out})
+}
+
+func (h *Handlers) VoidCertificate(c *gin.Context) {
+	cid, err := id.Decode(id.PrefixCertificate, c.Param("cid"))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("invalid certificate id"))
+		return
+	}
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	if e := c.ShouldBindJSON(&req); e != nil {
+		httpx.Fail(c, apperr.Validation("invalid request"))
+		return
+	}
+	if err := h.svc.VoidCertificate(c.Request.Context(), cid, req.Reason); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
