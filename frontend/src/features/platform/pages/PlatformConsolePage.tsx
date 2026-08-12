@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, Copy, LogOut, Plus, ShieldCheck, Handshake, CreditCard, Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +45,7 @@ function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) =
 }
 
 export function PlatformConsolePage() {
+  const { ask, dialog } = useConfirmDialog();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { signIn } = useAuth();
@@ -73,17 +75,25 @@ export function PlatformConsolePage() {
 
   // Sign in as the clinic's owner: mint a tenant token, hand it to the app auth,
   // then jump into the app (client-side, so the in-memory token survives).
-  const impersonate = async (c: Clinic) => {
-    if (!window.confirm(`Sign in as the owner of "${c.name}"? You'll be acting as them — anything you change is real.`)) return;
-    try {
-      const res = await impersonateOwner(c.id);
-      await signIn(res.access_token, res.user);
-      toast.success(`Signed in as ${res.user.full_name || res.user.email}`);
-      navigate("/");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not sign in as owner");
-    }
-  };
+  const impersonate = (c: Clinic) => ask(
+    {
+      title: `Sign in as the owner of "${c.name}"?`,
+      description:
+        "You will be acting as them inside a live clinic, with their patients' records in front of you. Anything you change is real and is recorded against their account.",
+      confirmLabel: "Sign in as owner",
+      destructive: true,
+    },
+    async () => {
+      try {
+        const res = await impersonateOwner(c.id);
+        await signIn(res.access_token, res.user);
+        toast.success(`Signed in as ${res.user.full_name || res.user.email}`);
+        navigate("/");
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Could not sign in as owner");
+      }
+    },
+  );
 
   // An expired/invalid token is cleared on a 401 by the API client — bounce to login.
   useEffect(() => {
@@ -95,6 +105,7 @@ export function PlatformConsolePage() {
   const clinics = q.data ?? [];
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
+      {dialog}
       <header className="flex items-center justify-between border-b border-zinc-800 px-6 py-3.5">
         <div className="flex items-center gap-2">
           <ShieldCheck className="h-5 w-5 text-emerald-400" />

@@ -29,6 +29,7 @@ import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { AppError } from "@/lib/api-client";
 import { useAuth } from "@/app/auth-context";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { DualDate } from "@/components/DualDate";
 import { birr } from "@/features/dental/money";
 import { collectSession, unbilledTreatment, writeOffSession, type UnbilledLane, type UnbilledRow } from "@/features/dental/api";
@@ -70,6 +71,7 @@ export function UnbilledPage() {
   // a course of treatment to every dentist and receptionist.
   const canWaive = can("payment.waive");
   const [lens, setLens] = useState<Lens>("all");
+  const { ask, dialog } = useConfirmDialog();
   // Paging is real rather than a dead end: the server already reports has_more, and
   // without a control the oldest debt beyond the first page was simply unreachable —
   // on a report whose entire purpose is that nothing gets forgotten.
@@ -107,10 +109,18 @@ export function UnbilledPage() {
     },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not write it off"),
   });
-  const askWriteOff = (r: UnbilledRow) => {
-    const reason = window.prompt(`Write off ${birr(r.amount)} for ${r.patient_name}?\n\nSay why — it is recorded against the charge.`);
-    if (reason && reason.trim()) writeOff.mutate({ r, reason: reason.trim() });
-  };
+  const askWriteOff = (r: UnbilledRow) => ask({
+    title: `Write off ${birr(r.amount)}?`,
+    description: (
+      <>
+        {r.patient_name} will not be charged for this treatment. It is recorded as a decision —
+        with your name and the reason — rather than simply never billed.
+      </>
+    ),
+    reason: { label: "Why is it not being charged for?", placeholder: "Goodwill — long-standing patient", required: true },
+    confirmLabel: "Write it off",
+    destructive: true,
+  }, (reason) => writeOff.mutateAsync({ r, reason }));
 
   const count = (l: UnbilledLane) => (data?.rows ?? []).filter((r) => r.lane === l).length;
   // When a lane is selected the headline must describe THAT lane, not the whole
@@ -132,6 +142,7 @@ export function UnbilledPage() {
 
   return (
     <div className="space-y-6">
+      {dialog}
       <div>
         <h1 className="text-h1">Unbilled treatment</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">

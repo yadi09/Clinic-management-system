@@ -20,8 +20,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
 import { EthiopianDateInput } from "@/components/EthiopianDateInput";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { birr, isBillable } from "@/features/dental/money";
 import { collectSession, setPayLater, uncollectSession, updateSession, type Session } from "@/features/dental/api";
+
+const todayISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 const STATUS: { value: string; label: string }[] = [
   { value: "planned", label: "Planned" },
@@ -37,6 +43,7 @@ export function VisitActions({ patientId, session, canCollect, editable, onChang
   onChanged: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const { ask, dialog } = useConfirmDialog();
   const [amount, setAmount] = useState(session.amount_due);
   const [date, setDate] = useState(session.scheduled_date);
   const [promise, setPromise] = useState(session.pay_later_note ?? "");
@@ -63,6 +70,7 @@ export function VisitActions({ patientId, session, canCollect, editable, onChang
 
   return (
     <div className="border-t pt-2">
+      {dialog}
       <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setOpen((v) => !v)}>
         <Settings2 className="h-3.5 w-3.5" /> {open ? "Hide corrections" : "Correct this visit"}
       </Button>
@@ -94,7 +102,26 @@ export function VisitActions({ patientId, session, canCollect, editable, onChang
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label className="text-xs">Status</Label>
-                  <Select value={session.status} onValueChange={(v) => setStatus.mutate(v)}>
+                  <Select value={session.status} onValueChange={(v) => {
+                    // Marking a not-yet-due visit done makes its fee owed immediately.
+                    // Recording the visit is the intended path; this is the blunt one,
+                    // so it asks rather than silently inventing a debt.
+                    if (v === "done" && session.scheduled_date > todayISO()) {
+                      ask({
+                        title: "Mark a future visit as done?",
+                        description: (
+                          <>
+                            This visit is booked for <b>{session.scheduled_date}</b>, not today. Marking it
+                            done makes its {birr(session.amount_due)} fee owed straight away.
+                          </>
+                        ),
+                        confirmLabel: "Mark it done",
+                        destructive: true,
+                      }, () => setStatus.mutateAsync(v));
+                      return;
+                    }
+                    setStatus.mutate(v);
+                  }}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>{STATUS.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
                   </Select>

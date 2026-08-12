@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Building2, CheckCircle2, Eye, Link2, Trash2, Upload, Wand2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -30,6 +31,7 @@ import {
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
 export function Dhis2ReportPage() {
+  const { ask, dialog } = useConfirmDialog();
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["dhis2-report"], queryFn: getDhis2Report });
   const cfg = useQuery({ queryKey: ["dhis2-config"], queryFn: getDhis2Config });
@@ -69,6 +71,7 @@ export function Dhis2ReportPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-1">
+      {dialog}
       <header>
         <h1 className="text-xl font-semibold text-brand">Ministry report — Disease Registration</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -124,7 +127,7 @@ export function Dhis2ReportPage() {
           className="text-destructive"
           disabled={!connected}
           loading={clear.isPending}
-          onClick={() => { if (window.confirm("Clear all pushed values for this period from DHIS2? This is permanent (no undo).")) clear.mutate(); }}
+          onClick={() => { ask({ title: "Clear this period from DHIS2?", description: "Every value already pushed for this period is removed from the national system. This is permanent.", confirmLabel: "Clear from DHIS2", destructive: true }, () => clear.mutateAsync()); }}
         >
           <Trash2 className="h-4 w-4" /> Clear
         </Button>

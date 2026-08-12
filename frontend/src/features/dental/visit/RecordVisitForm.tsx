@@ -25,6 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
 import { DualDate } from "@/components/DualDate";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { collectSession, setPayLater, updateSession, type Session } from "@/features/dental/api";
 import { birr } from "@/features/dental/money";
 import { FLAT_TEETH, parseCsv, ProcedureMultiSelect, ToothMultiSelect } from "@/features/dental/shared/pickers";
@@ -58,6 +59,7 @@ export function RecordVisitForm({
   // Dirty tracking exists so the autosave cannot fire on mount and then present the
   // component's own initial values back to the clinician as a "restored draft".
   const [dirty, setDirty] = useState(false);
+  const { ask, dialog } = useConfirmDialog();
 
   // A visit note is dictated while the patient is in the chair; losing it to a
   // refetch, a reschedule by the front desk, or a mis-click is not acceptable.
@@ -116,18 +118,21 @@ export function RecordVisitForm({
 
   return (
     <div className="space-y-4 rounded-md border border-brand/40 bg-brand/[0.03] p-3">
+      {dialog}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-brand">
           Recording · {planTitle} · session {session.seq}
         </p>
         <Button size="sm" variant="ghost" onClick={() => {
-          if (dirty) {
-            // Write the draft NOW rather than promising one the 800ms debounce may
-            // not have flushed yet — the promise has to be true when it is made.
-            sessionStorage.setItem(draftKey, JSON.stringify({ procedure, tooth, notes } satisfies Draft));
-            if (!window.confirm("Close without recording? What you typed is kept as a draft and will be here when you reopen this visit.")) return;
-          }
-          onCancel();
+          if (!dirty) { onCancel(); return; }
+          // Write the draft NOW rather than promising one the 800ms debounce may not
+          // have flushed yet — the promise has to be true when it is made.
+          sessionStorage.setItem(draftKey, JSON.stringify({ procedure, tooth, notes } satisfies Draft));
+          ask({
+            title: "Close without recording?",
+            description: "What you typed is kept as a draft and will be here when you reopen this visit.",
+            confirmLabel: "Close",
+          }, onCancel);
         }}><X className="h-3.5 w-3.5" /> Cancel</Button>
       </div>
 

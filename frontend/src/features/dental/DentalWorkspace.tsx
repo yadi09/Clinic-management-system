@@ -14,6 +14,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/app/auth-context";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { AppError } from "@/lib/api-client";
 import { compressImage } from "@/lib/image";
 import { EthiopianDateInput } from "@/components/EthiopianDateInput";
@@ -132,8 +133,19 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
   // it saves — the same fault the course rail had. The rail hides itself; the timeline
   // is on another surface entirely, so this guard has to live here.
   const [recording, setRecording] = useState(false);
+  const { ask, dialog } = useConfirmDialog();
   const pickVisit = (sessionId: string | null) => {
-    if (recording && !window.confirm("A visit note is open. Switching visits will close it — what you typed is kept as a draft. Switch anyway?")) return;
+    if (recording) {
+      ask({
+        title: "A visit note is open",
+        description: "Switching visits closes it. What you typed is kept as a draft and will be there when you reopen this visit.",
+        confirmLabel: "Switch visit",
+      }, () => setVisitParam(sessionId));
+      return;
+    }
+    setVisitParam(sessionId);
+  };
+  const setVisitParam = (sessionId: string | null) => {
     const next = new URLSearchParams(params);
     if (sessionId) next.set("visit", sessionId); else next.delete("visit");
     setParams(next, { replace: true });
@@ -340,6 +352,8 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
         onRecordingChange={setRecording}
         onPick={pickVisit} onChanged={invalidate}
       />
+
+      {dialog}
 
       {/* The front desk's two jobs — take payment, rebook a missed visit. The
           clinician has the cockpit and the unbilled report for both, so this only

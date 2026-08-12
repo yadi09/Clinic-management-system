@@ -28,6 +28,7 @@ import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { AppError } from "@/lib/api-client";
 import { useAuth } from "@/app/auth-context";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { EthiopianDateInput } from "@/components/EthiopianDateInput";
 import { DualDate } from "@/components/DualDate";
 import { formatEthiopian } from "@/lib/ethiopian";
@@ -60,6 +61,7 @@ export function CertificateCard({ patientId, canIssue, bare }: {
   const clinic = useQuery({ queryKey: ["clinic"], queryFn: getClinic, retry: false });
   const branches = useQuery({ queryKey: ["branches"], queryFn: listBranches });
   const { activeBranchId } = useAuth();
+  const { ask, dialog } = useConfirmDialog();
   const certs = q.data?.items ?? [];
 
   const print = (c: Certificate) => {
@@ -84,10 +86,18 @@ export function CertificateCard({ patientId, canIssue, bare }: {
     onSuccess: () => { toast.success("Certificate voided"); qc.invalidateQueries({ queryKey: ["certificates", patientId] }); },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not void it"),
   });
-  const askVoid = (c: Certificate) => {
-    const reason = window.prompt(`Void ${c.ref}?\n\nThe number is kept and the certificate will print marked VOID — a copy may already be in someone's file.\n\nWhy?`);
-    if (reason && reason.trim()) voidIt.mutate({ c, reason: reason.trim() });
-  };
+  const askVoid = (c: Certificate) => ask({
+    title: `Void ${c.ref}?`,
+    description: (
+      <>
+        The number is kept and the certificate will still print, marked <b>VOID</b> — a copy may
+        already be in an employer's file, and a missing number is worse than a voided one.
+      </>
+    ),
+    reason: { label: "Why is it being voided?", placeholder: "Issued to the wrong patient", required: true },
+    confirmLabel: "Void certificate",
+    destructive: true,
+  }, (reason) => voidIt.mutateAsync({ c, reason }));
 
   const Wrap = bare ? "div" : Card;
   return (
@@ -146,6 +156,7 @@ export function CertificateCard({ patientId, canIssue, bare }: {
         )}
       </CardContent>
 
+      {dialog}
       {issuing && (
         <IssueDialog
           patientId={patientId}

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, Pencil, Plus, Trash2, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -76,6 +77,7 @@ export function LabCatalogPage() {
 }
 
 function TestRow({ test, expanded, onToggle }: { test: LabTest; expanded: boolean; onToggle: () => void }) {
+  const { ask, dialog } = useConfirmDialog();
   const qc = useQueryClient();
   const [edit, setEdit] = useState(false);
   const invalidate = () => qc.invalidateQueries({ queryKey: ["lab-tests"] });
@@ -93,6 +95,7 @@ function TestRow({ test, expanded, onToggle }: { test: LabTest; expanded: boolea
 
   return (
     <Card className="overflow-hidden">
+      {dialog}
       <div className="flex items-center justify-between gap-3 p-4">
         <button className="flex min-w-0 items-center gap-2 text-left" onClick={onToggle}>
           {expanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
@@ -118,7 +121,7 @@ function TestRow({ test, expanded, onToggle }: { test: LabTest; expanded: boolea
             <Pencil className="h-4 w-4" />
           </button>
           <button
-            onClick={() => { if (window.confirm(`Remove "${test.name}" from the catalog? It will no longer be orderable. Past results are kept.`)) del.mutate(); }}
+            onClick={() => { ask({ title: `Remove "${test.name}"?`, description: "It will no longer be orderable. Past results are kept.", confirmLabel: "Remove test", destructive: true }, () => del.mutateAsync()); }}
             className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive"
             title="Delete test"
           >
@@ -133,6 +136,7 @@ function TestRow({ test, expanded, onToggle }: { test: LabTest; expanded: boolea
 }
 
 function AnalytePanel({ test }: { test: LabTest }) {
+  const { ask, dialog } = useConfirmDialog();
   const qc = useQueryClient();
   const analytes = useQuery({ queryKey: ["lab-analytes", test.id], queryFn: () => listAnalytes(test.id) });
   const [add, setAdd] = useState(false);
@@ -149,6 +153,7 @@ function AnalytePanel({ test }: { test: LabTest }) {
 
   return (
     <div className="border-t bg-muted/20 p-4">
+      {dialog}
       <table className="w-full text-sm">
         <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
@@ -172,7 +177,7 @@ function AnalytePanel({ test }: { test: LabTest }) {
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
                   <button
-                    onClick={() => { if (window.confirm(`Delete analyte "${a.name}"?`)) del.mutate(a.id); }}
+                    onClick={() => { ask({ title: `Delete analyte "${a.name}"?`, description: "It is removed from this test's result form.", confirmLabel: "Delete analyte", destructive: true }, () => del.mutateAsync(a.id)); }}
                     className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
                     title="Delete analyte"
                   >

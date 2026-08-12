@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Plus, Trash2, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +14,7 @@ import { createService, deleteService, getServiceProviders, listServices, setSer
 import { listUsers } from "@/features/admin/api";
 
 export function ServiceCatalogPage() {
+  const { ask, dialog } = useConfirmDialog();
   const qc = useQueryClient();
   const services = useQuery({ queryKey: ["services-all"], queryFn: () => listServices(false) });
   const [editing, setEditing] = useState<ServiceItem | null>(null);
@@ -53,6 +55,7 @@ export function ServiceCatalogPage() {
 
   return (
     <div className="space-y-6">
+      {dialog}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1>Service catalog</h1>
@@ -123,7 +126,7 @@ export function ServiceCatalogPage() {
                   <div className="flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100">
                     <button onClick={() => setAssigning(s)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Assign staff"><Users className="h-4 w-4" /></button>
                     <button onClick={() => setEditing(s)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit"><Pencil className="h-4 w-4" /></button>
-                    <button onClick={() => { if (window.confirm(`Remove "${s.name}"?`)) del.mutate(s.id); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive" title="Delete"><Trash2 className="h-4 w-4" /></button>
+                    <button onClick={() => { ask({ title: `Remove "${s.name}"?`, description: "It can no longer be charged. Charges already raised are unaffected.", confirmLabel: "Remove service", destructive: true }, () => del.mutateAsync(s.id)); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive" title="Delete"><Trash2 className="h-4 w-4" /></button>
                   </div>
                 </td>
               </tr>
