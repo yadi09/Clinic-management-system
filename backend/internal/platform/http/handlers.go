@@ -134,6 +134,45 @@ func (h *Handlers) SetModules(c *gin.Context) {
 	httpx.NoContent(c)
 }
 
+// GetPolicies lists the per-clinic role policies and this clinic's answers.
+func (h *Handlers) GetPolicies(c *gin.Context) {
+	tid, err := id.Decode(id.PrefixTenant, c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("invalid clinic id"))
+		return
+	}
+	set, err := h.svc.GetClinicPolicies(c.Request.Context(), tid)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out := make([]gin.H, 0, len(platform.RolePolicies))
+	for _, p := range platform.RolePolicies {
+		out = append(out, gin.H{"key": p.Key, "label": p.Label, "help": p.Help, "enabled": set[p.Key]})
+	}
+	httpx.OK(c, out)
+}
+
+func (h *Handlers) SetPolicies(c *gin.Context) {
+	tid, err := id.Decode(id.PrefixTenant, c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("invalid clinic id"))
+		return
+	}
+	var req struct {
+		Policies map[string]bool `json:"policies"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("policies are required"))
+		return
+	}
+	if err := h.svc.SetClinicPolicies(c.Request.Context(), tid, req.Policies); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
 // ImpersonateOwner mints a tenant access token for the clinic's owner so the
 // platform admin can sign in as them. Audited.
 func (h *Handlers) ImpersonateOwner(c *gin.Context) {

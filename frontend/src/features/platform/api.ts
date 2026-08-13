@@ -132,6 +132,20 @@ export function setClinicModules(id: string, modules: Record<string, boolean>) {
   return pfetch<void>(`/clinics/${id}/modules`, { method: "PUT", body: { modules } });
 }
 
+/** Who may do what at this clinic — as opposed to which modules it has at all. */
+export interface RolePolicy {
+  key: string;
+  label: string;
+  help: string;
+  enabled: boolean;
+}
+export function getClinicPolicies(id: string) {
+  return pfetch<RolePolicy[]>(`/clinics/${id}/policies`);
+}
+export function setClinicPolicies(id: string, policies: Record<string, boolean>) {
+  return pfetch<void>(`/clinics/${id}/policies`, { method: "PUT", body: { policies } });
+}
+
 // Sign in as a clinic's owner — returns a ready-to-use tenant access token.
 export interface Impersonation {
   access_token: string;

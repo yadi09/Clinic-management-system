@@ -23,6 +23,8 @@ func (h *Handlers) Register(v1 *gin.RouterGroup, tokens *auth.TokenService) {
 	admin.POST("/clinics/:id/reactivate", h.Reactivate)
 	admin.GET("/clinics/:id/modules", h.GetModules)
 	admin.PUT("/clinics/:id/modules", h.SetModules)
+	admin.GET("/clinics/:id/policies", h.GetPolicies)
+	admin.PUT("/clinics/:id/policies", h.SetPolicies)
 	admin.GET("/clinics/:id/usage", h.GetClinicUsage)
 	admin.POST("/clinics/:id/plan", h.SetClinicPlan)
 	admin.POST("/clinics/:id/impersonate", h.ImpersonateOwner)

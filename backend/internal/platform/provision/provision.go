@@ -132,6 +132,10 @@ type Result struct {
 	DeptID      uuid.UUID
 	PlanID      uuid.UUID
 	RoleIDs     map[string]uuid.UUID
+	// DoctorRegisters is the clinic's stored answer to "may a doctor register a
+	// patient?". Read back from the row rather than assumed, so re-provisioning
+	// reconciles grants against the decision already made about this clinic.
+	DoctorRegisters bool
 }
 
 // BootstrapTenant creates the full structural baseline for a clinic: plan +
@@ -179,12 +183,17 @@ func BootstrapTenant(ctx context.Context, tx pgx.Tx, p Params) (Result, error) {
 		}
 	}
 
-	// Tenant.
+	// Tenant. A dental clinic starts able to register from the chair: it is usually
+	// one or two dentists with no front desk to hand the job to. A general clinic
+	// starts with the separation, and the platform admin can flip either.
+	// Re-provisioning an existing clinic must not overwrite a decision already made
+	// about it, hence COALESCE onto the stored value rather than EXCLUDED.
 	if err := tx.QueryRow(ctx,
-		`INSERT INTO tenants (name, slug, status, plan_id, clinic_type, onboarded_at)
-		 VALUES ($1, $2, 'active', $3, $4, now())
+		`INSERT INTO tenants (name, slug, status, plan_id, clinic_type, onboarded_at, doctor_registers_patients)
+		 VALUES ($1, $2, 'active', $3, $4, now(), $4 = 'dental')
 		 ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, status = 'active', clinic_type = EXCLUDED.clinic_type
-		 RETURNING id`, p.Name, p.Slug, res.PlanID, p.ClinicType).Scan(&res.TenantID); err != nil {
+		 RETURNING id, doctor_registers_patients`,
+		p.Name, p.Slug, res.PlanID, p.ClinicType).Scan(&res.TenantID, &res.DoctorRegisters); err != nil {
 		return res, fmt.Errorf("tenant: %w", err)
 	}
 
@@ -256,11 +265,16 @@ func BootstrapTenant(ctx context.Context, tx pgx.Tx, p Params) (Result, error) {
 			return res, fmt.Errorf("grant %s: %w", code, err)
 		}
 	}
-	// Operational roles: reconcile to exactly the canonical set.
+	// Operational roles: reconcile to exactly the canonical set, plus whatever this
+	// clinic has been allowed on top of it. The reconcile is a DELETE ... NOT IN, so
+	// a per-clinic grant that is not folded in here is silently revoked.
 	for code, perms := range RoleGrants {
 		rid, ok := res.RoleIDs[code]
 		if !ok {
 			continue
+		}
+		if code == "doctor" && res.DoctorRegisters {
+			perms = append(append([]string{}, perms...), "patient.create")
 		}
 		if _, err := tx.Exec(ctx,
 			`DELETE FROM role_permissions WHERE tenant_id = $1 AND role_id = $2

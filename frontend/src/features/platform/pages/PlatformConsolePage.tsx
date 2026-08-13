@@ -13,7 +13,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/app/auth-context";
 import {
-  clinicUsage, createPlan, getClinicModules, impersonateOwner, listClinics, listPartnerLeads, listPlans, platformToken,
+  clinicUsage, createPlan, getClinicModules, getClinicPolicies, setClinicPolicies,
+  impersonateOwner, listClinics, listPartnerLeads, listPlans, platformToken,
   provisionClinic, reactivateClinic, setClinicModules, setClinicPlan, setLeadStatus, suspendClinic, updatePlan,
   type Clinic, type PartnerLead, type Plan, type UsageLine, type ProvisionResult,
 } from "@/features/platform/api";
@@ -247,17 +248,27 @@ function PartnerLeadsView() {
 function ModulesDialog({ clinic, onClose }: { clinic: Clinic | null; onClose: () => void }) {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["clinic-modules", clinic?.id], queryFn: () => getClinicModules(clinic!.id), enabled: !!clinic });
+  // Which parts of the product this clinic has, and separately, who at the clinic
+  // may use them. A one-dentist practice has the same modules as a big clinic and
+  // a completely different answer to "who registers the patient".
+  const pol = useQuery({ queryKey: ["clinic-policies", clinic?.id], queryFn: () => getClinicPolicies(clinic!.id), enabled: !!clinic });
   const [state, setState] = useState<Record<string, boolean>>({});
+  const [policies, setPolicies] = useState<Record<string, boolean>>({});
   const [forId, setForId] = useState<string | null>(null);
-  if (clinic && q.data && forId !== clinic.id) {
+  if (clinic && q.data && pol.data && forId !== clinic.id) {
     setForId(clinic.id);
     setState(Object.fromEntries(q.data.map((m) => [m.key, m.enabled])));
+    setPolicies(Object.fromEntries(pol.data.map((p) => [p.key, p.enabled])));
   }
   const mut = useMutation({
-    mutationFn: () => setClinicModules(clinic!.id, state),
+    mutationFn: async () => {
+      await setClinicModules(clinic!.id, state);
+      await setClinicPolicies(clinic!.id, policies);
+    },
     onSuccess: () => {
-      toast.success("Modules updated — takes effect on the clinic's next login");
+      toast.success("Saved — takes effect on the clinic's next login");
       qc.invalidateQueries({ queryKey: ["clinic-modules", clinic?.id] });
+      qc.invalidateQueries({ queryKey: ["clinic-policies", clinic?.id] });
       onClose();
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Could not update"),
@@ -265,16 +276,26 @@ function ModulesDialog({ clinic, onClose }: { clinic: Clinic | null; onClose: ()
   return (
     <Dialog open={!!clinic} onOpenChange={(o) => { if (!o) { setForId(null); onClose(); } }}>
       <DialogContent>
-        <DialogHeader><DialogTitle>Modules — {clinic?.name}</DialogTitle></DialogHeader>
-        <p className="text-sm text-muted-foreground">Turn modules on or off for this clinic. A change applies on the clinic's next login (~15 min). Disabled modules disappear from their staff's menu and are blocked.</p>
+        <DialogHeader><DialogTitle>Setup — {clinic?.name}</DialogTitle></DialogHeader>
+        <p className="text-sm text-muted-foreground">A change applies on the clinic's next login (~15 min). Disabled modules disappear from their staff's menu and are blocked.</p>
         <div className="space-y-2">
+          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Modules</div>
           {(q.data ?? MODULES.map((m) => ({ ...m, enabled: false }))).map((m) => (
             <Toggle key={m.key} label={m.label} on={!!state[m.key]} onChange={(v) => setState((s) => ({ ...s, [m.key]: v }))} />
           ))}
         </div>
+        <div className="space-y-2">
+          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Who can do what</div>
+          {(pol.data ?? []).map((p) => (
+            <div key={p.key} className="space-y-1">
+              <Toggle label={p.label} on={!!policies[p.key]} onChange={(v) => setPolicies((s) => ({ ...s, [p.key]: v }))} />
+              <p className="pl-1 text-xs text-muted-foreground">{p.help}</p>
+            </div>
+          ))}
+        </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => { setForId(null); onClose(); }}>Cancel</Button>
-          <Button loading={mut.isPending} onClick={() => mut.mutate()}>Save modules</Button>
+          <Button loading={mut.isPending} onClick={() => mut.mutate()}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

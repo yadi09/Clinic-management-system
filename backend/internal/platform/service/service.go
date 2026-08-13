@@ -206,6 +206,74 @@ func (s *Service) SetClinicModules(ctx context.Context, tenantID uuid.UUID, modu
 	return nil
 }
 
+// GetClinicPolicies reports the clinic's role policies — decisions about who may
+// do what that are genuinely per-clinic rather than product-wide.
+func (s *Service) GetClinicPolicies(ctx context.Context, tenantID uuid.UUID) (map[string]bool, error) {
+	out := map[string]bool{}
+	var doctorRegisters bool
+	if err := s.db.Pool.QueryRow(ctx,
+		`SELECT doctor_registers_patients FROM tenants WHERE id = $1 AND deleted_at IS NULL`,
+		tenantID).Scan(&doctorRegisters); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, apperr.NotFound("CLINIC_NOT_FOUND", "clinic not found")
+		}
+		return nil, apperr.Internal(err)
+	}
+	out[platform.PolicyDoctorRegisters] = doctorRegisters
+	return out, nil
+}
+
+// SetClinicPolicies stores a policy decision and applies it to the role grants in
+// the same transaction, so the console cannot leave the two disagreeing.
+//
+// The column is the durable record and the grant is derived from it: provisioning
+// reconciles each role to exactly RoleGrants plus whatever the columns allow, so
+// writing only the grant would see it revoked on the next BootstrapTenant.
+//
+// Permissions are carried in the access token, so a doctor already signed in keeps
+// the old answer until their token refreshes.
+func (s *Service) SetClinicPolicies(ctx context.Context, tenantID uuid.UUID, policies map[string]bool) error {
+	enabled, ok := policies[platform.PolicyDoctorRegisters]
+	if !ok {
+		return nil
+	}
+	tx, err := s.db.Pool.Begin(ctx)
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	tag, err := tx.Exec(ctx,
+		`UPDATE tenants SET doctor_registers_patients = $2, updated_at = now()
+		   WHERE id = $1 AND deleted_at IS NULL`, tenantID, enabled)
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	if tag.RowsAffected() == 0 {
+		return apperr.NotFound("CLINIC_NOT_FOUND", "clinic not found")
+	}
+
+	if enabled {
+		_, err = tx.Exec(ctx,
+			`INSERT INTO role_permissions (tenant_id, role_id, permission_id)
+			 SELECT $1, r.id, p.id FROM roles r, permissions p
+			  WHERE r.tenant_id = $1 AND r.code = 'doctor' AND p.code = 'patient.create'
+			 ON CONFLICT (role_id, permission_id) DO NOTHING`, tenantID)
+	} else {
+		_, err = tx.Exec(ctx,
+			`DELETE FROM role_permissions rp USING roles r, permissions p
+			  WHERE rp.tenant_id = $1 AND rp.role_id = r.id AND rp.permission_id = p.id
+			    AND r.tenant_id = $1 AND r.code = 'doctor' AND p.code = 'patient.create'`, tenantID)
+	}
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}
+
 // ImpersonateOwner mints a tenant access token for a clinic's owner so a
 // platform admin can sign in as them (support / setup). Runs on the privileged
 // connection, so every lookup is filtered by tenant_id by hand. The token

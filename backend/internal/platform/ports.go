@@ -89,6 +89,23 @@ var ModuleFlags = []struct{ Key, Label string }{
 	{"inpatient", "Inpatient (beds)"},
 }
 
+// RolePolicies are the per-clinic decisions about who may do what — distinct from
+// ModuleFlags, which say which parts of the product a clinic has at all.
+//
+// The canonical role set is a product-wide judgement, and for most permissions that
+// is right. Registration is the exception: giving it to the front desk only assumes
+// a front desk exists. In a one-dentist practice the dentist IS the front desk, and
+// the rule stops being separation of duties and becomes a locked door.
+const PolicyDoctorRegisters = "doctor_registers_patients"
+
+var RolePolicies = []struct{ Key, Label, Help string }{
+	{
+		PolicyDoctorRegisters,
+		"Doctors can register patients",
+		"Off, only reception, managers and the owner can register. Turn on for a clinic with no front desk, so the clinician can register a walk-in from the chair.",
+	},
+}
+
 // ClinicSummary is one clinic on the platform roster.
 type ClinicSummary struct {
 	TenantID   uuid.UUID `json:"-"`
@@ -175,6 +192,8 @@ type Service interface {
 	SetClinicStatus(ctx context.Context, tenantID uuid.UUID, status string) error
 	GetClinicModules(ctx context.Context, tenantID uuid.UUID) (map[string]bool, error)
 	SetClinicModules(ctx context.Context, tenantID uuid.UUID, modules map[string]bool) error
+	GetClinicPolicies(ctx context.Context, tenantID uuid.UUID) (map[string]bool, error)
+	SetClinicPolicies(ctx context.Context, tenantID uuid.UUID, policies map[string]bool) error
 	ImpersonateOwner(ctx context.Context, tenantID uuid.UUID) (*Impersonation, error)
 	// Subscription plans (super-admin only, privileged connection).
 	ListPlans(ctx context.Context) ([]Plan, error)
