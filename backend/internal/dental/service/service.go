@@ -330,7 +330,7 @@ func (s *Service) loadPlansTx(ctx context.Context, tx pgx.Tx, tid, patientID uui
 		SELECT sm.session_id, sm.plan_id, sm.seq, sm.scheduled_date, sm.amount_due::text,
 		       sm.session_status, sm.procedure, sm.tooth,
 		       coalesce(se.notes,''), coalesce(se.rx,''),
-		       sm.pay_later, sm.pay_later_note, sm.pay_state
+		       sm.pay_later, sm.pay_later_note, sm.pay_state, se.kind
 		FROM session_money sm
 		JOIN treatment_sessions se ON se.id = sm.session_id
 		WHERE sm.patient_id = $2 ORDER BY sm.plan_id, sm.seq`, tid, patientID)
@@ -342,7 +342,8 @@ func (s *Service) loadPlansTx(ctx context.Context, tx pgx.Tx, tid, patientID uui
 		var se dental.Session
 		var id, planID uuid.UUID
 		var sd time.Time
-		if e := srows.Scan(&id, &planID, &se.Seq, &sd, &se.AmountDue, &se.Status, &se.Procedure, &se.Tooth, &se.Notes, &se.Rx, &se.PayLater, &se.PayLaterNote, &se.Payment); e != nil {
+		var kind string
+		if e := srows.Scan(&id, &planID, &se.Seq, &sd, &se.AmountDue, &se.Status, &se.Procedure, &se.Tooth, &se.Notes, &se.Rx, &se.PayLater, &se.PayLaterNote, &se.Payment, &kind); e != nil {
 			return nil, e
 		}
 		se.ID = id
@@ -350,6 +351,14 @@ func (s *Service) loadPlansTx(ctx context.Context, tx pgx.Tx, tid, patientID uui
 		se.Images = []dental.Image{}
 		pi, ok := idx[planID]
 		if !ok {
+			continue
+		}
+		// A deposit carries money but is not an appointment. Handing it out in
+		// `sessions` would put a payment row in the visit timeline, the visit
+		// resolver, and the cockpit — none of which can deliver it.
+		if kind == "deposit" {
+			d := se
+			plans[pi].Deposit = &d
 			continue
 		}
 		plans[pi].Sessions = append(plans[pi].Sessions, se)
@@ -483,8 +492,19 @@ func (s *Service) CreatePlan(ctx context.Context, patientID uuid.UUID, in dental
 		interval = 1
 	}
 
+	// The down payment comes off the top: the patient pays it to start the work and
+	// the balance is what gets divided. Taking it out of the first session instead
+	// would price that visit wrong on every report that reads a session's fee.
+	deposit := money(in.Deposit)
+	if deposit < 0 {
+		return nil, apperr.Validation("the down payment cannot be negative")
+	}
+	if t := money(in.TotalAmount); t > 0 && deposit > t {
+		return nil, apperr.Validation("the down payment cannot be more than the total cost")
+	}
+
 	// Resolve the concrete sessions: the create preview sends them, otherwise
-	// generate from the schedule and split the total.
+	// generate from the schedule and split what is left after the deposit.
 	type seed struct {
 		date time.Time
 		amt  float64
@@ -504,15 +524,16 @@ func (s *Service) CreatePlan(ctx context.Context, patientID uuid.UUID, in dental
 			n = 1
 		}
 		dates := genDates(start, unit, interval, n)
-		amts := splitAmount(money(in.TotalAmount), n)
+		amts := splitAmount(money(in.TotalAmount)-deposit, n)
 		for i := 0; i < n; i++ {
 			seeds = append(seeds, seed{date: dates[i], amt: amts[i]})
 		}
 	}
 	count := len(seeds)
 	deadline := seeds[count-1].date
-	// The stored total reflects the sessions (which the operator may have edited).
-	total := 0.0
+	// The stored total reflects the sessions (which the operator may have edited)
+	// plus the deposit, so total_amount stays the price of the whole course.
+	total := deposit
 	for _, sd := range seeds {
 		total += sd.amt
 	}
@@ -529,6 +550,16 @@ func (s *Service) CreatePlan(ctx context.Context, patientID uuid.UUID, in dental
 			deadline.Format("2006-01-02"), nullStr(in.Note), actor).Scan(&planID); e != nil {
 			return e
 		}
+		// The deposit is seq 0 and dated to the plan's start: it is due when the
+		// course is agreed, not when a particular visit happens.
+		if deposit > 0 {
+			if _, e := tx.Exec(ctx,
+				`INSERT INTO treatment_sessions (tenant_id, plan_id, patient_id, seq, scheduled_date, amount_due, kind, created_by)
+				 VALUES ($1,$2,$3,0,$4,$5,'deposit',$6)`,
+				tid, planID, patientID, start.Format("2006-01-02"), fmtMoney(deposit), actor); e != nil {
+				return e
+			}
+		}
 		for i, sd := range seeds {
 			if _, e := tx.Exec(ctx,
 				`INSERT INTO treatment_sessions (tenant_id, plan_id, patient_id, seq, scheduled_date, amount_due, created_by)
@@ -538,7 +569,8 @@ func (s *Service) CreatePlan(ctx context.Context, patientID uuid.UUID, in dental
 			}
 		}
 		return s.publisher.Publish(ctx, tx, &tid, "treatment_plan", planID, "dental.plan.created",
-			map[string]any{"patient_id": patientID, "title": title, "total": fmtMoney(total), "sessions": count})
+			map[string]any{"patient_id": patientID, "title": title, "total": fmtMoney(total),
+				"sessions": count, "deposit": fmtMoney(deposit)})
 	})
 	if err != nil {
 		return nil, apperr.Internal(err)
@@ -796,7 +828,13 @@ func (s *Service) UpdateSession(ctx context.Context, patientID, sessionID uuid.U
 	}
 	_, actor := actorOf(ctx)
 	branch := activeBranchOf(ctx)
+	clinical := in.Status != "" || in.Procedure != nil || in.Tooth != nil || in.Notes != nil || in.Rx != nil
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		if clinical {
+			if e := refuseDeposit(ctx, tx, tid, sessionID); e != nil {
+				return e
+			}
+		}
 		// The fee is frozen once a charge is live. Without this a session billed and
 		// paid at 2,000 could afterwards be edited to 5,000 while the receipt still
 		// says 2,000, and the two never reconcile. Deliberately narrow: only the
@@ -921,7 +959,7 @@ func (s *Service) collectOne(ctx context.Context, patientID, sessionID uuid.UUID
 	br := activeBranchOf(ctx)
 	var charged float64
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		var amount, planTitle string
+		var amount, planTitle, kind string
 		var seq, count int
 		var chargeStatus *string
 		var refunded *string
@@ -935,13 +973,13 @@ func (s *Service) collectOne(ctx context.Context, patientID, sessionID uuid.UUID
 			`SELECT se.amount_due::text, se.seq, p.title, p.session_count, c.status,
 			        (SELECT sum(-r.amount)::text FROM charges r
 			          WHERE r.tenant_id = c.tenant_id AND r.reverses_charge_id = c.id AND r.deleted_at IS NULL),
-			        se.branch_id
+			        se.branch_id, se.kind
 			 FROM treatment_sessions se
 			 JOIN treatment_plans p ON p.id = se.plan_id AND p.tenant_id = se.tenant_id
 			 LEFT JOIN charges c ON c.id = se.charge_id AND c.tenant_id = se.tenant_id AND c.deleted_at IS NULL
 			 WHERE se.tenant_id = $1 AND se.patient_id = $2 AND se.id = $3
 			 FOR UPDATE OF se`,
-			tid, patientID, sessionID).Scan(&amount, &seq, &planTitle, &count, &chargeStatus, &refunded, &treatedAt)
+			tid, patientID, sessionID).Scan(&amount, &seq, &planTitle, &count, &chargeStatus, &refunded, &treatedAt, &kind)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return apperr.NotFound("SESSION_NOT_FOUND", "session not found")
 		}
@@ -980,9 +1018,16 @@ func (s *Service) collectOne(ctx context.Context, patientID, sessionID uuid.UUID
 		if treatedAt != nil {
 			bookTo = treatedAt
 		}
+		// What the receipt says. A deposit is seq 0, so the session wording would
+		// hand the patient a receipt reading "session 0/6" for the money they paid
+		// to start the work.
+		desc := fmt.Sprintf("%s — session %d/%d", planTitle, seq, count)
+		if kind == "deposit" {
+			desc = fmt.Sprintf("%s — down payment", planTitle)
+		}
 		cid, e := s.billing.RaiseChargeTx(ctx, tx, billing.ChargeInput{
 			PatientID: patientID, BranchID: bookTo, Source: "dental",
-			Description: fmt.Sprintf("%s — session %d/%d", planTitle, seq, count), Amount: fmtMoney(amt),
+			Description: desc, Amount: fmtMoney(amt),
 		})
 		if e != nil {
 			return e
@@ -1082,13 +1127,13 @@ func (s *Service) WriteOffSession(ctx context.Context, patientID, sessionID uuid
 		return apperr.Validation("say why this is not being charged for — it is recorded on the write-off")
 	}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		var amount, planTitle string
+		var amount, planTitle, kind string
 		var seq, count int
 		var chargeStatus *string
 		var treatedAt, existingCharge *uuid.UUID
 		var refunded *string
 		e := tx.QueryRow(ctx,
-			`SELECT se.amount_due::text, se.seq, p.title, p.session_count, c.status, se.branch_id, se.charge_id,
+			`SELECT se.amount_due::text, se.seq, p.title, p.session_count, c.status, se.branch_id, se.charge_id, se.kind,
 			        (SELECT sum(-r.amount)::text FROM charges r
 			          WHERE r.tenant_id = c.tenant_id AND r.reverses_charge_id = c.id AND r.deleted_at IS NULL)
 			 FROM treatment_sessions se
@@ -1096,7 +1141,7 @@ func (s *Service) WriteOffSession(ctx context.Context, patientID, sessionID uuid
 			 LEFT JOIN charges c ON c.id = se.charge_id AND c.tenant_id = se.tenant_id AND c.deleted_at IS NULL
 			 WHERE se.tenant_id = $1 AND se.patient_id = $2 AND se.id = $3
 			 FOR UPDATE OF se`,
-			tid, patientID, sessionID).Scan(&amount, &seq, &planTitle, &count, &chargeStatus, &treatedAt, &existingCharge, &refunded)
+			tid, patientID, sessionID).Scan(&amount, &seq, &planTitle, &count, &chargeStatus, &treatedAt, &existingCharge, &kind, &refunded)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return apperr.NotFound("SESSION_NOT_FOUND", "session not found")
 		}
@@ -1137,7 +1182,7 @@ func (s *Service) WriteOffSession(ctx context.Context, patientID, sessionID uuid
 		}
 		cid, e := s.billing.RaiseChargeTx(ctx, tx, billing.ChargeInput{
 			PatientID: patientID, BranchID: bookTo, Source: "dental",
-			Description: fmt.Sprintf("%s — session %d/%d (written off)", planTitle, seq, count),
+			Description: writeOffDesc(planTitle, kind, seq, count),
 			Amount:      fmtMoney(money(amount)),
 		})
 		if e != nil {
@@ -1304,6 +1349,9 @@ func (s *Service) AddPrescription(ctx context.Context, patientID, sessionID uuid
 	}
 	out := &dental.Prescription{Note: in.Note, Items: items}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		if e := refuseDeposit(ctx, tx, tid, sessionID); e != nil {
+			return e
+		}
 		// Confirm the session belongs to this patient/tenant (RLS enforces tenant).
 		var exists bool
 		if e := tx.QueryRow(ctx, `SELECT true FROM treatment_sessions WHERE tenant_id = $1 AND patient_id = $2 AND id = $3`, tid, patientID, sessionID).Scan(&exists); e != nil {
@@ -1359,6 +1407,38 @@ func (s *Service) DeletePrescription(ctx context.Context, patientID, prescriptio
 	}
 	if err != nil {
 		return apperr.Internal(err)
+	}
+	return nil
+}
+
+// writeOffDesc names a forgiven fee on the ledger the same way collectOne names a
+// billed one, so the two rows read as a pair.
+func writeOffDesc(planTitle, kind string, seq, count int) string {
+	if kind == "deposit" {
+		return fmt.Sprintf("%s — down payment (written off)", planTitle)
+	}
+	return fmt.Sprintf("%s — session %d/%d (written off)", planTitle, seq, count)
+}
+
+// refuseDeposit blocks the clinical operations on a down payment.
+//
+// A deposit is a treatment_sessions row so that it flows through the one money
+// projection, which means the session endpoints will happily accept its id. But
+// there is nothing to deliver: a deposit cannot be marked done, cannot carry a
+// procedure or a tooth, and cannot hold notes, images or a prescription. Without
+// this it could be "completed", and it would then count as delivered treatment in
+// the reports and sit in the visit timeline as a visit that never happened.
+func refuseDeposit(ctx context.Context, tx pgx.Tx, tid, sessionID uuid.UUID) error {
+	var kind string
+	if e := tx.QueryRow(ctx,
+		`SELECT kind FROM treatment_sessions WHERE tenant_id = $1 AND id = $2`, tid, sessionID).Scan(&kind); e != nil {
+		if errors.Is(e, pgx.ErrNoRows) {
+			return apperr.NotFound("SESSION_NOT_FOUND", "session not found")
+		}
+		return e
+	}
+	if kind == "deposit" {
+		return apperr.Validation("this is the down payment, not a visit — it can be collected, but not recorded as treatment")
 	}
 	return nil
 }
@@ -1601,15 +1681,24 @@ func validateExam(in *dental.ExamInput) error {
 
 // assertSessionOwned refuses to link an examination to a session belonging to some
 // other patient — the id arrives from the client, so ownership is checked, not assumed.
+// assertSessionOwned gates attaching clinical content (an examination, an image) to
+// a session. A down payment is refused here too: it is a row in this table for the
+// money projection's sake, but there is no visit to file anything against.
 func assertSessionOwned(ctx context.Context, tx pgx.Tx, tid, patientID, sessionID uuid.UUID) error {
-	var ok bool
+	var kind string
 	e := tx.QueryRow(ctx,
-		`SELECT true FROM treatment_sessions WHERE tenant_id = $1 AND patient_id = $2 AND id = $3`,
-		tid, patientID, sessionID).Scan(&ok)
+		`SELECT kind FROM treatment_sessions WHERE tenant_id = $1 AND patient_id = $2 AND id = $3`,
+		tid, patientID, sessionID).Scan(&kind)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return apperr.Validation("session does not belong to this patient")
 	}
-	return e
+	if e != nil {
+		return e
+	}
+	if kind == "deposit" {
+		return apperr.Validation("this is the down payment, not a visit — nothing clinical can be filed against it")
+	}
+	return nil
 }
 
 func (s *Service) ListExams(ctx context.Context, patientID uuid.UUID) ([]dental.Exam, error) {

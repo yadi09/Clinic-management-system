@@ -122,7 +122,12 @@ type Plan struct {
 	Note          string    `json:"note,omitempty"`
 	CreatedAt     string    `json:"created_at"`
 	Money         PlanMoney `json:"money"`
-	Sessions      []Session `json:"sessions"`
+	// Deposit is the up-front payment, if this plan has one. It is stored as a
+	// session row so it flows through the same money projection as everything else,
+	// but it is handed out separately: it is not an appointment, and the visit
+	// surfaces must never render it as one.
+	Deposit  *Session  `json:"deposit,omitempty"`
+	Sessions []Session `json:"sessions"`
 }
 
 // SessionSeed is one concrete session from the create preview (date + amount).
@@ -142,6 +147,7 @@ type PlanInput struct {
 	IntervalCount int
 	SessionCount  int
 	Note          string
+	Deposit       string        // optional down payment, taken off the top before the split
 	Sessions      []SessionSeed // optional per-session overrides from the preview
 }
 

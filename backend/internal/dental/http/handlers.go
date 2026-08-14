@@ -105,7 +105,7 @@ func planDTO(p dental.Plan, clinical bool) gin.H {
 	for _, se := range p.Sessions {
 		sessions = append(sessions, sessionDTO(se, clinical))
 	}
-	return gin.H{
+	out := gin.H{
 		"id": id.Encode(id.PrefixTreatmentPlan, p.ID), "title": p.Title, "tooth": p.Tooth,
 		"total_amount": p.TotalAmount, "start_date": p.StartDate, "interval_unit": p.IntervalUnit,
 		"interval_count": p.IntervalCount, "session_count": p.SessionCount, "deadline": p.Deadline,
@@ -116,6 +116,20 @@ func planDTO(p dental.Plan, clinical bool) gin.H {
 			"at_cashier": p.Money.AtCashier, "due": p.Money.Due, "waived": p.Money.Waived,
 		},
 	}
+	// Separate from sessions on purpose: the deposit is money, not an appointment.
+	// The key is absent rather than null when the plan has no down payment, so a
+	// client cannot mistake "no deposit" for "a deposit of nothing". Only the
+	// money-bearing fields: a deposit has no procedure, tooth, notes or images, and
+	// sending empty ones would invite the UI to offer to fill them in.
+	if d := p.Deposit; d != nil {
+		out["deposit"] = gin.H{
+			"id":             id.Encode(id.PrefixTreatmentSession, d.ID),
+			"amount_due":     d.AmountDue,
+			"payment":        d.Payment,
+			"scheduled_date": d.ScheduledDate,
+		}
+	}
+	return out
 }
 
 // --- summary ---
@@ -207,6 +221,7 @@ func (h *Handlers) CreatePlan(c *gin.Context) {
 		IntervalCount int    `json:"interval_count"`
 		SessionCount  int    `json:"session_count"`
 		Note          string `json:"note"`
+		Deposit       string `json:"deposit"`
 		Sessions      []struct {
 			ScheduledDate string `json:"scheduled_date"`
 			AmountDue     string `json:"amount_due"`
@@ -219,6 +234,7 @@ func (h *Handlers) CreatePlan(c *gin.Context) {
 	in := dental.PlanInput{
 		Title: req.Title, Tooth: req.Tooth, TotalAmount: req.TotalAmount, StartDate: req.StartDate,
 		IntervalUnit: req.IntervalUnit, IntervalCount: req.IntervalCount, SessionCount: req.SessionCount, Note: req.Note,
+		Deposit: req.Deposit,
 	}
 	for _, ss := range req.Sessions {
 		in.Sessions = append(in.Sessions, dental.SessionSeed{ScheduledDate: ss.ScheduledDate, AmountDue: ss.AmountDue})

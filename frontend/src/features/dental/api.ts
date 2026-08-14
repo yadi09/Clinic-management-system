@@ -107,6 +107,8 @@ export interface Plan {
   note?: string;
   created_at: string;
   money: PlanMoney;
+  /** The up-front payment, when the plan has one. Not a session: it has no visit. */
+  deposit?: { id: string; amount_due: string; payment: Session["payment"]; scheduled_date: string };
   sessions: Session[];
 }
 
@@ -141,6 +143,8 @@ export interface CreatePlanBody {
   interval_count: number;
   session_count: number;
   note?: string;
+  /** Down payment, taken off the top; the sessions divide what remains. */
+  deposit?: string;
   // The create preview sends the final per-session rows (dates + amounts).
   sessions?: { scheduled_date: string; amount_due: string }[];
 }

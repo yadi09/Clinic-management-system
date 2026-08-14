@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AlertTriangle, ArrowLeft, CalendarClock, ImagePlus, Pencil, Plus } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -38,7 +39,7 @@ import { FLAT_TEETH, ToothMultiSelect } from "@/features/dental/shared/pickers";
 import { ImageGallery } from "@/features/dental/shared/visitRecord";
 
 import {
-  createPlan, deleteDentalImage, dentalSummary,
+  collectSession, createPlan, deleteDentalImage, dentalSummary,
   listDentalImages, saveChart, uploadDentalImage,
   type Balance, type Plan,
 } from "@/features/dental/api";
@@ -403,7 +404,7 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
             badge: bal.overdue ? "!" : undefined,
             render: () => (
               <div className="space-y-4">
-                <BalanceSummary bal={bal} plans={plans} />
+                <BalanceSummary patientId={patientId} bal={bal} plans={plans} canCollect={canCollect} />
                 <PaymentHistoryCard patientId={patientId} bare />
               </div>
             ),
@@ -425,8 +426,40 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
   );
 }
 
+/** The down payment on a course: money, but not a visit, so it has nowhere else to
+ *  live. It cannot appear in Unbilled treatment (that is treatment already given)
+ *  and it is deliberately not in the visit timeline, so this is the one place the
+ *  desk can see it is outstanding and send it to the cashier. */
+function DepositLine({ patientId, plan, canCollect }: { patientId: string; plan: Plan; canCollect: boolean }) {
+  const d = plan.deposit;
+  const qc = useQueryClient();
+  const collect = useMutation({
+    mutationFn: () => collectSession(patientId, d!.id),
+    onSuccess: () => { toast.success("Down payment sent to the cashier"); invalidateDental(qc, patientId); },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not send it to the cashier"),
+  });
+  if (!d || num(d.amount_due) <= 0.005) return null;
+  const paid = d.payment === "paid";
+  const queued = d.payment === "billed";
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-3 text-xs">
+      <span className="text-muted-foreground">Down payment</span>
+      <span className="tabular-nums font-medium">{birr(d.amount_due)}</span>
+      <Badge variant={paid ? "success" : queued ? "warning" : "destructive"}>
+        {paid ? "Paid" : queued ? "At cashier" : "Owed now"}
+      </Badge>
+      {!paid && !queued && canCollect && (
+        <Button size="sm" variant="outline" className="h-6 px-2 text-xs"
+          loading={collect.isPending} onClick={() => collect.mutate()}>
+          Send to cashier
+        </Button>
+      )}
+    </div>
+  );
+}
+
 /** The money headline, lifted out of its old card so it can live on the shelf. */
-function BalanceSummary({ bal, plans }: { bal: Balance; plans: Plan[] }) {
+function BalanceSummary({ patientId, bal, plans, canCollect }: { patientId: string; bal: Balance; plans: Plan[]; canCollect: boolean }) {
   const owed = num(bal.owed);
   const pct = owed > 0 ? Math.min(100, Math.round((num(bal.paid) / owed) * 100)) : 0;
   const live = plans.filter((pl) => pl.status !== "cancelled");
@@ -463,12 +496,15 @@ function BalanceSummary({ bal, plans }: { bal: Balance; plans: Plan[] }) {
         <div className="space-y-1 border-t pt-3">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">By course</p>
           {live.map((pl) => (
-            <div key={pl.id} className="flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
-              <span className="min-w-0 truncate">{pl.title}</span>
-              <span className="tabular-nums text-muted-foreground">
-                {birr(pl.money.collected)} of {birr(pl.money.planned)}
-                {num(pl.money.due) > 0.005 && <span className="ml-2 font-medium text-destructive">{birr(pl.money.due)} owed</span>}
-              </span>
+            <div key={pl.id} className="space-y-1">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
+                <span className="min-w-0 truncate">{pl.title}</span>
+                <span className="tabular-nums text-muted-foreground">
+                  {birr(pl.money.collected)} of {birr(pl.money.planned)}
+                  {num(pl.money.due) > 0.005 && <span className="ml-2 font-medium text-destructive">{birr(pl.money.due)} owed</span>}
+                </span>
+              </div>
+              <DepositLine patientId={patientId} plan={pl} canCollect={canCollect} />
             </div>
           ))}
         </div>
@@ -614,6 +650,7 @@ function NewPlanDialog({ patientId, teeth, onClose, onSaved }: { patientId: stri
   const [sel, setSel] = useState<string[]>([]); // selected tooth codes
   const toothStr = FLAT_TEETH.filter((c) => sel.includes(c)).join(", ");
   const [total, setTotal] = useState("");
+  const [deposit, setDeposit] = useState("");
   const [start, setStart] = useState(() => isoLocal(new Date()));
   const [freqKey, setFreqKey] = useState("monthly");
   const [customDays, setCustomDays] = useState("30");
@@ -628,20 +665,25 @@ function NewPlanDialog({ patientId, teeth, onClose, onSaved }: { patientId: stri
   const ivl = freq.key === "custom" ? Math.max(1, Number(customDays) || 1) : freq.count;
   const n = Math.max(1, Math.min(60, Number(count) || 1));
 
+  // What the sessions divide is the total less the down payment — the deposit is
+  // paid to start the work, not spread across the visits.
+  const down = Math.max(0, Math.min(num(deposit), num(total) || num(deposit)));
+  const financed = Math.max(0, num(total) - down);
+
   // Regenerate the preview whenever the schedule inputs change.
   useEffect(() => {
-    setRows(genPreview(start, n, unit, ivl, num(total)));
+    setRows(genPreview(start, n, unit, ivl, financed));
     setScheduleGen((g) => g + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [start, n, unit, ivl, total]);
+  }, [start, n, unit, ivl, financed]);
 
   const rowsTotal = rows.reduce((a, r) => a + num(r.amount), 0);
   const fmtDate = (iso: string) => (iso && scheduleMode === "ethiopian" ? `${formatEthiopian(iso)} EC` : iso);
 
   // Reconcile the per-session amounts against the entered total cost. When no total
   // is entered the sessions define it (no warning); otherwise they must match.
-  const target = num(total);
-  const diff = rowsTotal - target; // + = sessions exceed total, − = fall short
+  const target = financed;
+  const diff = rowsTotal - target; // + = sessions exceed the financed part, − = fall short
   const mismatch = target > 0 && Math.abs(diff) > 0.5;
   const othersSum = rows.slice(0, -1).reduce((a, r) => a + num(r.amount), 0);
   const canBalance = rows.length > 0 && target - othersSum >= 0;
@@ -656,6 +698,7 @@ function NewPlanDialog({ patientId, teeth, onClose, onSaved }: { patientId: stri
     mutationFn: () => createPlan(patientId, {
       title: title.trim(), tooth: toothStr, total_amount: total || "0", start_date: start,
       interval_unit: unit, interval_count: ivl, session_count: rows.length, note: note.trim(),
+      deposit: String(down),
       sessions: rows.map((r) => ({ scheduled_date: r.date, amount_due: r.amount || "0" })),
     }),
     onSuccess: () => { toast.success("Treatment plan created"); onSaved(); },
@@ -676,7 +719,18 @@ function NewPlanDialog({ patientId, teeth, onClose, onSaved }: { patientId: stri
             </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5"><Label>Total cost (ETB)</Label><Input type="number" min={0} value={total} onChange={(e) => setTotal(e.target.value)} placeholder="0" /></div>
+            <div className="space-y-3">
+              <div className="space-y-1.5"><Label>Total cost (ETB)</Label><Input type="number" min={0} value={total} onChange={(e) => setTotal(e.target.value)} placeholder="0" /></div>
+              <div className="space-y-1.5">
+                <Label>Down payment (ETB)</Label>
+                <Input type="number" min={0} value={deposit} onChange={(e) => setDeposit(e.target.value)} placeholder="0" />
+                <p className="text-xs text-muted-foreground">
+                  {down > 0
+                    ? <>Paid up front. The remaining <b className="text-foreground">{birr(String(financed))}</b> is divided across the sessions.</>
+                    : <>Optional. Leave empty to divide the whole cost across the sessions.</>}
+                </p>
+              </div>
+            </div>
             <div className="space-y-1.5"><Label>Start date</Label><EthiopianDateInput key={startKey} value={start} onChange={setStart} showAge={false} /></div>
           </div>
           <div className="space-y-1.5">
@@ -717,10 +771,20 @@ function NewPlanDialog({ patientId, teeth, onClose, onSaved }: { patientId: stri
                     </button>
                   ))}
                 </div>
-                <span className={cn("tabular-nums font-semibold", mismatch ? "text-amber-600" : target > 0 ? "text-emerald-600" : "")}>Σ {birr(String(rowsTotal))}</span>
+                <span className={cn("tabular-nums font-semibold", mismatch ? "text-amber-600" : target > 0 ? "text-emerald-600" : "")}>
+                  Σ {birr(String(down + rowsTotal))}{down > 0 ? ` (${birr(String(down))} down)` : ""}
+                </span>
               </div>
             </div>
             <div className="max-h-56 overflow-auto">
+              {down > 0 && (
+                <div className="flex items-center gap-2 border-b bg-muted/20 px-3 py-1.5">
+                  <span className="w-5 shrink-0 text-xs text-muted-foreground">↓</span>
+                  <span className="text-sm font-medium">Down payment</span>
+                  <span className="text-xs text-muted-foreground">due on the start date</span>
+                  <span className="ml-auto pr-9 text-sm font-semibold tabular-nums">{birr(String(down))}</span>
+                </div>
+              )}
               {rows.map((r, i) => (
                 <div key={i} className="flex items-center gap-2 px-3 py-1.5">
                   <span className="w-5 shrink-0 text-xs tabular-nums text-muted-foreground">{i + 1}</span>
