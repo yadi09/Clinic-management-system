@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
-import { STATUS_LABEL, statusStyle, TOOTH_QUADRANTS } from "@/features/dental/ToothChart";
+import { STATUS_LABEL, statusStyle, TOOTH_QUADRANTS, TOOTH_STATUSES } from "@/features/dental/ToothChart";
 
 /** Palmer codes in chart order, so a selection always reads UR6, UR7 — never UR7, UR6. */
 export const FLAT_TEETH = TOOTH_QUADRANTS.flatMap((q) => q.codes);
@@ -133,27 +133,39 @@ export function ToothPalmerPicker({ value, onChange, teeth }: {
     onChange(value.includes(code) ? value.filter((c) => c !== code) : [...value, code]);
 
   const row = (q: { label: string; codes: string[] }, align: "end" | "start") => (
-    <div className={cn("flex gap-0.5", align === "end" ? "justify-end" : "justify-start")}>
+    <div className={cn("flex gap-1.5", align === "end" ? "justify-end" : "justify-start")}>
       {q.codes.map((code) => {
         const on = value.includes(code);
         const charted = teeth[code];
-        const st = charted ? statusStyle(charted) : undefined;
+        const st = statusStyle(charted ?? "");
         return (
           <button
             key={code}
             type="button"
             onClick={() => toggle(code)}
             aria-pressed={on}
-            title={`Palmer ${code}${charted ? ` · ${STATUS_LABEL[charted] ?? charted}` : ""}${on ? " · selected" : ""}`}
-            style={on ? undefined : st}
+            title={`Palmer ${code} · ${STATUS_LABEL[charted] ?? "Not charted"}${on ? " · selected" : ""}`}
+            // The STATUS keeps the tooth's own colour whether it is selected or not.
+            // Filling a selected tooth solid was hiding the very thing the chart is
+            // for: a decayed tooth stopped looking decayed the moment you picked it.
+            style={st}
             className={cn(
-              "flex h-7 w-6 items-center justify-center rounded border text-[10px] font-semibold tabular-nums transition-all",
+              "relative flex h-7 w-6 items-center justify-center rounded border text-[10px] font-semibold tabular-nums transition-all",
               on
-                ? "scale-105 border-brand bg-brand text-brand-foreground shadow-sm"
-                : "hover:border-brand/60 hover:bg-accent",
+                // Selection is an outline, not a fill — it sits outside the swatch
+                // and leaves the colour underneath legible.
+                ? "outline outline-2 outline-offset-[2px] outline-brand"
+                : "hover:outline hover:outline-2 hover:outline-offset-[2px] hover:outline-brand/40",
             )}
           >
             {code.slice(2)}
+            {on && (
+              // A ring alone is ambiguous on a small square; the tick says "chosen"
+              // in a way that survives being printed or read at arm's length.
+              <span className="absolute -right-1 -top-1 flex h-3 w-3 items-center justify-center rounded-full bg-brand text-brand-foreground">
+                <Check className="h-2 w-2" strokeWidth={4} />
+              </span>
+            )}
           </button>
         );
       })}
@@ -177,10 +189,29 @@ export function ToothPalmerPicker({ value, onChange, teeth }: {
           <div className="pl-2 pt-1.5">{row(TOOTH_QUADRANTS[3], "start")}</div>
         </div>
       </div>
-      <p className="mt-2 text-center text-[10px] text-muted-foreground">
+      {/* The key. The colours mean something clinically and a dentist should not have
+          to hover each tooth to find out what — a paper chart has always carried its
+          legend, and so should this one. */}
+      <div className="mt-2.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t pt-2">
+        {TOOTH_STATUSES.map((k) => {
+          const st = statusStyle(k);
+          return (
+            <span key={k} className="flex items-center gap-1 text-[10px] text-muted-foreground">
+              <span className="h-2.5 w-2.5 rounded-sm border"
+                style={{ background: st.background, borderColor: st.borderColor }} />
+              {STATUS_LABEL[k]}
+            </span>
+          );
+        })}
+        <span className="flex items-center gap-1 text-[10px] font-medium text-foreground">
+          <span className="h-2.5 w-2.5 rounded-sm border bg-card outline outline-2 outline-offset-[1px] outline-brand" />
+          Treated today
+        </span>
+      </div>
+      <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
         {value.length === 0
-          ? "Tap a tooth to add it"
-          : `${value.length} selected — ${FLAT_TEETH.filter((c) => value.includes(c)).join(", ")}`}
+          ? "Tap a tooth to add it to this visit"
+          : `${value.length} treated today — ${FLAT_TEETH.filter((c) => value.includes(c)).join(", ")}`}
       </p>
     </div>
   );
