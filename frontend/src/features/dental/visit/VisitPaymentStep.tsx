@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { AppError } from "@/lib/api-client";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import {
   collectSession, repriceSession, setPayLater, uncollectSession,
   type Plan, type Session,
@@ -351,6 +352,12 @@ export function VisitPaymentStep({ patientId, plan, session, canCollect, editabl
   const stage = feeStage(session);
   const [editing, setEditing] = useState(false);
   const [promise, setPromise] = useState(session.pay_later_note ?? "");
+  const { ask, dialog } = useConfirmDialog();
+
+  // The promise is captured in the dialog, so by the time this field renders the
+  // note already exists on the server. Without this the field keeps the empty value
+  // it mounted with and the dentist watches what they just typed disappear.
+  useEffect(() => { setPromise(session.pay_later_note ?? ""); }, [session.pay_later_note]);
 
   // While the money is with the cashier the dentist should not have to refresh to
   // find out it has been paid — the step advances on its own.
@@ -367,18 +374,49 @@ export function VisitPaymentStep({ patientId, plan, session, canCollect, editabl
   });
   const bill = useMutation(run(() => collectSession(patientId, session.id), "Sent to the cashier"));
   const pull = useMutation(run(() => uncollectSession(patientId, session.id), "Pulled back from the cashier"));
-  const later = useMutation(run(() => setPayLater(patientId, session.id, { on: true, note: promise.trim() }), "Recorded as pay later"));
+  // The note is a parameter, not the component's state: the promise is captured in
+  // the dialog that asks for it, and the inline field below edits it afterwards.
+  const later = useMutation({
+    mutationFn: (note: string) => setPayLater(patientId, session.id, { on: true, note: note.trim() }),
+    onSuccess: () => { toast.success("Recorded as pay later"); onChanged(); },
+    onError: (e: unknown) => toast.error(e instanceof AppError ? e.message : "Could not record the promise"),
+  });
   const undoLater = useMutation(run(() => setPayLater(patientId, session.id, { on: false, note: "" }), "Promise removed"));
+
+  // Letting the patient leave without paying is a decision, so it is asked for
+  // rather than taken on one click. The note is optional — a clinic that demands a
+  // reason gets "x" typed into it — but the consequence is spelled out, because the
+  // fee does not disappear and somebody will be chasing it later.
+  const askPayLater = () => ask(
+    {
+      title: "Treat now, pay later?",
+      description: (
+        <>
+          The treatment goes ahead and <b>{birr(session.amount_due)}</b> stays owed. It appears
+          in <b>Unbilled treatment</b> until someone collects it — nothing is written off, and the
+          patient's balance will show it.
+        </>
+      ),
+      reason: {
+        label: "When did they promise to pay? (optional)",
+        placeholder: "Next visit · end of the month · after salary",
+      },
+      confirmLabel: "Treat now, pay later",
+      cancelLabel: "Go back",
+    },
+    (note) => later.mutateAsync(note),
+  );
 
   const payLaterButton = (
     <Button variant="ghost" size="sm" className="text-muted-foreground"
-      loading={later.isPending} onClick={() => later.mutate()}>
+      loading={later.isPending} onClick={askPayLater}>
       Treat now, pay later
     </Button>
   );
 
   return (
     <div className="space-y-3 rounded-md border bg-muted/20 p-3">
+      {dialog}
       <Pipeline stage={stage} />
       <CourseRecap plan={plan} current={session} />
 
@@ -442,7 +480,7 @@ export function VisitPaymentStep({ patientId, plan, session, canCollect, editabl
               <div className="mt-2 space-y-1.5">
                 <Label htmlFor="promise" className="text-xs">Promised by (optional)</Label>
                 <Input id="promise" value={promise} onChange={(e) => setPromise(e.target.value)}
-                  onBlur={() => { if (promise.trim() !== (session.pay_later_note ?? "")) later.mutate(); }}
+                  onBlur={() => { if (promise.trim() !== (session.pay_later_note ?? "")) later.mutate(promise); }}
                   placeholder="Next visit · end of the month · after salary" className="h-8 max-w-sm text-xs" />
                 <p className="text-xs text-muted-foreground">
                   Shows in Unbilled treatment until it is collected. Nothing is written off.
