@@ -62,6 +62,10 @@ export function VisitCockpit({
   onChanged: () => void;
 }) {
   const [recording, setRecording] = useState(false);
+  // Reopened payment panel for a fee that is already answered. Keyed off the stage
+  // rather than a click count so that undoing a promise, or promising again, always
+  // lands back on the default view for that stage.
+  const [showFee, setShowFee] = useState(false);
   // The timeline lives outside this component and can also switch the focused visit,
   // so the guard cannot be local: the page needs to know a note is open.
   useEffect(() => { onRecordingChange?.(recording); }, [recording, onRecordingChange]);
@@ -70,6 +74,15 @@ export function VisitCockpit({
   const [finishing, setFinishing] = useState(false);
   const [correcting, setCorrecting] = useState(false);
   const { focus, rung, others } = resolved;
+
+  // An answered fee gets out of the way; the panel returns on request. Reset on any
+  // change of stage so Undo (promised -> unpaid) reopens it and a fresh promise
+  // (unpaid -> promised) collapses it again, without the reopen fighting either.
+  //
+  // ABOVE the early return on purpose. A hook below it runs on some renders and not
+  // others, which is what blanked this page once already.
+  const focusStage = focus ? feeStage(focus.session) : null;
+  useEffect(() => { setShowFee(false); }, [focusStage, focus?.session.id]);
 
   if (!focus) {
     return (
@@ -111,6 +124,9 @@ export function VisitCockpit({
   //   upcoming   not happened yet   -> start it, or move it. No money question exists.
   //   recording  being written now  -> the form.
   //   recorded   it happened        -> read it back; settle the fee if it is unsettled.
+  const stage = feeStage(session);
+  const feeSettled = (stage === "paid" || stage === "promised") && !showFee;
+
   const state: "upcoming" | "recording" | "recorded" =
     recording ? "recording" : session.status === "done" ? "recorded" : "upcoming";
   const isToday = session.scheduled_date === todayISO();
@@ -176,11 +192,12 @@ export function VisitCockpit({
 
         {state === "recording" && (
           <>
-            {/* STEP 1 — the fee. Collapses to a strip only once it is PAID: a promise
-                still has something to act on (undo it, or send it to the desk), so it
-                keeps the panel even though the treatment form is open behind it. */}
-            {feeStage(session) === "paid"
-              ? <FeeStrip session={session} planTitle={plan.title} />
+            {/* STEP 1 — the fee. Once it is answered (paid, or promised) it collapses
+                to a strip and the chair gets the screen. A promise is still actionable,
+                so the strip reopens the panel rather than hiding it for good. */}
+            {feeSettled
+              ? <FeeStrip session={session} planTitle={plan.title}
+                  onReopen={feeStage(session) === "promised" ? () => setShowFee(true) : undefined} />
               : (
                 <VisitPaymentStep patientId={patientId} plan={plan} session={session}
                   canCollect={canCollect} editable={editable} onChanged={onChanged} />
@@ -240,8 +257,9 @@ export function VisitCockpit({
             {/* WHAT IT COSTS. The same pipeline as the recording step rather than a
                 second, differently-worded amber panel — a fee looks the same here as
                 it did five seconds ago. */}
-            {editable && (feeStage(session) === "paid"
-              ? <FeeStrip session={session} planTitle={plan.title} />
+            {editable && (feeSettled
+              ? <FeeStrip session={session} planTitle={plan.title}
+                  onReopen={feeStage(session) === "promised" ? () => setShowFee(true) : undefined} />
               : (
                 <VisitPaymentStep patientId={patientId} plan={plan} session={session}
                   canCollect={canCollect} editable={editable} onChanged={onChanged} />

@@ -504,8 +504,16 @@ export function VisitPaymentStep({ patientId, plan, session, canCollect, editabl
   );
 }
 
-/** Once recording, the money collapses to one line that stays in view. */
-export function FeeStrip({ session, planTitle }: { session: Session; planTitle: string }) {
+/**
+ * Once the fee is answered, the money collapses to one line that stays in view.
+ *
+ * `onReopen` brings the full panel back. A promise is an answer, not a closed
+ * matter — it can still be undone or sent to the desk — so it must be reachable
+ * from here rather than requiring the visit to be abandoned and reopened.
+ */
+export function FeeStrip({ session, planTitle, onReopen }: {
+  session: Session; planTitle: string; onReopen?: () => void;
+}) {
   const stage = feeStage(session);
   const meta = {
     paid: { label: "Paid", cls: "bg-emerald-600 text-white" },
@@ -520,6 +528,11 @@ export function FeeStrip({ session, planTitle }: { session: Session; planTitle: 
       </span>
       <span className="tabular-nums font-semibold">{birr(session.amount_due)}</span>
       <span className="text-muted-foreground">· {planTitle} · visit {session.seq}</span>
+      {onReopen && (
+        <Button variant="ghost" size="sm" className="ml-auto h-6 px-2 text-xs" onClick={onReopen}>
+          Payment options
+        </Button>
+      )}
     </div>
   );
 }

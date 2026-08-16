@@ -30,6 +30,7 @@ import { DualDate } from "@/components/DualDate";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { updateSession, type Session } from "@/features/dental/api";
 import { birr } from "@/features/dental/money";
+import { feeStage } from "@/features/dental/visit/VisitPaymentStep";
 import { FLAT_TEETH, parseCsv, ProcedureMultiSelect, ToothMultiSelect } from "@/features/dental/shared/pickers";
 import { PrescriptionSection, SessionImages } from "@/features/dental/shared/visitRecord";
 
@@ -183,7 +184,12 @@ export function RecordVisitForm({
           <Save className="h-4 w-4" /> Save &amp; mark done
         </Button>
         <span className="text-xs text-muted-foreground">
-          Fee {birr(session.amount_due)} — already settled above.
+          {/* "Settled" is true of a paid fee and a lie about a promised one — this
+              line sits under the button that finishes the visit, so it has to say
+              which of the two happened. */}
+          Fee {birr(session.amount_due)} — {feeStage(session) === "paid"
+            ? "paid."
+            : "owed; the patient pays later."}
         </span>
       </div>
     </div>
