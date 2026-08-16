@@ -12,7 +12,7 @@
 // one that says "OVERDUE · was Thu 7 Aug · 5 days ago" can be argued with.
 import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { CalendarClock, ChevronRight, FileText, MoreHorizontal, Plus } from "lucide-react";
+import { CalendarClock, ChevronRight, FileText, Image as ImageIcon, MoreHorizontal, Pill, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -187,7 +187,7 @@ export function VisitCockpit({
             under an open form would retarget the save to another session. */}
         {state !== "recording" && (
           <CourseRail plan={plan} currentId={session.id} onPick={onPick} canEdit={editable}
-            onAdd={() => setAdding(true)} />
+            onAdd={() => setAdding(true)} onNewPlan={onNewPlan} />
         )}
 
         {state === "recording" && (
@@ -235,7 +235,7 @@ export function VisitCockpit({
         {state === "upcoming" && (
           <>
             {/* WHAT HAPPENED LAST — the question this panel exists to answer. */}
-            <VisitReader plan={plan} before={session} />
+            <VisitReader plan={plan} before={session} onPick={onPick} />
             {editable && (
               <div className="flex flex-wrap items-center gap-3">
                 <Button onClick={() => setRecording(true)}>
@@ -329,8 +329,9 @@ const todayISO = () => {
  * the clinician's page never showed it. Each dot is clickable, so switching to
  * another visit in the same course costs one click instead of a scroll and a hunt.
  */
-function CourseRail({ plan, currentId, onPick, onAdd, canEdit }: {
-  plan: Plan; currentId: string; onPick: (id: string) => void; onAdd?: () => void; canEdit: boolean;
+function CourseRail({ plan, currentId, onPick, onAdd, onNewPlan, canEdit }: {
+  plan: Plan; currentId: string; onPick: (id: string) => void;
+  onAdd?: () => void; onNewPlan?: () => void; canEdit: boolean;
 }) {
   // Calendar order, so the rail and the plan list below tell the same story about
   // a course whose sessions have been rescheduled out of their original sequence.
@@ -370,11 +371,35 @@ function CourseRail({ plan, currentId, onPick, onAdd, canEdit }: {
             <Plus className="h-3 w-3" /> visit
           </button>
         )}
+        {/* Starting a different course of treatment was buried in the ⋯ menu, which
+            is where you put things people already know exist. A patient arriving
+            with a new problem is routine, so it sits on the rail — next to the
+            course it is NOT part of, and worded so the difference is plain. */}
+        {canEdit && onNewPlan && (
+          <button type="button" onClick={onNewPlan}
+            className="ml-auto flex h-7 items-center gap-1 rounded-full border border-brand/40 bg-brand/5 px-2.5 text-xs font-semibold text-brand hover:bg-brand/10">
+            <Plus className="h-3 w-3" /> New treatment
+          </button>
+        )}
       </div>
-      <p className="text-xs text-muted-foreground tabular-nums">
-        paid {birr(paid)} of {birr(plan.total_amount)}
-        {unbilled > 0 && <span className="ml-2 font-medium text-amber-700">· {unbilled} unsettled</span>}
-      </p>
+      {/* The course's money, as a bar. "paid 14,000 ETB of 18,000 ETB" in grey 12px
+          was the only place this appeared above the fold, and it read as a caption
+          rather than as the answer to "how far through is this patient". */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div className="h-1.5 w-full max-w-[14rem] overflow-hidden rounded-full bg-muted">
+          <div className="h-full rounded-full bg-emerald-500 transition-all"
+            style={{ width: `${Math.min(100, Math.round((paid / (Number(plan.total_amount) || 1)) * 100))}%` }} />
+        </div>
+        <span className="text-xs tabular-nums">
+          <b className="text-emerald-700">{birr(paid)}</b>
+          <span className="text-muted-foreground"> paid of {birr(plan.total_amount)}</span>
+        </span>
+        {unbilled > 0 && (
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+            {unbilled} unsettled
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -400,7 +425,9 @@ function RecordedSummary({ session }: { session: { procedure?: string; tooth?: s
   );
 }
 
-function VisitReader({ plan, before }: { plan: Plan; before: { id: string; scheduled_date: string } }) {
+function VisitReader({ plan, before, onPick }: {
+  plan: Plan; before: { id: string; scheduled_date: string }; onPick: (id: string) => void;
+}) {
   // By DATE, not by seq. Rescheduling moves dates without renumbering, so seq 3 can
   // sit before seq 2 on the calendar — and "last time" must mean the visit that
   // actually happened last.
@@ -416,22 +443,58 @@ function VisitReader({ plan, before }: { plan: Plan; before: { id: string; sched
     );
   }
   const said = [previous.procedure, previous.tooth].filter(Boolean).join(" · ");
+  const stage = feeStage(previous);
+  const money = {
+    paid: { label: "Paid", cls: "bg-emerald-100 text-emerald-800" },
+    atCashier: { label: "At cashier", cls: "bg-amber-100 text-amber-800" },
+    promised: { label: "Owed", cls: "bg-amber-100 text-amber-900" },
+    unpaid: { label: "Owed", cls: "bg-destructive/10 text-destructive" },
+  }[stage];
+
+  // A button, not a panel. It is the record of a visit that happened, and the thing
+  // a dentist wants after reading two lines of it is the rest of it — which used to
+  // mean hunting the same visit down in the timeline below.
   return (
-    <div className="rounded-md border bg-muted/40 px-3 py-2">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-        Last time · session {previous.seq} · <DualDate iso={previous.scheduled_date} />
-      </p>
-      {said && <p className="mt-0.5 text-sm font-medium">{said}</p>}
-      {previous.notes && <p className="mt-0.5 line-clamp-3 whitespace-pre-wrap text-sm">{previous.notes}</p>}
-      {!said && !previous.notes && <p className="mt-0.5 text-sm text-muted-foreground">No note was recorded for that visit.</p>}
+    <button
+      type="button"
+      onClick={() => onPick(previous.id)}
+      className="group w-full rounded-lg border bg-card p-3 text-left shadow-sm transition-colors hover:border-brand/50 hover:bg-accent/40"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600/15 text-[11px] font-bold text-emerald-700">
+          {previous.seq}
+        </span>
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Last visit
+        </span>
+        <span className="text-xs font-medium"><DualDate iso={previous.scheduled_date} /></span>
+        <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide", money.cls)}>
+          {money.label} {birr(previous.amount_due)}
+        </span>
+        <span className="ml-auto flex items-center gap-1 text-xs font-medium text-muted-foreground group-hover:text-brand">
+          Open <ChevronRight className="h-3.5 w-3.5" />
+        </span>
+      </div>
+
+      {said && <p className="mt-2 text-sm font-semibold">{said}</p>}
+      {previous.notes && <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-sm text-muted-foreground">{previous.notes}</p>}
+      {!said && !previous.notes && <p className="mt-2 text-sm italic text-muted-foreground">No clinical note was written for that visit.</p>}
+
       {(previous.prescriptions.length > 0 || previous.images.length > 0) && (
-        <p className="mt-1 text-xs text-muted-foreground">
-          {previous.prescriptions.length > 0 && `${previous.prescriptions.length} prescription${previous.prescriptions.length > 1 ? "s" : ""}`}
-          {previous.prescriptions.length > 0 && previous.images.length > 0 && " · "}
-          {previous.images.length > 0 && `${previous.images.length} image${previous.images.length > 1 ? "s" : ""}`}
-        </p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {previous.prescriptions.length > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
+              <Pill className="h-3 w-3" /> {previous.prescriptions.length} prescription{previous.prescriptions.length > 1 ? "s" : ""}
+            </span>
+          )}
+          {previous.images.length > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
+              <ImageIcon className="h-3 w-3" /> {previous.images.length} image{previous.images.length > 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
       )}
-    </div>
+    </button>
   );
 }
 
