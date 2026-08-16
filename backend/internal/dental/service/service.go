@@ -2186,3 +2186,137 @@ func (s *Service) DeleteImage(ctx context.Context, patientID, imageID uuid.UUID)
 	_ = s.store.Delete(ctx, key) // best effort — frees metered storage
 	return nil
 }
+
+// RepriceSession changes one visit's fee and decides where the difference lands.
+//
+// A course is quoted as one price and divided evenly, but the chair disagrees with
+// the plan: the dentist finds more work, or less. Before this the fee could only be
+// edited one session at a time with no arithmetic behind it, so raising a visit by
+// 2,000 silently raised the course by 2,000 — the patient had agreed to a total and
+// the total moved without anyone deciding that it should.
+//
+// So the caller must say where the money comes from:
+//
+//	"respread"  keep the course total; take the difference off the visits still to
+//	            come, split evenly with the remainder on the last.
+//	"total"     leave the other visits alone; the course total moves instead.
+//
+// Only visits AFTER this one and still unbilled can absorb anything. A visit that
+// has been sent to the cashier or paid is frozen — a receipt already states its
+// price, and re-spreading onto it would make the ledger disagree with the paper.
+func (s *Service) RepriceSession(ctx context.Context, patientID, sessionID uuid.UUID, amount string, mode string) error {
+	if mode != "respread" && mode != "total" {
+		return apperr.Validation("say where the difference goes: respread or total")
+	}
+	newAmt := money(amount)
+	if newAmt < 0 {
+		return apperr.Validation("a fee cannot be negative")
+	}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		tid, _ := actorOf(ctx)
+		if e := refuseDeposit(ctx, tx, tid, sessionID); e != nil {
+			return e
+		}
+		var planID uuid.UUID
+		var seq int
+		var oldAmt string
+		var chargeStatus *string
+		if e := tx.QueryRow(ctx,
+			`SELECT se.plan_id, se.seq, se.amount_due::text, c.status
+			   FROM treatment_sessions se
+			   LEFT JOIN charges c ON c.id = se.charge_id AND c.tenant_id = se.tenant_id AND c.deleted_at IS NULL
+			  WHERE se.tenant_id = $1 AND se.patient_id = $2 AND se.id = $3
+			  FOR UPDATE OF se`,
+			tid, patientID, sessionID).Scan(&planID, &seq, &oldAmt, &chargeStatus); e != nil {
+			if errors.Is(e, pgx.ErrNoRows) {
+				return apperr.NotFound("SESSION_NOT_FOUND", "session not found")
+			}
+			return e
+		}
+		// The same freeze the fee edit already honours: once money is queued or taken,
+		// the price on the receipt is the price.
+		if chargeStatus != nil {
+			switch *chargeStatus {
+			case "pending", "paid", "waived":
+				return apperr.Conflict("SESSION_ALREADY_BILLED",
+					"this visit's fee is already with the cashier or settled — undo that first")
+			}
+		}
+		delta := newAmt - money(oldAmt)
+
+		if mode == "respread" && delta != 0 {
+			// The visits that can still absorb a change: later in the course, not called
+			// off, and with no live charge against them.
+			rows, e := tx.Query(ctx,
+				`SELECT se.id, se.amount_due::text
+				   FROM treatment_sessions se
+				   LEFT JOIN charges c ON c.id = se.charge_id AND c.tenant_id = se.tenant_id AND c.deleted_at IS NULL
+				  WHERE se.tenant_id = $1 AND se.plan_id = $2 AND se.kind = 'visit'
+				    AND se.seq > $3 AND se.status <> 'cancelled'
+				    AND (c.status IS NULL OR c.status NOT IN ('pending','paid','waived'))
+				  ORDER BY se.seq
+				  FOR UPDATE OF se`,
+				tid, planID, seq)
+			if e != nil {
+				return e
+			}
+			var ids []uuid.UUID
+			pool := 0.0
+			for rows.Next() {
+				var id uuid.UUID
+				var amt string
+				if e := rows.Scan(&id, &amt); e != nil {
+					rows.Close()
+					return e
+				}
+				ids = append(ids, id)
+				pool += money(amt)
+			}
+			rows.Close()
+			if e := rows.Err(); e != nil {
+				return e
+			}
+			if len(ids) == 0 {
+				return apperr.Validation("there are no later visits left to re-spread this across — change the course total instead")
+			}
+			left := pool - delta
+			if left < 0 {
+				return apperr.Validation(fmt.Sprintf(
+					"the remaining visits only hold %s — raise the course total instead", fmtMoney(pool)))
+			}
+			shares := splitAmount(left, len(ids))
+			for i, id := range ids {
+				if _, e := tx.Exec(ctx,
+					`UPDATE treatment_sessions SET amount_due = $3, updated_at = now()
+					  WHERE tenant_id = $1 AND id = $2`, tid, id, fmtMoney(shares[i])); e != nil {
+					return e
+				}
+			}
+		}
+
+		if _, e := tx.Exec(ctx,
+			`UPDATE treatment_sessions SET amount_due = $3, updated_at = now()
+			  WHERE tenant_id = $1 AND id = $2`, tid, sessionID, fmtMoney(newAmt)); e != nil {
+			return e
+		}
+		// Recompute rather than adjust: the total is whatever the rows now say, so the
+		// two modes cannot drift apart and a cancelled visit never counts.
+		if _, e := tx.Exec(ctx,
+			`UPDATE treatment_plans p SET total_amount = coalesce((
+			     SELECT sum(se.amount_due) FROM treatment_sessions se
+			      WHERE se.tenant_id = p.tenant_id AND se.plan_id = p.id AND se.status <> 'cancelled'), 0),
+			   updated_at = now()
+			 WHERE p.tenant_id = $1 AND p.id = $2`, tid, planID); e != nil {
+			return e
+		}
+		return s.publisher.Publish(ctx, tx, &tid, "treatment_session", sessionID, "dental.session.repriced",
+			map[string]any{"patient_id": patientID, "from": oldAmt, "to": fmtMoney(newAmt), "mode": mode})
+	})
+	if ae, ok := apperr.As(err); ok {
+		return ae
+	}
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}

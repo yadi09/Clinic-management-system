@@ -36,6 +36,7 @@ import { ExaminationCard } from "@/features/dental/ExaminationCard";
 import { invalidateDental } from "@/features/dental/invalidate";
 import { ToothChart } from "@/features/dental/ToothChart";
 import { FLAT_TEETH, ToothMultiSelect } from "@/features/dental/shared/pickers";
+import { splitRounded } from "@/features/dental/money";
 import { ImageGallery } from "@/features/dental/shared/visitRecord";
 
 import {
@@ -86,21 +87,6 @@ function addInterval(base: Date, unit: string, count: number): Date {
   }
   return d;
 }
-// Split a total into "payable" whole-birr amounts: each session rounds down to a
-// comfortable unit (100 birr when the share is ≥100, else 10, else 1) and the last
-// session carries the remainder — so patients pay round numbers, not 5833.33.
-function splitRounded(total: number, n: number): number[] {
-  if (n <= 0) return [];
-  if (!(total > 0)) return Array(n).fill(0);
-  const share = total / n;
-  const unit = share >= 100 ? 100 : share >= 10 ? 10 : 1;
-  const per = Math.floor(share / unit) * unit;
-  const out: number[] = [];
-  for (let i = 0; i < n - 1; i++) out.push(per);
-  out.push(Math.round(total - per * (n - 1)));
-  return out;
-}
-
 function genPreview(start: string, count: number, unit: string, ivl: number, total: number) {
   const rows: { date: string; amount: string }[] = [];
   const base = start ? new Date(`${start}T00:00:00`) : new Date();

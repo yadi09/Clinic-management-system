@@ -93,6 +93,9 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	g.POST("/patients/:id/plans/:pid/finish", h.FinishCourse)
 
 	g.PUT("/patients/:id/sessions/:sid", h.UpdateSession)
+	// Changing a visit's price re-spreads the course, so it sits with the dentist who
+	// decides the work — the same permission as recording it.
+	g.POST("/patients/:id/sessions/:sid/reprice", h.RepriceSession)
 	g.POST("/patients/:id/sessions/:sid/pay-later", h.SetPayLater)
 
 	// Prescriptions (printable) attached to a session.

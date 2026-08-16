@@ -29,7 +29,8 @@ import { MoveSessionDialog } from "@/features/dental/shared/MoveSessionDialog";
 import { MONEY, birr, sessionMoneyState } from "@/features/dental/money";
 import { addSession, finishCourse, type Plan } from "@/features/dental/api";
 import { visitTiming, type FocusResult, type FocusVisit, type Rung } from "@/features/dental/visit/useFocusVisit";
-import { RecordVisitForm, SettleFee } from "@/features/dental/visit/RecordVisitForm";
+import { RecordVisitForm } from "@/features/dental/visit/RecordVisitForm";
+import { feeResolved, feeStage, FeeStrip, VisitPaymentStep } from "@/features/dental/visit/VisitPaymentStep";
 import { VisitActions } from "@/features/dental/visit/VisitActions";
 
 /** How the resolution reads at the top of the cockpit. */
@@ -174,16 +175,43 @@ export function VisitCockpit({
         )}
 
         {state === "recording" && (
-          <RecordVisitForm
-            key={session.id}
-            patientId={patientId}
-            session={session}
-            planTitle={plan.title}
-            teeth={teeth}
-            imageLimit={imageLimit}
-            onSaved={() => { setRecording(false); onChanged(); }}
-            onCancel={() => setRecording(false)}
-          />
+          <>
+            {/* STEP 1 — the fee. Collapses to a strip only once it is PAID: a promise
+                still has something to act on (undo it, or send it to the desk), so it
+                keeps the panel even though the treatment form is open behind it. */}
+            {feeStage(session) === "paid"
+              ? <FeeStrip session={session} planTitle={plan.title} />
+              : (
+                <VisitPaymentStep patientId={patientId} plan={plan} session={session}
+                  canCollect={canCollect} editable={editable} onChanged={onChanged} />
+              )}
+
+            {/* STEP 2 — the treatment. Not a lock: "Treat now, pay later" on the step
+                above resolves the fee and opens this immediately. */}
+            {feeResolved(session) ? (
+              <RecordVisitForm
+                key={session.id}
+                patientId={patientId}
+                session={session}
+                planTitle={plan.title}
+                teeth={teeth}
+                imageLimit={imageLimit}
+                onSaved={() => { setRecording(false); onChanged(); }}
+                onCancel={() => setRecording(false)}
+              />
+            ) : (
+              <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                <p className="text-xs font-semibold uppercase tracking-wide">2 · Treatment</p>
+                <p className="mt-1">
+                  Tooth, procedure, notes, images and prescriptions open once the fee is settled —
+                  or you choose to treat now and collect later.
+                </p>
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => setRecording(false)}>
+                  Cancel
+                </Button>
+              </div>
+            )}
+          </>
         )}
 
         {state === "upcoming" && (
@@ -209,11 +237,15 @@ export function VisitCockpit({
           <>
             {/* WHAT WAS DONE, read back. */}
             <RecordedSummary session={session} />
-            {/* WHAT IT COSTS — the only place money is asked about, and only now that
-                there is a visit to ask about. */}
-            {editable && (
-              <SettleFee patientId={patientId} session={session} canCollect={canCollect} onSettled={onChanged} />
-            )}
+            {/* WHAT IT COSTS. The same pipeline as the recording step rather than a
+                second, differently-worded amber panel — a fee looks the same here as
+                it did five seconds ago. */}
+            {editable && (feeStage(session) === "paid"
+              ? <FeeStrip session={session} planTitle={plan.title} />
+              : (
+                <VisitPaymentStep patientId={patientId} plan={plan} session={session}
+                  canCollect={canCollect} editable={editable} onChanged={onChanged} />
+              ))}
             {editable && (
               <Button variant="outline" size="sm" onClick={() => setRecording(true)}>
                 <FileText className="h-4 w-4" /> Edit this visit

@@ -132,6 +132,32 @@ func planDTO(p dental.Plan, clinical bool) gin.H {
 	return out
 }
 
+// Reprice sets one visit's fee and says where the difference lands. The client
+// shows the arithmetic before it is sent; the server is what decides it.
+func (h *Handlers) RepriceSession(c *gin.Context) {
+	pid, ok := decode(c, id.PrefixPatient, c.Param("id"))
+	if !ok {
+		return
+	}
+	sid, ok := decode(c, id.PrefixTreatmentSession, c.Param("sid"))
+	if !ok {
+		return
+	}
+	var req struct {
+		Amount string `json:"amount"`
+		Mode   string `json:"mode"` // respread | total
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("an amount and a mode are required"))
+		return
+	}
+	if err := h.svc.RepriceSession(c.Request.Context(), pid, sid, req.Amount, req.Mode); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
 // --- summary ---
 
 func (h *Handlers) Summary(c *gin.Context) {

@@ -161,6 +161,12 @@ export function updatePlan(patientId: string, planId: string, body: { title?: st
 export function deletePlan(patientId: string, planId: string) {
   return apiFetch<void>(`/dental/patients/${patientId}/plans/${planId}`, { method: "DELETE" });
 }
+/** Change one visit's fee. `mode` says where the difference lands:
+ *  "respread" keeps the course total and adjusts the visits still to come;
+ *  "total" leaves them alone and moves the course total instead. */
+export function repriceSession(patientId: string, sessionId: string, body: { amount: string; mode: "respread" | "total" }) {
+  return apiFetch<void>(`/dental/patients/${patientId}/sessions/${sessionId}/reprice`, { method: "POST", body });
+}
 export function updateSession(patientId: string, sessionId: string, body: { scheduled_date?: string; amount_due?: string; status?: string; procedure?: string; tooth?: string; notes?: string; rx?: string }) {
   return apiFetch<void>(`/dental/patients/${patientId}/sessions/${sessionId}`, { method: "PUT", body });
 }

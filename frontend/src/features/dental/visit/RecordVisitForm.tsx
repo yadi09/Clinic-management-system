@@ -11,22 +11,24 @@
 // session, and a second date confirmation inside the form.
 //
 // All three are gone. The clinic's rule is that a patient may be treated on a promise
-// to pay, so treatment can always be recorded; the fee is then resolved explicitly —
-// sent to the desk, promised for later, or already collected — and an unresolved fee
-// stays visible until someone answers it. Nothing is silently written off.
+// to pay, so treatment can always be recorded.
+//
+// The fee is now asked FIRST, on the payment step in VisitPaymentStep, because that
+// is the order the chair works in — the patient is sent to the desk and comes back.
+// It is still not a lock: "Treat now, pay later" on that step opens this form at
+// once, and the promise is recorded rather than implied by an unpaid row.
 import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { AlertTriangle, HandCoins, Save, X } from "lucide-react";
+import { AlertTriangle, Save, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
 import { DualDate } from "@/components/DualDate";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
-import { collectSession, setPayLater, updateSession, type Session } from "@/features/dental/api";
+import { updateSession, type Session } from "@/features/dental/api";
 import { birr } from "@/features/dental/money";
 import { FLAT_TEETH, parseCsv, ProcedureMultiSelect, ToothMultiSelect } from "@/features/dental/shared/pickers";
 import { PrescriptionSection, SessionImages } from "@/features/dental/shared/visitRecord";
@@ -181,73 +183,8 @@ export function RecordVisitForm({
           <Save className="h-4 w-4" /> Save &amp; mark done
         </Button>
         <span className="text-xs text-muted-foreground">
-          Fee {birr(session.amount_due)} — you'll choose how it's settled next.
+          Fee {birr(session.amount_due)} — already settled above.
         </span>
-      </div>
-    </div>
-  );
-}
-
-/**
- * How this visit's fee is handled — asked once, after the work is recorded.
- *
- * The three answers are the clinic's actual options. "Patient pays later" is a real
- * outcome here, not a workaround for a lock: the doctor may treat on a promise, and
- * the promise is recorded rather than implied by an unpaid row.
- */
-export function SettleFee({ patientId, session, canCollect, onSettled }: {
-  patientId: string; session: Session; canCollect: boolean; onSettled: () => void;
-}) {
-  const [promise, setPromise] = useState(session.pay_later_note ?? "");
-  const settled = session.payment === "paid";
-  const queued = session.payment === "billed";
-
-  const bill = useMutation({
-    mutationFn: () => collectSession(patientId, session.id),
-    onSuccess: () => { toast.success("Sent to the cashier"); onSettled(); },
-    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not send to the cashier"),
-  });
-  const later = useMutation({
-    mutationFn: () => setPayLater(patientId, session.id, { on: true, note: promise.trim() }),
-    onSuccess: () => { toast.success("Recorded as pay later"); onSettled(); },
-    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not record the promise"),
-  });
-
-  // Nothing to ask about a visit that has not happened.
-  //
-  // This checked only the MONEY state, never whether the treatment was delivered, so
-  // a visit booked eleven days out rendered "Visit recorded. 4,000 ETB for it is not
-  // settled" with two buttons offering to bill a patient for treatment they had not
-  // received — while the fee line ten pixels below read "Not yet due". The panel is
-  // now mounted only in the recorded state, and this is the second guard.
-  if (session.status !== "done") return null;
-  if (settled || queued || session.pay_later) return null;
-
-  return (
-    <div className="space-y-3 rounded-md border border-amber-300 bg-amber-50 p-3">
-      <p className="flex items-start gap-2 text-sm font-medium text-amber-900">
-        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-{birr(session.amount_due)} for this visit is not settled — how is it handled?
-      </p>
-      <div className="flex flex-wrap gap-2">
-        {canCollect && (
-          <Button loading={bill.isPending} onClick={() => bill.mutate()}>
-            <HandCoins className="h-4 w-4" /> Send to the front desk
-          </Button>
-        )}
-        <Button variant="outline" loading={later.isPending} onClick={() => later.mutate()}>
-          Patient pays later
-        </Button>
-        {/* No dismiss: an unresolved fee is the whole point of removing the gate.
-            It stays on the cockpit until it is sent, promised, or collected. */}
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="promise" className="text-xs">When did they promise to pay? (optional)</Label>
-        <Input id="promise" value={promise} onChange={(e) => setPromise(e.target.value)}
-          placeholder="Next visit · end of the month · after salary" className="bg-background" />
-        <p className="text-xs text-amber-800">
-          Either way this stays flagged as owing until the money is collected — nothing is written off here.
-        </p>
       </div>
     </div>
   );

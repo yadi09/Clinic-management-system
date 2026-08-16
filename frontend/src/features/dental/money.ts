@@ -82,6 +82,33 @@ export const MONEY: Record<MoneyState, MoneyMeta> = {
 };
 
 /** ETB, grouped, no decimals unless the amount has them. The clinic prices in whole birr. */
+/** Parse a money string from the API. Defined here so every surface reads a fee the
+ *  same way rather than each keeping its own one-liner. */
+export function num(amount?: string | number): number {
+  return Number(amount || 0);
+}
+
+/**
+ * Divide a total into n instalments, the way the clinic writes them.
+ *
+ * MUST stay identical to splitAmount in internal/dental/service/service.go. The
+ * server is what decides the stored amounts; if this rounds differently the create
+ * preview and the reprice preview both promise a number the patient will not be
+ * charged. Whole hundreds where the share allows it, tens or units below that, and
+ * the rounding difference lands on the LAST instalment.
+ */
+export function splitRounded(total: number, n: number): number[] {
+  if (n <= 0) return [];
+  if (!(total > 0)) return Array(n).fill(0);
+  const share = total / n;
+  const unit = share >= 100 ? 100 : share >= 10 ? 10 : 1;
+  const per = Math.floor(share / unit) * unit;
+  const out: number[] = [];
+  for (let i = 0; i < n - 1; i++) out.push(per);
+  out.push(Math.round(total - per * (n - 1)));
+  return out;
+}
+
 export function birr(amount: string | number | undefined): string {
   const n = typeof amount === "number" ? amount : Number(amount || 0);
   return `${n.toLocaleString(undefined, { maximumFractionDigits: 2 })} ETB`;
