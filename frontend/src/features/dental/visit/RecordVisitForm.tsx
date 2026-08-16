@@ -43,7 +43,7 @@ const todayISO = () => {
 interface Draft { procedure: string[]; tooth: string[]; notes: string }
 
 export function RecordVisitForm({
-  patientId, session, planTitle, teeth, imageLimit, onSaved, onCancel,
+  patientId, session, planTitle, teeth, imageLimit, onSaved, onChanged, onCancel,
 }: {
   patientId: string;
   session: Session;
@@ -51,8 +51,17 @@ export function RecordVisitForm({
   teeth: Record<string, string>;
   /** Per-patient image cap from the plan; -1 = unlimited. */
   imageLimit: number;
-  /** Refresh the data. Does NOT dismiss the form — the fee panel must follow. */
+  /** The visit was recorded and marked done. The parent closes the form. */
   onSaved: () => void;
+  /**
+   * Something attached to the visit changed — a prescription, an image.
+   *
+   * Separate from onSaved on purpose. Both used to call the one callback, and the
+   * parent's version of it closed the form: adding a prescription or a photo threw
+   * the dentist out of the record they were half way through writing, with the note
+   * still unsaved, and they had to press "Start this visit now" again to get back.
+   */
+  onChanged: () => void;
   onCancel: () => void;
 }) {
   const draftKey = `dental-draft:${session.id}`;
@@ -222,8 +231,8 @@ export function RecordVisitForm({
         {/* Attach while the patient is still in the chair. These lived only inside the
             old plan list's expandable row, so a dentist recording here could write the
             note but not print the script or keep the X-ray. */}
-        <PrescriptionSection patientId={patientId} session={session} editable onChanged={onSaved} />
-        <SessionImages patientId={patientId} session={session} editable imageLimit={imageLimit} onChanged={onSaved} />
+        <PrescriptionSection patientId={patientId} session={session} editable onChanged={onChanged} />
+        <SessionImages patientId={patientId} session={session} editable imageLimit={imageLimit} onChanged={onChanged} />
 
         {/* The finish line, held apart from the sections above it so it reads as the
             end of the task rather than another field. */}

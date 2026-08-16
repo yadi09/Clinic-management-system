@@ -214,6 +214,7 @@ export function VisitCockpit({
                 teeth={teeth}
                 imageLimit={imageLimit}
                 onSaved={() => { setRecording(false); onChanged(); }}
+                onChanged={onChanged}
                 onCancel={() => setRecording(false)}
               />
             ) : (
