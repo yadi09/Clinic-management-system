@@ -43,6 +43,12 @@ export interface RxItem {
   frequency?: string;
   duration?: string;
   instructions?: string;
+  /** Set when the drug was picked from the clinic's library — makes the allergy
+   *  check exact rather than a guess from the spelling. */
+  drug_id?: string;
+  /** Read back: the drug's allergen tags, and the reason it was prescribed anyway. */
+  allergens?: string[];
+  allergy_override?: string;
 }
 
 export interface Prescription {
@@ -196,7 +202,7 @@ export function setPayLater(patientId: string, sessionId: string, body: { on?: b
   return apiFetch<void>(`/dental/patients/${patientId}/sessions/${sessionId}/pay-later`, { method: "POST", body });
 }
 
-export function addPrescription(patientId: string, sessionId: string, body: { note?: string; items: RxItem[] }) {
+export function addPrescription(patientId: string, sessionId: string, body: { note?: string; items: RxItem[]; override_reason?: string }) {
   return apiFetch<Prescription>(`/dental/patients/${patientId}/sessions/${sessionId}/prescriptions`, { method: "POST", body });
 }
 export function deletePrescription(patientId: string, prescriptionId: string) {

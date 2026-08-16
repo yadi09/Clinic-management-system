@@ -51,6 +51,12 @@ type RxItem struct {
 	Frequency    string `json:"frequency,omitempty"`
 	Duration     string `json:"duration,omitempty"`
 	Instructions string `json:"instructions,omitempty"`
+	// Allergens the drug is tagged with in the clinic's library, and the reason the
+	// prescriber gave for writing it anyway. Both are shown beside the drug when the
+	// prescription is read back — a later reader needs to see that the clash was
+	// noticed and answered, not discover it themselves.
+	Allergens       []string `json:"allergens,omitempty"`
+	AllergyOverride string   `json:"allergy_override,omitempty"`
 }
 
 // Prescription is a printable medication document attached to a session.
@@ -68,10 +74,17 @@ type RxItemInput struct {
 	Frequency    string
 	Duration     string
 	Instructions string
+	// DrugID links the item to the clinic's library entry when one was picked, so
+	// the allergen tags checked are the drug's own rather than a guess from its name.
+	DrugID *uuid.UUID
 }
 type PrescriptionInput struct {
 	Note  string
 	Items []RxItemInput
+	// OverrideReason is the prescriber's answer to an allergy clash. Empty means
+	// "I have not been warned yet"; the service refuses the prescription and names
+	// the substances, and the client asks for a reason before trying again.
+	OverrideReason string
 }
 
 // Session is one dated milestone of a treatment plan.

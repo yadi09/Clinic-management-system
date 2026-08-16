@@ -54,6 +54,9 @@ func prescriptionDTO(rx dental.Prescription) gin.H {
 		items = append(items, gin.H{
 			"drug_name": it.DrugName, "dose": it.Dose, "frequency": it.Frequency,
 			"duration": it.Duration, "instructions": it.Instructions,
+			// Carried back so a prescription that was written over a known allergy
+			// says so wherever it is read, not only where it was written.
+			"allergens": it.Allergens, "allergy_override": it.AllergyOverride,
 		})
 	}
 	return gin.H{"id": id.Encode(id.PrefixDentalRx, rx.ID), "note": rx.Note, "created_at": rx.CreatedAt, "items": items}
@@ -130,6 +133,24 @@ func planDTO(p dental.Plan, clinical bool) gin.H {
 		}
 	}
 	return out
+}
+
+// parseDrugID decodes the library drug the prescriber picked.
+//
+// The API speaks PREFIXED opaque ids ("drg_…"), never raw UUIDs — this first went
+// out calling uuid.Parse, which failed on every real id, silently dropped the link,
+// and left the allergy check matching on spelling alone. An absent id is still fine
+// (the drug was typed free-hand); a malformed one is refused rather than quietly
+// downgrading the safety check.
+func parseDrugID(v string) (*uuid.UUID, error) {
+	if v == "" {
+		return nil, nil
+	}
+	did, err := id.Decode(id.PrefixDrug, v)
+	if err != nil {
+		return nil, apperr.Validation("invalid drug_id")
+	}
+	return &did, nil
 }
 
 // Reprice sets one visit's fee and says where the difference lands. The client
@@ -533,7 +554,11 @@ func (h *Handlers) AddPrescription(c *gin.Context) {
 			Frequency    string `json:"frequency"`
 			Duration     string `json:"duration"`
 			Instructions string `json:"instructions"`
+			DrugID       string `json:"drug_id"`
 		} `json:"items"`
+		// Sent only on the retry after an ALLERGY_CONFLICT: the prescriber's reason
+		// for writing the drug anyway.
+		OverrideReason string `json:"override_reason"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.Fail(c, apperr.Validation("invalid request"))
@@ -541,11 +566,18 @@ func (h *Handlers) AddPrescription(c *gin.Context) {
 	}
 	items := make([]dental.RxItemInput, 0, len(req.Items))
 	for _, it := range req.Items {
+		did, err := parseDrugID(it.DrugID)
+		if err != nil {
+			httpx.Fail(c, err)
+			return
+		}
 		items = append(items, dental.RxItemInput{
 			DrugName: it.DrugName, Dose: it.Dose, Frequency: it.Frequency, Duration: it.Duration, Instructions: it.Instructions,
+			DrugID: did,
 		})
 	}
-	rx, err := h.svc.AddPrescription(c.Request.Context(), pid, sid, dental.PrescriptionInput{Note: req.Note, Items: items})
+	rx, err := h.svc.AddPrescription(c.Request.Context(), pid, sid,
+		dental.PrescriptionInput{Note: req.Note, Items: items, OverrideReason: req.OverrideReason})
 	if err != nil {
 		httpx.Fail(c, err)
 		return

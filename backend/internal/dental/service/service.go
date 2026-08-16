@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/reicb/clinicsaas/internal/billing"
 	"github.com/reicb/clinicsaas/internal/dental"
+	"github.com/reicb/clinicsaas/internal/kernel/allergy"
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
 	"github.com/reicb/clinicsaas/internal/kernel/events"
@@ -432,9 +434,16 @@ func (s *Service) loadPlansTx(ctx context.Context, tx pgx.Tx, tid, patientID uui
 	}
 	if len(pidx) > 0 {
 		irows2, e := tx.Query(ctx,
-			`SELECT i.prescription_id, i.drug_name, coalesce(i.dose,''), coalesce(i.frequency,''), coalesce(i.duration,''), coalesce(i.instructions,'')
-			 FROM dental_prescription_items i JOIN dental_prescriptions p ON p.id = i.prescription_id AND p.tenant_id = i.tenant_id
-			 WHERE i.tenant_id = $1 AND p.patient_id = $2 ORDER BY i.prescription_id, i.seq`, tid, patientID)
+			`SELECT i.prescription_id, i.drug_name, coalesce(i.dose,''), coalesce(i.frequency,''),
+			        coalesce(i.duration,''), coalesce(i.instructions,''), coalesce(i.allergy_override,''),
+			        coalesce(array_agg(a.name) FILTER (WHERE a.name IS NOT NULL), '{}')
+			 FROM dental_prescription_items i
+			 JOIN dental_prescriptions p ON p.id = i.prescription_id AND p.tenant_id = i.tenant_id
+			 LEFT JOIN drug_allergens   da ON da.drug_id = i.drug_id AND da.tenant_id = i.tenant_id
+			 LEFT JOIN allergen_catalog a  ON a.id = da.allergen_id AND a.tenant_id = i.tenant_id
+			 WHERE i.tenant_id = $1 AND p.patient_id = $2
+			 GROUP BY i.id, i.prescription_id, i.seq
+			 ORDER BY i.prescription_id, i.seq`, tid, patientID)
 		if e != nil {
 			return nil, e
 		}
@@ -442,7 +451,8 @@ func (s *Service) loadPlansTx(ctx context.Context, tx pgx.Tx, tid, patientID uui
 		for irows2.Next() {
 			var rxID uuid.UUID
 			var it dental.RxItem
-			if e := irows2.Scan(&rxID, &it.DrugName, &it.Dose, &it.Frequency, &it.Duration, &it.Instructions); e != nil {
+			if e := irows2.Scan(&rxID, &it.DrugName, &it.Dose, &it.Frequency, &it.Duration, &it.Instructions,
+				&it.AllergyOverride, &it.Allergens); e != nil {
 				return nil, e
 			}
 			loc, ok := pidx[rxID]
@@ -1338,11 +1348,13 @@ func (s *Service) SetPayLater(ctx context.Context, patientID, sessionID uuid.UUI
 func (s *Service) AddPrescription(ctx context.Context, patientID, sessionID uuid.UUID, in dental.PrescriptionInput) (*dental.Prescription, error) {
 	tid, actor := actorOf(ctx)
 	items := make([]dental.RxItem, 0, len(in.Items))
+	drugIDs := make([]*uuid.UUID, 0, len(in.Items))
 	for _, it := range in.Items {
 		if it.DrugName == "" {
 			continue
 		}
 		items = append(items, dental.RxItem{DrugName: it.DrugName, Dose: it.Dose, Frequency: it.Frequency, Duration: it.Duration, Instructions: it.Instructions})
+		drugIDs = append(drugIDs, it.DrugID)
 	}
 	if len(items) == 0 {
 		return nil, apperr.Validation("add at least one medication")
@@ -1360,6 +1372,61 @@ func (s *Service) AddPrescription(ctx context.Context, patientID, sessionID uuid
 			}
 			return e
 		}
+		// The allergy check, on the same terms as the general encounter: the drug's
+		// library allergen tags (or, for a free-typed drug, its name) against every
+		// allergy recorded for this patient. It WARNS rather than blocks — there are
+		// real reasons to prescribe against a mild recorded allergy — but it will not
+		// let the prescription through silently, and the reason is stored on the item.
+		var patientAllergies []string
+		arows, e := tx.Query(ctx,
+			`SELECT substance FROM allergies
+			  WHERE tenant_id = $1 AND patient_id = $2 AND deleted_at IS NULL`, tid, patientID)
+		if e != nil {
+			return e
+		}
+		for arows.Next() {
+			var sub string
+			if e := arows.Scan(&sub); e != nil {
+				arows.Close()
+				return e
+			}
+			patientAllergies = append(patientAllergies, sub)
+		}
+		arows.Close()
+		if e := arows.Err(); e != nil {
+			return e
+		}
+
+		if len(patientAllergies) > 0 {
+			clash := map[string]bool{}
+			for i := range items {
+				tags, e := drugAllergenTags(ctx, tx, tid, drugIDs[i], items[i].DrugName)
+				if e != nil {
+					return e
+				}
+				items[i].Allergens = tags
+				for _, sub := range allergy.Conflicts(items[i].DrugName, tags, patientAllergies) {
+					clash[sub] = true
+				}
+			}
+			if len(clash) > 0 {
+				if strings.TrimSpace(in.OverrideReason) == "" {
+					subs := make([]string, 0, len(clash))
+					for k := range clash {
+						subs = append(subs, k)
+					}
+					sort.Strings(subs)
+					return apperr.Conflict("ALLERGY_CONFLICT",
+						"Patient is allergic to "+strings.Join(subs, ", ")+" — review before prescribing.")
+				}
+				for i := range items {
+					if len(allergy.Conflicts(items[i].DrugName, items[i].Allergens, patientAllergies)) > 0 {
+						items[i].AllergyOverride = strings.TrimSpace(in.OverrideReason)
+					}
+				}
+			}
+		}
+
 		var id uuid.UUID
 		var created time.Time
 		if e := tx.QueryRow(ctx,
@@ -1370,9 +1437,10 @@ func (s *Service) AddPrescription(ctx context.Context, patientID, sessionID uuid
 		}
 		for i, it := range items {
 			if _, e := tx.Exec(ctx,
-				`INSERT INTO dental_prescription_items (tenant_id, prescription_id, seq, drug_name, dose, frequency, duration, instructions)
-				 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-				tid, id, i+1, it.DrugName, nullStr(it.Dose), nullStr(it.Frequency), nullStr(it.Duration), nullStr(it.Instructions)); e != nil {
+				`INSERT INTO dental_prescription_items (tenant_id, prescription_id, seq, drug_name, dose, frequency, duration, instructions, drug_id, allergy_override)
+				 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+				tid, id, i+1, it.DrugName, nullStr(it.Dose), nullStr(it.Frequency), nullStr(it.Duration), nullStr(it.Instructions),
+				drugIDs[i], nullStr(it.AllergyOverride)); e != nil {
 				return e
 			}
 		}
@@ -1418,6 +1486,42 @@ func writeOffDesc(planTitle, kind string, seq, count int) string {
 		return fmt.Sprintf("%s — down payment (written off)", planTitle)
 	}
 	return fmt.Sprintf("%s — session %d/%d (written off)", planTitle, seq, count)
+}
+
+// drugAllergenTags returns the library allergen tags for a prescribed item.
+//
+// By id when the prescriber picked a library drug, and by name otherwise — a drug
+// typed free-hand still gets checked if the clinic happens to have it catalogued,
+// which is the case that would otherwise slip through unwarned.
+func drugAllergenTags(ctx context.Context, tx pgx.Tx, tid uuid.UUID, drugID *uuid.UUID, name string) ([]string, error) {
+	q := `SELECT coalesce(a.name,'') FROM drug_catalog d
+	        JOIN drug_allergens da ON da.drug_id = d.id AND da.tenant_id = d.tenant_id
+	        JOIN allergen_catalog a ON a.id = da.allergen_id AND a.tenant_id = d.tenant_id
+	       WHERE d.tenant_id = $1 AND d.deleted_at IS NULL AND `
+	var arg any
+	if drugID != nil {
+		q += `d.id = $2`
+		arg = *drugID
+	} else {
+		q += `lower(d.name) = lower($2)`
+		arg = name
+	}
+	rows, e := tx.Query(ctx, q, tid, arg)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var n string
+		if e := rows.Scan(&n); e != nil {
+			return nil, e
+		}
+		if n != "" {
+			out = append(out, n)
+		}
+	}
+	return out, rows.Err()
 }
 
 // refuseDeposit blocks the clinical operations on a down payment.

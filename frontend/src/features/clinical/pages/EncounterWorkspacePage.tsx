@@ -24,8 +24,6 @@ import {
   addDiagnosis,
   addMedication,
   cancelLabReferral,
-  createAllergen,
-  createDrug,
   createLabReferral,
   getVitalFields,
   getWorkspace,
@@ -33,7 +31,6 @@ import {
   openEncounter,
   removeDiagnosis,
   removeMedication,
-  listAllergens,
   recordLabReferralResult,
   runAssist,
   saveNote,
@@ -55,6 +52,7 @@ import {
   type Vitals,
   type Workspace,
 } from "@/features/clinical/api";
+import { CreateDrugDialog } from "@/features/clinical/DrugLibrary";
 
 const SECTIONS = [
   { id: "subjective", label: "Subjective" },
@@ -1565,58 +1563,3 @@ function AddMedicationDialog({ encounterId, onClose, onAdded }: { encounterId: s
 
 // Inline drug creation from the prescription flow — saves to the library (with
 // allergen tags) and hands the created drug back so the doctor keeps prescribing.
-function CreateDrugDialog({ initialName, onClose, onCreated }: { initialName: string; onClose: () => void; onCreated: (d: Drug) => void }) {
-  const qc = useQueryClient();
-  const [form, setForm] = useState({ name: initialName, default_dose: "", default_frequency: "", default_duration: "", default_instructions: "" });
-  const [allergenIds, setAllergenIds] = useState<string[]>([]);
-  const [newAllergen, setNewAllergen] = useState("");
-  const allergens = useQuery({ queryKey: ["allergens"], queryFn: () => listAllergens() });
-
-  const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
-  const toggle = (id: string) => setAllergenIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
-
-  const addAllergen = useMutation({
-    mutationFn: () => createAllergen(newAllergen.trim()),
-    onSuccess: (a) => { setNewAllergen(""); setAllergenIds((ids) => [...ids, a.id]); qc.invalidateQueries({ queryKey: ["allergens"] }); },
-    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not add allergen"),
-  });
-  const create = useMutation({
-    mutationFn: () => createDrug({ ...form, allergen_ids: allergenIds }),
-    onSuccess: (d) => { qc.invalidateQueries({ queryKey: ["drug-search"] }); toast.success("Saved to the drug library"); onCreated(d); },
-    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not create the drug"),
-  });
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>New drug in library</DialogTitle></DialogHeader>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2 space-y-1.5"><Label>Name</Label><Input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Amoxicillin 500mg" autoFocus /></div>
-          <div className="space-y-1.5"><Label>Default dose</Label><Input value={form.default_dose} onChange={(e) => set("default_dose", e.target.value)} placeholder="1 cap" /></div>
-          <div className="space-y-1.5"><Label>Default frequency</Label><Input value={form.default_frequency} onChange={(e) => set("default_frequency", e.target.value)} placeholder="three times a day" /></div>
-          <div className="space-y-1.5"><Label>Default duration</Label><Input value={form.default_duration} onChange={(e) => set("default_duration", e.target.value)} placeholder="5 days" /></div>
-          <div className="col-span-2 space-y-1.5"><Label>Default instructions</Label><Input value={form.default_instructions} onChange={(e) => set("default_instructions", e.target.value)} placeholder="Complete the full course" /></div>
-        </div>
-        <div className="space-y-2">
-          <Label className="text-xs text-muted-foreground">Allergen tags (warns if the patient is allergic)</Label>
-          <div className="flex flex-wrap gap-1.5">
-            {(allergens.data ?? []).map((a) => (
-              <button key={a.id} type="button" onClick={() => toggle(a.id)} className={`rounded-full border px-2.5 py-1 text-xs ${allergenIds.includes(a.id) ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"}`}>
-                {a.name}
-              </button>
-            ))}
-            {(allergens.data?.length ?? 0) === 0 && <span className="text-xs text-muted-foreground">No allergens yet — add one below.</span>}
-          </div>
-          <div className="flex items-end gap-2">
-            <Input value={newAllergen} onChange={(e) => setNewAllergen(e.target.value)} placeholder="New allergen (e.g. Penicillin)" className="h-8" />
-            <Button size="sm" variant="outline" disabled={!newAllergen.trim()} loading={addAllergen.isPending} onClick={() => addAllergen.mutate()}>Add</Button>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Back</Button>
-          <Button disabled={!form.name.trim()} loading={create.isPending} onClick={() => create.mutate()}>Save &amp; use</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}

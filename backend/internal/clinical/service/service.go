@@ -9,13 +9,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/reicb/clinicsaas/internal/clinical"
 	clinicaldb "github.com/reicb/clinicsaas/internal/clinical/repo/gen"
+	"github.com/reicb/clinicsaas/internal/kernel/allergy"
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
 	"github.com/reicb/clinicsaas/internal/kernel/events"
@@ -739,41 +739,15 @@ func ensureOpen(ctx context.Context, q *clinicaldb.Queries, tenantID, encID uuid
 // "pen" or a phrase like "no penicillin" won't wrongly block unrelated drugs.
 // Name-based only — drug-class intelligence (penicillin→amoxicillin) needs a
 // drug database (a later phase).
-func allergyMatches(drug, substance string) bool {
-	d := strings.ToLower(drug)
-	tokens := strings.FieldsFunc(strings.ToLower(substance), func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
-	})
-	for _, tok := range tokens {
-		if len([]rune(tok)) >= 4 && strings.Contains(d, tok) {
-			return true
-		}
-	}
-	return false
-}
-
-// allergyConflicts returns the patient-allergy substances that clash with the drug
-// being prescribed — matched against the drug's library allergen tags (exact, case-
-// insensitive, plus token overlap) and, as a fallback, the free-typed drug name.
+// allergyConflicts adapts the shared matcher to this module's row type. The rule
+// itself lives in kernel/allergy so dental and general medicine cannot disagree
+// about whether a drug is safe for a patient.
 func allergyConflicts(drugName string, drugAllergens []string, allergies []clinicaldb.ListPatientAllergiesRow) []string {
-	seen := map[string]bool{}
-	var out []string
+	subs := make([]string, 0, len(allergies))
 	for _, a := range allergies {
-		hit := allergyMatches(drugName, a.Substance)
-		for _, al := range drugAllergens {
-			if hit {
-				break
-			}
-			if strings.EqualFold(strings.TrimSpace(al), strings.TrimSpace(a.Substance)) || allergyMatches(al, a.Substance) {
-				hit = true
-			}
-		}
-		if hit && !seen[a.Substance] {
-			seen[a.Substance] = true
-			out = append(out, a.Substance)
-		}
+		subs = append(subs, a.Substance)
 	}
-	return out
+	return allergy.Conflicts(drugName, drugAllergens, subs)
 }
 
 func ageOf(dob time.Time) int {

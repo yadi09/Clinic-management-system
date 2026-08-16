@@ -9,6 +9,7 @@ import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, ChevronLeft, ChevronRight, ExternalLink, Images, ImagePlus, Pill, Plus, Printer, Trash2, X } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,7 +24,8 @@ import { getPatient } from "@/features/patients/api";
 import { PatientAllergyLine } from "@/features/dental/SafetyStrip";
 import { EmptySlot, RecordSection } from "@/features/dental/shared/RecordSection";
 import { getClinic, listBranches } from "@/features/admin/api";
-import { searchDrugs, type Drug } from "@/features/clinical/api";
+import { type Drug } from "@/features/clinical/api";
+import { DrugSearchInput } from "@/features/clinical/DrugLibrary";
 import { printPrescription } from "@/features/clinical/print";
 import {
   addPrescription, deleteDentalImage, deletePrescription, uploadDentalImage,
@@ -108,6 +110,14 @@ export function PrescriptionSection({ patientId, session, editable, onChanged }:
                         <span className="font-medium">{it.drug_name}</span>
                         {(it.dose || it.frequency || it.duration) && <span className="text-muted-foreground"> — {[it.dose, it.frequency, it.duration].filter(Boolean).join(" · ")}</span>}
                         {it.instructions && <span className="block text-xs italic text-muted-foreground">{it.instructions}</span>}
+                        {/* A prescription written over a known allergy says so
+                            wherever it is read, not only where it was written. */}
+                        {it.allergy_override && (
+                          <span className="mt-0.5 flex items-start gap-1 text-xs font-medium text-amber-700">
+                            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                            Prescribed against a recorded allergy — {it.allergy_override}
+                          </span>
+                        )}
                       </span>
                     </li>
                   ))}
@@ -132,6 +142,10 @@ const BLANK_MED: RxItem = { drug_name: "", dose: "", frequency: "", duration: ""
 function PrescriptionDialog({ patientId, sessionId, onClose, onSaved }: { patientId: string; sessionId: string; onClose: () => void; onSaved: () => void }) {
   const [meds, setMeds] = useState<RxItem[]>([{ ...BLANK_MED }]);
   const [note, setNote] = useState("");
+  // Set when the server refuses on an allergy clash. It names the substances; the
+  // prescriber either changes the drug or says why they are prescribing anyway.
+  const [warn, setWarn] = useState("");
+  const [reason, setReason] = useState("");
   const setMed = (i: number, patch: Partial<RxItem>) => setMeds((ms) => ms.map((m, j) => (j === i ? { ...m, ...patch } : m)));
   const valid = meds.some((m) => m.drug_name.trim());
 
@@ -139,11 +153,18 @@ function PrescriptionDialog({ patientId, sessionId, onClose, onSaved }: { patien
     mutationFn: () => addPrescription(patientId, sessionId, {
       note: note.trim() || undefined,
       items: meds.filter((m) => m.drug_name.trim()).map((m) => ({
-        drug_name: m.drug_name.trim(), dose: m.dose, frequency: m.frequency, duration: m.duration, instructions: m.instructions,
+        drug_name: m.drug_name.trim(), dose: m.dose, frequency: m.frequency, duration: m.duration,
+        instructions: m.instructions, drug_id: m.drug_id,
       })),
+      override_reason: warn ? reason.trim() : undefined,
     }),
     onSuccess: () => { toast.success("Prescription added"); onSaved(); },
-    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not save the prescription"),
+    onError: (e) => {
+      // The clash is the server's call, not the client's: it holds the patient's
+      // allergies and the drug's tags, and it is the thing that stores the answer.
+      if (e instanceof AppError && e.code === "ALLERGY_CONFLICT") { setWarn(e.message); return; }
+      toast.error(e instanceof AppError ? e.message : "Could not save the prescription");
+    },
   });
 
   return (
@@ -159,55 +180,77 @@ function PrescriptionDialog({ patientId, sessionId, onClose, onSaved }: { patien
           <Button size="sm" variant="outline" onClick={() => setMeds((ms) => [...ms, { ...BLANK_MED }])}><Plus className="h-3.5 w-3.5" /> Add another medication</Button>
           <div className="space-y-1.5"><Label>Note (optional)</Label><Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Review in one week" /></div>
         </div>
+
+        {/* Not a block. There are real reasons to prescribe against a recorded mild
+            allergy, and a prescriber who cannot proceed will write the script on
+            paper where nothing records the decision at all. So: stop, name the
+            substance, and keep the reason on the item. */}
+        {warn && (
+          <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2.5">
+            <p className="flex items-start gap-2 text-sm font-medium text-amber-900">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {warn}
+            </p>
+            <Input value={reason} onChange={(e) => setReason(e.target.value)}
+              placeholder="Reason to prescribe anyway (recorded on the prescription)" className="bg-background" />
+          </div>
+        )}
+
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button disabled={!valid} loading={mut.isPending} onClick={() => mut.mutate()}>Save prescription</Button>
+          {warn ? (
+            <Button className="bg-amber-600 hover:bg-amber-600/90" disabled={!reason.trim()}
+              loading={mut.isPending} onClick={() => mut.mutate()}>
+              Prescribe anyway
+            </Button>
+          ) : (
+            <Button disabled={!valid} loading={mut.isPending} onClick={() => mut.mutate()}>Save prescription</Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-// One medication line with a live drug-catalog autocomplete (reuses GET /drugs).
+// One medication line, backed by the clinic's drug library.
+//
+// The picker is the shared one, so a dental prescription behaves exactly like the
+// general encounter's: search the library, and choosing an entry fills the sig from
+// its saved defaults instead of retyping "1 cap · three times a day · 5 days" for
+// the hundredth time. A drug that is not in the library can be saved into it from
+// here with its defaults and its allergen tags — which is what makes the NEXT
+// prescription one click, and what gives the allergy check something to check.
 function MedLine({ index, med, onChange, onRemove }: { index: number; med: RxItem; onChange: (patch: Partial<RxItem>) => void; onRemove?: () => void }) {
-  const [focus, setFocus] = useState(false);
-  const search = useQuery({
-    queryKey: ["drug-search", med.drug_name],
-    queryFn: () => searchDrugs(med.drug_name),
-    enabled: focus && (med.drug_name?.trim().length ?? 0) > 0,
+  const pick = (d: Drug) => onChange({
+    drug_name: d.name,
+    // The library's answer wins on pick. Whatever was half-typed was a guess at the
+    // same fields, and quietly keeping it would make the saved defaults unreliable.
+    dose: d.default_dose ?? "",
+    frequency: d.default_frequency ?? "",
+    duration: d.default_duration ?? "",
+    instructions: d.default_instructions ?? "",
+    drug_id: d.id,
+    allergens: d.allergens,
   });
-  const results = (search.data ?? []).slice(0, 6);
-  const pick = (d: Drug) => {
-    onChange({
-      drug_name: d.name,
-      dose: d.default_dose || med.dose,
-      frequency: d.default_frequency || med.frequency,
-      duration: d.default_duration || med.duration,
-      instructions: d.default_instructions || med.instructions,
-    });
-    setFocus(false);
-  };
   return (
     <div className="space-y-2 rounded-md border p-2.5">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-semibold text-muted-foreground">Medication {index + 1}</span>
+        {med.drug_id && <Badge variant="outline" className="gap-1 text-[10px]"><Pill className="h-2.5 w-2.5" /> from library</Badge>}
+        {(med.allergens?.length ?? 0) > 0 && (
+          <Badge variant="warning" className="gap-1 text-[10px]">
+            <AlertTriangle className="h-2.5 w-2.5" /> {med.allergens!.join(", ")}
+          </Badge>
+        )}
         {onRemove && <button type="button" onClick={onRemove} className="ml-auto text-muted-foreground hover:text-destructive" title="Remove"><X className="h-3.5 w-3.5" /></button>}
       </div>
-      <div className="relative">
-        <Input value={med.drug_name} onChange={(e) => onChange({ drug_name: e.target.value })}
-          onFocus={() => setFocus(true)} onBlur={() => setTimeout(() => setFocus(false), 150)} placeholder="Drug name" />
-        {focus && results.length > 0 && (
-          <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border bg-popover shadow-popover">
-            {results.map((d) => (
-              <button key={d.id} type="button" className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent"
-                onMouseDown={(e) => { e.preventDefault(); pick(d); }}>
-                <span>{d.name}</span>
-                {d.allergens?.length > 0 && <span className="flex items-center gap-1 text-xs text-amber-600"><AlertTriangle className="h-3 w-3" /> {d.allergens.join(", ")}</span>}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      <DrugSearchInput
+        value={med.drug_name}
+        // Typing again unlinks the row from the library entry: the fields belong to
+        // the prescriber now, and the id must not keep claiming otherwise.
+        onChange={(name) => onChange({ drug_name: name, drug_id: undefined, allergens: [] })}
+        onPick={pick}
+        placeholder="Search the drug library, or type a new drug…"
+      />
       <div className="grid gap-2 sm:grid-cols-3">
         <Input value={med.dose ?? ""} onChange={(e) => onChange({ dose: e.target.value })} placeholder="Dose (1 tab)" />
         <Input value={med.frequency ?? ""} onChange={(e) => onChange({ frequency: e.target.value })} placeholder="Frequency (twice daily)" />
