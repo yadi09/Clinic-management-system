@@ -40,6 +40,9 @@ export function AllergyDialog({ patientId, allergies, onClose, onSaved }: {
   const [reaction, setReaction] = useState("");
   const [severity, setSeverity] = useState("mild");
   const [showSug, setShowSug] = useState(false);
+  // Shown once, so the clinician knows the two fields below were filled in for them
+  // and are theirs to correct — not values the system is asserting about the patient.
+  const [prefilled, setPrefilled] = useState(false);
 
   const allergens = useQuery({ queryKey: ["allergens"], queryFn: () => listAllergens() });
   const term = substance.trim().toLowerCase();
@@ -47,18 +50,35 @@ export function AllergyDialog({ patientId, allergies, onClose, onSaved }: {
   const exact = (allergens.data ?? []).some((a) => a.name.toLowerCase() === term);
   const already = allergies.some((a) => a.substance.toLowerCase() === term);
 
+  // Choosing a known substance brings its usual reaction and severity with it. Both
+  // stay editable: the library says what this allergen normally does, the clinician
+  // says what it did to THIS patient.
+  const pickAllergen = (a: { name: string; default_reaction?: string; default_severity?: string }) => {
+    setSubstance(a.name);
+    setShowSug(false);
+    if (a.default_reaction) setReaction(a.default_reaction);
+    if (a.default_severity) setSeverity(a.default_severity);
+    setPrefilled(!!(a.default_reaction || a.default_severity));
+  };
+
   const add = useMutation({
     mutationFn: async () => {
       const name = substance.trim();
-      // Keep the library as the one source of allergen names. Already-exists is fine.
+      // Keep the library as the one source of allergen names, and teach it what this
+      // substance did while someone is here saying so. Already-exists is fine.
       if (name && !exact) {
-        try { await createAllergen(name); } catch { /* already in the library */ }
+        try {
+          await createAllergen(name, {
+            default_reaction: reaction.trim() || undefined,
+            default_severity: severity || undefined,
+          });
+        } catch { /* already in the library */ }
       }
       return addAllergy(patientId, { substance: name, reaction: reaction.trim() || undefined, severity });
     },
     onSuccess: () => {
       toast.success("Allergy recorded");
-      setSubstance(""); setReaction(""); setSeverity("mild");
+      setSubstance(""); setReaction(""); setSeverity("mild"); setPrefilled(false);
       onSaved();
     },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not record the allergy"),
@@ -114,9 +134,14 @@ export function AllergyDialog({ patientId, allergies, onClose, onSaved }: {
             {showSug && term && suggestions.length > 0 && (
               <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-md border bg-background shadow-md">
                 {suggestions.map((a) => (
-                  <button key={a.id} type="button" onClick={() => { setSubstance(a.name); setShowSug(false); }}
+                  <button key={a.id} type="button" onClick={() => pickAllergen(a)}
                     className="block w-full px-3 py-1.5 text-left text-sm hover:bg-muted">
-                    {a.name}
+                    <span className="font-medium">{a.name}</span>
+                    {(a.default_reaction || a.default_severity) && (
+                      <span className="block text-xs text-muted-foreground">
+                        {[a.default_reaction, a.default_severity].filter(Boolean).join(" · ")}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -124,10 +149,16 @@ export function AllergyDialog({ patientId, allergies, onClose, onSaved }: {
             {term && !exact && !already && <p className="text-xs text-muted-foreground">New — will be added to the allergen library.</p>}
             {already && <p className="text-xs text-amber-700">Already on this patient's record.</p>}
           </div>
+          {prefilled && (
+            <p className="text-xs text-brand">
+              Filled in from the clinic's allergen library — change either if this patient reacted differently.
+            </p>
+          )}
+
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="alg-reaction">Reaction</Label>
-              <Input id="alg-reaction" value={reaction} onChange={(e) => setReaction(e.target.value)} placeholder="Rash, swelling, anaphylaxis…" />
+              <Input id="alg-reaction" value={reaction} onChange={(e) => { setReaction(e.target.value); setPrefilled(false); }} placeholder="Rash, swelling, anaphylaxis…" />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="alg-severity">Severity</Label>

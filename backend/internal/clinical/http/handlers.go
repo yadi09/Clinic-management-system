@@ -853,8 +853,10 @@ type drugDTO struct {
 	clinical.Drug
 }
 type allergenRequest struct {
-	Name     string `json:"name"`
-	IsActive *bool  `json:"is_active"`
+	Name            string `json:"name"`
+	IsActive        *bool  `json:"is_active"`
+	DefaultReaction string `json:"default_reaction"`
+	DefaultSeverity string `json:"default_severity"`
 }
 type drugRequest struct {
 	Name                string   `json:"name"`
@@ -894,7 +896,10 @@ func (h *Handlers) CreateAllergen(c *gin.Context) {
 		httpx.Fail(c, apperr.Validation("name is required"))
 		return
 	}
-	a, err := h.svc.CreateAllergen(c.Request.Context(), req.Name)
+	a, err := h.svc.CreateAllergen(c.Request.Context(), clinical.AllergenInput{
+		Name: req.Name, IsActive: true,
+		DefaultReaction: req.DefaultReaction, DefaultSeverity: req.DefaultSeverity,
+	})
 	if err != nil {
 		httpx.Fail(c, err)
 		return
@@ -913,7 +918,10 @@ func (h *Handlers) UpdateAllergen(c *gin.Context) {
 		httpx.Fail(c, apperr.Validation("name is required"))
 		return
 	}
-	if err := h.svc.UpdateAllergen(c.Request.Context(), aid, clinical.AllergenInput{Name: req.Name, IsActive: boolOr(req.IsActive, true)}); err != nil {
+	if err := h.svc.UpdateAllergen(c.Request.Context(), aid, clinical.AllergenInput{
+		Name: req.Name, IsActive: boolOr(req.IsActive, true),
+		DefaultReaction: req.DefaultReaction, DefaultSeverity: req.DefaultSeverity,
+	}); err != nil {
 		httpx.Fail(c, err)
 		return
 	}

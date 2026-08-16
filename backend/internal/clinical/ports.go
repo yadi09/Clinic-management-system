@@ -227,6 +227,11 @@ type Allergen struct {
 	ID       uuid.UUID `json:"-"`
 	Name     string    `json:"name"`
 	IsActive bool      `json:"is_active"`
+	// What this substance usually does, so recording it against a patient does not
+	// mean retyping it. A default, never a constraint — the same allergen puts one
+	// patient in a rash and another in anaphylaxis.
+	DefaultReaction string `json:"default_reaction,omitempty"`
+	DefaultSeverity string `json:"default_severity,omitempty"`
 }
 
 // Drug is one entry of the per-clinic drug library, with its default sig and allergen tags.
@@ -243,8 +248,10 @@ type Drug struct {
 
 // AllergenInput / DrugInput carry create/update payloads for the libraries.
 type AllergenInput struct {
-	Name     string
-	IsActive bool
+	Name            string
+	IsActive        bool
+	DefaultReaction string
+	DefaultSeverity string
 }
 type DrugInput struct {
 	Name                string
@@ -338,7 +345,7 @@ type Service interface {
 
 	// Drug & allergen libraries (RX-LIB).
 	ListAllergens(ctx context.Context, search string, includeInactive bool) ([]Allergen, error)
-	CreateAllergen(ctx context.Context, name string) (*Allergen, error)
+	CreateAllergen(ctx context.Context, in AllergenInput) (*Allergen, error)
 	UpdateAllergen(ctx context.Context, id uuid.UUID, in AllergenInput) error
 	DeleteAllergen(ctx context.Context, id uuid.UUID) error
 	SearchDrugs(ctx context.Context, search string, includeInactive bool) ([]Drug, error)

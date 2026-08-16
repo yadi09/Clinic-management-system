@@ -14,20 +14,42 @@ import (
 
 // ---- allergen library ----
 
+// validSeverity keeps the library's defaults to the same three words the patient
+// record uses, so a default can always be written straight onto an allergy.
+func validSeverity(v string) error {
+	switch strings.TrimSpace(v) {
+	case "", "mild", "moderate", "severe":
+		return nil
+	}
+	return apperr.Validation("severity must be mild, moderate or severe")
+}
+
+// Raw pgx rather than the generated query: the defaults were added after these were
+// generated and sqlc is not available in this tree. Behaviour is otherwise the same
+// query — search, and inactive entries only when asked for.
 func (s *Service) ListAllergens(ctx context.Context, search string, includeInactive bool) ([]clinical.Allergen, error) {
 	tenantID, _ := actorOf(ctx)
 	out := []clinical.Allergen{}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		rows, e := clinicaldb.New(tx).ListAllergens(ctx, clinicaldb.ListAllergensParams{
-			TenantID: tenantID, Search: nilIfEmpty(search), IncludeInactive: &includeInactive,
-		})
+		rows, e := tx.Query(ctx,
+			`SELECT id, name, is_active, coalesce(default_reaction,''), coalesce(default_severity,'')
+			   FROM allergen_catalog
+			  WHERE tenant_id = $1 AND deleted_at IS NULL
+			    AND ($2::bool OR is_active)
+			    AND ($3::text IS NULL OR name ILIKE '%' || $3 || '%')
+			  ORDER BY name`, tenantID, includeInactive, nilIfEmpty(search))
 		if e != nil {
 			return e
 		}
-		for _, r := range rows {
-			out = append(out, clinical.Allergen{ID: r.ID, Name: r.Name, IsActive: r.IsActive})
+		defer rows.Close()
+		for rows.Next() {
+			var a clinical.Allergen
+			if e := rows.Scan(&a.ID, &a.Name, &a.IsActive, &a.DefaultReaction, &a.DefaultSeverity); e != nil {
+				return e
+			}
+			out = append(out, a)
 		}
-		return nil
+		return rows.Err()
 	})
 	if err != nil {
 		return nil, apperr.Internal(err)
@@ -35,19 +57,23 @@ func (s *Service) ListAllergens(ctx context.Context, search string, includeInact
 	return out, nil
 }
 
-func (s *Service) CreateAllergen(ctx context.Context, name string) (*clinical.Allergen, error) {
+func (s *Service) CreateAllergen(ctx context.Context, in clinical.AllergenInput) (*clinical.Allergen, error) {
 	tenantID, actor := actorOf(ctx)
-	if strings.TrimSpace(name) == "" {
+	if strings.TrimSpace(in.Name) == "" {
 		return nil, apperr.Validation("an allergen name is required")
+	}
+	if e := validSeverity(in.DefaultSeverity); e != nil {
+		return nil, e
 	}
 	var out clinical.Allergen
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		r, e := clinicaldb.New(tx).CreateAllergen(ctx, clinicaldb.CreateAllergenParams{TenantID: tenantID, Name: strings.TrimSpace(name), CreatedBy: actor})
-		if e != nil {
-			return e
-		}
-		out = clinical.Allergen{ID: r.ID, Name: r.Name, IsActive: r.IsActive}
-		return nil
+		return tx.QueryRow(ctx,
+			`INSERT INTO allergen_catalog (tenant_id, name, default_reaction, default_severity, created_by)
+			 VALUES ($1,$2,$3,$4,$5)
+			 RETURNING id, name, is_active, coalesce(default_reaction,''), coalesce(default_severity,'')`,
+			tenantID, strings.TrimSpace(in.Name), nilIfEmpty(strings.TrimSpace(in.DefaultReaction)),
+			nilIfEmpty(strings.TrimSpace(in.DefaultSeverity)), actor,
+		).Scan(&out.ID, &out.Name, &out.IsActive, &out.DefaultReaction, &out.DefaultSeverity)
 	})
 	if isUnique(err) {
 		return nil, apperr.Conflict("ALLERGEN_EXISTS", "that allergen already exists")
@@ -63,8 +89,17 @@ func (s *Service) UpdateAllergen(ctx context.Context, id uuid.UUID, in clinical.
 	if strings.TrimSpace(in.Name) == "" {
 		return apperr.Validation("an allergen name is required")
 	}
+	if e := validSeverity(in.DefaultSeverity); e != nil {
+		return e
+	}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		return clinicaldb.New(tx).UpdateAllergen(ctx, clinicaldb.UpdateAllergenParams{TenantID: tenantID, ID: id, Name: strings.TrimSpace(in.Name), IsActive: in.IsActive})
+		_, e := tx.Exec(ctx,
+			`UPDATE allergen_catalog
+			    SET name = $3, is_active = $4, default_reaction = $5, default_severity = $6, updated_at = now()
+			  WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+			tenantID, id, strings.TrimSpace(in.Name), in.IsActive,
+			nilIfEmpty(strings.TrimSpace(in.DefaultReaction)), nilIfEmpty(strings.TrimSpace(in.DefaultSeverity)))
+		return e
 	})
 	if isUnique(err) {
 		return apperr.Conflict("ALLERGEN_EXISTS", "that allergen already exists")

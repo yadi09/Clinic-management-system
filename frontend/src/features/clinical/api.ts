@@ -290,6 +290,9 @@ export interface Allergen {
   id: string;
   name: string;
   is_active: boolean;
+  /** What this substance usually does — pre-fills the patient allergy form. */
+  default_reaction?: string;
+  default_severity?: string;
 }
 export interface Drug {
   id: string;
@@ -324,10 +327,10 @@ export function listAllergens(search?: string, all = false) {
   const qs = p.toString();
   return apiFetch<Allergen[]>(`/allergens${qs ? `?${qs}` : ""}`);
 }
-export function createAllergen(name: string) {
-  return apiFetch<Allergen>("/allergens", { method: "POST", body: { name } });
+export function createAllergen(name: string, defaults?: { default_reaction?: string; default_severity?: string }) {
+  return apiFetch<Allergen>("/allergens", { method: "POST", body: { name, ...defaults } });
 }
-export function updateAllergen(id: string, body: { name: string; is_active?: boolean }) {
+export function updateAllergen(id: string, body: { name: string; is_active?: boolean; default_reaction?: string; default_severity?: string }) {
   return apiFetch<void>(`/allergens/${id}`, { method: "PUT", body });
 }
 export function deleteAllergen(id: string) {

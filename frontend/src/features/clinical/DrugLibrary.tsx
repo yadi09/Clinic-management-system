@@ -16,6 +16,7 @@ import { AlertTriangle, Pill, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
@@ -107,15 +108,24 @@ export function CreateDrugDialog({ initialName, onClose, onCreated }: { initialN
   const qc = useQueryClient();
   const [form, setForm] = useState({ name: initialName, default_dose: "", default_frequency: "", default_duration: "", default_instructions: "" });
   const [allergenIds, setAllergenIds] = useState<string[]>([]);
-  const [newAllergen, setNewAllergen] = useState("");
+  // A new allergen is described once, here, and every patient it is later recorded
+  // against inherits the description instead of someone retyping it.
+  const [newAllergen, setNewAllergen] = useState({ name: "", reaction: "", severity: "" });
   const allergens = useQuery({ queryKey: ["allergens"], queryFn: () => listAllergens() });
 
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const toggle = (id: string) => setAllergenIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
 
   const addAllergen = useMutation({
-    mutationFn: () => createAllergen(newAllergen.trim()),
-    onSuccess: (a) => { setNewAllergen(""); setAllergenIds((ids) => [...ids, a.id]); qc.invalidateQueries({ queryKey: ["allergens"] }); },
+    mutationFn: () => createAllergen(newAllergen.name.trim(), {
+      default_reaction: newAllergen.reaction.trim() || undefined,
+      default_severity: newAllergen.severity || undefined,
+    }),
+    onSuccess: (a) => {
+      setNewAllergen({ name: "", reaction: "", severity: "" });
+      setAllergenIds((ids) => [...ids, a.id]);
+      qc.invalidateQueries({ queryKey: ["allergens"] });
+    },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not add allergen"),
   });
   const create = useMutation({
@@ -145,9 +155,27 @@ export function CreateDrugDialog({ initialName, onClose, onCreated }: { initialN
             ))}
             {(allergens.data?.length ?? 0) === 0 && <span className="text-xs text-muted-foreground">No allergens yet — add one below.</span>}
           </div>
-          <div className="flex items-end gap-2">
-            <Input value={newAllergen} onChange={(e) => setNewAllergen(e.target.value)} placeholder="New allergen (e.g. Penicillin)" className="h-8" />
-            <Button size="sm" variant="outline" disabled={!newAllergen.trim()} loading={addAllergen.isPending} onClick={() => addAllergen.mutate()}>Add</Button>
+          {/* Describing the allergen here is what makes recording it on a patient a
+              single click later: the reaction and severity are carried with it. */}
+          <div className="space-y-1.5 rounded-md border border-dashed p-2">
+            <Input value={newAllergen.name} onChange={(e) => setNewAllergen((n) => ({ ...n, name: e.target.value }))}
+              placeholder="New allergen (e.g. Penicillin)" className="h-8" />
+            <div className="grid gap-1.5 sm:grid-cols-[1fr_9rem_auto]">
+              <Input value={newAllergen.reaction} onChange={(e) => setNewAllergen((n) => ({ ...n, reaction: e.target.value }))}
+                placeholder="Usual reaction (rash, swelling)" className="h-8" />
+              <Select value={newAllergen.severity || "unset"}
+                onValueChange={(v) => setNewAllergen((n) => ({ ...n, severity: v === "unset" ? "" : v }))}>
+                <SelectTrigger className="h-8"><SelectValue placeholder="Severity" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unset">Severity —</SelectItem>
+                  <SelectItem value="mild">Mild</SelectItem>
+                  <SelectItem value="moderate">Moderate</SelectItem>
+                  <SelectItem value="severe">Severe</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button size="sm" variant="outline" disabled={!newAllergen.name.trim()}
+                loading={addAllergen.isPending} onClick={() => addAllergen.mutate()}>Add</Button>
+            </div>
           </div>
         </div>
         <DialogFooter>
