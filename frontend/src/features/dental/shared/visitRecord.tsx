@@ -7,7 +7,7 @@
 // move would have taken away working clinical capability.
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ChevronLeft, ChevronRight, ExternalLink, ImagePlus, Plus, Printer, Trash2, X } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, ExternalLink, Images, ImagePlus, Pill, Plus, Printer, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,7 @@ import { useAuth } from "@/app/auth-context";
 import { compressImage } from "@/lib/image";
 import { getPatient } from "@/features/patients/api";
 import { PatientAllergyLine } from "@/features/dental/SafetyStrip";
+import { EmptySlot, RecordSection } from "@/features/dental/shared/RecordSection";
 import { getClinic, listBranches } from "@/features/admin/api";
 import { searchDrugs, type Drug } from "@/features/clinical/api";
 import { printPrescription } from "@/features/clinical/print";
@@ -74,13 +75,26 @@ export function PrescriptionSection({ patientId, session, editable, onChanged }:
   };
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium">Prescriptions</span>
-        {editable && <Button size="sm" variant="outline" onClick={() => setAdding(true)}><Plus className="h-3.5 w-3.5" /> Add prescription</Button>}
-      </div>
+    <RecordSection
+      icon={Pill} tone="rx" title="Prescriptions" count={session.prescriptions.length}
+      hint="Medication the patient takes home. Printed with the clinic's details."
+      action={editable && (
+        <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
+          <Plus className="h-3.5 w-3.5" /> Add prescription
+        </Button>
+      )}
+    >
       {session.prescriptions.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No prescriptions yet.</p>
+        <EmptySlot
+          icon={Pill}
+          title="No prescription for this visit"
+          hint="Write one if the patient needs medication after today's treatment."
+          action={editable && (
+            <Button size="sm" onClick={() => setAdding(true)}>
+              <Plus className="h-3.5 w-3.5" /> Write a prescription
+            </Button>
+          )}
+        />
       ) : (
         <div className="space-y-2">
           {session.prescriptions.map((rx) => (
@@ -109,7 +123,7 @@ export function PrescriptionSection({ patientId, session, editable, onChanged }:
         </div>
       )}
       {adding && <PrescriptionDialog patientId={patientId} sessionId={session.id} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); onChanged(); }} />}
-    </div>
+    </RecordSection>
   );
 }
 
@@ -243,9 +257,28 @@ export function SessionImages({ patientId, session, editable, imageLimit, onChan
     onSuccess: () => { toast.success("Image removed"); onChanged(); },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not remove the image"),
   });
+  const addButton = (size: "sm" | "lg") => editable && tab !== "all" && (
+    <label className={cn(
+      "inline-flex cursor-pointer items-center gap-1.5 rounded-md font-medium transition-colors",
+      size === "lg"
+        ? "bg-primary px-3 py-2 text-sm text-primary-foreground hover:bg-primary/90"
+        : "border px-2 py-1 text-xs hover:bg-accent",
+      (busy || all.length >= cap) && "pointer-events-none opacity-50",
+    )}>
+      <ImagePlus className={size === "lg" ? "h-4 w-4" : "h-3.5 w-3.5"} />
+      {busy ? "Uploading…" : `Add ${tabLabel.toLowerCase()}`}
+      <input type="file" accept="image/*" multiple className="hidden" disabled={busy || all.length >= cap}
+        onChange={(e) => { void onPick(e.target.files); e.currentTarget.value = ""; }} />
+    </label>
+  );
+
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <RecordSection
+      icon={Images} tone="media" title="Images" count={all.length}
+      hint="Before, after and X-rays for this visit — kept against this session."
+      action={addButton("sm")}
+    >
+      <div className="space-y-3">
         <Segmented
           size="sm"
           ariaLabel="Filter images by type"
@@ -253,19 +286,20 @@ export function SessionImages({ patientId, session, editable, imageLimit, onChan
           onChange={(v) => setTab(v as typeof tab)}
           options={IMG_TABS.map((t) => ({ value: t.key, label: t.label, badge: count(t.key) }))}
         />
-        {editable && tab !== "all" && (
-          <label className={cn("inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium", busy || all.length >= cap ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-accent")}>
-            <ImagePlus className="h-3.5 w-3.5" /> {busy ? "Uploading…" : `Add ${tabLabel.toLowerCase()}`}
-            <input type="file" accept="image/*" multiple className="hidden" disabled={busy || all.length >= cap} onChange={(e) => { void onPick(e.target.files); e.currentTarget.value = ""; }} />
-          </label>
+        {rows.length === 0 ? (
+          <EmptySlot
+            icon={ImagePlus}
+            title={tab === "all" ? "No images for this visit" : `No ${tabLabel.toLowerCase()} images yet`}
+            hint={tab === "all"
+              ? "Pick Before, After or X-ray to add one."
+              : `Photograph the ${tabLabel.toLowerCase()} state while the patient is in the chair.`}
+            action={addButton("lg")}
+          />
+        ) : (
+          <ImageGallery images={rows} editable={editable} onDelete={(id) => del.mutate(id)} thumb />
         )}
       </div>
-      {rows.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{tab === "all" ? "No images for this session yet." : `No ${tabLabel.toLowerCase()} images yet.`}</p>
-      ) : (
-        <ImageGallery images={rows} editable={editable} onDelete={(id) => del.mutate(id)} thumb />
-      )}
-    </div>
+    </RecordSection>
   );
 }
 

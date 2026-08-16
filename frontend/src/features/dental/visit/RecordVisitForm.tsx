@@ -19,7 +19,7 @@
 // once, and the promise is recorded rather than implied by an unpaid row.
 import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { AlertTriangle, Save, X } from "lucide-react";
+import { CalendarClock, LayoutGrid, NotebookPen, Save, Stethoscope, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -31,7 +31,8 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { updateSession, type Session } from "@/features/dental/api";
 import { birr } from "@/features/dental/money";
 import { feeStage } from "@/features/dental/visit/VisitPaymentStep";
-import { FLAT_TEETH, parseCsv, ProcedureMultiSelect, ToothMultiSelect } from "@/features/dental/shared/pickers";
+import { FLAT_TEETH, parseCsv, ProcedureMultiSelect, ToothMultiSelect, ToothPalmerPicker } from "@/features/dental/shared/pickers";
+import { RecordSection } from "@/features/dental/shared/RecordSection";
 import { PrescriptionSection, SessionImages } from "@/features/dental/shared/visitRecord";
 
 const todayISO = () => {
@@ -62,6 +63,9 @@ export function RecordVisitForm({
   // Dirty tracking exists so the autosave cannot fire on mount and then present the
   // component's own initial values back to the clinician as a "restored draft".
   const [dirty, setDirty] = useState(false);
+  // Open by default once teeth are chosen: the codes alone are the thing that is
+  // hard to hold in your head, so the picture should be there without being asked for.
+  const [showChart, setShowChart] = useState(() => parseCsv(session.tooth).length > 0);
   const { ask, dialog } = useConfirmDialog();
 
   // A visit note is dictated while the patient is in the chair; losing it to a
@@ -118,12 +122,26 @@ export function RecordVisitForm({
 
   const empty = procedure.length === 0 && tooth.length === 0 && !notes.trim();
   const notToday = session.scheduled_date !== todayISO();
+  // "5 days ago" is the part that makes the warning land; a date alone has to be
+  // subtracted from today in the reader's head while a patient waits.
+  const backdated = (() => {
+    const days = Math.round(
+      (Date.parse(`${todayISO()}T00:00:00`) - Date.parse(`${session.scheduled_date}T00:00:00`)) / 86_400_000,
+    );
+    if (days <= 0) return "";
+    if (days === 1) return "yesterday";
+    return `${days} days ago`;
+  })();
 
   return (
-    <div className="space-y-4 rounded-md border border-brand/40 bg-brand/[0.03] p-3">
+    // Raised off the page and tinted, so the eye lands here first. While this is
+    // open it is the only thing the dentist is doing; it should not look like one
+    // more card in a column of cards.
+    <div className="overflow-hidden rounded-xl border-2 border-brand/30 bg-muted/40 shadow-modal">
       {dialog}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-brand">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand/20 bg-brand/[0.07] px-4 py-2.5">
+        <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-brand">
+          <span className="flex h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />
           Recording · {planTitle} · session {session.seq}
         </p>
         <Button size="sm" variant="ghost" onClick={() => {
@@ -139,58 +157,90 @@ export function RecordVisitForm({
         }}><X className="h-3.5 w-3.5" /> Cancel</Button>
       </div>
 
-      {restored && (
-        <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
-          Draft restored — this was typed earlier and never saved.
-        </p>
-      )}
+      <div className="space-y-3 p-3">
+        {restored && (
+          <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
+            Draft restored — this was typed earlier and never saved.
+          </p>
+        )}
 
-      {/* Stated, never blocking. The old form disabled every field behind a second
-          date confirmation; a visit genuinely recorded late is a normal event. */}
-      {notToday && (
-        <p className="flex items-start gap-2 text-xs text-muted-foreground">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          This session is dated <DualDate iso={session.scheduled_date} />, not today. Recording it here keeps that date.
-        </p>
-      )}
+        {/* Stated loudly, never blocking. This was a grey 12px line with a small
+            triangle, saying "this session is dated Aug 11, not today" — the one fact
+            that changes what the record MEANS, whispered. A visit recorded five days
+            late is normal and allowed; being unaware of it is not. */}
+        {notToday && (
+          <div className="flex items-start gap-2.5 rounded-md border-l-4 border-amber-500 bg-amber-50 px-3 py-2.5">
+            <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <div className="text-sm">
+              <p className="font-semibold text-amber-900">
+                You are recording {backdated ? `a visit from ${backdated}` : "a visit booked for a later date"} — not today.
+              </p>
+              <p className="text-xs text-amber-800">
+                It is saved as <b><DualDate iso={session.scheduled_date} /></b>, the date it was booked for.
+              </p>
+            </div>
+          </div>
+        )}
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <Label>Tooth</Label>
-          <ToothMultiSelect teeth={teeth} value={tooth} onChange={(v) => { setTooth(v); setDirty(true); }} />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Procedure</Label>
-          <ProcedureMultiSelect value={procedure} onChange={(v) => { setProcedure(v); setDirty(true); }} />
-        </div>
-      </div>
+        <RecordSection
+          icon={Stethoscope} tone="clinical" title="What was treated"
+          hint="The teeth you worked on and what you did to them."
+          action={
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs"
+              onClick={() => setShowChart((v) => !v)}>
+              <LayoutGrid className="h-3.5 w-3.5" /> {showChart ? "Hide chart" : "Show chart"}
+            </Button>
+          }
+        >
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Tooth</Label>
+                <ToothMultiSelect teeth={teeth} value={tooth} onChange={(v) => { setTooth(v); setDirty(true); }} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Procedure</Label>
+                <ProcedureMultiSelect value={procedure} onChange={(v) => { setProcedure(v); setDirty(true); }} />
+              </div>
+            </div>
+            {showChart && (
+              <ToothPalmerPicker teeth={teeth} value={tooth} onChange={(v) => { setTooth(v); setDirty(true); }} />
+            )}
+          </div>
+        </RecordSection>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="visit-notes">Notes</Label>
-        <Textarea id="visit-notes" rows={4} value={notes} onChange={(e) => { setNotes(e.target.value); setDirty(true); }}
-          placeholder="What was done, what was found, what happens next visit" />
-      </div>
+        <RecordSection
+          icon={NotebookPen} title="Clinical note"
+          hint="What you found, what you did, what happens next visit."
+        >
+          <Textarea id="visit-notes" rows={4} value={notes}
+            onChange={(e) => { setNotes(e.target.value); setDirty(true); }}
+            className="bg-background"
+            placeholder="e.g. Crown cemented on UR4. Occlusion checked. Review in two weeks." />
+        </RecordSection>
 
-      {/* Attach while the patient is still in the chair. These lived only inside the
-          old plan list's expandable row, so a dentist recording here could write the
-          note but not print the script or keep the X-ray. */}
-      <div className="space-y-3 border-t pt-3">
+        {/* Attach while the patient is still in the chair. These lived only inside the
+            old plan list's expandable row, so a dentist recording here could write the
+            note but not print the script or keep the X-ray. */}
         <PrescriptionSection patientId={patientId} session={session} editable onChanged={onSaved} />
         <SessionImages patientId={patientId} session={session} editable imageLimit={imageLimit} onChanged={onSaved} />
-      </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-t pt-3">
-        <Button disabled={empty} loading={save.isPending} onClick={() => save.mutate()}>
-          <Save className="h-4 w-4" /> Save &amp; mark done
-        </Button>
-        <span className="text-xs text-muted-foreground">
-          {/* "Settled" is true of a paid fee and a lie about a promised one — this
-              line sits under the button that finishes the visit, so it has to say
-              which of the two happened. */}
-          Fee {birr(session.amount_due)} — {feeStage(session) === "paid"
-            ? "paid."
-            : "owed; the patient pays later."}
-        </span>
+        {/* The finish line, held apart from the sections above it so it reads as the
+            end of the task rather than another field. */}
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card px-4 py-3 shadow-sm">
+          <Button size="lg" disabled={empty} loading={save.isPending} onClick={() => save.mutate()}>
+            <Save className="h-4 w-4" /> Save &amp; mark done
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {/* "Settled" is true of a paid fee and a lie about a promised one — this
+                line sits under the button that finishes the visit, so it has to say
+                which of the two happened. */}
+            Fee {birr(session.amount_due)} — {feeStage(session) === "paid"
+              ? "paid."
+              : "owed; the patient pays later."}
+            {empty && <><br />Add a tooth, a procedure or a note before finishing.</>}
+          </span>
+        </div>
       </div>
     </div>
   );

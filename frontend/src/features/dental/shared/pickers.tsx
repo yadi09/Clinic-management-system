@@ -110,3 +110,78 @@ export function ToothMultiSelect({ teeth, value, onChange, placeholder }: { teet
     </Popover>
   );
 }
+
+/**
+ * The teeth you just picked, on the chart a dentist already reads.
+ *
+ * The picker collapses to "3 selected · UR7, UR4, UR1", which is a list of codes to
+ * be decoded one at a time — and by the third tooth nobody remembers which three
+ * they chose. Dentists do not think in lists, they think in quadrants, so the
+ * selection is shown where it means something: Palmer notation, upper row above
+ * lower, right quadrant on the left as the patient faces you.
+ *
+ * It is also the fastest way to fix a mistake, so the teeth are clickable — this is
+ * a second way in, not a read-out of the first.
+ */
+export function ToothPalmerPicker({ value, onChange, teeth }: {
+  value: string[];
+  onChange: (codes: string[]) => void;
+  /** The patient's charted status, so a decayed or crowned tooth still reads as one. */
+  teeth: Record<string, string>;
+}) {
+  const toggle = (code: string) =>
+    onChange(value.includes(code) ? value.filter((c) => c !== code) : [...value, code]);
+
+  const row = (q: { label: string; codes: string[] }, align: "end" | "start") => (
+    <div className={cn("flex gap-0.5", align === "end" ? "justify-end" : "justify-start")}>
+      {q.codes.map((code) => {
+        const on = value.includes(code);
+        const charted = teeth[code];
+        const st = charted ? statusStyle(charted) : undefined;
+        return (
+          <button
+            key={code}
+            type="button"
+            onClick={() => toggle(code)}
+            aria-pressed={on}
+            title={`Palmer ${code}${charted ? ` · ${STATUS_LABEL[charted] ?? charted}` : ""}${on ? " · selected" : ""}`}
+            style={on ? undefined : st}
+            className={cn(
+              "flex h-7 w-6 items-center justify-center rounded border text-[10px] font-semibold tabular-nums transition-all",
+              on
+                ? "scale-105 border-brand bg-brand text-brand-foreground shadow-sm"
+                : "hover:border-brand/60 hover:bg-accent",
+            )}
+          >
+            {code.slice(2)}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <div className="rounded-md border bg-muted/30 p-2.5">
+      {/* Palmer's cross. Without the two lines this is just 32 buttons in two rows;
+          with them it is the chart every dentist was taught to read, and the
+          quadrant a tooth belongs to can be seen rather than worked out. Held to a
+          fixed width so the quadrants meet at the midline instead of drifting to
+          opposite ends of a wide panel. */}
+      <div className="mx-auto max-w-[26rem]">
+        <div className="grid grid-cols-2 border-b border-foreground/25">
+          <div className="border-r border-foreground/25 pb-1.5 pr-2">{row(TOOTH_QUADRANTS[0], "end")}</div>
+          <div className="pb-1.5 pl-2">{row(TOOTH_QUADRANTS[1], "start")}</div>
+        </div>
+        <div className="grid grid-cols-2">
+          <div className="border-r border-foreground/25 pr-2 pt-1.5">{row(TOOTH_QUADRANTS[2], "end")}</div>
+          <div className="pl-2 pt-1.5">{row(TOOTH_QUADRANTS[3], "start")}</div>
+        </div>
+      </div>
+      <p className="mt-2 text-center text-[10px] text-muted-foreground">
+        {value.length === 0
+          ? "Tap a tooth to add it"
+          : `${value.length} selected — ${FLAT_TEETH.filter((c) => value.includes(c)).join(", ")}`}
+      </p>
+    </div>
+  );
+}
