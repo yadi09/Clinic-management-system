@@ -10,7 +10,7 @@
 // It is a sequence, not a gate. "Treat now, pay later" is on every step, because the
 // clinic's rule is that a patient may be treated on a promise. The pipeline makes
 // the normal path obvious; it does not make the other path impossible.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Check, HandCoins, Loader2, Pencil, TriangleAlert, Undo2 } from "lucide-react";
 
@@ -25,6 +25,19 @@ import {
   type Plan, type Session,
 } from "@/features/dental/api";
 import { birr, num, splitRounded } from "@/features/dental/money";
+import { formatEthiopian } from "@/lib/ethiopian";
+
+const todayISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+/** "Aug 8" — enough to place a visit; the timeline below carries the full date. */
+const shortDate = (iso: string) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+/** "2 Nehase" — the same date in the calendar the patient actually uses. */
+const shortEc = (iso: string) => {
+  try { return formatEthiopian(iso, { dayFirst: true }).replace(/,? \d{4}$/, ""); } catch { return ""; }
+};
 
 /** Where this visit's fee has got to. Drives the pipeline and what is offered. */
 export type FeeStage = "unpaid" | "atCashier" | "paid" | "promised";
@@ -127,22 +140,100 @@ function CourseRecap({ plan, current }: { plan: Plan; current: Session }) {
           <span className="text-[11px] font-semibold text-emerald-600">{pct}% collected</span>
         </div>
       )}
-      {/* Every visit and its price on one line: the question "what has this patient
-          paid and what is left" answered without opening anything. */}
-      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
-        {plan.sessions.filter((s) => s.status !== "cancelled").map((s) => {
-          const isNow = s.id === current.id;
-          const st = feeStage(s);
-          return (
-            <span key={s.id} className={cn("tabular-nums", isNow ? "font-bold text-foreground" : "text-muted-foreground")}>
-              <span className={cn(isNow && "rounded bg-brand px-1 text-brand-foreground")}>
-                {isNow ? `NOW ${s.seq}` : s.seq}
-              </span>{" "}
-              {st === "paid" ? "✓" : st === "atCashier" ? "→" : st === "promised" ? "!" : "·"}{" "}
-              {birr(s.amount_due)}
-            </span>
-          );
-        })}
+      <CourseTrack plan={plan} current={current} />
+    </div>
+  );
+}
+
+// --- the course, visit by visit ---------------------------------------------
+
+/**
+ * What each visit is, when it is, what it costs and where its money stands.
+ *
+ * This was one line of "1 ✓ 4,000 ETB · 2 ✓ 4,000 ETB · NOW 3 · 5,000 ETB". Every
+ * part of that had to be decoded: the number was not labelled a visit, the tick had
+ * to be guessed as paid, the dot meant nothing at all, and there were no dates — so
+ * the one question the strip existed to answer, "where are we in this course", could
+ * not be answered by looking at it. Each visit is now a card that says all four
+ * things in words.
+ */
+function visitState(s: Session, todayISO: string): { label: string; cls: string; dot: string } {
+  const st = feeStage(s);
+  if (s.status === "done") {
+    if (st === "paid") return { label: "Paid", cls: "text-emerald-700", dot: "bg-emerald-500" };
+    if (st === "atCashier") return { label: "At cashier", cls: "text-amber-700", dot: "bg-amber-500" };
+    return { label: "Owed", cls: "text-destructive", dot: "bg-destructive" };
+  }
+  if (st === "paid") return { label: "Paid ahead", cls: "text-emerald-700", dot: "bg-emerald-500" };
+  if (st === "atCashier") return { label: "At cashier", cls: "text-amber-700", dot: "bg-amber-500" };
+  if (s.scheduled_date < todayISO) return { label: "Missed", cls: "text-destructive", dot: "bg-destructive" };
+  return { label: "Booked", cls: "text-muted-foreground", dot: "bg-muted-foreground/40" };
+}
+
+function CourseTrack({ plan, current }: { plan: Plan; current: Session }) {
+  const today = todayISO();
+  const rail = useRef<HTMLDivElement>(null);
+  const live = plan.sessions.filter((s) => s.status !== "cancelled");
+  const done = live.filter((s) => s.status === "done").length;
+
+  // With a dozen visits the current one can sit off-screen, which is the one card
+  // the dentist opened this panel to look at.
+  useEffect(() => {
+    rail.current?.querySelector('[data-now="1"]')?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [current.id]);
+
+  const items: { key: string; title: string; date?: string; amount: string; st: ReturnType<typeof visitState>; now: boolean }[] = [];
+  if (plan.deposit && num(plan.deposit.amount_due) > 0.005) {
+    const d = plan.deposit;
+    const paid = d.payment === "paid";
+    items.push({
+      key: "deposit", title: "Down payment", date: d.scheduled_date, amount: d.amount_due, now: false,
+      st: paid ? { label: "Paid", cls: "text-emerald-700", dot: "bg-emerald-500" }
+        : d.payment === "billed" ? { label: "At cashier", cls: "text-amber-700", dot: "bg-amber-500" }
+          : { label: "Owed", cls: "text-destructive", dot: "bg-destructive" },
+    });
+  }
+  for (const s of live) {
+    items.push({
+      key: s.id, title: `Visit ${s.seq}`, date: s.scheduled_date, amount: s.amount_due,
+      st: visitState(s, today), now: s.id === current.id,
+    });
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        The course — {done} of {live.length} visit{live.length === 1 ? "" : "s"} done
+        {live.some((s) => s.id === current.id && s.status !== "done") && ", 1 in the chair"}
+      </p>
+      <div ref={rail} className="flex gap-2 overflow-x-auto pb-1">
+        {items.map((it) => (
+          <div key={it.key} data-now={it.now ? "1" : undefined}
+            className={cn(
+              "min-w-[7.5rem] shrink-0 rounded-md border bg-card px-2.5 py-2",
+              it.now ? "border-brand ring-1 ring-brand" : "border-border",
+            )}>
+            <div className="flex items-center gap-1.5">
+              <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", it.now ? "bg-brand" : it.st.dot)} />
+              <span className={cn("truncate text-[10px] font-bold uppercase tracking-wide",
+                it.now ? "text-brand" : "text-muted-foreground")}>
+                {it.title}
+              </span>
+            </div>
+            {it.date && (
+              <div className="mt-1 leading-tight">
+                <div className={cn("text-[11px] font-medium", it.date === today && "text-brand")}>
+                  {it.date === today ? "Today" : shortDate(it.date)}
+                </div>
+                <div className="text-[10px] text-muted-foreground">{shortEc(it.date)}</div>
+              </div>
+            )}
+            <div className="mt-1 tabular-nums text-xs font-bold">{birr(it.amount)}</div>
+            <div className={cn("text-[10px] font-semibold", it.now ? "text-brand" : it.st.cls)}>
+              {it.now ? "In the chair" : it.st.label}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
