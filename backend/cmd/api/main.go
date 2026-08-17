@@ -32,6 +32,8 @@ import (
 	clinicalservice "github.com/reicb/clinicsaas/internal/clinical/service"
 	dentalhttp "github.com/reicb/clinicsaas/internal/dental/http"
 	dentalservice "github.com/reicb/clinicsaas/internal/dental/service"
+	financehttp "github.com/reicb/clinicsaas/internal/finance/http"
+	financeservice "github.com/reicb/clinicsaas/internal/finance/service"
 	identityhttp "github.com/reicb/clinicsaas/internal/identity/http"
 	identityservice "github.com/reicb/clinicsaas/internal/identity/service"
 	inpatienthttp "github.com/reicb/clinicsaas/internal/inpatient/http"
@@ -115,6 +117,10 @@ func main() {
 	maternityHandlers := maternityhttp.NewHandlers(maternityservice.NewService(db, publisher))
 	inpatientHandlers := inpatienthttp.NewHandlers(inpatientservice.NewService(db, publisher, billingSvc))
 	dentalHandlers := dentalhttp.NewHandlers(dentalservice.NewService(db, publisher, billingSvc, store))
+	// Finance reads the charge ledger, plus the two figures only dental can answer
+	// (treatment delivered and never billed, and the forward book).
+	financeHandlers := financehttp.NewHandlers(
+		financeservice.NewService(db, financeservice.NewDentalAdapter(db)))
 	// Lab & pharmacy bill through billing (Charger) so revenue reaches the cashier.
 	pharmacyHandlers := pharmacyhttp.NewHandlers(pharmacyservice.NewService(db, publisher, billingSvc))
 	labHandlers := labhttp.NewHandlers(labservice.NewService(db, publisher, billingSvc))
@@ -133,7 +139,7 @@ func main() {
 		}
 	}
 
-	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, reportingHandlers, maternityHandlers, inpatientHandlers, dentalHandlers, pharmacyHandlers, labHandlers, platformHandlers)
+	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, reportingHandlers, maternityHandlers, inpatientHandlers, dentalHandlers, pharmacyHandlers, labHandlers, financeHandlers, platformHandlers)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -176,6 +182,7 @@ func newRouter(
 	dentalHandlers *dentalhttp.Handlers,
 	pharmacyHandlers *pharmacyhttp.Handlers,
 	labHandlers *labhttp.Handlers,
+	financeHandlers *financehttp.Handlers,
 	platformHandlers *platformhttp.Handlers,
 ) *gin.Engine {
 	if cfg.IsProd() {
@@ -210,19 +217,20 @@ func newRouter(
 	if platformHandlers != nil {
 		platformHandlers.Register(v1, tokens) // /platform/auth/login (public) + /platform/clinics (platform.admin)
 	}
-	protected := v1.Group("", httpx.RequireAuth(tokens)) // requires a valid access token
-	identityHandlers.RegisterProtected(protected)        // /auth/me
-	orgHandlers.RegisterProtected(protected)             // /org/...
-	patientHandlers.RegisterProtected(protected)         // /patients/...
-	schedulingHandlers.RegisterProtected(protected)      // /appointments/..., /queue/..., /worklist
-	billingHandlers.RegisterProtected(protected)         // /billing/card/...
-	clinicalHandlers.RegisterProtected(protected)        // /visits/..., /encounters/..., /diagnosis-*
-	reportingHandlers.RegisterProtected(protected)       // /reporting/dhis2/...
-	maternityHandlers.RegisterProtected(protected)       // /dating/preview, /patients/:id/dating[/history]
-	inpatientHandlers.RegisterProtected(protected)       // /inpatient/wards, /beds, /board, /admissions, /report
-	dentalHandlers.RegisterProtected(protected)          // /dental/patients/:id/{chart,treatments,visits,summary,charge}, /dental/outstanding
-	pharmacyHandlers.RegisterProtected(protected)        // /pharmacy/...
-	labHandlers.RegisterProtected(protected)             // /lab/...
+	protected := v1.Group("", httpx.RequireAuth(tokens))     // requires a valid access token
+	identityHandlers.RegisterProtected(protected)            // /auth/me
+	orgHandlers.RegisterProtected(protected)                 // /org/...
+	patientHandlers.RegisterProtected(protected)             // /patients/...
+	schedulingHandlers.RegisterProtected(protected)          // /appointments/..., /queue/..., /worklist
+	billingHandlers.RegisterProtected(protected)             // /billing/card/...
+	clinicalHandlers.RegisterProtected(protected)            // /visits/..., /encounters/..., /diagnosis-*
+	reportingHandlers.RegisterProtected(protected)           // /reporting/dhis2/...
+	maternityHandlers.RegisterProtected(protected)           // /dating/preview, /patients/:id/dating[/history]
+	inpatientHandlers.RegisterProtected(protected)           // /inpatient/wards, /beds, /board, /admissions, /report
+	dentalHandlers.RegisterProtected(protected)              // /dental/patients/:id/{chart,treatments,visits,summary,charge}, /dental/outstanding
+	pharmacyHandlers.RegisterProtected(protected)            // /pharmacy/...
+	labHandlers.RegisterProtected(protected)                 // /lab/...
+	financehttp.Register(protected, financeHandlers, tokens) // /finance/overview, /finance/receivables
 
 	// SSE queue stream authenticates via ?token= (EventSource can't set headers).
 	v1.GET("/queue/stream", httpx.RequireAuthQuery(tokens), schedulingHandlers.QueueStream)

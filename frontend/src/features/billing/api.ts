@@ -271,3 +271,39 @@ export function closeDay(body: { business_date?: string; counted: number; note?:
 export function reconciliations(all = false) {
   return apiFetch<Reconciliation[]>(`/billing/reconciliations${all ? "?all=1" : ""}`);
 }
+
+// ---- Finance: the owner's view of the money ----
+
+export interface FinDayPoint { date: string; amount: string }
+export interface FinLine { key: string; label: string; amount: string; count: number }
+export interface FinAlert { kind: string; text: string; amount?: string; count: number; href: string }
+export interface FinOverview {
+  collected: string; collected_count: number; collected_prev: string;
+  refunded: string; waived: string;
+  outstanding: string; outstanding_patients: number; oldest_days: number;
+  booked_ahead: string; booked_visits: number;
+  series: FinDayPoint[]; series_prev: FinDayPoint[];
+  by_source: FinLine[]; attention: FinAlert[];
+}
+export interface FinBucket { key: string; label: string; amount: string; count: number }
+export interface FinReceivableRow {
+  id: string; mrn: string; name: string; phone?: string;
+  owed: string; oldest_days: number; bucket: string; last_paid?: string; why: string;
+}
+export interface FinReceivables { total: string; count: number; buckets: FinBucket[]; rows: FinReceivableRow[] }
+
+/** from/to are inclusive YYYY-MM-DD days in clinic time; branch is a prefixed id. */
+function finQuery(p: { from?: string; to?: string; branch?: string }) {
+  const q = new URLSearchParams();
+  if (p.from) q.set("from", p.from);
+  if (p.to) q.set("to", p.to);
+  if (p.branch) q.set("branch", p.branch);
+  const s = q.toString();
+  return s ? `?${s}` : "";
+}
+export function financeOverview(p: { from?: string; to?: string; branch?: string }) {
+  return apiFetch<FinOverview>(`/finance/overview${finQuery(p)}`);
+}
+export function financeReceivables(p: { branch?: string }) {
+  return apiFetch<FinReceivables>(`/finance/receivables${finQuery(p)}`);
+}
