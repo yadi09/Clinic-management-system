@@ -5,7 +5,7 @@
 // phase 5 removes — so a dentist recording a visit in the cockpit could write the
 // note but not attach the X-ray or print the script. Deleting that list before this
 // move would have taken away working clinical capability.
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, ChevronLeft, ChevronRight, ExternalLink, Images, ImagePlus, Pill, Plus, Printer, Trash2, X } from "lucide-react";
 
@@ -351,8 +351,17 @@ export function SessionImages({ patientId, session, editable, imageLimit, onChan
 export function ImageGallery({ images, editable, onDelete, thumb }: { images: DentalImage[]; editable: boolean; onDelete: (id: string) => void; thumb?: boolean }) {
   const [idx, setIdx] = useState<number | null>(null);
   const [confirmDel, setConfirmDel] = useState<DentalImage | null>(null);
+  const [zoom, setZoom] = useState(false);
+  const strip = useRef<HTMLDivElement>(null);
   const preview = idx !== null && idx < images.length ? images[idx] : null;
   const step = (d: number) => setIdx((i) => (i === null ? i : (i + d + images.length) % images.length));
+
+  // Fit each new image, and keep the filmstrip's active thumbnail in view — on a
+  // visit with a dozen X-rays the current one is otherwise off the end of the rail.
+  useEffect(() => {
+    setZoom(false);
+    strip.current?.querySelector('[data-active="1"]')?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [idx]);
   return (
     <>
       <div className={cn("grid gap-2", thumb ? "grid-cols-4 sm:grid-cols-6" : "grid-cols-3 sm:grid-cols-4")}>
@@ -370,17 +379,91 @@ export function ImageGallery({ images, editable, onDelete, thumb }: { images: De
         ))}
       </div>
 
+      {/* The viewer. An intraoral photo or an X-ray is evidence being read, not a
+          thumbnail being glanced at — it was opening into a 768px box with 30% of
+          the screen wasted on white margin, and the only way to see the next one
+          was to close it and find that one too. Full-bleed on black, with the rest
+          of the visit's images along the bottom. */}
       <Dialog open={preview !== null} onOpenChange={(o) => !o && setIdx(null)}>
-        <DialogContent className="max-w-3xl" onKeyDown={(e) => { if (e.key === "ArrowLeft") step(-1); if (e.key === "ArrowRight") step(1); }}>
-          <DialogHeader><DialogTitle className="truncate pr-8 text-base">{preview?.filename ?? "Image"}</DialogTitle></DialogHeader>
-          <div className="relative flex items-center justify-center">
-            {images.length > 1 && <button type="button" onClick={() => step(-1)} aria-label="Previous" className="absolute left-1 z-10 rounded-full bg-black/45 p-1.5 text-white hover:bg-black/70"><ChevronLeft className="h-5 w-5" /></button>}
-            {preview && <img src={preview.url} alt={preview.filename} className="max-h-[70vh] w-auto rounded-md object-contain" />}
-            {images.length > 1 && <button type="button" onClick={() => step(1)} aria-label="Next" className="absolute right-1 z-10 rounded-full bg-black/45 p-1.5 text-white hover:bg-black/70"><ChevronRight className="h-5 w-5" /></button>}
+        <DialogContent
+          className="flex h-[100dvh] max-h-[100dvh] w-screen max-w-none flex-col gap-0 rounded-none border-0 bg-neutral-950 p-0 text-white"
+          onKeyDown={(e) => { if (e.key === "ArrowLeft") step(-1); if (e.key === "ArrowRight") step(1); }}
+        >
+          <DialogHeader className="shrink-0 border-b border-white/10 px-4 py-2.5">
+            <DialogTitle className="flex min-w-0 items-center gap-3 pr-10 text-sm font-medium text-white">
+              <span className="truncate">{preview?.filename ?? "Image"}</span>
+              {preview?.category && (
+                <span className="shrink-0 rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                  {preview.category === "xray" ? "X-ray" : preview.category}
+                </span>
+              )}
+              {images.length > 1 && (
+                <span className="shrink-0 text-xs font-normal tabular-nums text-white/60">
+                  {(idx ?? 0) + 1} of {images.length}
+                </span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="relative flex min-h-0 flex-1 items-center justify-center p-3">
+            {images.length > 1 && (
+              <button type="button" onClick={() => step(-1)} aria-label="Previous image"
+                className="absolute left-3 z-10 rounded-full bg-white/10 p-2.5 text-white backdrop-blur transition-colors hover:bg-white/25">
+                <ChevronLeft className="h-6 w-6" />
+              </button>
+            )}
+            {preview && (
+              // Fit by default; a tap fills the frame, because reading a lesion on
+              // an X-ray means getting closer to it.
+              <img
+                key={preview.id}
+                src={preview.url}
+                alt={preview.filename}
+                onClick={() => setZoom((z) => !z)}
+                className={cn("max-h-full max-w-full select-none",
+                  zoom ? "cursor-zoom-out object-cover" : "cursor-zoom-in object-contain")}
+              />
+            )}
+            {images.length > 1 && (
+              <button type="button" onClick={() => step(1)} aria-label="Next image"
+                className="absolute right-3 z-10 rounded-full bg-white/10 p-2.5 text-white backdrop-blur transition-colors hover:bg-white/25">
+                <ChevronRight className="h-6 w-6" />
+              </button>
+            )}
           </div>
-          <DialogFooter className="flex-row items-center justify-between sm:justify-between">
-            <a href={preview?.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"><ExternalLink className="h-4 w-4" /> Open original</a>
-            {editable && preview && <Button variant="ghost" className="text-destructive" onClick={() => setConfirmDel(preview)}><Trash2 className="h-4 w-4" /> Delete</Button>}
+
+          {/* The rest of the visit's images, so moving between them is one click
+              rather than close-find-open. */}
+          {images.length > 1 && (
+            <div ref={strip} className="flex shrink-0 gap-2 overflow-x-auto border-t border-white/10 px-3 py-2.5">
+              {images.map((im, i) => (
+                <button
+                  key={im.id}
+                  type="button"
+                  data-active={i === idx ? "1" : undefined}
+                  onClick={() => setIdx(i)}
+                  title={im.filename}
+                  className={cn("h-14 w-14 shrink-0 overflow-hidden rounded-md border-2 transition-all",
+                    i === idx ? "border-brand opacity-100" : "border-transparent opacity-55 hover:opacity-90")}
+                >
+                  <img src={im.url} alt="" loading="lazy" className="h-full w-full object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
+
+          <DialogFooter className="shrink-0 flex-row items-center justify-between gap-2 border-t border-white/10 px-4 py-2.5 sm:justify-between">
+            <a href={preview?.url} target="_blank" rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm text-white/70 hover:text-white">
+              <ExternalLink className="h-4 w-4" /> Open original
+            </a>
+            <span className="hidden text-xs text-white/40 sm:block">← → to move · Esc to close</span>
+            {editable && preview && (
+              <Button variant="ghost" className="text-red-400 hover:bg-red-500/15 hover:text-red-300"
+                onClick={() => setConfirmDel(preview)}>
+                <Trash2 className="h-4 w-4" /> Delete
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
