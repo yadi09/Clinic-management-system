@@ -10,20 +10,23 @@
 // An owner asks five questions. Each is a tab, they share one period and branch
 // filter, and that filter lives in the URL so a period survives a refresh and can
 // be sent to somebody else.
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams, Link } from "react-router-dom";
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, Phone, Wallet } from "lucide-react";
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarRange, Check, ChevronDown, Phone, Wallet } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Segmented } from "@/components/ui/segmented";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/app/auth-context";
 import { listBranches } from "@/features/admin/api";
+import { RevenueChart } from "@/features/billing/pages/RevenueChart";
 import {
   financeBook, financeCash, financeOverview, financeReceivables, financeServices,
-  type FinAlert, type FinBook, type FinCash, type FinDayPoint, type FinOverview,
+  type FinAlert, type FinBook, type FinCash, type FinOverview,
   type FinLine, type FinReceivables, type FinServiceLine,
 } from "@/features/billing/api";
 
@@ -34,20 +37,110 @@ const etb = (s?: string | number) =>
 const isoDay = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-/** The windows an owner actually reaches for, resolved to real dates on click. */
-const PERIODS = [
-  { key: "today", label: "Today", days: 0 },
-  { key: "7d", label: "7 days", days: 6 },
-  { key: "30d", label: "30 days", days: 29 },
-  { key: "90d", label: "90 days", days: 89 },
+/**
+ * The windows an owner actually reaches for.
+ *
+ * "Last week" is a real question — it is how a clinic compares Monday-to-Sunday
+ * against the week before — and a "7 days" preset cannot answer it, because it
+ * always ends today and always straddles two weeks.
+ */
+const PERIODS: { key: string; label: string; group: "quick" | "week" | "month"; range: () => { from: Date; to: Date } }[] = [
+  { key: "today", label: "Today", group: "quick", range: () => ({ from: startOfDay(0), to: startOfDay(0) }) },
+  { key: "yesterday", label: "Yesterday", group: "quick", range: () => ({ from: startOfDay(-1), to: startOfDay(-1) }) },
+  { key: "7d", label: "7 days", group: "quick", range: () => ({ from: startOfDay(-6), to: startOfDay(0) }) },
+  { key: "30d", label: "30 days", group: "quick", range: () => ({ from: startOfDay(-29), to: startOfDay(0) }) },
+  { key: "90d", label: "90 days", group: "quick", range: () => ({ from: startOfDay(-89), to: startOfDay(0) }) },
+  { key: "this-week", label: "This week", group: "week", range: () => ({ from: mondayOf(0), to: startOfDay(0) }) },
+  { key: "last-week", label: "Last week", group: "week", range: () => {
+    const from = mondayOf(-1); const to = new Date(from); to.setDate(to.getDate() + 6); return { from, to };
+  } },
+  { key: "this-month", label: "This month", group: "month", range: () => ({ from: firstOfMonth(0), to: startOfDay(0) }) },
+  { key: "last-month", label: "Last month", group: "month", range: () => {
+    const from = firstOfMonth(-1); const to = new Date(firstOfMonth(0)); to.setDate(to.getDate() - 1); return { from, to };
+  } },
+  { key: "this-year", label: "This year", group: "month", range: () => {
+    const n = new Date(); return { from: new Date(n.getFullYear(), 0, 1), to: startOfDay(0) };
+  } },
 ];
 
+function startOfDay(offset: number) {
+  const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + offset); return d;
+}
+/** Monday-start weeks: the clinic's own week, not the browser locale's. */
+function mondayOf(weeksBack: number) {
+  const d = startOfDay(0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + weeksBack * 7);
+  return d;
+}
+function firstOfMonth(monthsBack: number) {
+  const n = new Date();
+  return new Date(n.getFullYear(), n.getMonth() + monthsBack, 1);
+}
+
 function rangeFor(key: string) {
-  const to = new Date();
-  const from = new Date();
-  const p = PERIODS.find((x) => x.key === key) ?? PERIODS[0];
-  from.setDate(from.getDate() - p.days);
-  return { from: isoDay(from), to: isoDay(to) };
+  const p = PERIODS.find((x) => x.key === key) ?? PERIODS[2];
+  const { from, to } = p.range();
+  return { from: isoDay(from), to: isoDay(to), label: p.label };
+}
+
+/** How long the comparison window is, in the reader's words. */
+function comparingLabel(key: string) {
+  const p = PERIODS.find((x) => x.key === key);
+  if (!p) return "previous period";
+  if (p.group === "week") return "previous week";
+  if (p.key === "this-month" || p.key === "last-month") return "previous month";
+  if (p.key === "this-year") return "previous year";
+  if (p.key === "today" || p.key === "yesterday") return "the day before";
+  return `previous ${p.label.toLowerCase()}`;
+}
+
+/**
+ * Presets as rows, with a check on the selected one.
+ *
+ * Nobody fights a calendar grid for "last month". The quick windows stay on the
+ * segmented control for the one-click case; everything week- and month-shaped
+ * lives in here, where it can be labelled properly.
+ */
+function PeriodPicker({ value, onChange }: { value: string; onChange: (k: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const quick = PERIODS.filter((p) => p.group === "quick" && p.key !== "yesterday");
+  const active = PERIODS.find((p) => p.key === value);
+  const inQuick = quick.some((p) => p.key === value);
+  return (
+    <div className="flex items-center gap-2">
+      <Segmented
+        size="sm"
+        ariaLabel="Period"
+        value={inQuick ? value : ""}
+        onChange={onChange}
+        options={quick.map((p) => ({ value: p.key, label: p.label }))}
+      />
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button variant={inQuick ? "outline" : "default"} size="sm" className="h-8 gap-1">
+            <CalendarRange className="h-3.5 w-3.5" />
+            {inQuick ? "More" : active?.label ?? "Period"}
+            <ChevronDown className="h-3 w-3" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-52 p-1">
+          {(["quick", "week", "month"] as const).map((g, gi) => (
+            <div key={g} className={cn(gi > 0 && "mt-1 border-t pt-1")}>
+              {PERIODS.filter((p) => p.group === g).map((p) => (
+                <button key={p.key} type="button"
+                  onClick={() => { onChange(p.key); setOpen(false); }}
+                  className={cn("flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm",
+                    value === p.key ? "font-semibold text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground")}>
+                  {p.label}
+                  {value === p.key && <Check className="h-4 w-4 text-brand" strokeWidth={3} />}
+                </button>
+              ))}
+            </div>
+          ))}
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
 }
 
 const TABS = [
@@ -65,6 +158,7 @@ export function FinancePage() {
   const period = params.get("period") ?? "7d";
   const branch = params.get("branch") ?? "";
   const { from, to } = useMemo(() => rangeFor(period), [period]);
+  const comparing = useMemo(() => comparingLabel(period), [period]);
 
   const branches = useQuery({ queryKey: ["branches"], queryFn: listBranches });
 
@@ -124,13 +218,7 @@ export function FinancePage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Segmented
-            size="sm"
-            ariaLabel="Period"
-            value={period}
-            onChange={(v) => set({ period: v })}
-            options={PERIODS.map((p) => ({ value: p.key, label: p.label }))}
-          />
+          <PeriodPicker value={period} onChange={(v) => set({ period: v })} />
           {(branches.data?.length ?? 0) > 1 && (
             <Select value={branch || "all"} onValueChange={(v) => set({ branch: v === "all" ? "" : v })}>
               <SelectTrigger className="h-8 w-44"><SelectValue /></SelectTrigger>
@@ -157,7 +245,8 @@ export function FinancePage() {
       />
 
       {tab === "overview" && (
-        <OverviewTab data={overview.data} owed={receivables.data} loading={overview.isLoading} dental={flagOn("dental")} />
+        <OverviewTab data={overview.data} owed={receivables.data} loading={overview.isLoading}
+          dental={flagOn("dental")} comparing={comparing} />
       )}
       {tab === "receivables" && <ReceivablesTab data={receivables.data} loading={receivables.isLoading} params={params} onSet={set} />}
       {tab === "cash" && <CashTab data={cash.data} loading={cash.isLoading} />}
@@ -173,44 +262,10 @@ function Kpi({ label, value, tone, foot }: { label: string; value: string; tone?
   return (
     <div className="rounded-lg border bg-card p-4 shadow-sm">
       <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className={cn("mt-1 text-2xl font-bold tabular-nums", tone)}>{value}</div>
+      {/* Proportional figures: tabular-nums belongs on numbers that align
+          vertically (table rows, axis ticks), not on a display-size total. */}
+      <div className={cn("mt-1 text-2xl font-bold", tone)}>{value}</div>
       {foot && <div className="mt-1 text-xs text-muted-foreground">{foot}</div>}
-    </div>
-  );
-}
-
-/** Bars, drawn in CSS. A trend has to be seen; a column of numbers is not one. */
-function TrendBars({ series, prev }: { series: FinDayPoint[]; prev: FinDayPoint[] }) {
-  const max = Math.max(1, ...series.map((p) => num(p.amount)), ...prev.map((p) => num(p.amount)));
-  const label = (iso?: string) =>
-    iso ? new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
-  return (
-    <div className="space-y-1.5">
-      <div className="flex h-36 items-end gap-px sm:gap-0.5">
-        {series.map((p, i) => {
-          const v = num(p.amount);
-          const before = num(prev[i]?.amount);
-          return (
-            // h-full matters: a percentage height resolves against the PARENT's
-            // height, and this column had none — every bar computed to zero and the
-            // chart rendered as an empty box with a dozen payments behind it.
-            <div key={p.date} className="group relative flex h-full flex-1 flex-col justify-end"
-              title={`${p.date} · ${etb(v)}${prev[i] ? ` (was ${etb(before)})` : ""}`}>
-              <div className="absolute inset-x-0 bottom-0 rounded-sm bg-muted"
-                style={{ height: `${(before / max) * 100}%` }} />
-              {/* A day with nothing in it still gets a hairline, so ninety days of
-                  quiet read as a timeline rather than as blank card. */}
-              <div className={cn("relative rounded-sm transition-all", v > 0 ? "bg-emerald-500" : "bg-muted-foreground/15")}
-                style={{ height: v > 0 ? `${Math.max(4, (v / max) * 100)}%` : "2px" }} />
-            </div>
-          );
-        })}
-      </div>
-      <div className="flex items-center justify-between text-[10px] tabular-nums text-muted-foreground">
-        <span>{label(series[0]?.date)}</span>
-        <span className="font-medium">peak {etb(max)}</span>
-        <span>{label(series[series.length - 1]?.date)}</span>
-      </div>
     </div>
   );
 }
@@ -226,8 +281,8 @@ function AttentionRow({ a }: { a: FinAlert }) {
   );
 }
 
-function OverviewTab({ data, owed, loading, dental }: {
-  data?: FinOverview; owed?: FinReceivables; loading: boolean; dental: boolean;
+function OverviewTab({ data, owed, loading, dental, comparing }: {
+  data?: FinOverview; owed?: FinReceivables; loading: boolean; dental: boolean; comparing: string;
 }) {
   if (loading || !data) return <p className="p-8 text-center text-sm text-muted-foreground">Loading…</p>;
   const now = num(data.collected);
@@ -278,7 +333,7 @@ function OverviewTab({ data, owed, loading, dental }: {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">Collected per day</CardTitle>
-            <p className="text-xs text-muted-foreground">Green is this period; grey behind it is the same length before.</p>
+            <p className="text-xs text-muted-foreground">Hover or tab a bar for its figure; switch to Table to read them all.</p>
           </CardHeader>
           <CardContent>
             {/* A window with no money in it renders as an empty frame otherwise —
@@ -293,7 +348,7 @@ function OverviewTab({ data, owed, loading, dental }: {
                   <p className="text-xs text-muted-foreground">Try a longer period, or check Receivables for what is owed.</p>
                 </div>
               )
-              : <TrendBars series={data.series} prev={data.series_prev} />}
+              : <RevenueChart series={data.series} prev={data.series_prev} comparing={comparing} />}
           </CardContent>
         </Card>
 
@@ -356,7 +411,7 @@ function ReceivablesTab({ data, loading, params, onSet }: {
               className={cn("rounded-lg border bg-card p-4 text-left shadow-sm transition-colors",
                 on ? "border-brand ring-1 ring-brand" : "hover:bg-accent/40")}>
               <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{b.label}</div>
-              <div className={cn("mt-1 text-xl font-bold tabular-nums", old && num(b.amount) > 0 && "text-destructive")}>
+              <div className={cn("mt-1 text-xl font-bold", old && num(b.amount) > 0 && "text-destructive")}>
                 {etb(b.amount)}
               </div>
               <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
