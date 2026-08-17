@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { AppError } from "@/lib/api-client";
 import { addAllergy, removeAllergy, type Allergy } from "@/features/patients/api";
 import { createAllergen, listAllergens } from "@/features/clinical/api";
+import { SubstanceField } from "@/features/clinical/AllergenFields";
 
 const SEVERITIES = [
   { value: "mild", label: "Mild" },
@@ -39,27 +40,14 @@ export function AllergyDialog({ patientId, allergies, onClose, onSaved }: {
   const [substance, setSubstance] = useState("");
   const [reaction, setReaction] = useState("");
   const [severity, setSeverity] = useState("mild");
-  const [showSug, setShowSug] = useState(false);
   // Shown once, so the clinician knows the two fields below were filled in for them
   // and are theirs to correct — not values the system is asserting about the patient.
   const [prefilled, setPrefilled] = useState(false);
 
   const allergens = useQuery({ queryKey: ["allergens"], queryFn: () => listAllergens() });
   const term = substance.trim().toLowerCase();
-  const suggestions = (allergens.data ?? []).filter((a) => a.name.toLowerCase().includes(term)).slice(0, 8);
   const exact = (allergens.data ?? []).some((a) => a.name.toLowerCase() === term);
   const already = allergies.some((a) => a.substance.toLowerCase() === term);
-
-  // Choosing a known substance brings its usual reaction and severity with it. Both
-  // stay editable: the library says what this allergen normally does, the clinician
-  // says what it did to THIS patient.
-  const pickAllergen = (a: { name: string; default_reaction?: string; default_severity?: string }) => {
-    setSubstance(a.name);
-    setShowSug(false);
-    if (a.default_reaction) setReaction(a.default_reaction);
-    if (a.default_severity) setSeverity(a.default_severity);
-    setPrefilled(!!(a.default_reaction || a.default_severity));
-  };
 
   const add = useMutation({
     mutationFn: async () => {
@@ -122,33 +110,22 @@ export function AllergyDialog({ patientId, allergies, onClose, onSaved }: {
         )}
 
         <div className="space-y-3 rounded-md border border-dashed p-3">
-          <div className="relative space-y-1.5">
+          <div className="space-y-1.5">
             <Label htmlFor="alg-substance">Substance</Label>
-            <Input
+            <SubstanceField
               id="alg-substance"
               value={substance}
-              onChange={(e) => { setSubstance(e.target.value); setShowSug(true); }}
-              onFocus={() => setShowSug(true)}
-              placeholder="Penicillin, latex, local anaesthetic…"
+              onChange={(v) => { setSubstance(v); setPrefilled(false); }}
+              onPrefill={(d) => {
+                if (d.reaction) setReaction(d.reaction);
+                if (d.severity) setSeverity(d.severity);
+                setPrefilled(!!(d.reaction || d.severity));
+              }}
+              allergens={allergens.data ?? []}
             />
-            {showSug && term && suggestions.length > 0 && (
-              <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-md border bg-background shadow-md">
-                {suggestions.map((a) => (
-                  <button key={a.id} type="button" onClick={() => pickAllergen(a)}
-                    className="block w-full px-3 py-1.5 text-left text-sm hover:bg-muted">
-                    <span className="font-medium">{a.name}</span>
-                    {(a.default_reaction || a.default_severity) && (
-                      <span className="block text-xs text-muted-foreground">
-                        {[a.default_reaction, a.default_severity].filter(Boolean).join(" · ")}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-            {term && !exact && !already && <p className="text-xs text-muted-foreground">New — will be added to the allergen library.</p>}
             {already && <p className="text-xs text-amber-700">Already on this patient's record.</p>}
           </div>
+
           {prefilled && (
             <p className="text-xs text-brand">
               Filled in from the clinic's allergen library — change either if this patient reacted differently.

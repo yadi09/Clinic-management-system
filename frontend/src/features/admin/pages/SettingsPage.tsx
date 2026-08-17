@@ -35,7 +35,6 @@ import {
   type Department,
 } from "@/features/admin/api";
 import {
-  createAllergen,
   createCatalogEntry,
   createCategory,
   createDrug,
@@ -57,6 +56,7 @@ import {
   type Drug,
   type VitalField,
 } from "@/features/clinical/api";
+import { NewAllergenForm, severityClass } from "@/features/clinical/AllergenFields";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 type SectionKey = "account" | "profile" | "locations" | "flow" | "vitals" | "diagnoses" | "drugs";
@@ -681,12 +681,6 @@ function DrugLibraryCard({ manage }: { manage: boolean }) {
   const allergens = useQuery({ queryKey: ["allergens-all"], queryFn: () => listAllergens(undefined, true) });
   const [editing, setEditing] = useState<Drug | "new" | null>(null);
 
-  const [newAllergen, setNewAllergen] = useState("");
-  const addAllergen = useMutation({
-    mutationFn: () => createAllergen(newAllergen.trim()),
-    onSuccess: () => { setNewAllergen(""); qc.invalidateQueries({ queryKey: ["allergens-all"] }); qc.invalidateQueries({ queryKey: ["allergens"] }); },
-    onError: () => toast.error("Could not add allergen (may already exist)"),
-  });
   const removeAllergen = useMutation({
     mutationFn: (id: string) => deleteAllergen(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["allergens-all"] }); qc.invalidateQueries({ queryKey: ["allergens"] }); },
@@ -708,19 +702,25 @@ function DrugLibraryCard({ manage }: { manage: boolean }) {
           <Label className="text-xs text-muted-foreground">Allergens</Label>
           <div className="flex flex-wrap gap-1.5">
             {(allergens.data ?? []).map((a) => (
-              <span key={a.id} className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ${a.is_active ? "" : "opacity-50"}`}>
-                {a.name}
+              // The description is shown, not hidden behind a hover: this card is
+              // where an admin comes to check what the library actually says.
+              <span key={a.id} className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${a.is_active ? "" : "opacity-50"}`}>
+                {a.default_severity && (
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${severityClass(a.default_severity)}`}
+                    title={`Usually ${a.default_severity}`} />
+                )}
+                <span className="font-medium">{a.name}</span>
+                {(a.default_reaction || a.default_severity) && (
+                  <span className="text-muted-foreground">
+                    {[a.default_reaction, a.default_severity].filter(Boolean).join(" · ")}
+                  </span>
+                )}
                 {manage && <button onClick={() => removeAllergen.mutate(a.id)} className="text-muted-foreground hover:text-destructive"><Plus className="h-3 w-3 rotate-45" /></button>}
               </span>
             ))}
             {(allergens.data?.length ?? 0) === 0 && <span className="text-sm text-muted-foreground">No allergens yet.</span>}
           </div>
-          {manage && (
-            <div className="flex items-end gap-2 pt-1">
-              <Input value={newAllergen} onChange={(e) => setNewAllergen(e.target.value)} placeholder="e.g. Penicillin" className="h-8 w-56" />
-              <Button size="sm" onClick={() => addAllergen.mutate()} disabled={!newAllergen.trim()} loading={addAllergen.isPending}><Plus /> Add allergen</Button>
-            </div>
-          )}
+          {manage && <NewAllergenForm compact />}
         </div>
 
         {/* Drugs */}
