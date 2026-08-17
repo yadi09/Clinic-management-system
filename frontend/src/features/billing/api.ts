@@ -307,3 +307,25 @@ export function financeOverview(p: { from?: string; to?: string; branch?: string
 export function financeReceivables(p: { branch?: string }) {
   return apiFetch<FinReceivables>(`/finance/receivables${finQuery(p)}`);
 }
+
+export interface FinShift { date: string; cashier: string; expected: string; counted: string; variance: string; note?: string }
+export interface FinCash {
+  shifts: FinShift[]; by_method: FinLine[]; by_cashier: FinLine[]; by_branch: FinLine[];
+  open_drawers: FinLine[]; variance: string;
+}
+export interface FinServiceLine { label: string; source: string; count: number; revenue: string; avg: string }
+export interface FinPlanAtRisk {
+  id: string; patient: string; mrn: string; phone?: string;
+  plan: string; at_risk: string; reason: string; days_idle: number;
+}
+export interface FinBook { total: string; visits: number; by_month: FinLine[]; at_risk: FinPlanAtRisk[] }
+
+export function financeCash(p: { from?: string; to?: string; branch?: string }) {
+  return apiFetch<FinCash>(`/finance/cash${finQuery(p)}`);
+}
+export function financeServices(p: { from?: string; to?: string; branch?: string }) {
+  return apiFetch<FinServiceLine[]>(`/finance/services${finQuery(p)}`);
+}
+export function financeBook(p: { branch?: string }) {
+  return apiFetch<FinBook>(`/finance/book${finQuery(p)}`);
+}

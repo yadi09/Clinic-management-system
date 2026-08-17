@@ -22,8 +22,9 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/app/auth-context";
 import { listBranches } from "@/features/admin/api";
 import {
-  financeOverview, financeReceivables,
-  type FinAlert, type FinDayPoint, type FinOverview, type FinReceivables,
+  financeBook, financeCash, financeOverview, financeReceivables, financeServices,
+  type FinAlert, type FinBook, type FinCash, type FinDayPoint, type FinOverview,
+  type FinLine, type FinReceivables, type FinServiceLine,
 } from "@/features/billing/api";
 
 const num = (s?: string) => Number(s || 0);
@@ -52,13 +53,16 @@ function rangeFor(key: string) {
 const TABS = [
   { key: "overview", label: "Overview" },
   { key: "receivables", label: "Receivables" },
+  { key: "cash", label: "Cash & shifts" },
+  { key: "services", label: "Services" },
+  { key: "book", label: "Treatment book", dental: true },
 ];
 
 export function FinancePage() {
   const { can, flagOn } = useAuth();
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") ?? "overview";
-  const period = params.get("period") ?? "today";
+  const period = params.get("period") ?? "7d";
   const branch = params.get("branch") ?? "";
   const { from, to } = useMemo(() => rangeFor(period), [period]);
 
@@ -76,6 +80,21 @@ export function FinancePage() {
     queryKey: ["fin-overview", from, to, branch],
     queryFn: () => financeOverview({ from, to, branch: branch || undefined }),
     enabled: tab === "overview",
+  });
+  const cash = useQuery({
+    queryKey: ["fin-cash", from, to, branch],
+    queryFn: () => financeCash({ from, to, branch: branch || undefined }),
+    enabled: tab === "cash" || tab === "overview",
+  });
+  const services = useQuery({
+    queryKey: ["fin-services", from, to, branch],
+    queryFn: () => financeServices({ from, to, branch: branch || undefined }),
+    enabled: tab === "services",
+  });
+  const book = useQuery({
+    queryKey: ["fin-book", branch],
+    queryFn: () => financeBook({ branch: branch || undefined }),
+    enabled: tab === "book",
   });
   const receivables = useQuery({
     queryKey: ["fin-receivables", branch],
@@ -128,10 +147,12 @@ export function FinancePage() {
         ariaLabel="Finance view"
         value={tab}
         onChange={(v) => set({ tab: v })}
-        options={TABS.map((t) => ({
+        options={TABS.filter((t) => !t.dental || flagOn("dental")).map((t) => ({
           value: t.key,
           label: t.label,
-          badge: t.key === "receivables" ? receivables.data?.count : undefined,
+          badge: t.key === "receivables" ? receivables.data?.count
+            : t.key === "cash" ? (cash.data?.shifts.filter((sh) => num(sh.variance) !== 0).length || undefined)
+              : undefined,
         }))}
       />
 
@@ -139,6 +160,9 @@ export function FinancePage() {
         <OverviewTab data={overview.data} owed={receivables.data} loading={overview.isLoading} dental={flagOn("dental")} />
       )}
       {tab === "receivables" && <ReceivablesTab data={receivables.data} loading={receivables.isLoading} params={params} onSet={set} />}
+      {tab === "cash" && <CashTab data={cash.data} loading={cash.isLoading} />}
+      {tab === "services" && <ServicesTab rows={services.data} loading={services.isLoading} />}
+      {tab === "book" && <BookTab data={book.data} loading={book.isLoading} />}
     </div>
   );
 }
@@ -241,8 +265,18 @@ function OverviewTab({ data, owed, loading, dental }: {
             <p className="text-xs text-muted-foreground">Green is this period; grey behind it is the same length before.</p>
           </CardHeader>
           <CardContent>
-            {data.series.length === 0
-              ? <p className="py-8 text-center text-sm text-muted-foreground">Nothing collected in this period.</p>
+            {/* A window with no money in it renders as an empty frame otherwise —
+                the largest thing on the page, saying nothing. */}
+            {now === 0 && num(data.collected_prev) === 0
+              ? (
+                <div className="flex flex-col items-center gap-1 py-10 text-center">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                    <Wallet className="h-5 w-5" />
+                  </span>
+                  <p className="mt-1 text-sm font-medium">Nothing collected in this period</p>
+                  <p className="text-xs text-muted-foreground">Try a longer period, or check Receivables for what is owed.</p>
+                </div>
+              )
               : <TrendBars series={data.series} prev={data.series_prev} />}
           </CardContent>
         </Card>
@@ -366,6 +400,270 @@ function ReceivablesTab({ data, loading, params, onSet }: {
                       <td className="px-4 py-2.5 text-right">
                         {/* The phone number IS the action: this list exists to be
                             worked through, not admired. */}
+                        {r.phone
+                          ? <a href={`tel:${r.phone}`} className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline">
+                              <Phone className="h-3 w-3" /> {r.phone}
+                            </a>
+                          : <span className="text-xs text-muted-foreground">no phone</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// --- Cash & shifts ----------------------------------------------------------
+
+function Split({ title, rows, total }: { title: string; rows: FinLine[]; total: number }) {
+  return (
+    <Card>
+      <CardHeader className="pb-2"><CardTitle className="text-sm">{title}</CardTitle></CardHeader>
+      <CardContent className="space-y-2">
+        {rows.length === 0 && <p className="text-sm text-muted-foreground">Nothing collected.</p>}
+        {rows.map((r) => (
+          <div key={r.key || r.label} className="space-y-1">
+            <div className="flex items-baseline justify-between gap-2 text-sm">
+              <span className="min-w-0 truncate font-medium capitalize">{r.label || "not recorded"}</span>
+              <span className="shrink-0 tabular-nums">{etb(r.amount)}</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+              <div className="h-full rounded-full bg-brand" style={{ width: `${(num(r.amount) / Math.max(1, total)) * 100}%` }} />
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function CashTab({ data, loading }: { data?: FinCash; loading: boolean }) {
+  if (loading || !data) return <p className="p-8 text-center text-sm text-muted-foreground">Loading…</p>;
+  const total = Math.max(1, ...data.by_method.map((m) => num(m.amount)));
+  const off = data.shifts.filter((s) => num(s.variance) !== 0);
+
+  return (
+    <div className="space-y-4">
+      {(off.length > 0 || data.open_drawers.length > 0) && (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {off.length > 0 && (
+            <div className="flex items-center gap-2.5 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+              <span className="flex-1 text-destructive">{off.length} cash count(s) did not balance</span>
+              <span className="font-semibold tabular-nums text-destructive">{etb(data.variance)}</span>
+            </div>
+          )}
+          {data.open_drawers.map((d) => (
+            <div key={d.key} className="flex items-center gap-2.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+              <span className="flex-1 text-amber-900">{d.label} has not counted today's drawer</span>
+              <span className="font-semibold tabular-nums text-amber-900">{etb(d.amount)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Day closeouts</CardTitle>
+          <p className="text-xs text-muted-foreground">What the drawer should have held, against what was counted.</p>
+        </CardHeader>
+        <CardContent className="p-0">
+          {data.shifts.length === 0 ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">No drawer has been counted in this period.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b bg-muted/40 text-left text-[10px] uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-2 font-semibold">Date</th>
+                    <th className="px-4 py-2 font-semibold">Cashier</th>
+                    <th className="px-4 py-2 text-right font-semibold">Expected</th>
+                    <th className="px-4 py-2 text-right font-semibold">Counted</th>
+                    <th className="px-4 py-2 text-right font-semibold">Variance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {data.shifts.map((s, i) => {
+                    const v = num(s.variance);
+                    return (
+                      <tr key={`${s.date}-${s.cashier}-${i}`} className={cn(v !== 0 && "bg-destructive/5")}>
+                        <td className="px-4 py-2.5 tabular-nums">{s.date}</td>
+                        <td className="px-4 py-2.5">
+                          {s.cashier}
+                          {s.note && <span className="block text-xs text-muted-foreground">{s.note}</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">{etb(s.expected)}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">{etb(s.counted)}</td>
+                        <td className={cn("px-4 py-2.5 text-right font-semibold tabular-nums",
+                          v === 0 ? "text-emerald-600" : "text-destructive")}>
+                          {v > 0 ? "+" : ""}{etb(s.variance)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Split title="By payment method" rows={data.by_method} total={total} />
+        <Split title="By cashier" rows={data.by_cashier} total={total} />
+        <Split title="By branch" rows={data.by_branch} total={total} />
+      </div>
+    </div>
+  );
+}
+
+// --- Services ---------------------------------------------------------------
+
+function ServicesTab({ rows, loading }: { rows?: FinServiceLine[]; loading: boolean }) {
+  if (loading || !rows) return <p className="p-8 text-center text-sm text-muted-foreground">Loading…</p>;
+  const top = Math.max(1, ...rows.map((r) => num(r.revenue)));
+  const total = rows.reduce((a, r) => a + num(r.revenue), 0);
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">What earned, in this period</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Dental work is grouped by its course, not by instalment — forty payments towards one root canal are one line.
+        </p>
+      </CardHeader>
+      <CardContent className="p-0">
+        {rows.length === 0 ? (
+          <p className="py-10 text-center text-sm text-muted-foreground">Nothing was billed in this period.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="border-b bg-muted/40 text-left text-[10px] uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-2 font-semibold">Service</th>
+                  <th className="px-4 py-2 text-right font-semibold">Payments</th>
+                  <th className="px-4 py-2 text-right font-semibold">Revenue</th>
+                  <th className="px-4 py-2 text-right font-semibold">Average</th>
+                  <th className="w-40 px-4 py-2 font-semibold">Share</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {rows.map((r, i) => (
+                  <tr key={`${r.label}-${i}`} className="hover:bg-muted/30">
+                    <td className="px-4 py-2.5">
+                      <span className="font-medium">{r.label}</span>
+                      <span className="ml-2 rounded-full bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">{r.source}</span>
+                    </td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{r.count}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold tabular-nums">{etb(r.revenue)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{etb(r.avg)}</td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                          <div className="h-full rounded-full bg-brand" style={{ width: `${(num(r.revenue) / top) * 100}%` }} />
+                        </div>
+                        <span className="w-9 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                          {Math.round((num(r.revenue) / Math.max(1, total)) * 100)}%
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// --- Treatment book (dental) ------------------------------------------------
+
+function BookTab({ data, loading }: { data?: FinBook; loading: boolean }) {
+  if (loading || !data) return <p className="p-8 text-center text-sm text-muted-foreground">Loading…</p>;
+  const top = Math.max(1, ...data.by_month.map((m) => num(m.amount)));
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">
+            Booked ahead
+            <span className="ml-2 font-normal tabular-nums text-muted-foreground">
+              {etb(data.total)} over {data.visits} visit(s)
+            </span>
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Treatment scheduled and not yet billed. This is intent, not revenue — a course can stop at any visit.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {data.by_month.length === 0 && <p className="text-sm text-muted-foreground">No visits are scheduled.</p>}
+          {data.by_month.map((m) => (
+            <div key={m.key} className="space-y-1">
+              <div className="flex items-baseline justify-between gap-2 text-sm">
+                <span className="font-medium">{m.label}</span>
+                <span className="tabular-nums">
+                  {etb(m.amount)}
+                  <span className="ml-2 text-xs text-muted-foreground">{m.count} visit(s)</span>
+                </span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-muted">
+                <div className="h-full rounded-full bg-brand" style={{ width: `${(num(m.amount) / top) * 100}%` }} />
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Courses at risk</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            A visit has come and gone without being recorded. This is money already planned for that will not arrive on its own.
+          </p>
+        </CardHeader>
+        <CardContent className="p-0">
+          {data.at_risk.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-10 text-center">
+              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                <Wallet className="h-5 w-5" />
+              </span>
+              <p className="text-sm font-medium">Every course is on schedule</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b bg-muted/40 text-left text-[10px] uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-2 font-semibold">Patient</th>
+                    <th className="px-4 py-2 font-semibold">Course</th>
+                    <th className="px-4 py-2 font-semibold">Why</th>
+                    <th className="px-4 py-2 text-right font-semibold">At risk</th>
+                    <th className="px-4 py-2" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {data.at_risk.map((r) => (
+                    <tr key={`${r.id}-${r.plan}`} className="hover:bg-muted/30">
+                      <td className="px-4 py-2.5">
+                        <Link to={`/patients/${r.id}`} className="font-medium text-brand hover:underline">{r.patient}</Link>
+                        <span className="block text-xs text-muted-foreground">{r.mrn}</span>
+                      </td>
+                      <td className="px-4 py-2.5">{r.plan}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">
+                        {r.reason}
+                        {r.days_idle > 0 && <span className="ml-1 text-xs">· {r.days_idle} days late</span>}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-semibold tabular-nums">{etb(r.at_risk)}</td>
+                      <td className="px-4 py-2.5 text-right">
                         {r.phone
                           ? <a href={`tel:${r.phone}`} className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline">
                               <Phone className="h-3 w-3" /> {r.phone}

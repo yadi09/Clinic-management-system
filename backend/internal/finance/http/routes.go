@@ -13,4 +13,7 @@ func Register(rg *gin.RouterGroup, h *Handlers, tokens *auth.TokenService) {
 	g := rg.Group("/finance", httpx.RequireAuth(tokens), httpx.RequirePermission("billing.manage"))
 	g.GET("/overview", h.Overview)
 	g.GET("/receivables", h.Receivables)
+	g.GET("/cash", h.Cash)
+	g.GET("/services", h.Services)
+	g.GET("/book", h.Book)
 }

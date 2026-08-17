@@ -102,4 +102,53 @@ func (h *Handlers) Receivables(c *gin.Context) {
 	httpx.OK(c, gin.H{"total": out.Total, "count": out.Count, "buckets": out.Buckets, "rows": rows})
 }
 
+func (h *Handlers) Cash(c *gin.Context) {
+	f, err := filterFrom(c)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out, err := h.svc.Cash(c.Request.Context(), f)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+func (h *Handlers) Services(c *gin.Context) {
+	f, err := filterFrom(c)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out, err := h.svc.Services(c.Request.Context(), f)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+func (h *Handlers) Book(c *gin.Context) {
+	f, err := filterFrom(c)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out, err := h.svc.Book(c.Request.Context(), f)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	rows := make([]gin.H, 0, len(out.AtRisk))
+	for _, r := range out.AtRisk {
+		rows = append(rows, gin.H{
+			"id": id.Encode(id.PrefixPatient, r.PatientID), "patient": r.Patient, "mrn": r.MRN,
+			"phone": r.Phone, "plan": r.Plan, "at_risk": r.AtRisk, "reason": r.Reason, "days_idle": r.DaysIdle,
+		})
+	}
+	httpx.OK(c, gin.H{"total": out.Total, "visits": out.Visits, "by_month": out.ByMonth, "at_risk": rows})
+}
+
 var _ = uuid.Nil

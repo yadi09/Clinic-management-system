@@ -66,5 +66,38 @@ T2=$(curl -sk -X POST "$B/auth/login" -H "$H" -H "$J" \
   -d '{"workspace":"y-clinic","email":"fin.nurse@yclinic.test","password":"BranchTest#2026"}' | jqf 'd["data"]["access_token"]')
 ok "nurse blocked" "$(curl -sk -o /dev/null -w '%{http_code}' -H "$H" -H "Authorization: Bearer $T2" "$B/finance/overview")" "403"
 
+echo "== 9. cash: shifts, splits, and the variance total agree with the table =="
+CA=$(curl -sk "${A[@]}" "$B/finance/cash?from=$FROM&to=$TO")
+VAR=$($PSQL -c "SELECT coalesce(sum(abs(variance)),0)::text FROM cash_reconciliations
+  WHERE tenant_id='$TEN' AND business_date >= '$FROM'::date AND business_date < ('$TO'::date + 1);")
+ok "variance == ledger"  "$(echo "$CA" | jqf 'd["data"]["variance"]')" "$VAR"
+ok "shift count"         "$(echo "$CA" | jqf 'len(d["data"]["shifts"])')" \
+  "$($PSQL -c "SELECT count(*) FROM cash_reconciliations WHERE tenant_id='$TEN' AND business_date >= '$FROM'::date AND business_date < ('$TO'::date + 1);")"
+ok "by_method sums to gross" "$(echo "$CA" | jqf 'format(sum(float(l["amount"]) for l in d["data"]["by_method"]),".2f")')" "$GROSS"
+ok "by_cashier sums to gross" "$(echo "$CA" | jqf 'format(sum(float(l["amount"]) for l in d["data"]["by_cashier"]),".2f")')" "$GROSS"
+
+echo "== 10. services: the lines add up to the same gross =="
+SV=$(curl -sk "${A[@]}" "$B/finance/services?from=$FROM&to=$TO")
+ok "services sum == gross" "$(echo "$SV" | jqf 'format(sum(float(l["revenue"]) for l in d["data"]),".2f")')" "$GROSS"
+ok "average is revenue/count" "$(echo "$SV" | jqf '"yes" if all(abs(float(l["avg"]) - float(l["revenue"])/l["count"]) < 0.01 for l in d["data"] if l["count"]) else "no"')" "yes"
+
+echo "== 11. treatment book is intent, and only counts unbilled future visits =="
+BK=$(curl -sk "${A[@]}" "$B/finance/book")
+BOOK=$($PSQL -c "SELECT coalesce(sum(se.amount_due),0)::text
+  FROM treatment_sessions se JOIN treatment_plans pl ON pl.id=se.plan_id AND pl.tenant_id=se.tenant_id
+  LEFT JOIN charges c ON c.id=se.charge_id AND c.tenant_id=se.tenant_id AND c.deleted_at IS NULL
+  WHERE se.tenant_id='$TEN' AND se.kind='visit' AND se.status='planned' AND pl.status='active'
+    AND se.scheduled_date >= (now() AT TIME ZONE 'Africa/Addis_Ababa')::date
+    AND (c.id IS NULL OR c.status='void');")
+ok "booked == ledger"   "$(echo "$BK" | jqf 'd["data"]["total"]')" "$BOOK"
+# Compare as numbers: psql prints 0 where python formats 0.00.
+ok "months sum to total" "$(echo "$BK" | jqf 'format(sum(float(m["amount"]) for m in d["data"]["by_month"]),".2f")')" "$(printf '%.2f' "$BOOK")"
+ok "at-risk rows are late" "$(echo "$BK" | jqf '"yes" if all(r["days_idle"] > 0 for r in d["data"]["at_risk"]) else "no"')" "yes"
+
+echo "== 12. every view refuses a bad period the same way =="
+for V in cash services book; do
+  ok "$V rejects bad date" "$(curl -sk -o /dev/null -w '%{http_code}' "${A[@]}" "$B/finance/$V?from=nope")" "400"
+done
+
 echo; echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

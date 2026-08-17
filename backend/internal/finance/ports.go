@@ -133,4 +133,60 @@ type UnbilledPatient struct {
 type Service interface {
 	Overview(ctx context.Context, f Filter) (*Overview, error)
 	Receivables(ctx context.Context, f Filter) (*Receivables, error)
+	Cash(ctx context.Context, f Filter) (*CashView, error)
+	Services(ctx context.Context, f Filter) ([]ServiceLine, error)
+	Book(ctx context.Context, f Filter) (*Book, error)
+}
+
+// --- Cash & shifts -----------------------------------------------------------
+
+type Shift struct {
+	Date     string `json:"date"`
+	Cashier  string `json:"cashier"`
+	Expected string `json:"expected"`
+	Counted  string `json:"counted"`
+	Variance string `json:"variance"`
+	Note     string `json:"note,omitempty"`
+}
+
+type CashView struct {
+	Shifts    []Shift `json:"shifts"`
+	ByMethod  []Line  `json:"by_method"`
+	ByCashier []Line  `json:"by_cashier"`
+	ByBranch  []Line  `json:"by_branch"`
+	// Money taken today by a cashier who has not counted their drawer. Not an
+	// error — the day may still be running — but the owner should see it.
+	OpenDrawers []Line `json:"open_drawers"`
+	Variance    string `json:"variance"`
+}
+
+// --- Services ----------------------------------------------------------------
+
+type ServiceLine struct {
+	Label   string `json:"label"`
+	Source  string `json:"source"`
+	Count   int    `json:"count"`
+	Revenue string `json:"revenue"`
+	Avg     string `json:"avg"`
+}
+
+// --- Treatment book (dental) -------------------------------------------------
+
+type PlanAtRisk struct {
+	PatientID uuid.UUID `json:"-"`
+	ID        string    `json:"id"`
+	Patient   string    `json:"patient"`
+	MRN       string    `json:"mrn"`
+	Phone     string    `json:"phone,omitempty"`
+	Plan      string    `json:"plan"`
+	AtRisk    string    `json:"at_risk"`
+	Reason    string    `json:"reason"`
+	DaysIdle  int       `json:"days_idle"`
+}
+
+type Book struct {
+	Total   string       `json:"total"`
+	Visits  int          `json:"visits"`
+	ByMonth []Line       `json:"by_month"`
+	AtRisk  []PlanAtRisk `json:"at_risk"`
 }
