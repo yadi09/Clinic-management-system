@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowLeftRight,
@@ -8,9 +8,11 @@ import {
   CalendarPlus,
   ChevronLeft,
   ChevronRight,
+  Filter,
   MoreHorizontal,
   Repeat2,
   Stethoscope,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -40,7 +42,8 @@ import {
   setAppointmentStatus,
   type Appointment,
 } from "@/features/scheduling/api";
-import { BookingDialog } from "@/features/scheduling/components/BookingDialog";
+import { BookingDialog, PatientCombobox } from "@/features/scheduling/components/BookingDialog";
+import { getPatient } from "@/features/patients/api";
 import { listDentalSessions, type DentalSessionCal } from "@/features/dental/api";
 import { ETH_MONTHS, formatEthiopian, formatEthiopianRange, toEthiopian } from "@/lib/ethiopian";
 
@@ -99,16 +102,62 @@ const isActive = (s: string) => s !== "cancelled" && s !== "completed" && s !== 
 /** A handed-off follow-up: the ordering doctor differs from who now attends. */
 const handedOff = (a: Appointment) => a.is_followup && !!a.ordered_by && a.ordered_by !== a.provider_id;
 
+/** Pick one patient to narrow the whole calendar to. Reuses the booking dialog's
+ *  combobox, so searching for a patient works the same way in both places. */
+function PatientFilter({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+  const q = useQuery({
+    queryKey: ["patient", value],
+    queryFn: () => getPatient(value),
+    enabled: !!value,
+  });
+  const name = q.data ? [q.data.first_name, q.data.last_name].filter(Boolean).join(" ") : "";
+  if (value) {
+    return (
+      <Button variant="secondary" size="sm" className="h-9 gap-1.5" onClick={() => onChange("")}>
+        <Filter className="h-3.5 w-3.5" />
+        <span className="max-w-[10rem] truncate">{name || "Patient"}</span>
+        <X className="h-3.5 w-3.5 opacity-70" />
+      </Button>
+    );
+  }
+  return (
+    <div className="w-[190px]">
+      <PatientCombobox value={null} onSelect={(p) => onChange(p.id)} />
+    </div>
+  );
+}
+
 export function AppointmentsPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { can, flagOn, activeBranchId } = useAuth();
-  const [view, setView] = useState<View>("week");
+  // The filters live in the URL. That is what lets the patient page link straight
+  // to "this patient, on the calendar", and it means a filtered view survives a
+  // refresh instead of silently resetting to everybody.
+  const [params, setParams] = useSearchParams();
+  const setParam = (patch: Record<string, string>) => {
+    const next = new URLSearchParams(params);
+    for (const [k, v] of Object.entries(patch)) {
+      if (v) next.set(k, v); else next.delete(k);
+    }
+    setParams(next, { replace: true });
+  };
+  const patientFilter = params.get("patient") ?? "";
+  const providerFilter = params.get("provider") ?? "all";
+  const [view, setView] = useState<View>(() => (params.get("patient") ? "month" : "week"));
   const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
-  const [providerFilter, setProviderFilter] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Appointment | null>(null);
   const [reassign, setReassign] = useState<Appointment | null>(null);
+
+  const filteredPatient = useQuery({
+    queryKey: ["patient", patientFilter],
+    queryFn: () => getPatient(patientFilter),
+    enabled: !!patientFilter,
+  });
+  const patientLabel = filteredPatient.data
+    ? [filteredPatient.data.first_name, filteredPatient.data.last_name].filter(Boolean).join(" ")
+    : "";
 
   const branches = useQuery({ queryKey: ["branches"], queryFn: listBranches });
   const branchId = activeBranchId ?? branches.data?.[0]?.id ?? "";
@@ -142,9 +191,13 @@ export function AppointmentsPage() {
   });
 
   const items = useMemo(() => {
-    const list = appts.data ?? [];
-    return providerFilter === "all" ? list : list.filter((a) => a.provider_id === providerFilter);
-  }, [appts.data, providerFilter]);
+    let list = appts.data ?? [];
+    if (providerFilter !== "all") list = list.filter((a) => a.provider_id === providerFilter);
+    // A patient filter has to reach the sessions too, or filtering to one patient
+    // still shows every other patient's treatment visits beside them.
+    if (patientFilter) list = list.filter((a) => a.patient_id === patientFilter);
+    return list;
+  }, [appts.data, providerFilter, patientFilter]);
 
   // Dental treatment sessions overlaid on the calendar (clinic-wide, follow-up visits).
   const dentalOn = flagOn("dental") && (can("dental.manage") || can("appointment.manage"));
@@ -162,9 +215,12 @@ export function AppointmentsPage() {
   });
   const sessByDay = useMemo(() => {
     const m: Record<string, DentalSessionCal[]> = {};
-    for (const s of calSessions.data ?? []) (m[s.scheduled_date] ??= []).push(s);
+    for (const s of calSessions.data ?? []) {
+      if (patientFilter && s.patient_id !== patientFilter) continue;
+      (m[s.scheduled_date] ??= []).push(s);
+    }
     return m;
-  }, [calSessions.data]);
+  }, [calSessions.data, patientFilter]);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["appointments"] });
@@ -230,8 +286,17 @@ export function AppointmentsPage() {
               </button>
             ))}
           </div>
+          {/* Filter to one patient. A doctor with forty appointments a week cannot
+              answer "when is Yaz T next in" by reading the grid; this is that
+              question. The name is fetched rather than taken from the visible
+              items, so the banner still reads properly in a month the patient has
+              nothing booked in — which is exactly when it is asked. */}
+          <PatientFilter
+            value={patientFilter}
+            onChange={(id) => setParam({ patient: id })}
+          />
           {view !== "followups" && (providers.data?.length ?? 0) > 1 && (
-            <Select value={providerFilter} onValueChange={setProviderFilter}>
+            <Select value={providerFilter} onValueChange={(v) => setParam({ provider: v === "all" ? "" : v })}>
               <SelectTrigger className="w-[170px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All providers</SelectItem>
@@ -261,6 +326,24 @@ export function AppointmentsPage() {
           <span className="flex items-center gap-1"><Stethoscope className="h-3 w-3 text-violet-600" /> Treatment session</span>
           <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded border-l-2 border-l-rose-500 bg-rose-50" /> owes</span>
           <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded border-l-2 border-l-emerald-500 bg-emerald-50" /> paid</span>
+        </div>
+      )}
+
+      {patientFilter && (
+        // Without this, filtering to a patient with nothing this month looks like a
+        // broken calendar rather than an answered question.
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-brand/30 bg-brand/5 px-3 py-2 text-sm">
+          <Filter className="h-4 w-4 shrink-0 text-brand" />
+          <span className="text-brand">
+            Showing <b>{patientLabel || "this patient"}</b> only — appointments and treatment visits.
+          </span>
+          <Link to={`/patients/${patientFilter}`} className="text-xs font-medium text-brand underline-offset-2 hover:underline">
+            Open their record
+          </Link>
+          <Button variant="ghost" size="sm" className="ml-auto h-7 px-2 text-xs"
+            onClick={() => setParam({ patient: "" })}>
+            <X className="h-3.5 w-3.5" /> Show everyone
+          </Button>
         </div>
       )}
 

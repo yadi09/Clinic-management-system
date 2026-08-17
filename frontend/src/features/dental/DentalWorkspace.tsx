@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, CalendarClock, ImagePlus, Pencil, Plus } from "lucide-react";
+import {
+  AlertTriangle, ArrowLeft, CalendarClock, CalendarDays, ImagePlus, Pencil, Plus,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { CardTitle } from "@/components/ui/card";
@@ -291,6 +293,13 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
             <button onClick={() => navigate(`/patients/${patientId}/schedule`)}
                 className="flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium hover:bg-white/25">
                 <CalendarClock className="h-3 w-3" /> Schedule
+              </button>
+            {/* "When is this patient next in?" is a calendar question, and the answer
+                was to open the calendar and read every other patient's week looking
+                for this one. The filter travels in the URL. */}
+            <button onClick={() => navigate(`/appointments?patient=${patientId}`)}
+                className="flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium hover:bg-white/25">
+                <CalendarDays className="h-3 w-3" /> On the calendar
               </button>
           </div>
           <p className="text-sm text-brand-foreground/80 tabular-nums">
