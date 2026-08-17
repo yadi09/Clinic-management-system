@@ -123,8 +123,17 @@ export function PaymentHistoryCard({ patientId, bare }: { patientId: string; bar
 
   return (
     <PanelCard bare={bare}>
-      <PanelHeader bare={bare} className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-        <CardTitle>Payment history</CardTitle>
+      <PanelHeader bare={bare} className="flex-row flex-wrap items-end justify-between gap-2 space-y-0">
+        <div>
+          <CardTitle>Every bill and payment</CardTitle>
+          {/* The scope has to be stated. This card counts EVERY service — a
+              consultation, a lab test, a bed — while the treatment figures above it
+              count dental courses only. Both used to say "Paid", 100 ETB apart, and
+              the reader was left to guess which one was wrong. Neither was. */}
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            All services, not only dental — consultations, lab and pharmacy included.
+          </p>
+        </div>
         {all.length > 0 && (
           <Button size="sm" variant="outline" onClick={statement}>
             <FileText className="h-4 w-4" /> Print statement

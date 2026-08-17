@@ -36,7 +36,7 @@ import { invalidateDental } from "@/features/dental/invalidate";
 import { ToothChart } from "@/features/dental/ToothChart";
 import { FLAT_TEETH, ToothMultiSelect } from "@/features/dental/shared/pickers";
 import { splitRounded } from "@/features/dental/money";
-import { DepositRow } from "@/features/dental/shared/Deposit";
+import { DepositCallout, depositOutstanding } from "@/features/dental/shared/Deposit";
 import { ImageGallery } from "@/features/dental/shared/visitRecord";
 
 import {
@@ -389,9 +389,14 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
             key: "money", label: "Money", icon: SHELF_ICONS.Receipt,
             badge: bal.overdue ? "!" : undefined,
             render: () => (
-              <div className="space-y-4">
+              // Two questions, two blocks, and a rule between them. Stacked flush
+              // they read as one long list, which is why "by course" and the
+              // payment rows below it were hard to tell apart.
+              <div className="space-y-5">
                 <BalanceSummary patientId={patientId} bal={bal} plans={plans} canCollect={canCollect} />
-                <PaymentHistoryCard patientId={patientId} bare />
+                <div className="border-t pt-5">
+                  <PaymentHistoryCard patientId={patientId} bare />
+                </div>
               </div>
             ),
           },
@@ -421,51 +426,115 @@ function BalanceSummary({ patientId, bal, plans, canCollect }: { patientId: stri
   const owed = num(bal.owed);
   const pct = owed > 0 ? Math.min(100, Math.round((num(bal.paid) / owed) * 100)) : 0;
   const live = plans.filter((pl) => pl.status !== "cancelled");
+  const due = num(bal.due);
+
   return (
-    <div className="space-y-3">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Due now</p>
-        <p className={cn("mt-1 text-3xl font-bold tabular-nums", bal.overdue ? "text-rose-600" : "text-emerald-600")}>{birr(bal.due)}</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Planned {birr(bal.owed)} · Paid {birr(bal.paid)} · Remaining {birr(bal.balance)}
-        </p>
-        {/* Queued money is stated and deliberately kept out of "Due now": counting it
-            there is what had the desk asking patients for money they had just been
-            sent to pay. */}
-        {num(bal.at_cashier) > 0.005 && (
-          <p className="mt-0.5 text-xs font-medium text-amber-700">{birr(bal.at_cashier)} with the cashier — not counted above</p>
-        )}
-        {num(bal.waived) > 0.005 && <p className="mt-0.5 text-xs text-muted-foreground">{birr(bal.waived)} written off</p>}
-      </div>
-      {owed > 0 && (
-        <div className="flex items-center gap-2">
-          <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
-            <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
+    <div className="space-y-4">
+      {/* THE HEADLINE. One number, and it is the only one that means "ask the
+          patient for money today" — planned and collected are context under it. */}
+      <div className="rounded-lg border bg-card p-4 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Owed now for treatment
+            </p>
+            <p className={cn("mt-0.5 text-3xl font-bold", due > 0.005 ? "text-destructive" : "text-emerald-600")}>
+              {birr(bal.due)}
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {due > 0.005 ? "Treatment already given and not paid for." : "Nothing is outstanding for treatment given."}
+            </p>
           </div>
-          <span className="text-xs font-semibold text-emerald-600">{pct}%</span>
-        </div>
-      )}
-      {bal.overdue && (
-        <p className="rounded-md bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
-          Owes {birr(bal.due)} for treatment already given — collect it from the visit above, or from Unbilled treatment.
-        </p>
-      )}
-      {live.length > 0 && (
-        <div className="space-y-1 border-t pt-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">By course</p>
-          {live.map((pl) => (
-            <div key={pl.id} className="space-y-1">
-              <div className="flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
-                <span className="min-w-0 truncate">{pl.title}</span>
-                <span className="tabular-nums text-muted-foreground">
-                  {birr(pl.money.collected)} of {birr(pl.money.planned)}
-                  {num(pl.money.due) > 0.005 && <span className="ml-2 font-medium text-destructive">{birr(pl.money.due)} owed</span>}
-                </span>
+          <div className="grid grid-cols-3 gap-x-5 text-right">
+            {[
+              { k: "Planned", v: bal.owed, tone: "" },
+              { k: "Paid", v: bal.paid, tone: "text-emerald-700" },
+              { k: "Still to pay", v: bal.balance, tone: "" },
+            ].map((c) => (
+              <div key={c.k}>
+                <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{c.k}</div>
+                <div className={cn("text-sm font-bold tabular-nums", c.tone)}>{birr(c.v)}</div>
               </div>
-              <DepositRow patientId={patientId} plan={pl} canCollect={canCollect} />
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
+
+        {owed > 0 && (
+          <div className="mt-3 flex items-center gap-2">
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+              <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
+            </div>
+            <span className="shrink-0 text-xs font-semibold text-emerald-600">{pct}% paid</span>
+          </div>
+        )}
+
+        {(num(bal.at_cashier) > 0.005 || num(bal.waived) > 0.005) && (
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t pt-2 text-xs">
+            {num(bal.at_cashier) > 0.005 && (
+              <span className="font-medium text-amber-700">
+                {birr(bal.at_cashier)} with the cashier — deliberately not counted above
+              </span>
+            )}
+            {num(bal.waived) > 0.005 && <span className="text-muted-foreground">{birr(bal.waived)} written off</span>}
+          </div>
+        )}
+      </div>
+
+      {/* THE COURSES. One card each, because a course is the thing a dentist thinks
+          in — and because the old flat list put a course, its deposit and the
+          payment ledger below it at the same visual weight, so none of the three
+          read as a separate thing. */}
+      {live.length > 0 && (
+        <section className="space-y-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <h3 className="text-xs font-bold uppercase tracking-wide text-foreground">Treatment courses</h3>
+            <span className="text-[11px] text-muted-foreground">
+              {live.length} course{live.length === 1 ? "" : "s"} · dental work only
+            </span>
+          </div>
+          <div className="space-y-2">
+            {live.map((pl) => {
+              const planned = num(pl.money.planned);
+              const paid = num(pl.money.collected);
+              const owedOnPlan = num(pl.money.due);
+              const p = planned > 0 ? Math.min(100, Math.round((paid / planned) * 100)) : 0;
+              const left = Math.max(0, planned - paid - num(pl.money.at_cashier));
+              return (
+                <div key={pl.id} className="rounded-lg border bg-card p-3 shadow-sm">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                    <span className="min-w-0 truncate font-semibold">{pl.title}</span>
+                    <span className="shrink-0 text-sm tabular-nums">
+                      <b className="text-emerald-700">{birr(pl.money.collected)}</b>
+                      <span className="text-muted-foreground"> of {birr(pl.money.planned)}</span>
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-emerald-500" style={{ width: `${p}%` }} />
+                    </div>
+                    <span className="w-9 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">{p}%</span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                    {left > 0.005 && <span className="text-muted-foreground">{birr(String(left))} still to pay</span>}
+                    {owedOnPlan > 0.005 && (
+                      <span className="font-semibold text-destructive">{birr(pl.money.due)} owed now</span>
+                    )}
+                    {num(pl.money.at_cashier) > 0.005 && (
+                      <span className="font-medium text-amber-700">{birr(pl.money.at_cashier)} with the cashier</span>
+                    )}
+                  </div>
+                  {/* The deposit belongs INSIDE its course. On the flat list it was an
+                      indented line that could have belonged to any of them. */}
+                  {depositOutstanding(pl) && (
+                    <div className="mt-2">
+                      <DepositCallout patientId={patientId} plan={pl} canCollect={canCollect} compact />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
       )}
     </div>
   );
