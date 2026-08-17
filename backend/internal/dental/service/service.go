@@ -81,6 +81,15 @@ func splitAmount(total float64, n int) []float64 {
 		return out
 	}
 	share := total / float64(n)
+	// An exact division is already the answer. Rounding it anyway turned 15,000
+	// over 20 visits into nineteen of 700 and a last one of 1,700, when every visit
+	// should simply have been 750. Mirrored in splitRounded in money.ts.
+	if share == math.Trunc(share) {
+		for i := range out {
+			out[i] = share
+		}
+		return out
+	}
 	unit := 100.0
 	if share < 100 {
 		unit = 10

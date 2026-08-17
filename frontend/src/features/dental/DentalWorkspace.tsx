@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AlertTriangle, ArrowLeft, CalendarClock, ImagePlus, Pencil, Plus } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -37,10 +36,11 @@ import { invalidateDental } from "@/features/dental/invalidate";
 import { ToothChart } from "@/features/dental/ToothChart";
 import { FLAT_TEETH, ToothMultiSelect } from "@/features/dental/shared/pickers";
 import { splitRounded } from "@/features/dental/money";
+import { DepositRow } from "@/features/dental/shared/Deposit";
 import { ImageGallery } from "@/features/dental/shared/visitRecord";
 
 import {
-  collectSession, createPlan, deleteDentalImage, dentalSummary,
+  createPlan, deleteDentalImage, dentalSummary,
   listDentalImages, saveChart, uploadDentalImage,
   type Balance, type Plan,
 } from "@/features/dental/api";
@@ -416,34 +416,6 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
  *  live. It cannot appear in Unbilled treatment (that is treatment already given)
  *  and it is deliberately not in the visit timeline, so this is the one place the
  *  desk can see it is outstanding and send it to the cashier. */
-function DepositLine({ patientId, plan, canCollect }: { patientId: string; plan: Plan; canCollect: boolean }) {
-  const d = plan.deposit;
-  const qc = useQueryClient();
-  const collect = useMutation({
-    mutationFn: () => collectSession(patientId, d!.id),
-    onSuccess: () => { toast.success("Down payment sent to the cashier"); invalidateDental(qc, patientId); },
-    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not send it to the cashier"),
-  });
-  if (!d || num(d.amount_due) <= 0.005) return null;
-  const paid = d.payment === "paid";
-  const queued = d.payment === "billed";
-  return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-3 text-xs">
-      <span className="text-muted-foreground">Down payment</span>
-      <span className="tabular-nums font-medium">{birr(d.amount_due)}</span>
-      <Badge variant={paid ? "success" : queued ? "warning" : "destructive"}>
-        {paid ? "Paid" : queued ? "At cashier" : "Owed now"}
-      </Badge>
-      {!paid && !queued && canCollect && (
-        <Button size="sm" variant="outline" className="h-6 px-2 text-xs"
-          loading={collect.isPending} onClick={() => collect.mutate()}>
-          Send to cashier
-        </Button>
-      )}
-    </div>
-  );
-}
-
 /** The money headline, lifted out of its old card so it can live on the shelf. */
 function BalanceSummary({ patientId, bal, plans, canCollect }: { patientId: string; bal: Balance; plans: Plan[]; canCollect: boolean }) {
   const owed = num(bal.owed);
@@ -490,7 +462,7 @@ function BalanceSummary({ patientId, bal, plans, canCollect }: { patientId: stri
                   {num(pl.money.due) > 0.005 && <span className="ml-2 font-medium text-destructive">{birr(pl.money.due)} owed</span>}
                 </span>
               </div>
-              <DepositLine patientId={patientId} plan={pl} canCollect={canCollect} />
+              <DepositRow patientId={patientId} plan={pl} canCollect={canCollect} />
             </div>
           ))}
         </div>

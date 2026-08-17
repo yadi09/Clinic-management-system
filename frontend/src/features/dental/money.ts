@@ -101,6 +101,10 @@ export function splitRounded(total: number, n: number): number[] {
   if (n <= 0) return [];
   if (!(total > 0)) return Array(n).fill(0);
   const share = total / n;
+  // An exact division is already the answer. Rounding it anyway is what turned
+  // 15,000 over 20 visits into nineteen visits of 700 and a last one of 1,700,
+  // when every visit should simply have been 750.
+  if (Number.isInteger(share)) return Array(n).fill(share);
   const unit = share >= 100 ? 100 : share >= 10 ? 10 : 1;
   const per = Math.floor(share / unit) * unit;
   const out: number[] = [];

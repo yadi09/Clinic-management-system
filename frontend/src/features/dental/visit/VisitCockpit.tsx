@@ -31,6 +31,7 @@ import { addSession, finishCourse, type Plan } from "@/features/dental/api";
 import { visitTiming, type FocusResult, type FocusVisit, type Rung } from "@/features/dental/visit/useFocusVisit";
 import { RecordVisitForm } from "@/features/dental/visit/RecordVisitForm";
 import { feeResolved, feeStage, FeeStrip, VisitPaymentStep } from "@/features/dental/visit/VisitPaymentStep";
+import { DepositCallout } from "@/features/dental/shared/Deposit";
 import { VisitActions } from "@/features/dental/visit/VisitActions";
 
 /** How the resolution reads at the top of the cockpit. */
@@ -182,6 +183,14 @@ export function VisitCockpit({
             visit <b className="text-foreground">{seq}</b> of {liveCount} · <b className="text-foreground tabular-nums">{birr(session.amount_due)}</b>
           </span>
         </div>
+
+        {/* THE DOWN PAYMENT, if one is still owed. Shown in every state, including
+            while a visit is being recorded: it is money due now, and a course that
+            starts without it is a course given away. */}
+        {editable && (
+          <DepositCallout patientId={patientId} plan={plan} canCollect={canCollect}
+            compact={state === "recording"} />
+        )}
 
         {/* WHERE IN THE COURSE. Hidden while recording: switching the focused visit
             under an open form would retarget the save to another session. */}
