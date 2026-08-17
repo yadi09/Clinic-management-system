@@ -182,23 +182,35 @@ function Kpi({ label, value, tone, foot }: { label: string; value: string; tone?
 /** Bars, drawn in CSS. A trend has to be seen; a column of numbers is not one. */
 function TrendBars({ series, prev }: { series: FinDayPoint[]; prev: FinDayPoint[] }) {
   const max = Math.max(1, ...series.map((p) => num(p.amount)), ...prev.map((p) => num(p.amount)));
+  const label = (iso?: string) =>
+    iso ? new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
   return (
-    <div className="flex h-32 items-end gap-1">
-      {series.map((p, i) => {
-        const v = num(p.amount);
-        const before = num(prev[i]?.amount);
-        return (
-          <div key={p.date} className="group relative flex flex-1 flex-col justify-end gap-0.5"
-            title={`${p.date} · ${etb(v)}${prev[i] ? ` (was ${etb(before)})` : ""}`}>
-            {/* The previous window sits behind as a faint ghost, so "is this normal"
-                is answered by looking rather than by remembering last week. */}
-            <div className="absolute inset-x-0 bottom-0 rounded-sm bg-muted"
-              style={{ height: `${(before / max) * 100}%` }} />
-            <div className={cn("relative rounded-sm transition-all", v > 0 ? "bg-emerald-500" : "bg-muted")}
-              style={{ height: `${Math.max(v > 0 ? 3 : 0, (v / max) * 100)}%` }} />
-          </div>
-        );
-      })}
+    <div className="space-y-1.5">
+      <div className="flex h-36 items-end gap-px sm:gap-0.5">
+        {series.map((p, i) => {
+          const v = num(p.amount);
+          const before = num(prev[i]?.amount);
+          return (
+            // h-full matters: a percentage height resolves against the PARENT's
+            // height, and this column had none — every bar computed to zero and the
+            // chart rendered as an empty box with a dozen payments behind it.
+            <div key={p.date} className="group relative flex h-full flex-1 flex-col justify-end"
+              title={`${p.date} · ${etb(v)}${prev[i] ? ` (was ${etb(before)})` : ""}`}>
+              <div className="absolute inset-x-0 bottom-0 rounded-sm bg-muted"
+                style={{ height: `${(before / max) * 100}%` }} />
+              {/* A day with nothing in it still gets a hairline, so ninety days of
+                  quiet read as a timeline rather than as blank card. */}
+              <div className={cn("relative rounded-sm transition-all", v > 0 ? "bg-emerald-500" : "bg-muted-foreground/15")}
+                style={{ height: v > 0 ? `${Math.max(4, (v / max) * 100)}%` : "2px" }} />
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex items-center justify-between text-[10px] tabular-nums text-muted-foreground">
+        <span>{label(series[0]?.date)}</span>
+        <span className="font-medium">peak {etb(max)}</span>
+        <span>{label(series[series.length - 1]?.date)}</span>
+      </div>
     </div>
   );
 }
@@ -223,6 +235,10 @@ function OverviewTab({ data, owed, loading, dental }: {
   const delta = before > 0 ? Math.round(((now - before) / before) * 100) : null;
   const leak = num(data.refunded) + num(data.waived);
   const maxSource = Math.max(1, ...data.by_source.map((s) => num(s.amount)));
+  // The mix is GROSS: the sources are what was billed, before refunds are taken
+  // off the top. Dividing a gross line by net collected printed "Dental 111%",
+  // which is not a share of anything.
+  const grossMix = Math.max(1, data.by_source.reduce((a, s) => a + num(s.amount), 0));
 
   return (
     <div className="space-y-4">
@@ -282,7 +298,12 @@ function OverviewTab({ data, owed, loading, dental }: {
         </Card>
 
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm">Where it came from</CardTitle></CardHeader>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Where it came from</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Billed before refunds{num(data.refunded) > 0 ? ` — ${etb(data.refunded)} was refunded` : ""}.
+            </p>
+          </CardHeader>
           <CardContent className="space-y-2">
             {data.by_source.length === 0 && <p className="text-sm text-muted-foreground">No revenue in this period.</p>}
             {data.by_source.map((s) => (
@@ -292,7 +313,7 @@ function OverviewTab({ data, owed, loading, dental }: {
                   <span className="tabular-nums">
                     {etb(s.amount)}
                     <span className="ml-2 text-xs text-muted-foreground">
-                      {Math.round((num(s.amount) / Math.max(1, now)) * 100)}%
+                      {Math.round((num(s.amount) / grossMix) * 100)}%
                     </span>
                   </span>
                 </div>
