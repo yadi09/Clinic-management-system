@@ -248,14 +248,19 @@ func (s *Service) Usage(ctx context.Context) (*messaging.Usage, error) {
 
 // --- preview ------------------------------------------------------------------
 
-// Preview prices a body without queueing it. The clinic's sender prefix is
-// included, because it is part of what gets sent and therefore part of the cost.
+// Preview prices a body without queueing it.
+//
+// Placeholders are filled with sample values and the clinic's sender prefix is
+// added, because both are part of what actually goes out. Showing the raw
+// "Dear {{name}}," would misprice the message — a real first name is longer than
+// the placeholder in Latin and shorter in Amharic — and would leave the author
+// looking at braces the patient will never see.
 func (s *Service) Preview(ctx context.Context, body string) (*messaging.Preview, error) {
 	set, err := s.GetSettings(ctx)
 	if err != nil {
 		return nil, err
 	}
-	full := withSender(set.BodyPrefix, body)
+	full := withSender(set.BodyPrefix, messaging.Render(body, messaging.SampleVars(set.SenderName)))
 	n, uni := sms.Segments(full)
 	per := 160
 	if uni {

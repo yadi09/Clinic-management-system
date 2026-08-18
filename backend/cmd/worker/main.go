@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // embed the zoneinfo DB: the runtime image is distroless
 
 	"github.com/reicb/clinicsaas/internal/kernel/audit"
 	"github.com/reicb/clinicsaas/internal/kernel/config"
@@ -42,8 +43,6 @@ func main() {
 	reg := events.NewRegistry()
 	reg.OnAny(audit.NewWriter(db).EventHandler())
 
-	relay := events.NewRelay(db, reg, log)
-
 	// The message dispatcher drains one queue that spans every tenant, so it needs
 	// the RLS-bypassing pool the platform module also uses. Without that DSN the
 	// worker still runs — events keep flowing — but nothing is sent, and it says so
@@ -62,12 +61,31 @@ func main() {
 			// background work competing with sending for the account's shared rate
 			// limit, and sending is what the patient is waiting for.
 			go dispatch.NewReconciler(privDB, gwf, log).Run(ctx, 30*time.Second)
-			log.Info("worker started: message dispatcher + delivery reconciler polling")
+
+			// The planner turns appointments and unpaid bills into queued messages.
+			// It only writes rows — the dispatcher's gates still decide whether any
+			// of them leave the building, so there is one place that sends and one
+			// place that decides when.
+			planner := dispatch.NewPlanner(privDB, cfg.SMS.CostPerSegment, log)
+			// Two minutes, not five. Nothing here is latency-critical, but a clinic
+			// that books an appointment inside the reminder window and then watches
+			// the log should see it appear while they are still looking.
+			go planner.Run(ctx, 2*time.Minute)
+
+			// The welcome message is event-driven instead: the card number is useful
+			// while the patient is still at the desk, and a five-minute planner would
+			// reach them after they had left.
+			reg.On("patient.patient.registered", dispatch.WelcomeOnRegistration(planner))
+
+			log.Info("worker started: dispatcher, delivery reconciler and reminder planner")
 		}
 	} else {
 		log.Warn("PLATFORM_DATABASE_URL unset — patient messages will not be sent")
 	}
 
+	// Built after the handlers are registered, so the welcome handler is in place
+	// before the first event is drained.
+	relay := events.NewRelay(db, reg, log)
 	log.Info("worker started: outbox relay polling")
 	relay.Run(ctx, time.Second)
 	log.Info("worker stopped")

@@ -97,3 +97,81 @@ export function messageLog(p: { kind?: string; status?: string; patient?: string
 export function sendTestMessage(phone: string, body: string) {
   return apiFetch<void>("/messaging/test", { method: "POST", body: { phone, body } });
 }
+
+// --- automations: what the clinic says, and when -------------------------------
+
+export type MessageKind = "welcome" | "appointment_reminder" | "bill_reminder" | "custom";
+
+export interface MessageTemplate {
+  kind: MessageKind;
+  lang: "en" | "am";
+  body: string;
+  /** The body with sample values filled in — the only form that can be priced. */
+  preview: string;
+  segments: number;
+  unicode: boolean;
+  cost: string;
+}
+
+export interface MessageRule {
+  kind: MessageKind;
+  enabled: boolean;
+  /** Negative = before the appointment; positive = after the bill appeared. */
+  offset_hours: number;
+  send_at?: string;
+  repeat_days: number;
+  max_repeats: number;
+  /** How many of this kind actually went out this month. */
+  sent: number;
+}
+
+export interface MessageVariable { name: string; describes: string }
+
+export interface AudienceRow {
+  id: string;
+  name: string;
+  mrn: string;
+  phone?: string;
+  reachable: boolean;
+  /** missing | invalid | unsupported */
+  phone_issue?: string;
+  opted_out: boolean;
+  last_visit?: string;
+  owes?: string;
+}
+
+export interface CampaignResult {
+  id: string; queued: number; skipped: number; segments: number; cost: string;
+}
+
+export function listTemplates() {
+  return apiFetch<MessageTemplate[]>("/messaging/templates");
+}
+export function saveTemplate(body: { kind: string; lang: string; body: string }) {
+  return apiFetch<void>("/messaging/templates", { method: "PUT", body });
+}
+export function listRules() {
+  return apiFetch<MessageRule[]>("/messaging/rules");
+}
+export function saveRule(body: {
+  kind: string; enabled: boolean; offset_hours: number; send_at?: string;
+  repeat_days: number; max_repeats: number;
+}) {
+  return apiFetch<void>("/messaging/rules", { method: "PUT", body });
+}
+export function messageVariables() {
+  return apiFetch<MessageVariable[]>("/messaging/variables");
+}
+export function messageAudience(p: { q?: string; seen_days?: number; owing?: boolean } = {}) {
+  const s = new URLSearchParams();
+  if (p.q) s.set("q", p.q);
+  if (p.seen_days) s.set("seen_days", String(p.seen_days));
+  if (p.owing) s.set("owing", "1");
+  const q = s.toString();
+  return apiFetch<AudienceRow[]>(`/messaging/audience${q ? `?${q}` : ""}`);
+}
+export function sendCampaign(body: {
+  title: string; body: string; patient_ids: string[]; scheduled_for?: string;
+}) {
+  return apiFetch<CampaignResult>("/messaging/campaigns", { method: "POST", body });
+}

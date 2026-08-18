@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // embed the zoneinfo DB: the runtime image is distroless
 
 	"github.com/gin-gonic/gin"
 

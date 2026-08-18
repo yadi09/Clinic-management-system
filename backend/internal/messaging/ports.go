@@ -12,6 +12,7 @@ package messaging
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -126,6 +127,89 @@ type LogFilter struct {
 	Limit     int
 }
 
+// Template is one occasion's wording in one language.
+type Template struct {
+	Kind string `json:"kind"`
+	Lang string `json:"lang"`
+	Body string `json:"body"`
+	// Preview is the body with sample values filled in, plus its real length and
+	// price — the numbers that matter are the rendered ones, not the template's.
+	Preview  string `json:"preview"`
+	Segments int    `json:"segments"`
+	Unicode  bool   `json:"unicode"`
+	Cost     string `json:"cost"`
+}
+
+// Rule is when one kind goes out, and whether it goes out at all.
+type Rule struct {
+	Kind        string `json:"kind"`
+	Enabled     bool   `json:"enabled"`
+	OffsetHours int    `json:"offset_hours"`
+	SendAt      string `json:"send_at,omitempty"`
+	RepeatDays  int    `json:"repeat_days"`
+	MaxRepeats  int    `json:"max_repeats"`
+	// Sent is how many of this kind went out this month — the answer to "is this
+	// actually doing anything?", which a toggle alone cannot give.
+	Sent int64 `json:"sent"`
+}
+
+// RuleInput edits one rule.
+type RuleInput struct {
+	Kind        string
+	Enabled     bool
+	OffsetHours int
+	SendAt      string
+	RepeatDays  int
+	MaxRepeats  int
+}
+
+// Audience is one candidate for a hand-picked send.
+type Audience struct {
+	PatientID uuid.UUID `json:"-"`
+	Name      string    `json:"name"`
+	MRN       string    `json:"mrn"`
+	Phone     string    `json:"phone,omitempty"`
+	// Reachable is false when there is no usable mobile. Shown rather than hidden:
+	// a clinic choosing 143 people should know 5 of them cannot be reached.
+	Reachable bool `json:"reachable"`
+	// Why the number is unusable, when it is: missing | invalid | unsupported.
+	PhoneIssue string `json:"phone_issue,omitempty"`
+	OptedOut   bool   `json:"opted_out"`
+	LastVisit  string `json:"last_visit,omitempty"`
+	Owes       string `json:"owes,omitempty"`
+}
+
+// AudienceFilter narrows the candidate list for a hand-picked send.
+type AudienceFilter struct {
+	// Search matches name or card number.
+	Search string
+	// SeenWithinDays limits to patients seen recently. 0 = no limit.
+	SeenWithinDays int
+	// OwingOnly limits to patients with an unpaid balance.
+	OwingOnly bool
+	Limit     int
+}
+
+// CampaignInput is a message written once and sent to chosen patients.
+type CampaignInput struct {
+	Title string
+	Body  string
+	// PatientIDs is the explicit list. Nothing is ever sent to "everyone" by
+	// implication — somebody chose each of these.
+	PatientIDs []uuid.UUID
+	// ScheduledFor is when to send. Zero means now.
+	ScheduledFor *time.Time
+}
+
+// CampaignResult is what a send actually did.
+type CampaignResult struct {
+	ID       uuid.UUID `json:"-"`
+	Queued   int       `json:"queued"`
+	Skipped  int       `json:"skipped"`
+	Segments int       `json:"segments"`
+	Cost     string    `json:"cost"`
+}
+
 // Service is the messaging use-case surface.
 type Service interface {
 	GetSettings(ctx context.Context) (*Settings, error)
@@ -145,4 +229,15 @@ type Service interface {
 	// aiming it at 600 patients. It is charged like any other message, because it
 	// is one.
 	SendTest(ctx context.Context, rawPhone, body string) error
+
+	// Templates and rules: what the clinic says, and when.
+	ListTemplates(ctx context.Context) ([]Template, error)
+	SaveTemplate(ctx context.Context, kind, lang, body string) error
+	ListRules(ctx context.Context) ([]Rule, error)
+	SaveRule(ctx context.Context, in RuleInput) error
+
+	// Audience lists candidates for a hand-picked send.
+	Audience(ctx context.Context, f AudienceFilter) ([]Audience, error)
+	// SendCampaign queues one message to the patients someone chose.
+	SendCampaign(ctx context.Context, in CampaignInput) (*CampaignResult, error)
 }

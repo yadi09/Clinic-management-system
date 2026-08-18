@@ -27,4 +27,17 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	// A test send spends real money and reaches a real phone, so it sits with the
 	// people allowed to message patients rather than with anyone who can log in.
 	g.POST("/test", use, h.SendTest)
+
+	// What the clinic says, and when. Wording and timing are policy, so they sit
+	// with whoever runs the clinic rather than with whoever is on the desk today.
+	g.GET("/templates", use, h.ListTemplates)
+	g.PUT("/templates", manage, h.SaveTemplate)
+	g.GET("/rules", use, h.ListRules)
+	g.PUT("/rules", manage, h.SaveRule)
+	g.GET("/variables", use, h.Variables)
+
+	// A one-off message to chosen patients. Reception can send these — it is the
+	// desk that knows a holiday is coming and who to tell.
+	g.GET("/audience", use, h.Audience)
+	g.POST("/campaigns", use, h.SendCampaign)
 }

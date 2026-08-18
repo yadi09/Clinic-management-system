@@ -30,11 +30,15 @@ import {
   getMessagingSettings, messageLog, messagingUsage, previewMessage, saveMessagingSettings,
   sendTestMessage, type MessageRow, type MessagingSettings, type MessagingUsage,
 } from "@/features/messaging/api";
+import { AutomationsTab } from "@/features/messaging/Automations";
+import { ComposeTab } from "@/features/messaging/Compose";
 
 export function MessagesPage() {
   const { can } = useAuth();
   const manage = can("message.manage");
-  const [tab, setTab] = useState<"sending" | "log">("sending");
+  // Automations first: it is what the page is for. Sending is configured once and
+  // then rarely touched, so it should not be the thing that greets you every time.
+  const [tab, setTab] = useState<"automations" | "compose" | "sending" | "log">("automations");
 
   const settings = useQuery({ queryKey: ["messaging-settings"], queryFn: getMessagingSettings });
   const usage = useQuery({ queryKey: ["messaging-usage"], queryFn: messagingUsage });
@@ -58,11 +62,15 @@ export function MessagesPage() {
         value={tab}
         onChange={setTab}
         options={[
+          { value: "automations", label: "Automatic messages" },
+          { value: "compose", label: "Write to patients" },
           { value: "sending", label: "Sending" },
           { value: "log", label: "Message log" },
         ]}
       />
 
+      {tab === "automations" && <AutomationsTab settings={settings.data} manage={manage} />}
+      {tab === "compose" && <ComposeTab settings={settings.data} />}
       {tab === "sending" && <SendingTab settings={settings.data} manage={manage} />}
       {tab === "log" && <LogTab />}
     </div>
@@ -463,6 +471,15 @@ function SegmentCounter({ preview, cost }: { preview?: { segments: number; unico
 
 // --- Log -----------------------------------------------------------------------
 
+// What occasion a message was for. Shown in the log because "did the reminders go
+// out?" is a different question from "did anything go out?".
+const KIND_LABEL: Record<string, string> = {
+  welcome: "Welcome",
+  appointment_reminder: "Reminder",
+  bill_reminder: "Bill",
+  custom: "Written",
+};
+
 const STATUS: Record<string, { label: string; variant: "success" | "warning" | "destructive" | "outline" }> = {
   // Two words on purpose. "Sent" is all the gateway promises on acceptance;
   // "Delivered" is a handset confirming, which arrives later or not at all.
@@ -541,7 +558,12 @@ function LogRow({ row }: { row: MessageRow }) {
     <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5 px-4 py-3 text-sm hover:bg-muted/30">
       <Badge variant={meta.variant}>{meta.label}</Badge>
       <div className="min-w-0 flex-1">
-        <p className="truncate">{row.body}</p>
+        <p className="truncate">
+          <span className="mr-2 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+            {KIND_LABEL[row.kind] ?? row.kind}
+          </span>
+          {row.body}
+        </p>
         <p className="text-xs text-muted-foreground">
           {/* No patient means a test or an ad-hoc send; the number identifies it,
               so say nothing rather than guessing which one it was. */}
