@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
+	"github.com/reicb/clinicsaas/internal/kernel/auth"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
 	"github.com/reicb/clinicsaas/internal/kernel/limits"
 	"github.com/reicb/clinicsaas/internal/kernel/phone"
@@ -26,15 +27,30 @@ var _ messaging.Service = (*Service)(nil)
 
 // Service is the messaging implementation.
 type Service struct {
-	db      *kerneldb.DB
-	gateway sms.Gateway
-	cost    float64
+	db     *kerneldb.DB
+	gwf    *messaging.GatewayFactory
+	encKey []byte
+	cost   float64
 }
 
-// New constructs the service. gateway is the log adapter when no key is set, so
-// every surface works before the platform has credentials.
-func New(db *kerneldb.DB, gateway sms.Gateway, costPerSegment float64) *Service {
-	return &Service{db: db, gateway: gateway, cost: costPerSegment}
+// New constructs the service. The factory resolves each clinic's own gateway; with
+// no credentials anywhere it hands back the log adapter, so every surface works and
+// says "not connected" rather than implying patients were reached.
+func New(db *kerneldb.DB, gwf *messaging.GatewayFactory, encKey []byte, costPerSegment float64) *Service {
+	return &Service{db: db, gwf: gwf, encKey: encKey, cost: costPerSegment}
+}
+
+// creds reads this clinic's gateway credentials.
+func (s *Service) creds(ctx context.Context, tx pgx.Tx, tid uuid.UUID) (messaging.Credentials, string, error) {
+	var c messaging.Credentials
+	var clinicName string
+	e := tx.QueryRow(ctx,
+		`SELECT coalesce(sms_api_key_enc,''), coalesce(sms_sender_id,''), sms_sender_status,
+		        coalesce(sms_sender_name,''), name
+		   FROM clinics WHERE tenant_id = $1 AND deleted_at IS NULL
+		  ORDER BY created_at LIMIT 1`, tid).
+		Scan(&c.APIKeyEnc, &c.SenderID, &c.SenderStatus, &c.SenderName, &clinicName)
+	return c, clinicName, e
 }
 
 func actorOf(ctx context.Context) (uuid.UUID, *uuid.UUID) {
@@ -52,29 +68,36 @@ func actorOf(ctx context.Context) (uuid.UUID, *uuid.UUID) {
 // actually deliver.
 func (s *Service) GetSettings(ctx context.Context) (*messaging.Settings, error) {
 	tid, _ := actorOf(ctx)
-	out := &messaging.Settings{
-		GatewayLive: s.gateway.Live(), GatewayName: s.gateway.Name(), CostPerSegment: s.cost,
-	}
+	out := &messaging.Settings{CostPerSegment: s.cost}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		var name string
 		e := tx.QueryRow(ctx,
 			`SELECT sms_enabled, sms_lang, to_char(sms_quiet_from,'HH24:MI'), to_char(sms_quiet_to,'HH24:MI'),
-			        sms_sender_name, name
+			        name
 			   FROM clinics WHERE tenant_id = $1 AND deleted_at IS NULL
 			  ORDER BY created_at LIMIT 1`, tid).
-			Scan(&out.Enabled, &out.Lang, &out.QuietFrom, &out.QuietTo, &out.SenderName, &name)
+			Scan(&out.Enabled, &out.Lang, &out.QuietFrom, &out.QuietTo, &name)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return apperr.NotFound("CLINIC_NOT_CONFIGURED", "set up the clinic profile first")
 		}
 		if e != nil {
 			return e
 		}
-		// The gateway has no sender-ID field, so the only thing identifying the
-		// clinic is the text itself. Default to the clinic's own name rather than
-		// making someone invent one.
-		if strings.TrimSpace(out.SenderName) == "" {
-			out.SenderName = name
+		c, _, e := s.creds(ctx, tx, tid)
+		if e != nil {
+			return e
 		}
+		// Until a sender name is approved the only thing identifying the clinic is
+		// the text itself, so default the fallback prefix to the clinic's own name
+		// rather than making someone invent one.
+		if strings.TrimSpace(c.SenderName) == "" {
+			c.SenderName = name
+		}
+		gw := s.gwf.For(c)
+		out.SenderName, out.SenderID, out.SenderStatus = c.SenderName, c.SenderID, c.SenderStatus
+		out.HasOwnKey = strings.TrimSpace(c.APIKeyEnc) != ""
+		out.BodyPrefix = c.Prefix()
+		out.GatewayLive, out.GatewayName = gw.Live(), gw.Name()
 		return nil
 	})
 	if ae, ok := apperr.As(err); ok {
@@ -98,22 +121,58 @@ func (s *Service) SaveSettings(ctx context.Context, in messaging.SettingsInput) 
 		return nil, apperr.Validation("quiet hours must be a time like 21:00")
 	}
 	sender := strings.TrimSpace(in.SenderName)
-	// The sender name is prefixed to every message, and every character of it is
-	// paid for on every send. A long one silently costs a clinic a second segment
-	// on messages that would otherwise fit in one.
+	// The fallback prefix is paid for on every message it appears on, so a long one
+	// silently costs a second segment on messages that would otherwise fit in one.
 	if len([]rune(sender)) > 20 {
 		return nil, apperr.Validation("keep the sender name to 20 characters — it is added to every message and counts towards its length")
 	}
 	if in.Enabled && sender == "" {
 		return nil, apperr.Validation("give the clinic a sender name — patients need to know who is messaging them")
 	}
+	status := strings.TrimSpace(in.SenderStatus)
+	switch status {
+	case "", "none", "pending", "approved", "rejected":
+	default:
+		return nil, apperr.Validation("that is not a sender approval state")
+	}
+	if status == "" {
+		status = "none"
+	}
+	senderID := strings.TrimSpace(in.SenderID)
+	if status == "approved" && senderID == "" {
+		return nil, apperr.Validation("record the approved sender name so staff can see what patients will get")
+	}
+
+	// The key is written only when one was supplied. A settings save that echoed an
+	// empty field back would otherwise wipe a working credential every time somebody
+	// adjusted the quiet hours.
+	var keyEnc *string
+	if in.ClearAPIKey {
+		empty := ""
+		keyEnc = &empty
+	} else if k := strings.TrimSpace(in.APIKey); k != "" {
+		if len(s.encKey) == 0 {
+			return nil, apperr.Validation("this deployment cannot store credentials securely — MFA_ENC_KEY is not configured")
+		}
+		enc, e := auth.EncryptSecret(s.encKey, k)
+		if e != nil {
+			return nil, apperr.Internal(e)
+		}
+		keyEnc = &enc
+	}
+
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		ct, e := tx.Exec(ctx,
 			`UPDATE clinics
 			    SET sms_enabled = $2, sms_lang = $3, sms_quiet_from = $4::time, sms_quiet_to = $5::time,
-			        sms_sender_name = $6, updated_at = now()
+			        sms_sender_name = $6, sms_sender_id = NULLIF($7,''), sms_sender_status = $8,
+			        sms_api_key_enc = CASE
+			                            WHEN $9::text IS NULL THEN sms_api_key_enc
+			                            WHEN $9::text = ''    THEN NULL
+			                            ELSE $9::text END,
+			        updated_at = now()
 			  WHERE tenant_id = $1 AND deleted_at IS NULL`,
-			tid, in.Enabled, in.Lang, from, to, sender)
+			tid, in.Enabled, in.Lang, from, to, sender, senderID, status, keyEnc)
 		if e != nil {
 			return e
 		}
@@ -196,7 +255,7 @@ func (s *Service) Preview(ctx context.Context, body string) (*messaging.Preview,
 	if err != nil {
 		return nil, err
 	}
-	full := withSender(set.SenderName, body)
+	full := withSender(set.BodyPrefix, body)
 	n, uni := sms.Segments(full)
 	per := 160
 	if uni {
@@ -214,13 +273,16 @@ func (s *Service) Preview(ctx context.Context, body string) (*messaging.Preview,
 	}, nil
 }
 
-// withSender puts the clinic's name in front of the message.
+// withSender puts the clinic's name in front of the message when the phone will
+// not show it.
 //
-// Not decoration: with one shared gateway account every clinic's SMS arrives from
-// the same identity, so without this the patient gets an unsigned message about
-// their own health from a number they do not recognise. Skipped when the body
-// already opens with the name, so an author who writes it themselves is not
-// charged for it twice.
+// Not decoration: without an approved sender name of its own, a clinic's SMS
+// arrives from a shared numeric sender, and the patient gets an unsigned message
+// about their own health from a number they do not recognise. Once the clinic's
+// campaign has its own approved name the prefix is dropped — the handset already
+// says it, and repeating it costs characters on every single message. Skipped too
+// when the body already opens with the name, so an author who writes it themselves
+// is not charged for it twice.
 func withSender(sender, body string) string {
 	body = strings.TrimSpace(body)
 	sender = strings.TrimSpace(sender)
@@ -319,7 +381,7 @@ func (s *Service) SendTest(ctx context.Context, rawPhone, body string) error {
 	if err != nil {
 		return err
 	}
-	full := withSender(set.SenderName, body)
+	full := withSender(set.BodyPrefix, body)
 	segs, _ := sms.Segments(full)
 
 	err = s.db.WithTx(ctx, func(tx pgx.Tx) error {

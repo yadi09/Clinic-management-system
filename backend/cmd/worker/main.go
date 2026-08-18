@@ -16,6 +16,7 @@ import (
 	"github.com/reicb/clinicsaas/internal/kernel/events"
 	"github.com/reicb/clinicsaas/internal/kernel/logging"
 	"github.com/reicb/clinicsaas/internal/kernel/sms"
+	"github.com/reicb/clinicsaas/internal/messaging"
 	"github.com/reicb/clinicsaas/internal/messaging/dispatch"
 )
 
@@ -53,12 +54,14 @@ func main() {
 			log.Error("privileged database connect failed — patient messages will not be sent", "err", perr)
 		} else {
 			defer privDB.Close()
-			gw := gatewayFor(cfg, log)
-			go dispatch.New(privDB, gw, log).Run(ctx, 10*time.Second)
+			// One factory, resolved per message: each clinic sends through its own
+			// campaign under its own approved sender name.
+			gwf := messaging.NewGatewayFactory(cfg.MFAEncKey, cfg.SMS.BaseURL, gatewayFor(cfg, log), log)
+			go dispatch.New(privDB, gwf, log).Run(ctx, 10*time.Second)
 			// Delivery confirmation is a separate loop on a slower beat: it is
 			// background work competing with sending for the account's shared rate
 			// limit, and sending is what the patient is waiting for.
-			go dispatch.NewReconciler(privDB, gw, log).Run(ctx, 30*time.Second)
+			go dispatch.NewReconciler(privDB, gwf, log).Run(ctx, 30*time.Second)
 			log.Info("worker started: message dispatcher + delivery reconciler polling")
 		}
 	} else {

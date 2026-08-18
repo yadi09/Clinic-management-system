@@ -31,11 +31,17 @@ func (h *Handlers) GetSettings(c *gin.Context) {
 // SaveSettings updates how this clinic sends.
 func (h *Handlers) SaveSettings(c *gin.Context) {
 	var req struct {
-		Enabled    bool   `json:"enabled"`
-		Lang       string `json:"lang"`
-		QuietFrom  string `json:"quiet_from"`
-		QuietTo    string `json:"quiet_to"`
-		SenderName string `json:"sender_name"`
+		Enabled      bool   `json:"enabled"`
+		Lang         string `json:"lang"`
+		QuietFrom    string `json:"quiet_from"`
+		QuietTo      string `json:"quiet_to"`
+		SenderName   string `json:"sender_name"`
+		SenderID     string `json:"sender_id"`
+		SenderStatus string `json:"sender_status"`
+		// Empty leaves the stored key alone; the form never echoes it back, and a
+		// blank field must not be read as "delete my credential".
+		APIKey      string `json:"api_key"`
+		ClearAPIKey bool   `json:"clear_api_key"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.Fail(c, apperr.Validation("could not read those settings"))
@@ -44,6 +50,8 @@ func (h *Handlers) SaveSettings(c *gin.Context) {
 	out, err := h.svc.SaveSettings(c.Request.Context(), messaging.SettingsInput{
 		Enabled: req.Enabled, Lang: req.Lang, QuietFrom: req.QuietFrom,
 		QuietTo: req.QuietTo, SenderName: req.SenderName,
+		SenderID: req.SenderID, SenderStatus: req.SenderStatus,
+		APIKey: req.APIKey, ClearAPIKey: req.ClearAPIKey,
 	})
 	if err != nil {
 		httpx.Fail(c, err)

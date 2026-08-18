@@ -43,6 +43,7 @@ import (
 	labservice "github.com/reicb/clinicsaas/internal/lab/service"
 	maternityhttp "github.com/reicb/clinicsaas/internal/maternity/http"
 	maternityservice "github.com/reicb/clinicsaas/internal/maternity/service"
+	"github.com/reicb/clinicsaas/internal/messaging"
 	messaginghttp "github.com/reicb/clinicsaas/internal/messaging/http"
 	messagingservice "github.com/reicb/clinicsaas/internal/messaging/service"
 	orghttp "github.com/reicb/clinicsaas/internal/org/http"
@@ -127,9 +128,12 @@ func main() {
 	// Patient messaging. One platform SMS account serves every clinic, so the
 	// gateway is built once here; with no key configured it is the log adapter and
 	// every surface says "not connected" rather than implying patients were reached.
-	smsGateway := smsGatewayFor(cfg, log)
+	// Each clinic sends through its own campaign, so the gateway is resolved per
+	// clinic from a key encrypted with the same MFA key that protects TOTP secrets
+	// and DHIS2 tokens.
+	smsFactory := messaging.NewGatewayFactory(cfg.MFAEncKey, cfg.SMS.BaseURL, smsGatewayFor(cfg, log), log)
 	messagingHandlers := messaginghttp.NewHandlers(
-		messagingservice.New(db, smsGateway, cfg.SMS.CostPerSegment))
+		messagingservice.New(db, smsFactory, cfg.MFAEncKey, cfg.SMS.CostPerSegment))
 	// Lab & pharmacy bill through billing (Charger) so revenue reaches the cashier.
 	pharmacyHandlers := pharmacyhttp.NewHandlers(pharmacyservice.NewService(db, publisher, billingSvc))
 	labHandlers := labhttp.NewHandlers(labservice.NewService(db, publisher, billingSvc))

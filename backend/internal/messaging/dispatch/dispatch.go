@@ -31,6 +31,7 @@ import (
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
 	"github.com/reicb/clinicsaas/internal/kernel/limits"
 	"github.com/reicb/clinicsaas/internal/kernel/sms"
+	"github.com/reicb/clinicsaas/internal/messaging"
 )
 
 // maxAttempts is how many times a message is retried before it is given up on.
@@ -55,14 +56,18 @@ const batchSize = 50
 
 // Dispatcher sends what is due.
 type Dispatcher struct {
-	db  *kerneldb.DB // privileged: the queue spans tenants
-	gw  sms.Gateway
+	db *kerneldb.DB // privileged: the queue spans tenants
+	// Gateways are resolved per message, not once at startup: each clinic sends
+	// through its own campaign, under its own approved sender name, debiting its
+	// own package. One shared gateway would put every clinic's messages on one
+	// identity and one balance.
+	gwf *messaging.GatewayFactory
 	log *slog.Logger
 }
 
 // New constructs a Dispatcher over the privileged pool.
-func New(db *kerneldb.DB, gw sms.Gateway, log *slog.Logger) *Dispatcher {
-	return &Dispatcher{db: db, gw: gw, log: log}
+func New(db *kerneldb.DB, gwf *messaging.GatewayFactory, log *slog.Logger) *Dispatcher {
+	return &Dispatcher{db: db, gwf: gwf, log: log}
 }
 
 // Run polls until the context is cancelled.
@@ -149,6 +154,8 @@ type due struct {
 	attempts int
 	// enabled is the clinic's master switch.
 	enabled bool
+	// creds are this clinic's own gateway credentials, if it has any.
+	creds messaging.Credentials
 	// quiet says the local clock is inside the clinic's quiet hours right now.
 	quiet bool
 	// nextOpen is when those quiet hours end, in absolute time.
@@ -170,7 +177,8 @@ func (d *Dispatcher) processOne(ctx context.Context) (bool, error) {
 		// midnight, which is why it is expressed this way rather than as two cases.
 		e := tx.QueryRow(ctx,
 			`SELECT m.id, m.tenant_id, m.msisdn, m.body, m.segments, m.attempts,
-			        c.sms_enabled,
+			        c.sms_enabled, coalesce(c.sms_api_key_enc,''), coalesce(c.sms_sender_id,''),
+			        c.sms_sender_status, coalesce(c.sms_sender_name,''),
 			        CASE WHEN c.sms_quiet_from = c.sms_quiet_to THEN false
 			             WHEN c.sms_quiet_from < c.sms_quiet_to
 			               THEN (now() AT TIME ZONE c.timezone)::time >= c.sms_quiet_from
@@ -194,7 +202,8 @@ func (d *Dispatcher) processOne(ctx context.Context) (bool, error) {
 			  LIMIT 1
 			  FOR UPDATE OF m SKIP LOCKED`).
 			Scan(&m.id, &m.tenantID, &m.msisdn, &m.body, &m.segments, &m.attempts,
-				&m.enabled, &m.quiet, &m.nextOpen)
+				&m.enabled, &m.creds.APIKeyEnc, &m.creds.SenderID, &m.creds.SenderStatus,
+				&m.creds.SenderName, &m.quiet, &m.nextOpen)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return nil
 		}
@@ -217,10 +226,10 @@ func (d *Dispatcher) processOne(ctx context.Context) (bool, error) {
 			return e
 		}
 
-		// Gate 3 — the platform has no gateway credentials. Marked as skipped
-		// rather than sent, because a log that says "sent" when nothing left the
-		// building is worse than no log at all.
-		if !d.gw.Live() {
+		// Gate 3 — no way onto the network for this clinic. Marked as skipped rather
+		// than sent, because a log that says "sent" when nothing left the building is
+		// worse than no log at all.
+		if !d.gwf.For(m.creds).Live() {
 			return skip(ctx, tx, m.id, "not_configured")
 		}
 
@@ -256,7 +265,7 @@ func (d *Dispatcher) processOne(ctx context.Context) (bool, error) {
 	// The send itself happens outside a transaction. Holding a row lock across a
 	// network call to a third party is how a slow gateway becomes a database
 	// incident.
-	receipt, sendErr := d.gw.Send(ctx, sms.Message{MSISDN: m.msisdn, Text: m.body})
+	receipt, sendErr := d.gwf.For(m.creds).Send(ctx, sms.Message{MSISDN: m.msisdn, Text: m.body})
 
 	return true, d.db.WithTenantTx(ctx, uuid.Nil, func(tx pgx.Tx) error {
 		if sendErr == nil {

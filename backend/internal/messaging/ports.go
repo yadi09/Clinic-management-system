@@ -32,6 +32,17 @@ type Settings struct {
 	QuietFrom  string `json:"quiet_from"`
 	QuietTo    string `json:"quiet_to"`
 	SenderName string `json:"sender_name"`
+	// The clinic's own campaign. SenderID is the Ethio-Telecom-approved name a
+	// patient's handset displays; until it is approved the clinic's name has to
+	// travel inside the body instead, costing characters on every message.
+	SenderID     string `json:"sender_id,omitempty"`
+	SenderStatus string `json:"sender_status"` // none | pending | approved | rejected
+	// HasOwnKey says a key is stored, never what it is. A credential that can spend
+	// money does not get handed back out to a browser.
+	HasOwnKey bool `json:"has_own_key"`
+	// BodyPrefix is what will actually lead each message — empty once the handset
+	// shows the clinic's own name.
+	BodyPrefix string `json:"body_prefix"`
 	// Gateway describes the platform's delivery capability, not the clinic's
 	// choice. A clinic can have messaging switched on while the platform has no
 	// key configured, and the UI has to be able to say exactly that rather than
@@ -44,11 +55,18 @@ type Settings struct {
 
 // SettingsInput is the editable half of Settings.
 type SettingsInput struct {
-	Enabled    bool
-	Lang       string
-	QuietFrom  string
-	QuietTo    string
-	SenderName string
+	Enabled      bool
+	Lang         string
+	QuietFrom    string
+	QuietTo      string
+	SenderName   string
+	SenderID     string
+	SenderStatus string
+	// APIKey is the clinic's own gateway key. Empty leaves whatever is stored
+	// alone — a settings save must not wipe a credential just because the form did
+	// not echo it back. ClearAPIKey is the explicit way to remove one.
+	APIKey      string
+	ClearAPIKey bool
 }
 
 // Usage is this month's spend against the plan's allowance.

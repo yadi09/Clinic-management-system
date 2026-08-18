@@ -7,7 +7,14 @@ export interface MessagingSettings {
   quiet_from: string;
   quiet_to: string;
   sender_name: string;
-  /** The platform has SMS credentials. False = nothing will actually be sent. */
+  /** The Ethio-Telecom-approved name a patient's handset shows, once cleared. */
+  sender_id?: string;
+  sender_status: "none" | "pending" | "approved" | "rejected";
+  /** A key is stored. Never the key itself. */
+  has_own_key: boolean;
+  /** What will actually lead each message — empty once the handset shows the name. */
+  body_prefix: string;
+  /** This clinic can reach the network. False = nothing will actually be sent. */
   gateway_live: boolean;
   gateway_name: string;
   cost_per_segment: number;
@@ -66,6 +73,9 @@ export function getMessagingSettings() {
 }
 export function saveMessagingSettings(body: {
   enabled: boolean; lang: string; quiet_from: string; quiet_to: string; sender_name: string;
+  sender_id?: string; sender_status?: string;
+  /** Omit to keep the stored key; "" is not "delete" — use clear_api_key. */
+  api_key?: string; clear_api_key?: boolean;
 }) {
   return apiFetch<MessagingSettings>("/messaging/settings", { method: "PUT", body });
 }

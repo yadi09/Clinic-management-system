@@ -205,6 +205,14 @@ func (g *LogGateway) Status(context.Context, string) (*Delivery, error) { return
 
 // --- SMSEthiopia v2 -----------------------------------------------------------
 
+// sharedClient is used by every EthiopiaGateway instance.
+//
+// One is constructed per clinic per message — each clinic sends with its own key —
+// so a client per gateway would mean a fresh TCP and TLS handshake on every single
+// send. The transport is safe for concurrent use and pools connections, which is
+// exactly what a fan-out over hundreds of recipients needs.
+var sharedClient = &http.Client{Timeout: 20 * time.Second}
+
 // EthiopiaGateway talks to smsethiopia.com's v2 API.
 type EthiopiaGateway struct {
 	key     string
@@ -222,10 +230,8 @@ func NewEthiopiaGateway(key, baseURL string, log *slog.Logger) *EthiopiaGateway 
 	return &EthiopiaGateway{
 		key:     strings.TrimSpace(key),
 		baseURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"),
-		// Generous but bounded. The dispatcher sends one at a time, so a hung
-		// connection must not stall everything queued behind it.
-		client: &http.Client{Timeout: 20 * time.Second},
-		log:    log,
+		client:  sharedClient,
+		log:     log,
 	}
 }
 
@@ -369,7 +375,10 @@ var codeMeaning = map[string]string{
 	"10000": "the gateway rejected the phone number",
 	"10002": "the SMS account is not active — contact the provider",
 	"10005": "the SMS package is out of credit — top it up to keep sending",
-	"10006": "the sender name is not approved by Ethio Telecom yet",
+	// Approval is a 1–2 day human process at Ethio Telecom, so this is not a fault
+	// to debug — it is a wait. Said plainly, because otherwise a clinic's first day
+	// looks like a broken integration.
+	"10006": "the clinic's sender name is still waiting for Ethio Telecom approval — messages will send once it clears",
 	"10007": "this number is not on the test account's allowed list — verify it, or move to a paid package",
 }
 

@@ -117,9 +117,39 @@ function StateBanner({ settings, usage }: { settings?: MessagingSettings; usage?
   if (!settings.gateway_live) {
     return (
       <Banner tone="danger" icon={XCircle} title="Messaging is not connected">
-        No SMS account is configured for the platform, so nothing is being delivered. Queued messages are
-        recorded as <b>not sent</b> rather than counted as sent — the log will never claim a patient was
-        contacted when they were not. Contact your provider to have it switched on.
+        This clinic has no SMS account yet, so nothing is being delivered. Queued messages are recorded as
+        <b> not sent</b> rather than counted as sent — the log will never claim a patient was contacted when
+        they were not. Add the clinic's API key below to connect it.
+      </Banner>
+    );
+  }
+  if (!settings.has_own_key) {
+    // Live, but on the platform's shared account — which is a Default campaign,
+    // reaching only numbers verified in the SMS console and showing a shared
+    // number as the sender. Fine for a demo, wrong for patients, and the
+    // difference is invisible unless it is said.
+    return (
+      <Banner tone="warn" icon={AlertTriangle} title="Sending on the shared platform account">
+        This clinic has no SMS account of its own, so messages go out under a shared number and only reach
+        phone numbers that have been verified in the SMS console. Add the clinic's own API key below before
+        messaging real patients.
+      </Banner>
+    );
+  }
+  if (settings.sender_status === "pending") {
+    return (
+      <Banner tone="warn" icon={Clock} title="Waiting for Ethio Telecom to approve the sender name">
+        Messages will be refused until <b>{settings.sender_id || settings.sender_name}</b> is approved,
+        usually within 1–2 working days. Nothing is broken — this is the approval, not a fault. In the
+        meantime patients see the clinic's name written into the message instead.
+      </Banner>
+    );
+  }
+  if (settings.sender_status === "rejected") {
+    return (
+      <Banner tone="danger" icon={XCircle} title="Ethio Telecom rejected the sender name">
+        Messages still send, but patients see a shared number with the clinic's name written into the text.
+        Register a different sender name in the SMS console to try again.
       </Banner>
     );
   }
@@ -147,8 +177,10 @@ function StateBanner({ settings, usage }: { settings?: MessagingSettings; usage?
   }
   return (
     <Banner tone="ok" icon={CheckCircle2} title="Sending is on">
-      Patients see messages from <b>{settings.sender_name}</b>, quiet between {settings.quiet_from} and{" "}
-      {settings.quiet_to}.
+      {settings.sender_status === "approved"
+        ? <>Patients see <b>{settings.sender_id}</b> on their phone. </>
+        : <>Patients see a shared number, so “<b>{settings.sender_name}:</b>” leads every message. </>}
+      Quiet between {settings.quiet_from} and {settings.quiet_to}.
     </Banner>
   );
 }
@@ -179,33 +211,89 @@ function Banner({ tone, icon: Icon, title, children }: {
 
 function SendingTab({ settings, manage }: { settings?: MessagingSettings; manage: boolean }) {
   const qc = useQueryClient();
-  const [form, setForm] = useState({ enabled: false, lang: "en", quiet_from: "21:00", quiet_to: "07:00", sender_name: "" });
+  const [form, setForm] = useState({
+    enabled: false, lang: "en", quiet_from: "21:00", quiet_to: "07:00",
+    sender_name: "", sender_id: "", sender_status: "none",
+  });
+  // Held apart from the rest of the form: a blank field must never be read as
+  // "delete the stored credential", so it is only sent when someone types one.
+  const [apiKey, setApiKey] = useState("");
 
   useEffect(() => {
     if (!settings) return;
     setForm({
       enabled: settings.enabled, lang: settings.lang, quiet_from: settings.quiet_from,
       quiet_to: settings.quiet_to, sender_name: settings.sender_name,
+      sender_id: settings.sender_id ?? "", sender_status: settings.sender_status,
     });
+    setApiKey("");
   }, [settings]);
 
   const save = useMutation({
-    mutationFn: () => saveMessagingSettings(form),
+    mutationFn: () => saveMessagingSettings({ ...form, api_key: apiKey.trim() || undefined }),
     onSuccess: () => {
       toast.success("Sending settings saved");
+      setApiKey("");
       qc.invalidateQueries({ queryKey: ["messaging-settings"] });
+      qc.invalidateQueries({ queryKey: ["messaging-usage"] });
     },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not save"),
   });
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
+      <Card className="lg:col-span-2">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">This clinic's SMS account</CardTitle>
+          <CardDescription>
+            Each clinic sends through its own account, so patients see this clinic's name on their phone
+            rather than a shared number — and each clinic's credit is its own.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="api-key">API key</Label>
+            <Input id="api-key" type="password" autoComplete="off" value={apiKey} disabled={!manage}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={settings?.has_own_key ? "•••••••• stored — type to replace" : "Paste the 40-character key"} />
+            <p className="text-xs text-muted-foreground">
+              {settings?.has_own_key
+                ? "Stored and encrypted. Leave blank to keep it."
+                : "From the SMS console: Console → API Keys."}
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="sender-id">Sender name patients see</Label>
+            <Input id="sender-id" value={form.sender_id} disabled={!manage}
+              onChange={(e) => setForm({ ...form, sender_id: e.target.value })} placeholder="CureDental" />
+            <p className="text-xs text-muted-foreground">As approved by Ethio Telecom.</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Approval</Label>
+            <Select value={form.sender_status} onValueChange={(v) => setForm({ ...form, sender_status: v })} disabled={!manage}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Not registered</SelectItem>
+                <SelectItem value="pending">Waiting for approval</SelectItem>
+                <SelectItem value="approved">Approved</SelectItem>
+                <SelectItem value="rejected">Rejected</SelectItem>
+              </SelectContent>
+            </Select>
+            {/* There is no API to ask, so this is recorded by whoever watched the
+                console. It exists to answer one question: when everything fails
+                with "sender not approved", is this clinic broken or just waiting? */}
+            <p className="text-xs text-muted-foreground">Set this from the SMS console — there is no way to check automatically.</p>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm">How this clinic sends</CardTitle>
           <CardDescription>
-            Patients get one SMS from a shared number, so your name has to be inside the message —
-            it is the only thing telling them who is writing.
+            {settings?.sender_status === "approved"
+              ? "Patients see this clinic's own name on their phone, so the message is just the message."
+              : "Until the sender name is approved, patients get a shared number — so the clinic's name has to lead the text."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -226,7 +314,7 @@ function SendingTab({ settings, manage }: { settings?: MessagingSettings; manage
           </label>
 
           <div className="space-y-1.5">
-            <Label htmlFor="sender">Sender name</Label>
+            <Label htmlFor="sender">Name inside the message</Label>
             <Input
               id="sender"
               value={form.sender_name}
@@ -236,8 +324,10 @@ function SendingTab({ settings, manage }: { settings?: MessagingSettings; manage
               placeholder="Cure Dental"
             />
             <p className="text-xs text-muted-foreground">
-              Added to the front of every message — and paid for on every message, so keep it short.
-              {form.sender_name && <> Patients will see “<b className="text-foreground">{form.sender_name}: …</b>”.</>}
+              {settings?.sender_status === "approved"
+                ? <>Not used — the phone already shows <b className="text-foreground">{settings.sender_id}</b>, so nothing is added and nothing is charged for it.</>
+                : <>Added to the front of every message, and paid for on every message, so keep it short.
+                  {form.sender_name && <> Patients see “<b className="text-foreground">{form.sender_name}: …</b>”.</>}</>}
             </p>
           </div>
 

@@ -11,6 +11,7 @@ import (
 
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
 	"github.com/reicb/clinicsaas/internal/kernel/sms"
+	"github.com/reicb/clinicsaas/internal/messaging"
 )
 
 // Reconciler asks the gateway what became of messages it accepted.
@@ -27,14 +28,17 @@ import (
 // answers only for our own campaign, which makes it the one authoritative check
 // available.
 type Reconciler struct {
-	db  *kerneldb.DB // privileged: the queue spans tenants
-	gw  sms.Gateway
+	db *kerneldb.DB // privileged: the queue spans tenants
+	// Per clinic, and not merely for tidiness: a message id belongs to the campaign
+	// that produced it, and the gateway answers 404 for anything else. Asking with
+	// the wrong clinic's key would report every delivered message as missing.
+	gwf *messaging.GatewayFactory
 	log *slog.Logger
 }
 
 // NewReconciler constructs a Reconciler over the privileged pool.
-func NewReconciler(db *kerneldb.DB, gw sms.Gateway, log *slog.Logger) *Reconciler {
-	return &Reconciler{db: db, gw: gw, log: log}
+func NewReconciler(db *kerneldb.DB, gwf *messaging.GatewayFactory, log *slog.Logger) *Reconciler {
+	return &Reconciler{db: db, gwf: gwf, log: log}
 }
 
 // maxStatusChecks bounds how many times one message is asked about.
@@ -72,13 +76,11 @@ type pending struct {
 	id     uuid.UUID
 	gwID   string
 	checks int
+	creds  messaging.Credentials
 }
 
 // RunOnce checks a batch of accepted-but-unconfirmed messages.
 func (r *Reconciler) RunOnce(ctx context.Context) (int, error) {
-	if !r.gw.Live() {
-		return 0, nil
-	}
 	var batch []pending
 	err := r.db.WithTenantTx(ctx, uuid.Nil, func(tx pgx.Tx) error {
 		// Back off between checks rather than asking every tick: each ask spends the
@@ -87,14 +89,21 @@ func (r *Reconciler) RunOnce(ctx context.Context) (int, error) {
 		// second look and the clinic sees "Delivered" almost at once; the interval
 		// then doubles so the rare straggler is not polled all day.
 		rows, e := tx.Query(ctx,
-			`SELECT id, gateway_id, status_checks
-			   FROM messages
-			  WHERE status = 'sent'
-			    AND gateway_id IS NOT NULL
-			    AND status_checks < $1
-			    AND (status_checked_at IS NULL
-			         OR status_checked_at < now() - (interval '15 seconds' * power(2, LEAST(status_checks, 6))))
-			  ORDER BY status_checked_at NULLS FIRST
+			`SELECT m.id, m.gateway_id, m.status_checks,
+			        coalesce(c.sms_api_key_enc,''), coalesce(c.sms_sender_id,''),
+			        c.sms_sender_status, coalesce(c.sms_sender_name,'')
+			   FROM messages m
+			   JOIN LATERAL (
+			         SELECT * FROM clinics c2
+			          WHERE c2.tenant_id = m.tenant_id AND c2.deleted_at IS NULL
+			          ORDER BY c2.created_at LIMIT 1
+			        ) c ON true
+			  WHERE m.status = 'sent'
+			    AND m.gateway_id IS NOT NULL
+			    AND m.status_checks < $1
+			    AND (m.status_checked_at IS NULL
+			         OR m.status_checked_at < now() - (interval '15 seconds' * power(2, LEAST(m.status_checks, 6))))
+			  ORDER BY m.status_checked_at NULLS FIRST
 			  LIMIT $2`, maxStatusChecks, reconcileBatch)
 		if e != nil {
 			return e
@@ -102,7 +111,8 @@ func (r *Reconciler) RunOnce(ctx context.Context) (int, error) {
 		defer rows.Close()
 		for rows.Next() {
 			var p pending
-			if e := rows.Scan(&p.id, &p.gwID, &p.checks); e != nil {
+			if e := rows.Scan(&p.id, &p.gwID, &p.checks,
+				&p.creds.APIKeyEnc, &p.creds.SenderID, &p.creds.SenderStatus, &p.creds.SenderName); e != nil {
 				return e
 			}
 			batch = append(batch, p)
@@ -118,9 +128,13 @@ func (r *Reconciler) RunOnce(ctx context.Context) (int, error) {
 		if ctx.Err() != nil {
 			break
 		}
-		del, e := r.gw.Status(ctx, p.gwID)
+		gw := r.gwf.For(p.creds)
+		if !gw.Live() {
+			continue // nothing to ask with; the send itself will have been skipped
+		}
+		del, e := gw.Status(ctx, p.gwID)
 		if errors.Is(e, sms.ErrNoStatus) {
-			return done, nil // this gateway cannot answer; stop asking entirely
+			continue // this clinic's gateway cannot answer; leave the row alone
 		}
 		if e := r.record(ctx, p, del, e); e != nil {
 			return done, e
