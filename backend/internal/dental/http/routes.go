@@ -97,6 +97,11 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	// decides the work — the same permission as recording it.
 	g.POST("/patients/:id/sessions/:sid/reprice", h.RepriceSession)
 	g.POST("/patients/:id/sessions/:sid/pay-later", h.SetPayLater)
+	// Extras: an X-ray taken at visit 3, a filling decided at the chair. Clinical,
+	// because deciding the patient needs it is a clinical act — the price attached
+	// to it comes from the clinic's list, not from whoever is typing.
+	g.POST("/patients/:id/sessions/:sid/extras", h.AddExtra)
+	g.DELETE("/patients/:id/extras/:exid", h.RemoveExtra)
 
 	// Prescriptions (printable) attached to a session.
 	g.POST("/patients/:id/sessions/:sid/prescriptions", h.AddPrescription)

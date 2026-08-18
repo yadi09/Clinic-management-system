@@ -26,6 +26,7 @@ import { EthiopianDateInput } from "@/components/EthiopianDateInput";
 import { cn } from "@/lib/utils";
 import { DualDate } from "@/components/DualDate";
 import { MoveSessionDialog } from "@/features/dental/shared/MoveSessionDialog";
+import { ExtrasSection } from "@/features/dental/shared/Extras";
 import { MONEY, birr, sessionMoneyState } from "@/features/dental/money";
 import { addSession, finishCourse, type Plan } from "@/features/dental/api";
 import { visitTiming, type FocusResult, type FocusVisit, type Rung } from "@/features/dental/visit/useFocusVisit";
@@ -264,6 +265,9 @@ export function VisitCockpit({
           <>
             {/* WHAT WAS DONE, read back. */}
             <RecordedSummary session={session} />
+            {/* Anything added at the chair stays visible after the visit is written
+                up — it is money the patient still owes, not a detail of the note. */}
+            <ExtrasSection patientId={patientId} session={session} editable={editable} />
             {/* WHAT IT COSTS. The same pipeline as the recording step rather than a
                 second, differently-worded amber panel — a fee looks the same here as
                 it did five seconds ago. */}

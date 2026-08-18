@@ -49,6 +49,8 @@ export interface ServiceItem {
   currency: string;
   is_active: boolean;
   is_default: boolean;
+  /** Who may put this on a patient: "reception" | "clinician" | "either". */
+  assignable_by: string;
 }
 export interface PendingCharge {
   id: string;
@@ -126,10 +128,13 @@ export interface DaySummary {
 export function listServices(activeOnly = false) {
   return apiFetch<ServiceItem[]>(`/billing/services${activeOnly ? "?active=1" : ""}`);
 }
-export function createService(body: { code: string; name: string; category?: string; price: number }) {
+export interface ServiceBody {
+  code: string; name: string; category?: string; price: number; assignable_by?: string;
+}
+export function createService(body: ServiceBody) {
   return apiFetch<ServiceItem>("/billing/services", { method: "POST", body });
 }
-export function updateService(id: string, body: { code: string; name: string; category?: string; price: number }) {
+export function updateService(id: string, body: ServiceBody) {
   return apiFetch<void>(`/billing/services/${id}`, { method: "PUT", body });
 }
 export function setServiceActive(id: string, is_active: boolean) {
@@ -313,7 +318,13 @@ export interface FinCash {
   shifts: FinShift[]; by_method: FinLine[]; by_cashier: FinLine[]; by_branch: FinLine[];
   open_drawers: FinLine[]; variance: string;
 }
-export interface FinServiceLine { label: string; source: string; count: number; revenue: string; avg: string }
+export interface FinServiceLine {
+  label: string; source: string; count: number; revenue: string; avg: string;
+  /** Came from the clinic's priced list rather than free-typed text. */
+  catalogued: boolean;
+  /** What the list says it costs today. Absent for uncatalogued work. */
+  list_price?: string;
+}
 export interface FinPlanAtRisk {
   id: string; patient: string; mrn: string; phone?: string;
   plan: string; at_risk: string; reason: string; days_idle: number;

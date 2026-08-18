@@ -37,6 +37,7 @@ import { ExaminationCard } from "@/features/dental/ExaminationCard";
 import { invalidateDental } from "@/features/dental/invalidate";
 import { ToothChart } from "@/features/dental/ToothChart";
 import { FLAT_TEETH, ToothMultiSelect } from "@/features/dental/shared/pickers";
+import { PriceAgainstList, ServicePicker } from "@/features/dental/shared/ServicePicker";
 import { splitRounded } from "@/features/dental/money";
 import { DepositCallout, depositOutstanding } from "@/features/dental/shared/Deposit";
 import { ImageGallery } from "@/features/dental/shared/visitRecord";
@@ -683,6 +684,10 @@ function EthiopianRowInput({ value, onChange }: { value: string; onChange: (iso:
 
 function NewPlanDialog({ patientId, teeth, onClose, onSaved }: { patientId: string; teeth: Record<string, string>; onClose: () => void; onSaved: () => void }) {
   const [title, setTitle] = useState("");
+  // The catalogue entry this course is, and what the list said it cost when it was
+  // chosen. Keeping the two apart is what lets the dentist charge something else
+  // and still have the difference show up as a discount rather than vanish.
+  const [service, setService] = useState<{ id: string; price: string } | null>(null);
   const [sel, setSel] = useState<string[]>([]); // selected tooth codes
   const toothStr = FLAT_TEETH.filter((c) => sel.includes(c)).join(", ");
   const [total, setTotal] = useState("");
@@ -735,6 +740,7 @@ function NewPlanDialog({ patientId, teeth, onClose, onSaved }: { patientId: stri
       title: title.trim(), tooth: toothStr, total_amount: total || "0", start_date: start,
       interval_unit: unit, interval_count: ivl, session_count: rows.length, note: note.trim(),
       deposit: String(down),
+      service_id: service?.id,
       sessions: rows.map((r) => ({ scheduled_date: r.date, amount_due: r.amount || "0" })),
     }),
     onSuccess: () => { toast.success("Treatment plan created"); onSaved(); },
@@ -748,7 +754,24 @@ function NewPlanDialog({ patientId, teeth, onClose, onSaved }: { patientId: stri
         <PatientAllergyLine patientId={patientId} />
         <div className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5"><Label>Treatment</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Root canal" /></div>
+            <div className="space-y-1.5">
+              <Label>Treatment</Label>
+              <ServicePicker
+                value={title}
+                selectedId={service?.id}
+                onPick={(s) => {
+                  setService(s ? { id: s.id, price: s.price } : null);
+                  if (s) {
+                    setTitle(s.name);
+                    // The list price fills the total; it is the answer in almost every
+                    // case, and it stays editable for the one where it is not.
+                    if (num(s.price) > 0) setTotal(s.price);
+                  }
+                }}
+                onFreeText={(name) => { setTitle(name); setService(null); }}
+                placeholder="e.g. Root canal"
+              />
+            </div>
             <div className="space-y-1.5">
               <Label>Teeth (optional)</Label>
               <ToothMultiSelect teeth={teeth} value={sel} onChange={setSel} />
@@ -756,7 +779,11 @@ function NewPlanDialog({ patientId, teeth, onClose, onSaved }: { patientId: stri
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-3">
-              <div className="space-y-1.5"><Label>Total cost (ETB)</Label><Input type="number" min={0} value={total} onChange={(e) => setTotal(e.target.value)} placeholder="0" /></div>
+              <div className="space-y-1.5">
+                <Label>Total cost (ETB)</Label>
+                <Input type="number" min={0} value={total} onChange={(e) => setTotal(e.target.value)} placeholder="0" />
+                <PriceAgainstList list={service?.price} charging={total || "0"} />
+              </div>
               <div className="space-y-1.5">
                 <Label>Down payment (ETB)</Label>
                 <Input type="number" min={0} value={deposit} onChange={(e) => setDeposit(e.target.value)} placeholder="0" />

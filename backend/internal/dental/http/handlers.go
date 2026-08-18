@@ -4,6 +4,7 @@ package http
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -85,11 +86,21 @@ func sessionDTO(se dental.Session, clinical bool) gin.H {
 	for _, rx := range se.Prescriptions {
 		rxs = append(rxs, prescriptionDTO(rx))
 	}
+	// Extras go to the desk as well as the chair: they are money owed, and the
+	// cashier is entitled to see what the patient is being asked to pay for.
+	extras := make([]gin.H, 0, len(se.Extras))
+	for _, ex := range se.Extras {
+		extras = append(extras, gin.H{
+			"id": id.Encode(id.PrefixTreatmentSession, ex.ID), "amount_due": ex.AmountDue,
+			"payment": ex.Payment, "service_name": ex.ServiceName, "status": ex.Status,
+		})
+	}
 	out := gin.H{
 		"id": id.Encode(id.PrefixTreatmentSession, se.ID), "seq": se.Seq, "scheduled_date": se.ScheduledDate,
 		"amount_due": se.AmountDue, "status": se.Status, "payment": se.Payment,
 		// The desk needs the promise to chase it; it is a money note, not a clinical one.
 		"pay_later": se.PayLater, "pay_later_note": se.PayLaterNote,
+		"extras": extras, "service_name": se.ServiceName,
 	}
 	if !clinical {
 		// Empty rather than absent: the client's Session type keeps its shape, so a
@@ -113,11 +124,17 @@ func planDTO(p dental.Plan, clinical bool) gin.H {
 		"total_amount": p.TotalAmount, "start_date": p.StartDate, "interval_unit": p.IntervalUnit,
 		"interval_count": p.IntervalCount, "session_count": p.SessionCount, "deadline": p.Deadline,
 		"status": p.Status, "note": p.Note, "created_at": p.CreatedAt, "sessions": sessions,
+		// The catalogue link and the price it quoted on the day. Absent rather than
+		// empty when the course predates the catalogue, so "off-list" is legible.
+		"service_name": p.ServiceName, "list_price": p.ListPrice,
 		// Money from the ledger, not summed from the sessions' planned fees.
 		"money": gin.H{
 			"planned": p.Money.Planned, "collected": p.Money.Collected,
 			"at_cashier": p.Money.AtCashier, "due": p.Money.Due, "waived": p.Money.Waived,
 		},
+	}
+	if p.ServiceID != nil {
+		out["service_id"] = id.Encode(id.PrefixServiceItem, *p.ServiceID)
 	}
 	// Separate from sessions on purpose: the deposit is money, not an appointment.
 	// The key is absent rather than null when the plan has no down payment, so a
@@ -269,6 +286,7 @@ func (h *Handlers) CreatePlan(c *gin.Context) {
 		SessionCount  int    `json:"session_count"`
 		Note          string `json:"note"`
 		Deposit       string `json:"deposit"`
+		ServiceID     string `json:"service_id"`
 		Sessions      []struct {
 			ScheduledDate string `json:"scheduled_date"`
 			AmountDue     string `json:"amount_due"`
@@ -283,6 +301,16 @@ func (h *Handlers) CreatePlan(c *gin.Context) {
 		IntervalUnit: req.IntervalUnit, IntervalCount: req.IntervalCount, SessionCount: req.SessionCount, Note: req.Note,
 		Deposit: req.Deposit,
 	}
+	// A malformed service id is refused rather than dropped: silently unlinking the
+	// course from the catalogue is how a price stops being auditable.
+	if v := strings.TrimSpace(req.ServiceID); v != "" {
+		sid, e := id.Decode(id.PrefixServiceItem, v)
+		if e != nil {
+			httpx.Fail(c, apperr.Validation("unknown service"))
+			return
+		}
+		in.ServiceID = &sid
+	}
 	for _, ss := range req.Sessions {
 		in.Sessions = append(in.Sessions, dental.SessionSeed{ScheduledDate: ss.ScheduledDate, AmountDue: ss.AmountDue})
 	}
@@ -292,6 +320,51 @@ func (h *Handlers) CreatePlan(c *gin.Context) {
 		return
 	}
 	httpx.Created(c, planDTO(*p, true))
+}
+
+func (h *Handlers) AddExtra(c *gin.Context) {
+	pid, ok := decode(c, id.PrefixPatient, c.Param("id"))
+	if !ok {
+		return
+	}
+	sid, ok := decode(c, id.PrefixTreatmentSession, c.Param("sid"))
+	if !ok {
+		return
+	}
+	var req struct {
+		ServiceID string `json:"service_id"`
+		Amount    string `json:"amount"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("choose the procedure from the clinic's list"))
+		return
+	}
+	svc, e := id.Decode(id.PrefixServiceItem, strings.TrimSpace(req.ServiceID))
+	if e != nil {
+		httpx.Fail(c, apperr.Validation("choose the procedure from the clinic's list"))
+		return
+	}
+	if err := h.svc.AddExtra(c.Request.Context(), pid, sid, dental.ExtraInput{ServiceID: svc, Amount: req.Amount}); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+func (h *Handlers) RemoveExtra(c *gin.Context) {
+	pid, ok := decode(c, id.PrefixPatient, c.Param("id"))
+	if !ok {
+		return
+	}
+	exid, ok := decode(c, id.PrefixTreatmentSession, c.Param("exid"))
+	if !ok {
+		return
+	}
+	if err := h.svc.RemoveExtra(c.Request.Context(), pid, exid); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
 }
 
 func (h *Handlers) UpdatePlan(c *gin.Context) {

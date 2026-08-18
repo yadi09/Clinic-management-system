@@ -18,6 +18,7 @@ import (
 	"github.com/reicb/clinicsaas/internal/billing"
 	billingdb "github.com/reicb/clinicsaas/internal/billing/repo/gen"
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
+	"github.com/reicb/clinicsaas/internal/kernel/catalog"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
 	"github.com/reicb/clinicsaas/internal/kernel/events"
 	"github.com/reicb/clinicsaas/internal/kernel/tenancy"
@@ -149,6 +150,16 @@ var defaultWaiverReasons = []string{"Staff / dependent", "Indigent (charity)", "
 
 func (s *Service) WaiverReasons() []string { return defaultWaiverReasons }
 
+// assignableOrDefault keeps the column to its three legal values. "either" is the
+// default because a clinic that has not thought about it should not be blocked.
+func assignableOrDefault(v string) string {
+	switch strings.TrimSpace(v) {
+	case "reception", "clinician", "either":
+		return strings.TrimSpace(v)
+	}
+	return "either"
+}
+
 func (s *Service) ListServices(ctx context.Context, activeOnly bool) ([]billing.ServiceItem, error) {
 	tenantID, _ := actorOf(ctx)
 	var ao *bool
@@ -158,14 +169,27 @@ func (s *Service) ListServices(ctx context.Context, activeOnly bool) ([]billing.
 	}
 	out := []billing.ServiceItem{}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		rows, e := billingdb.New(tx).ListServiceItems(ctx, billingdb.ListServiceItemsParams{TenantID: tenantID, ActiveOnly: ao})
+		// Raw pgx: assignable_by was added after these queries were generated and
+		// sqlc is not available in this tree. Same query otherwise.
+		rows, e := tx.Query(ctx,
+			`SELECT id, code, name, category, price::text, currency, is_active, is_default, assignable_by
+			   FROM service_items
+			  WHERE tenant_id = $1 AND deleted_at IS NULL
+			    AND ($2::bool IS NULL OR is_active = $2)
+			  ORDER BY category, name`, tenantID, ao)
 		if e != nil {
 			return e
 		}
-		for _, r := range rows {
-			out = append(out, billing.ServiceItem{ID: r.ID, Code: r.Code, Name: r.Name, Category: r.Category, Price: r.Price, Currency: r.Currency, IsActive: r.IsActive, IsDefault: r.IsDefault})
+		defer rows.Close()
+		for rows.Next() {
+			var it billing.ServiceItem
+			if e := rows.Scan(&it.ID, &it.Code, &it.Name, &it.Category, &it.Price, &it.Currency,
+				&it.IsActive, &it.IsDefault, &it.AssignableBy); e != nil {
+				return e
+			}
+			out = append(out, it)
 		}
-		return nil
+		return rows.Err()
 	})
 	if err != nil {
 		return nil, apperr.Internal(err)
@@ -180,14 +204,14 @@ func (s *Service) CreateService(ctx context.Context, in billing.ServiceItemInput
 	}
 	var out billing.ServiceItem
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		r, e := billingdb.New(tx).CreateServiceItem(ctx, billingdb.CreateServiceItemParams{
-			TenantID: tenantID, Code: in.Code, Name: in.Name, Category: catOrDefault(in.Category), Price: priceOrZero(in.Price), CreatedBy: actor,
-		})
-		if e != nil {
-			return e
-		}
-		out = billing.ServiceItem{ID: r.ID, Code: r.Code, Name: r.Name, Category: r.Category, Price: r.Price, Currency: r.Currency, IsActive: r.IsActive, IsDefault: r.IsDefault}
-		return nil
+		return tx.QueryRow(ctx,
+			`INSERT INTO service_items (tenant_id, code, name, category, price, assignable_by, created_by)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7)
+			 RETURNING id, code, name, category, price::text, currency, is_active, is_default, assignable_by`,
+			tenantID, strings.TrimSpace(in.Code), strings.TrimSpace(in.Name), catOrDefault(in.Category),
+			priceOrZero(in.Price), assignableOrDefault(in.AssignableBy), actor,
+		).Scan(&out.ID, &out.Code, &out.Name, &out.Category, &out.Price, &out.Currency,
+			&out.IsActive, &out.IsDefault, &out.AssignableBy)
 	})
 	if err != nil {
 		return nil, mapWrite(err, "SERVICE_EXISTS", "a service with this code already exists")
@@ -201,9 +225,13 @@ func (s *Service) UpdateService(ctx context.Context, id uuid.UUID, in billing.Se
 		return apperr.Validation("code and name are required")
 	}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		return billingdb.New(tx).UpdateServiceItem(ctx, billingdb.UpdateServiceItemParams{
-			TenantID: tenantID, ID: id, Code: in.Code, Name: in.Name, Category: catOrDefault(in.Category), Price: priceOrZero(in.Price),
-		})
+		_, e := tx.Exec(ctx,
+			`UPDATE service_items
+			    SET code = $3, name = $4, category = $5, price = $6, assignable_by = $7, updated_at = now()
+			  WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+			tenantID, id, strings.TrimSpace(in.Code), strings.TrimSpace(in.Name), catOrDefault(in.Category),
+			priceOrZero(in.Price), assignableOrDefault(in.AssignableBy))
+		return e
 	})
 	if err != nil {
 		return mapWrite(err, "SERVICE_EXISTS", "a service with this code already exists")
@@ -294,6 +322,12 @@ var validSource = map[string]bool{"consultation": true, "service": true, "lab": 
 func (s *Service) RaiseCharge(ctx context.Context, in billing.ChargeInput) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		// Enforced here rather than by hiding the option in the UI: a rule about who
+		// may sell a root canal is worth nothing if the request still succeeds.
+		tid, _ := actorOf(ctx)
+		if e := catalog.AssertMayAssign(ctx, tx, tid, in.ServiceItemID); e != nil {
+			return e
+		}
 		var e error
 		id, e = s.RaiseChargeTx(ctx, tx, in)
 		return e
@@ -338,6 +372,12 @@ func (s *Service) RaiseChargeBatch(ctx context.Context, in billing.ChargeBatchIn
 		}
 		branch, dept := in.BranchID, in.DepartmentID
 		for _, it := range in.Items {
+			// The visit-registration path, which is where reception picks services. The
+			// whole batch is refused rather than partly registered: half a visit is
+			// harder to unpick than none.
+			if e := catalog.AssertMayAssign(ctx, tx, tenantID, it.ServiceItemID); e != nil {
+				return e
+			}
 			cid, e := s.RaiseChargeTx(ctx, tx, billing.ChargeInput{
 				PatientID: in.PatientID, ServiceItemID: it.ServiceItemID, Source: it.Source, Description: it.Description, Amount: it.Amount,
 				BranchID: &branch, DepartmentID: &dept, ToTriage: in.ToTriage, ProviderID: in.ProviderID,

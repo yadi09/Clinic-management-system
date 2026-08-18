@@ -87,6 +87,19 @@ export interface Session {
   pay_later_note?: string;
   images: DentalImage[];
   prescriptions: Prescription[];
+  /** The catalogued procedure behind this row, when it has one. */
+  service_name?: string;
+  /** Things done at this visit that the course did not plan for. */
+  extras?: Extra[];
+}
+
+/** One unplanned procedure attached to a visit. Priced from the clinic's list. */
+export interface Extra {
+  id: string;
+  amount_due: string;
+  payment: PaymentState;
+  status: SessionStatus;
+  service_name?: string;
 }
 
 /** One plan's money, computed server-side from the charge ledger. `collected` is
@@ -113,6 +126,10 @@ export interface Plan {
   note?: string;
   created_at: string;
   money: PlanMoney;
+  /** The catalogue entry this course came from, and the price the list quoted then. */
+  service_id?: string;
+  service_name?: string;
+  list_price?: string;
   /** The up-front payment, when the plan has one. Not a session: it has no visit. */
   deposit?: { id: string; amount_due: string; payment: Session["payment"]; scheduled_date: string };
   sessions: Session[];
@@ -151,8 +168,18 @@ export interface CreatePlanBody {
   note?: string;
   /** Down payment, taken off the top; the sessions divide what remains. */
   deposit?: string;
+  /** The catalogued procedure this course is, when it came from the clinic's list. */
+  service_id?: string;
   // The create preview sends the final per-session rows (dates + amounts).
   sessions?: { scheduled_date: string; amount_due: string }[];
+}
+
+/** Add a procedure done at a visit but not planned by the course. */
+export function addExtra(patientId: string, sessionId: string, body: { service_id: string; amount?: string }) {
+  return apiFetch<void>(`/dental/patients/${patientId}/sessions/${sessionId}/extras`, { method: "POST", body });
+}
+export function removeExtra(patientId: string, extraId: string) {
+  return apiFetch<void>(`/dental/patients/${patientId}/extras/${extraId}`, { method: "DELETE" });
 }
 
 export function listPlans(patientId: string) {

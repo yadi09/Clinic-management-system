@@ -14,6 +14,7 @@ import (
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
 	"github.com/reicb/clinicsaas/internal/kernel/httpx"
 	"github.com/reicb/clinicsaas/internal/kernel/id"
+	"github.com/reicb/clinicsaas/internal/kernel/tenancy"
 )
 
 // Handlers wires the billing service to HTTP.
@@ -125,10 +126,11 @@ func (h *Handlers) History(c *gin.Context) {
 // ============================================================================
 
 type serviceReq struct {
-	Code     string  `json:"code"`
-	Name     string  `json:"name"`
-	Category string  `json:"category"`
-	Price    float64 `json:"price"`
+	Code         string  `json:"code"`
+	Name         string  `json:"name"`
+	Category     string  `json:"category"`
+	Price        float64 `json:"price"`
+	AssignableBy string  `json:"assignable_by"`
 }
 type serviceDTO struct {
 	ID string `json:"id"`
@@ -142,6 +144,27 @@ type pendingDTO struct {
 type chargeRowDTO struct {
 	ID string `json:"id"`
 	billing.ChargeRow
+}
+
+// mayEditCategory decides who owns a part of the catalog.
+//
+// The dentist owns the dental list: they are the one who knows a molar root canal
+// is not the same job as an incisor's, and making them wait for an administrator
+// to add it is how the clinic ends up with six spellings of "Root Canal" typed
+// free-hand instead. Everything else stays with billing.manage, because a general
+// service's price is a business decision, not a clinical one.
+func mayEditCategory(c *gin.Context, category string) error {
+	p, ok := tenancy.PrincipalFromContext(c.Request.Context())
+	if !ok {
+		return apperr.Forbidden("NOT_ALLOWED", "not allowed")
+	}
+	if p.HasPermission("billing.manage") {
+		return nil
+	}
+	if strings.TrimSpace(strings.ToLower(category)) == "dental" && p.HasPermission("dental.manage") {
+		return nil
+	}
+	return apperr.Forbidden("NOT_ALLOWED", "only the dental list can be edited from the chair — ask an administrator for other services")
 }
 
 func (h *Handlers) ListServices(c *gin.Context) {
@@ -167,8 +190,13 @@ func (h *Handlers) CreateService(c *gin.Context) {
 		httpx.Fail(c, apperr.Validation("price cannot be negative"))
 		return
 	}
+	if err := mayEditCategory(c, req.Category); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
 	s, err := h.svc.CreateService(c.Request.Context(), billing.ServiceItemInput{
 		Code: req.Code, Name: req.Name, Category: req.Category, Price: strconv.FormatFloat(req.Price, 'f', 2, 64),
+		AssignableBy: req.AssignableBy,
 	})
 	if err != nil {
 		httpx.Fail(c, err)
@@ -191,8 +219,13 @@ func (h *Handlers) UpdateService(c *gin.Context) {
 		httpx.Fail(c, apperr.Validation("price cannot be negative"))
 		return
 	}
+	if err := mayEditCategory(c, req.Category); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
 	if err := h.svc.UpdateService(c.Request.Context(), sid, billing.ServiceItemInput{
 		Code: req.Code, Name: req.Name, Category: req.Category, Price: strconv.FormatFloat(req.Price, 'f', 2, 64),
+		AssignableBy: req.AssignableBy,
 	}); err != nil {
 		httpx.Fail(c, err)
 		return

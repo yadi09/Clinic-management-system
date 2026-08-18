@@ -136,9 +136,23 @@ func (s *Service) Services(ctx context.Context, f finance.Filter) ([]finance.Ser
 	out := []finance.ServiceLine{}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		rows, e := tx.Query(ctx,
+			// Count PROCEDURES, not receipts. A six-session root canal settles six
+			// charges; counting rows would report six root canals and divide the
+			// revenue by six, so "how many did we do" — the question this tab exists
+			// to answer — came back wrong by a factor of the course length.
+			//
+			// The distinct key is therefore the course for a planned session, the
+			// extra itself for something added at the chair (two X-rays in one course
+			// are two X-rays), and the charge for everything outside dentistry.
 			`SELECT coalesce(nullif(si.name,''), nullif(pl.title,''), initcap(c.source)) AS label,
 			        c.source,
-			        count(*), coalesce(sum(c.amount),0)::text
+			        count(DISTINCT CASE
+			          WHEN se.id IS NULL                    THEN c.id::text
+			          WHEN se.parent_session_id IS NOT NULL THEN se.id::text
+			          ELSE se.plan_id::text END) AS procedures,
+			        coalesce(sum(c.amount),0)::text,
+			        (si.id IS NOT NULL) AS catalogued,
+			        max(si.price)::text AS list_price
 			   FROM charges c
 			   LEFT JOIN service_items si ON si.id = c.service_item_id AND si.tenant_id = c.tenant_id
 			   LEFT JOIN treatment_sessions se ON se.charge_id = c.id AND se.tenant_id = c.tenant_id
@@ -146,7 +160,7 @@ func (s *Service) Services(ctx context.Context, f finance.Filter) ([]finance.Ser
 			  WHERE c.tenant_id = $1 AND c.status = 'paid' AND c.deleted_at IS NULL AND c.amount > 0
 			    AND c.settled_at >= $2 AND c.settled_at < $3
 			    AND ($4::uuid IS NULL OR c.branch_id = $4)
-			  GROUP BY 1, 2 ORDER BY 4::numeric DESC`,
+			  GROUP BY 1, 2, 5 ORDER BY 4::numeric DESC`,
 			tid, f.From, f.To, branchArg(f.Branch))
 		if e != nil {
 			return e
@@ -154,8 +168,12 @@ func (s *Service) Services(ctx context.Context, f finance.Filter) ([]finance.Ser
 		defer rows.Close()
 		for rows.Next() {
 			var l finance.ServiceLine
-			if e := rows.Scan(&l.Label, &l.Source, &l.Count, &l.Revenue); e != nil {
+			var list *string
+			if e := rows.Scan(&l.Label, &l.Source, &l.Count, &l.Revenue, &l.Catalogued, &list); e != nil {
 				return e
+			}
+			if list != nil {
+				l.ListPrice = *list
 			}
 			var rev float64
 			fmt.Sscanf(l.Revenue, "%f", &rev)

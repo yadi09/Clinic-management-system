@@ -601,17 +601,41 @@ function CashTab({ data, loading }: { data?: FinCash; loading: boolean }) {
 
 // --- Services ---------------------------------------------------------------
 
+/**
+ * What the clinic charged against what its list says.
+ *
+ * Only meaningful for a procedure billed in one go. A course paid in instalments
+ * shows the average of the slices settled this period, which is not comparable to
+ * the price of the whole course — so it says nothing rather than something wrong.
+ */
+function VsList({ line }: { line: FinServiceLine }) {
+  const list = num(line.list_price ?? "0");
+  if (!line.catalogued || list <= 0) return <span className="text-xs text-muted-foreground">—</span>;
+  const gap = num(line.avg) - list;
+  if (Math.abs(gap) < 0.5) return <span className="text-xs text-muted-foreground">At list</span>;
+  const pct = Math.round((gap / list) * 100);
+  return (
+    <span className={cn("text-xs font-medium tabular-nums", gap < 0 ? "text-amber-700" : "text-emerald-700")}
+      title={`List price ${etb(line.list_price ?? "0")}`}>
+      {gap < 0 ? "−" : "+"}{Math.abs(pct)}%
+    </span>
+  );
+}
+
 function ServicesTab({ rows, loading }: { rows?: FinServiceLine[]; loading: boolean }) {
   if (loading || !rows) return <p className="p-8 text-center text-sm text-muted-foreground">Loading…</p>;
   const top = Math.max(1, ...rows.map((r) => num(r.revenue)));
   const total = rows.reduce((a, r) => a + num(r.revenue), 0);
+  const offList = rows.filter((r) => !r.catalogued);
+  const offListRevenue = offList.reduce((a, r) => a + num(r.revenue), 0);
 
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm">What earned, in this period</CardTitle>
         <p className="text-xs text-muted-foreground">
-          Dental work is grouped by its course, not by instalment — forty payments towards one root canal are one line.
+          Counted as procedures, not receipts — six instalments towards one root canal are one root canal.
+          <span className="ml-1">“vs list” is what the clinic actually charged against its own price.</span>
         </p>
       </CardHeader>
       <CardContent className="p-0">
@@ -623,9 +647,10 @@ function ServicesTab({ rows, loading }: { rows?: FinServiceLine[]; loading: bool
               <thead className="border-b bg-muted/40 text-left text-[10px] uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-4 py-2 font-semibold">Service</th>
-                  <th className="px-4 py-2 text-right font-semibold">Payments</th>
+                  <th className="px-4 py-2 text-right font-semibold">Done</th>
                   <th className="px-4 py-2 text-right font-semibold">Revenue</th>
                   <th className="px-4 py-2 text-right font-semibold">Average</th>
+                  <th className="px-4 py-2 text-right font-semibold">vs list</th>
                   <th className="w-40 px-4 py-2 font-semibold">Share</th>
                 </tr>
               </thead>
@@ -635,10 +660,17 @@ function ServicesTab({ rows, loading }: { rows?: FinServiceLine[]; loading: bool
                     <td className="px-4 py-2.5">
                       <span className="font-medium">{r.label}</span>
                       <span className="ml-2 rounded-full bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">{r.source}</span>
+                      {!r.catalogued && (
+                        <span className="ml-2 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] uppercase text-amber-700"
+                          title="Typed by hand rather than picked from the clinic's list — its price is whatever each person entered">
+                          Not on the list
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{r.count}</td>
                     <td className="px-4 py-2.5 text-right font-semibold tabular-nums">{etb(r.revenue)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{etb(r.avg)}</td>
+                    <td className="px-4 py-2.5 text-right"><VsList line={r} /></td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-2">
                         <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
@@ -653,6 +685,14 @@ function ServicesTab({ rows, loading }: { rows?: FinServiceLine[]; loading: bool
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+        {offList.length > 0 && (
+          <div className="border-t bg-amber-50/60 px-4 py-2.5 text-xs text-amber-900">
+            <b>{etb(String(offListRevenue))}</b> of this period came from {offList.length} service(s) that are not on the
+            clinic's list, so there is no price to compare them against.{" "}
+            <Link to="/billing/services" className="font-medium underline">Add them to the catalog</Link> and the
+            next report can tell you whether they were discounted.
           </div>
         )}
       </CardContent>

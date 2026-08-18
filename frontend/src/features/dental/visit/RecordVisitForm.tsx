@@ -32,6 +32,7 @@ import { updateSession, type Session } from "@/features/dental/api";
 import { birr } from "@/features/dental/money";
 import { feeStage } from "@/features/dental/visit/VisitPaymentStep";
 import { FLAT_TEETH, parseCsv, ProcedureMultiSelect, ToothMultiSelect, ToothPalmerPicker } from "@/features/dental/shared/pickers";
+import { ExtrasSection, extrasTotal } from "@/features/dental/shared/Extras";
 import { RecordSection } from "@/features/dental/shared/RecordSection";
 import { PrescriptionSection, SessionImages } from "@/features/dental/shared/visitRecord";
 
@@ -231,6 +232,9 @@ export function RecordVisitForm({
         {/* Attach while the patient is still in the chair. These lived only inside the
             old plan list's expandable row, so a dentist recording here could write the
             note but not print the script or keep the X-ray. */}
+        {/* Placed before the prescription, because it is still about what was done
+            rather than what the patient takes home. */}
+        <ExtrasSection patientId={patientId} session={session} editable />
         <PrescriptionSection patientId={patientId} session={session} editable onChanged={onChanged} />
         <SessionImages patientId={patientId} session={session} editable imageLimit={imageLimit} onChanged={onChanged} />
 
@@ -247,6 +251,7 @@ export function RecordVisitForm({
             Fee {birr(session.amount_due)} — {feeStage(session) === "paid"
               ? "paid."
               : "owed; the patient pays later."}
+            {extrasTotal(session) > 0 && <> Plus {birr(String(extrasTotal(session)))} of extras, billed separately.</>}
             {empty && <><br />Add a tooth, a procedure or a note before finishing.</>}
           </span>
         </div>

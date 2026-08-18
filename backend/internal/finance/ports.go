@@ -168,6 +168,14 @@ type ServiceLine struct {
 	Count   int    `json:"count"`
 	Revenue string `json:"revenue"`
 	Avg     string `json:"avg"`
+	// Catalogued says this line came from the clinic's priced list rather than from
+	// whatever someone typed. Uncatalogued lines are the ones worth fixing: they are
+	// where the same procedure quietly earns four different amounts.
+	Catalogued bool `json:"catalogued"`
+	// ListPrice is what the list says this procedure costs today. Compared against
+	// Avg it is the discount the clinic is actually giving — the number nobody could
+	// see before, because there was nothing to compare a price against.
+	ListPrice string `json:"list_price,omitempty"`
 }
 
 // --- Treatment book (dental) -------------------------------------------------

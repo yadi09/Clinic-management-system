@@ -22,6 +22,7 @@ import (
 	"github.com/reicb/clinicsaas/internal/dental"
 	"github.com/reicb/clinicsaas/internal/kernel/allergy"
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
+	"github.com/reicb/clinicsaas/internal/kernel/catalog"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
 	"github.com/reicb/clinicsaas/internal/kernel/events"
 	"github.com/reicb/clinicsaas/internal/kernel/limits"
@@ -265,9 +266,12 @@ func (s *Service) loadPlansTx(ctx context.Context, tx pgx.Tx, tid, patientID uui
 	idx := map[uuid.UUID]int{} // plan id → index in plans
 
 	prows, e := tx.Query(ctx,
-		`SELECT id, title, coalesce(tooth,''), total_amount::text, start_date, interval_unit, interval_count,
-		        session_count, deadline, status, coalesce(note,''), created_at
-		 FROM treatment_plans WHERE tenant_id = $1 AND patient_id = $2 ORDER BY created_at DESC`, tid, patientID)
+		`SELECT p.id, p.title, coalesce(p.tooth,''), p.total_amount::text, p.start_date, p.interval_unit, p.interval_count,
+		        p.session_count, p.deadline, p.status, coalesce(p.note,''), p.created_at,
+		        p.service_item_id, p.list_price::text, coalesce(si.name, '')
+		 FROM treatment_plans p
+		 LEFT JOIN service_items si ON si.id = p.service_item_id AND si.tenant_id = p.tenant_id
+		 WHERE p.tenant_id = $1 AND p.patient_id = $2 ORDER BY p.created_at DESC`, tid, patientID)
 	if e != nil {
 		return nil, e
 	}
@@ -277,11 +281,16 @@ func (s *Service) loadPlansTx(ctx context.Context, tx pgx.Tx, tid, patientID uui
 		var id uuid.UUID
 		var start, created time.Time
 		var deadline *time.Time
+		var listPrice *string
 		if e := prows.Scan(&id, &p.Title, &p.Tooth, &p.TotalAmount, &start, &p.IntervalUnit, &p.IntervalCount,
-			&p.SessionCount, &deadline, &p.Status, &p.Note, &created); e != nil {
+			&p.SessionCount, &deadline, &p.Status, &p.Note, &created,
+			&p.ServiceID, &listPrice, &p.ServiceName); e != nil {
 			return nil, e
 		}
 		p.ID = id
+		if listPrice != nil {
+			p.ListPrice = *listPrice
+		}
 		p.StartDate = start.Format("2006-01-02")
 		if deadline != nil {
 			p.Deadline = deadline.Format("2006-01-02")
@@ -341,20 +350,31 @@ func (s *Service) loadPlansTx(ctx context.Context, tx pgx.Tx, tid, patientID uui
 		SELECT sm.session_id, sm.plan_id, sm.seq, sm.scheduled_date, sm.amount_due::text,
 		       sm.session_status, sm.procedure, sm.tooth,
 		       coalesce(se.notes,''), coalesce(se.rx,''),
-		       sm.pay_later, sm.pay_later_note, sm.pay_state, se.kind
+		       sm.pay_later, sm.pay_later_note, sm.pay_state, se.kind,
+		       se.parent_session_id, coalesce(si.name, '')
 		FROM session_money sm
 		JOIN treatment_sessions se ON se.id = sm.session_id
+		LEFT JOIN service_items si ON si.id = se.service_item_id AND si.tenant_id = se.tenant_id
 		WHERE sm.patient_id = $2 ORDER BY sm.plan_id, sm.seq`, tid, patientID)
 	if e != nil {
 		return nil, e
 	}
 	defer srows.Close()
+	// Extras are held back and attached after the pass: they arrive interleaved with
+	// their parent (they share its seq) and there is no ordering that guarantees the
+	// visit is read first.
+	type pendingExtra struct {
+		parent uuid.UUID
+		row    dental.Session
+	}
+	var extras []pendingExtra
 	for srows.Next() {
 		var se dental.Session
 		var id, planID uuid.UUID
 		var sd time.Time
 		var kind string
-		if e := srows.Scan(&id, &planID, &se.Seq, &sd, &se.AmountDue, &se.Status, &se.Procedure, &se.Tooth, &se.Notes, &se.Rx, &se.PayLater, &se.PayLaterNote, &se.Payment, &kind); e != nil {
+		var parent *uuid.UUID
+		if e := srows.Scan(&id, &planID, &se.Seq, &sd, &se.AmountDue, &se.Status, &se.Procedure, &se.Tooth, &se.Notes, &se.Rx, &se.PayLater, &se.PayLaterNote, &se.Payment, &kind, &parent, &se.ServiceName); e != nil {
 			return nil, e
 		}
 		se.ID = id
@@ -372,11 +392,26 @@ func (s *Service) loadPlansTx(ctx context.Context, tx pgx.Tx, tid, patientID uui
 			plans[pi].Deposit = &d
 			continue
 		}
+		if kind == "extra" {
+			if parent != nil {
+				se.ID = id
+				se.ScheduledDate = sd.Format("2006-01-02")
+				extras = append(extras, pendingExtra{parent: *parent, row: se})
+			}
+			continue
+		}
 		plans[pi].Sessions = append(plans[pi].Sessions, se)
 		sidx[id] = [2]int{pi, len(plans[pi].Sessions) - 1}
 	}
 	if e := srows.Err(); e != nil {
 		return nil, e
+	}
+	for _, ex := range extras {
+		loc, ok := sidx[ex.parent]
+		if !ok {
+			continue // its visit was cancelled out from under it
+		}
+		plans[loc[0]].Sessions[loc[1]].Extras = append(plans[loc[0]].Sessions[loc[1]].Extras, ex.row)
 	}
 
 	// per-session images
@@ -562,11 +597,27 @@ func (s *Service) CreatePlan(ctx context.Context, patientID uuid.UUID, in dental
 
 	var planID uuid.UUID
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		// The catalogue price is read here, not sent by the browser: a snapshot the
+		// client can choose is not a control, it is a suggestion. The rule about who
+		// may put this procedure on a patient is checked at the same moment.
+		var listPrice *string
+		if in.ServiceID != nil {
+			if e := catalog.AssertMayAssign(ctx, tx, tid, in.ServiceID); e != nil {
+				return e
+			}
+			var lp string
+			if e := tx.QueryRow(ctx,
+				`SELECT price::text FROM service_items
+				  WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`, tid, *in.ServiceID).Scan(&lp); e != nil {
+				return e
+			}
+			listPrice = &lp
+		}
 		if e := tx.QueryRow(ctx,
-			`INSERT INTO treatment_plans (tenant_id, patient_id, title, tooth, total_amount, start_date, interval_unit, interval_count, session_count, deadline, note, created_by)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+			`INSERT INTO treatment_plans (tenant_id, patient_id, title, tooth, total_amount, start_date, interval_unit, interval_count, session_count, deadline, note, service_item_id, list_price, created_by)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
 			tid, patientID, title, nullStr(in.Tooth), fmtMoney(total), start.Format("2006-01-02"), unit, interval, count,
-			deadline.Format("2006-01-02"), nullStr(in.Note), actor).Scan(&planID); e != nil {
+			deadline.Format("2006-01-02"), nullStr(in.Note), in.ServiceID, listPrice, actor).Scan(&planID); e != nil {
 			return e
 		}
 		// The deposit is seq 0 and dated to the plan's start: it is due when the
@@ -652,6 +703,127 @@ func (s *Service) UpdatePlan(ctx context.Context, patientID, planID uuid.UUID, i
 // misdates work already done) or start a second plan (which splits one course in two
 // and breaks "session 4 of 6"). The plan's total and session count move with it, so
 // the header, the progress bar and the course rail keep describing something real.
+// AddExtra records something done at a visit that the course never planned for —
+// an X-ray, a second filling, an extraction the dentist decided on at the chair.
+//
+// It is a row of its own rather than a bump to the visit's fee, for two reasons.
+// The report has to be able to say "we did 41 X-rays this month", which it cannot
+// do if the X-ray is buried inside a root canal's session fee. And the dentist has
+// to be able to say "the X-ray is included" — a price of 0 that is a decision, not
+// an omission — without that making the visit itself look free.
+func (s *Service) AddExtra(ctx context.Context, patientID, sessionID uuid.UUID, in dental.ExtraInput) error {
+	tid, actor := actorOf(ctx)
+	if in.ServiceID == uuid.Nil {
+		return apperr.Validation("choose the procedure from the clinic's list")
+	}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		var planID uuid.UUID
+		var seq int
+		var sd time.Time
+		var kind, sessStatus, planStatus string
+		var branch *uuid.UUID
+		e := tx.QueryRow(ctx,
+			`SELECT se.plan_id, se.seq, se.scheduled_date, se.kind, se.status, se.branch_id, p.status
+			   FROM treatment_sessions se
+			   JOIN treatment_plans p ON p.id = se.plan_id AND p.tenant_id = se.tenant_id
+			  WHERE se.tenant_id = $1 AND se.patient_id = $2 AND se.id = $3
+			  FOR UPDATE OF se`,
+			tid, patientID, sessionID).Scan(&planID, &seq, &sd, &kind, &sessStatus, &branch, &planStatus)
+		if errors.Is(e, pgx.ErrNoRows) {
+			return apperr.NotFound("SESSION_NOT_FOUND", "session not found")
+		}
+		if e != nil {
+			return e
+		}
+		if kind != "visit" {
+			return apperr.Validation("extras attach to a visit, not to a down payment or another extra")
+		}
+		if sessStatus == "cancelled" || planStatus == "cancelled" {
+			return apperr.Conflict("SESSION_CANCELLED", "this visit was cancelled — nothing can be added to it")
+		}
+		// Same rule as anywhere else a service lands on a patient.
+		if e := catalog.AssertMayAssign(ctx, tx, tid, &in.ServiceID); e != nil {
+			return e
+		}
+		var list string
+		if e := tx.QueryRow(ctx,
+			`SELECT price::text FROM service_items
+			  WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`, tid, in.ServiceID).Scan(&list); e != nil {
+			if errors.Is(e, pgx.ErrNoRows) {
+				return apperr.Validation("that procedure is not on the clinic's list")
+			}
+			return e
+		}
+		// Empty means "whatever the list says". A sent "0" is kept as zero, because
+		// "included in the course" is an answer the dentist is allowed to give.
+		amt := money(list)
+		if strings.TrimSpace(in.Amount) != "" {
+			amt = money(in.Amount)
+		}
+		if amt < 0 {
+			return apperr.Validation("an extra cannot cost less than nothing")
+		}
+		var exID uuid.UUID
+		if e := tx.QueryRow(ctx,
+			`INSERT INTO treatment_sessions
+			   (tenant_id, plan_id, patient_id, seq, scheduled_date, amount_due, status, kind,
+			    parent_session_id, service_item_id, branch_id, created_by)
+			 VALUES ($1,$2,$3,$4,$5,$6,'done','extra',$7,$8,$9,$10)
+			 RETURNING id`,
+			tid, planID, patientID, seq, sd, fmtMoney(amt), sessionID, in.ServiceID, branch, actor).Scan(&exID); e != nil {
+			return e
+		}
+		return s.publisher.Publish(ctx, tx, &tid, "treatment_session", exID, "dental.extra.added",
+			map[string]any{"patient_id": patientID, "session_id": sessionID,
+				"service_item_id": in.ServiceID, "amount": fmtMoney(amt)})
+	})
+	if ae, ok := apperr.As(err); ok {
+		return ae
+	}
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}
+
+// RemoveExtra takes an extra back off a visit. Only while it is unbilled: once the
+// cashier has it, the way back is a void or a refund, which leaves a trail.
+func (s *Service) RemoveExtra(ctx context.Context, patientID, extraID uuid.UUID) error {
+	tid, _ := actorOf(ctx)
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		var kind string
+		var chargeID *uuid.UUID
+		e := tx.QueryRow(ctx,
+			`SELECT kind, charge_id FROM treatment_sessions
+			  WHERE tenant_id = $1 AND patient_id = $2 AND id = $3 FOR UPDATE`,
+			tid, patientID, extraID).Scan(&kind, &chargeID)
+		if errors.Is(e, pgx.ErrNoRows) {
+			return apperr.NotFound("EXTRA_NOT_FOUND", "that extra is no longer there")
+		}
+		if e != nil {
+			return e
+		}
+		if kind != "extra" {
+			return apperr.Validation("that is a visit, not an extra")
+		}
+		if chargeID != nil {
+			return apperr.Conflict("EXTRA_BILLED", "this extra is already with the cashier — void or refund the charge instead")
+		}
+		if _, e := tx.Exec(ctx, `DELETE FROM treatment_sessions WHERE tenant_id = $1 AND id = $2`, tid, extraID); e != nil {
+			return e
+		}
+		return s.publisher.Publish(ctx, tx, &tid, "treatment_session", extraID, "dental.extra.removed",
+			map[string]any{"patient_id": patientID})
+	})
+	if ae, ok := apperr.As(err); ok {
+		return ae
+	}
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}
+
 func (s *Service) AddSession(ctx context.Context, patientID, planID uuid.UUID, in dental.SessionSeed) (*dental.Session, error) {
 	tid, _ := actorOf(ctx)
 	if _, e := time.Parse("2006-01-02", in.ScheduledDate); e != nil {
@@ -988,17 +1160,21 @@ func (s *Service) collectOne(ctx context.Context, patientID, sessionID uuid.UUID
 		// deleted_at is honoured here too, so this agrees with sessionMoneyCTE instead
 		// of treating a soft-deleted charge as live.
 		var treatedAt *uuid.UUID
+		// The session's own service wins over the plan's: an extra (an X-ray taken at
+		// visit 3) is a different procedure from the course it happened inside, and
+		// the report has to be able to count it as one.
+		var svcItem *uuid.UUID
 		e := tx.QueryRow(ctx,
 			`SELECT se.amount_due::text, se.seq, p.title, p.session_count, c.status,
 			        (SELECT sum(-r.amount)::text FROM charges r
 			          WHERE r.tenant_id = c.tenant_id AND r.reverses_charge_id = c.id AND r.deleted_at IS NULL),
-			        se.branch_id, se.kind
+			        se.branch_id, se.kind, coalesce(se.service_item_id, p.service_item_id)
 			 FROM treatment_sessions se
 			 JOIN treatment_plans p ON p.id = se.plan_id AND p.tenant_id = se.tenant_id
 			 LEFT JOIN charges c ON c.id = se.charge_id AND c.tenant_id = se.tenant_id AND c.deleted_at IS NULL
 			 WHERE se.tenant_id = $1 AND se.patient_id = $2 AND se.id = $3
 			 FOR UPDATE OF se`,
-			tid, patientID, sessionID).Scan(&amount, &seq, &planTitle, &count, &chargeStatus, &refunded, &treatedAt, &kind)
+			tid, patientID, sessionID).Scan(&amount, &seq, &planTitle, &count, &chargeStatus, &refunded, &treatedAt, &kind, &svcItem)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return apperr.NotFound("SESSION_NOT_FOUND", "session not found")
 		}
@@ -1046,7 +1222,7 @@ func (s *Service) collectOne(ctx context.Context, patientID, sessionID uuid.UUID
 		}
 		cid, e := s.billing.RaiseChargeTx(ctx, tx, billing.ChargeInput{
 			PatientID: patientID, BranchID: bookTo, Source: "dental",
-			Description: desc, Amount: fmtMoney(amt),
+			Description: desc, Amount: fmtMoney(amt), ServiceItemID: svcItem,
 		})
 		if e != nil {
 			return e

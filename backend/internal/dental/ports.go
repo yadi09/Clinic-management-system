@@ -103,6 +103,25 @@ type Session struct {
 	PayLaterNote  string         `json:"pay_later_note,omitempty"` // the recorded promise/reason
 	Images        []Image        `json:"images"`
 	Prescriptions []Prescription `json:"prescriptions"`
+	// ServiceName is the catalogued procedure this row is, when it has one. On an
+	// ordinary visit that is the course's procedure; on an extra it is the extra's.
+	ServiceName string `json:"service_name,omitempty"`
+	// Extras are the things done at this visit that were not part of the agreed
+	// course — an X-ray, a second filling. They are separate rows so the report can
+	// count them as the procedures they are, and so one of them can be free (0)
+	// without making the visit itself look free.
+	Extras []Session `json:"extras,omitempty"`
+}
+
+// ExtraInput adds one unplanned procedure to a visit.
+type ExtraInput struct {
+	// ServiceID is the catalogued procedure. Required: an extra with no name on the
+	// clinic's list is exactly the free-typed price this whole thing replaces.
+	ServiceID uuid.UUID
+	// Amount overrides the list price. Empty means "use the list price"; "0" means
+	// the clinician has decided it is included in the course — a real answer, and a
+	// different one from "not decided yet".
+	Amount string
 }
 
 // PlanMoney is one plan's money, computed server-side from the CHARGE LEDGER.
@@ -134,7 +153,14 @@ type Plan struct {
 	Status        string    `json:"status"` // active | completed | cancelled
 	Note          string    `json:"note,omitempty"`
 	CreatedAt     string    `json:"created_at"`
-	Money         PlanMoney `json:"money"`
+	// The catalogued procedure this course is, and what the catalogue said it cost
+	// on the day it was agreed. ListPrice is a snapshot on purpose: repricing the
+	// catalogue next year must not rewrite what this patient was quoted, and the
+	// gap between the two is the discount the clinic actually gave.
+	ServiceID   *uuid.UUID `json:"-"`
+	ServiceName string     `json:"service_name,omitempty"`
+	ListPrice   string     `json:"list_price,omitempty"`
+	Money       PlanMoney  `json:"money"`
 	// Deposit is the up-front payment, if this plan has one. It is stored as a
 	// session row so it flows through the same money projection as everything else,
 	// but it is handed out separately: it is not an appointment, and the visit
@@ -162,6 +188,9 @@ type PlanInput struct {
 	Note          string
 	Deposit       string        // optional down payment, taken off the top before the split
 	Sessions      []SessionSeed // optional per-session overrides from the preview
+	// ServiceID links the course to the catalogue. Optional: a clinic that has not
+	// built its list yet must still be able to plan treatment.
+	ServiceID *uuid.UUID
 }
 
 // PlanUpdate edits plan-level fields (pointers = leave unchanged).
@@ -340,6 +369,10 @@ type Service interface {
 	// seventh). FinishCourse closes one early, cancelling only the visits that were
 	// never delivered and never billed.
 	AddSession(ctx context.Context, patientID, planID uuid.UUID, in SessionSeed) (*Session, error)
+	// AddExtra records a procedure done at a visit that the course did not plan for.
+	// RemoveExtra takes one back off, while it is still unbilled.
+	AddExtra(ctx context.Context, patientID, sessionID uuid.UUID, in ExtraInput) error
+	RemoveExtra(ctx context.Context, patientID, extraID uuid.UUID) error
 	FinishCourse(ctx context.Context, patientID, planID uuid.UUID) (int, error)
 	UpdateSession(ctx context.Context, patientID, sessionID uuid.UUID, in SessionUpdate) error
 	// RescheduleSession moves a still-planned session to another date and nothing

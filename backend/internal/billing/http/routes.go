@@ -18,8 +18,11 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	b := rg.Group("/billing")
 	mgr := httpx.RequirePermission("billing.manage")
 	b.GET("/services", h.ListServices) // readable by any authenticated staff (to price a charge)
-	b.POST("/services", mgr, h.CreateService)
-	b.PUT("/services/:id", mgr, h.UpdateService)
+	// Dentists maintain the dental list themselves; the handler checks the category
+	// against the caller, so this middleware only has to let both kinds through.
+	catalog := httpx.RequireAnyPermission("billing.manage", "dental.manage")
+	b.POST("/services", catalog, h.CreateService)
+	b.PUT("/services/:id", catalog, h.UpdateService)
 	b.PUT("/services/:id/active", mgr, h.SetServiceActive)
 	b.PUT("/services/:id/default", mgr, h.SetServiceDefault)
 	b.GET("/services/:id/providers", mgr, h.GetServiceProviders)

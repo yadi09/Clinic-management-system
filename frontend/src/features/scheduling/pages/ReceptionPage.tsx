@@ -33,7 +33,14 @@ export function ReceptionPage() {
   const branches = useQuery({ queryKey: ["branches"], queryFn: listBranches });
   const departments = useQuery({ queryKey: ["departments"], queryFn: listDepartments });
   const settings = useQuery({ queryKey: ["settings"], queryFn: getSettings, retry: false });
-  const services = useQuery({ queryKey: ["services-active"], queryFn: () => listServices(true) });
+  // Clinician-only services are left out rather than shown and refused. The rule is
+  // enforced on the server either way; offering a button that always fails is just
+  // a slower way of saying no.
+  const services = useQuery({
+    queryKey: ["services-active"],
+    queryFn: () => listServices(true),
+    select: (rows) => rows.filter((s) => s.assignable_by !== "clinician"),
+  });
   const reasons = useQuery({ queryKey: ["waiver-reasons"], queryFn: waiverReasons, enabled: canCollect });
 
   const [patient, setPatient] = useState<{ id: string; name: string } | null>(null);

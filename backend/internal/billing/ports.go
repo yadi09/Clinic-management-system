@@ -58,11 +58,15 @@ type ServiceItem struct {
 	Currency  string    `json:"currency"`
 	IsActive  bool      `json:"is_active"`
 	IsDefault bool      `json:"is_default"`
+	// Who may put this service on a patient: reception | clinician | either.
+	// Enforced server-side wherever a charge is raised, not just hidden in the UI.
+	AssignableBy string `json:"assignable_by"`
 }
 
 // ServiceItemInput is an admin write payload for the catalog.
 type ServiceItemInput struct {
 	Code, Name, Category, Price string
+	AssignableBy                string
 }
 
 // ChargeInput raises a charge against a patient. Routing fields are set only for a
