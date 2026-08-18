@@ -66,6 +66,8 @@ var BasePermissions = []struct{ Code, Desc string }{
 	{"bed.assign", "Admit, discharge and transfer patients between beds"},
 	{"dental.manage", "Manage the tooth chart, treatment plan, dental visits and dental bills"},
 	{"dental.read", "View the tooth chart, treatment plans, session dates and dental balance (front desk)"},
+	{"message.manage", "Configure patient messaging: templates, timing and sending settings"},
+	{"message.send", "Send messages to patients"},
 }
 
 // BusinessFlags are the default feature flags for a Business-tier tenant.
@@ -99,8 +101,8 @@ var ClinicPresets = map[string]map[string]bool{
 
 // RoleGrants is the canonical permission set per operational role.
 var RoleGrants = map[string][]string{
-	"branch_manager":   {"patient.create", "patient.read", "patient.update", "patient.search", "appointment.manage", "queue.manage", "triage.manage", "payment.charge", "payment.collect", "payment.waive", "billing.manage", "user.read", "bed.manage", "bed.assign", "dental.read"},
-	"receptionist":     {"patient.create", "patient.read", "patient.update", "patient.search", "appointment.manage", "queue.manage", "payment.charge", "bed.assign", "dental.read"},
+	"branch_manager":   {"patient.create", "patient.read", "patient.update", "patient.search", "appointment.manage", "queue.manage", "triage.manage", "payment.charge", "payment.collect", "payment.waive", "billing.manage", "user.read", "bed.manage", "bed.assign", "dental.read", "message.send", "message.manage"},
+	"receptionist":     {"patient.create", "patient.read", "patient.update", "patient.search", "appointment.manage", "queue.manage", "payment.charge", "bed.assign", "dental.read", "message.send"},
 	"doctor":           {"patient.read", "patient.search", "encounter.manage", "prescription.create", "queue.manage", "appointment.manage", "lab.order", "bed.assign", "dental.manage", "dental.read"},
 	"nurse":            {"patient.read", "patient.search", "triage.manage", "queue.manage", "bed.assign"},
 	"cashier":          {"payment.charge", "payment.collect", "payment.waive", "patient.read", "patient.search", "dental.read"},

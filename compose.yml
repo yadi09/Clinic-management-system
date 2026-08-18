@@ -41,6 +41,13 @@ x-backend-env: &backend-env
   # DHIS2 (Ministry of Health) reporting showcase. Empty token = push disabled.
   DHIS2_TOKEN: ${DHIS2_TOKEN:-}
   DHIS2_BASE_URL: ${DHIS2_BASE_URL:-https://dhis.moh.gov.et}
+  # Patient SMS (SMSEthiopia, direct Ethio Telecom). One platform account serves
+  # every clinic; per-clinic spend is capped by the subscription plan. Empty key =
+  # messages are written to the log instead of sent, and every surface says so.
+  SMS_API_KEY: ${SMS_API_KEY:-}
+  SMS_BASE_URL: ${SMS_BASE_URL:-https://smsethiopia.com}
+  # Display-only: what one segment costs us, used to price a send before it happens.
+  SMS_COST_PER_SEGMENT: ${SMS_COST_PER_SEGMENT:-0.25}
   RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-20}
   RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-40}
 
@@ -98,6 +105,11 @@ services:
     command: ["/app/worker"]
     environment:
       <<: *backend-env
+      # The message dispatcher drains one queue across every tenant, so it needs the
+      # same RLS-bypassing DSN the platform module uses. It never returns rows to a
+      # user: it reads what is due, then does the work inside a tenant-scoped
+      # transaction so the clinic's own policies still apply to the write.
+      PLATFORM_DATABASE_URL: postgres://${POSTGRES_USER:-clinic}:${POSTGRES_PASSWORD:-clinic}@postgres:5432/${POSTGRES_DB:-clinic}?sslmode=disable
     depends_on:
       postgres:
         condition: service_healthy

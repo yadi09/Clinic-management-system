@@ -55,6 +55,7 @@ type Config struct {
 	AI AIConfig
 
 	DHIS2 DHIS2Config
+	SMS   SMSConfig
 
 	RateLimitRPS   float64
 	RateLimitBurst int
@@ -94,6 +95,24 @@ type DHIS2Config struct {
 
 // Configured reports whether a DHIS2 token is present.
 func (d DHIS2Config) Configured() bool { return d.Token != "" }
+
+// SMSConfig holds the patient-messaging gateway credentials (SMSEthiopia).
+//
+// One key serves every clinic: the gateway bills per message against a single
+// platform account, so per-clinic spend is capped by the plan rather than by
+// separate credentials. CostPerSegment is what a segment costs us, used to show
+// a clinic the price of a send before it happens — it is a display figure, not
+// an invoice, so an approximate value is fine and a wrong one is only cosmetic.
+type SMSConfig struct {
+	APIKey         string
+	BaseURL        string
+	CostPerSegment float64
+}
+
+// Configured reports whether messages can actually be delivered. When false the
+// module still works end to end against the log gateway, and every surface says
+// so rather than implying patients were contacted.
+func (s SMSConfig) Configured() bool { return strings.TrimSpace(s.APIKey) != "" }
 
 // CloudinaryConfig holds the Cloudinary storage-provider credentials.
 type CloudinaryConfig struct {
@@ -165,6 +184,11 @@ func Load() (Config, error) {
 			Token:   os.Getenv("DHIS2_TOKEN"),
 			BaseURL: getenv("DHIS2_BASE_URL", "https://dhis.moh.gov.et"),
 		},
+		SMS: SMSConfig{
+			APIKey:         os.Getenv("SMS_API_KEY"),
+			BaseURL:        getenv("SMS_BASE_URL", "https://smsethiopia.com"),
+			CostPerSegment: getenvFloat("SMS_COST_PER_SEGMENT", 0.25),
+		},
 	}
 
 	switch cfg.Env {
@@ -217,6 +241,20 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("invalid configuration:\n  - %s", strings.Join(errs, "\n  - "))
 	}
 	return cfg, nil
+}
+
+// getenvFloat reads a decimal setting, falling back when it is absent or is not a
+// number — a mistyped price should not stop the API from starting.
+func getenvFloat(key string, def float64) float64 {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return def
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil || f < 0 {
+		return def
+	}
+	return f
 }
 
 func getenv(key, def string) string {

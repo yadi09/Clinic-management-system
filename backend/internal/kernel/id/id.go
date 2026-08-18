@@ -67,6 +67,8 @@ const (
 	PrefixTreatmentSession = "tss" // dental treatment session (milestone)
 	PrefixDentalRx         = "drx" // dental prescription (printable, per session)
 	PrefixCertificate      = "mcf" // medical certificate (sick leave / fitness / attendance)
+	PrefixMessage          = "msg" // patient SMS (queued, sent, skipped or failed)
+	PrefixCampaign         = "cmp" // a one-off message to a chosen set of patients
 )
 
 // base32 lower-case, no padding. Decoding is case-insensitive.

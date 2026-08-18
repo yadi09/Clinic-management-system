@@ -27,6 +27,7 @@ type Limits struct {
 	Users            *int64
 	Branches         *int64
 	ImagesPerPatient *int64 // dental images per patient
+	SMSMonthly       *int64 // patient messages per calendar month
 }
 
 // eff resolves one dimension: override wins (negative → unlimited), else the plan
@@ -51,14 +52,16 @@ func Effective(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) (Limits, erro
 	var code, name string
 	var pStorage, pPatients, pUsers, pBranches, pImages *int32
 	var oStorage, oPatients, oUsers, oBranches *int32
+	var pSMS, oSMS *int32
 	err := tx.QueryRow(ctx,
 		`SELECT p.code, p.name,
 		        p.storage_gb, p.patient_limit, p.user_limit, p.branch_limit, p.images_per_patient,
-		        t.storage_gb_override, t.patient_limit_override, t.user_limit_override, t.branch_limit_override
+		        t.storage_gb_override, t.patient_limit_override, t.user_limit_override, t.branch_limit_override,
+		        p.sms_monthly, t.sms_monthly_override
 		 FROM tenants t JOIN plans p ON p.id = t.plan_id
 		 WHERE t.id = $1`, tenantID).Scan(
 		&code, &name, &pStorage, &pPatients, &pUsers, &pBranches, &pImages,
-		&oStorage, &oPatients, &oUsers, &oBranches)
+		&oStorage, &oPatients, &oUsers, &oBranches, &pSMS, &oSMS)
 	if err != nil {
 		return Limits{}, err
 	}
@@ -68,6 +71,7 @@ func Effective(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) (Limits, erro
 		Users:            eff(oUsers, pUsers),
 		Branches:         eff(oBranches, pBranches),
 		ImagesPerPatient: eff(nil, pImages),
+		SMSMonthly:       eff(oSMS, pSMS),
 	}
 	if gb := eff(oStorage, pStorage); gb != nil {
 		b := *gb * bytesPerGB
@@ -153,6 +157,48 @@ func EnsurePatientRoom(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) error
 	if n >= *l.Patients {
 		return apperr.New(http.StatusForbidden, "PATIENT_LIMIT_REACHED",
 			"your plan's patient limit has been reached — upgrade the plan to register more patients")
+	}
+	return nil
+}
+
+// SMSUsedThisMonth counts messages actually sent in the current calendar month,
+// in the clinic's own timezone.
+//
+// Segments, not rows: a three-part Amharic greeting is billed three times, so
+// counting messages would let a clinic spend three times its allowance and still
+// look inside it. Only 'sent' rows count — something the gateway refused cost
+// nothing and must not eat the budget.
+func SMSUsedThisMonth(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) (int64, error) {
+	var n int64
+	err := tx.QueryRow(ctx,
+		`SELECT coalesce(sum(m.segments), 0)
+		   FROM messages m
+		  WHERE m.tenant_id = $1 AND m.status = 'sent'
+		    AND m.sent_at >= date_trunc('month', now() AT TIME ZONE 'Africa/Addis_Ababa')`,
+		tenantID).Scan(&n)
+	return n, err
+}
+
+// EnsureSMSRoom blocks a send that would take the clinic past its monthly
+// allowance. want is the number of segments the send will consume, so a campaign
+// is refused before it starts rather than halfway through, which would leave half
+// the patients messaged and no clean way to finish.
+func EnsureSMSRoom(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID, want int64) error {
+	l, err := Effective(ctx, tx, tenantID)
+	if err != nil {
+		return err
+	}
+	if l.SMSMonthly == nil {
+		return nil
+	}
+	used, err := SMSUsedThisMonth(ctx, tx, tenantID)
+	if err != nil {
+		return err
+	}
+	if used+want > *l.SMSMonthly {
+		return apperr.New(http.StatusForbidden, "SMS_LIMIT_REACHED",
+			fmt.Sprintf("this month's message allowance is used up (%d of %d) — it resets on the 1st, or upgrade the plan for more",
+				used, *l.SMSMonthly))
 	}
 	return nil
 }

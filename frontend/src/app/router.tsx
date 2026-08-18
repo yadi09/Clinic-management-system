@@ -38,6 +38,7 @@ import { LabInboxPage } from "@/features/lab/pages/LabInboxPage";
 import { HelpCenterPage } from "@/features/help/HelpCenterPage";
 import { CashierPage } from "@/features/billing/pages/CashierPage";
 import { ServiceCatalogPage } from "@/features/billing/pages/ServiceCatalogPage";
+import { MessagesPage } from "@/features/messaging/pages/MessagesPage";
 import { Dhis2ReportPage } from "@/features/reporting/pages/Dhis2ReportPage";
 import { BedsBoardPage } from "@/features/inpatient/pages/BedsBoardPage";
 import { BedConfigPage } from "@/features/inpatient/pages/BedConfigPage";
@@ -73,6 +74,7 @@ export function AppRoutes() {
           <Route path="/cashier" element={<CashierPage />} />
           <Route path="/finance" element={<FinancePage />} />
           <Route path="/billing/services" element={<ServiceCatalogPage />} />
+          <Route path="/messages" element={<MessagesPage />} />
           <Route path="/triage" element={<TriagePage />} />
           <Route path="/queue" element={<QueuePage />} />
           <Route path="/worklist" element={<WorklistPage />} />

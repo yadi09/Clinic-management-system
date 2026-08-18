@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, UserCog, Settings, Settings2, CalendarDays, ListChecks, ClipboardCheck, Activity, Stethoscope, Pill, Boxes, BookOpen, ShoppingCart, Gauge, Tags, Truck, ClipboardList, BarChart3, FlaskConical, TestTubes, Inbox, LifeBuoy, BadgeDollarSign, Wallet, ReceiptText, Landmark, BedDouble, Armchair, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Users, UserCog, Settings, Settings2, CalendarDays, ListChecks, ClipboardCheck, Activity, Stethoscope, Pill, Boxes, BookOpen, ShoppingCart, Gauge, Tags, Truck, ClipboardList, BarChart3, FlaskConical, TestTubes, Inbox, LifeBuoy, BadgeDollarSign, Wallet, ReceiptText, Landmark, BedDouble, Armchair, MessageSquare, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   to: string;
@@ -75,6 +75,10 @@ export const navSections: NavSection[] = [
   {
     heading: "Administration",
     items: [
+      // Sits under Administration rather than Billing: it is how the clinic talks
+      // to patients, and the person who decides that is the person who runs the
+      // clinic — not whoever reconciles the till.
+      { to: "/messages", label: "Patient messages", icon: MessageSquare, perm: ["message.send", "message.manage"] },
       { to: "/users", label: "Staff", icon: UserCog, perm: ["user.read"] },
       { to: "/settings", label: "Settings", icon: Settings, perm: ["clinic.manage"] },
     ],
