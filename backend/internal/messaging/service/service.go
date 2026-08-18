@@ -169,10 +169,13 @@ func (s *Service) Usage(ctx context.Context) (*messaging.Usage, error) {
 		}
 		out.Limit = l.SMSMonthly
 		return tx.QueryRow(ctx,
-			`SELECT count(*) FILTER (WHERE status = 'sent'),
+			`SELECT count(*) FILTER (WHERE status IN ('sent','delivered')),
 			        count(*) FILTER (WHERE status = 'failed'),
 			        count(*) FILTER (WHERE status = 'skipped'),
-			        coalesce(sum(cost) FILTER (WHERE status = 'sent'), 0)::text
+			        -- 'delivered' is a later state of 'sent', not an alternative to it.
+			        -- Filtering on 'sent' alone made the month's spend fall as messages
+			        -- were confirmed, which is the opposite of what happened.
+			        coalesce(sum(cost) FILTER (WHERE status IN ('sent','delivered')), 0)::text
 			   FROM messages
 			  WHERE tenant_id = $1
 			    AND created_at >= date_trunc('month', now() AT TIME ZONE 'Africa/Addis_Ababa')`,
@@ -243,7 +246,7 @@ func (s *Service) Log(ctx context.Context, f messaging.LogFilter) ([]messaging.L
 		rows, e := tx.Query(ctx,
 			`SELECT m.id, m.kind, m.lang, m.msisdn, m.body, m.segments, m.cost::text, m.status,
 			        coalesce(m.skip_reason,''), coalesce(m.last_error,''),
-			        m.scheduled_for, m.sent_at, m.created_at, m.patient_id,
+			        m.scheduled_for, m.sent_at, m.created_at, m.delivered_at, m.patient_id,
 			        trim(coalesce(p.first_name,'') || ' ' || coalesce(p.last_name,'')), coalesce(p.mrn,'')
 			   FROM messages m
 			   LEFT JOIN patients p ON p.id = m.patient_id AND p.tenant_id = m.tenant_id
@@ -261,11 +264,14 @@ func (s *Service) Log(ctx context.Context, f messaging.LogFilter) ([]messaging.L
 		for rows.Next() {
 			var r messaging.LogRow
 			var sched, created time.Time
-			var sentAt *time.Time
+			var sentAt, deliveredAt *time.Time
 			if e := rows.Scan(&r.ID, &r.Kind, &r.Lang, &r.MSISDN, &r.Body, &r.Segments, &r.Cost, &r.Status,
-				&r.SkipReason, &r.LastError, &sched, &sentAt, &created, &r.PatientID,
+				&r.SkipReason, &r.LastError, &sched, &sentAt, &created, &deliveredAt, &r.PatientID,
 				&r.PatientName, &r.MRN); e != nil {
 				return e
+			}
+			if deliveredAt != nil {
+				r.DeliveredAt = deliveredAt.Format(time.RFC3339)
 			}
 			r.ScheduledAt = sched.Format(time.RFC3339)
 			r.CreatedAt = created.Format(time.RFC3339)
@@ -301,6 +307,13 @@ func (s *Service) SendTest(ctx context.Context, rawPhone, body string) error {
 		return apperr.Validation("enter the phone number to test with")
 	case phone.Invalid:
 		return apperr.Validation("that is not an Ethiopian mobile number — it should look like 0911 22 33 44")
+	case phone.Unsupported:
+		return apperr.Validation("this gateway only reaches Ethio Telecom numbers (09…) — Safaricom numbers cannot be messaged")
+	}
+	// Sending while switched off would queue a message the dispatcher then refuses,
+	// which reads as a broken test rather than an unfinished setup.
+	if set0, e := s.GetSettings(ctx); e == nil && !set0.Enabled {
+		return apperr.Validation("turn sending on before testing — a test is a real message")
 	}
 	set, err := s.GetSettings(ctx)
 	if err != nil {

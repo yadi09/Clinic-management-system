@@ -14,9 +14,9 @@ import (
 
 // Dating is a patient's current dating plus its result recomputed for a date.
 type Dating struct {
-	Method    pregnancy.Method  `json:"method"`
-	Result    pregnancy.Result  `json:"result"`
-	UpdatedAt *time.Time        `json:"updatedAt,omitempty"`
+	Method    pregnancy.Method `json:"method"`
+	Result    pregnancy.Result `json:"result"`
+	UpdatedAt *time.Time       `json:"updatedAt,omitempty"`
 }
 
 // RedateRec flags that a newly-saved dating crossed the ACOG redating threshold

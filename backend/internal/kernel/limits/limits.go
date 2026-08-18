@@ -166,14 +166,15 @@ func EnsurePatientRoom(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) error
 //
 // Segments, not rows: a three-part Amharic greeting is billed three times, so
 // counting messages would let a clinic spend three times its allowance and still
-// look inside it. Only 'sent' rows count — something the gateway refused cost
-// nothing and must not eat the budget.
+// look inside it. Only messages the gateway accepted count — something it refused
+// cost nothing and must not eat the budget. 'delivered' is included because it is
+// a later state of 'sent', not an alternative to it.
 func SMSUsedThisMonth(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) (int64, error) {
 	var n int64
 	err := tx.QueryRow(ctx,
 		`SELECT coalesce(sum(m.segments), 0)
 		   FROM messages m
-		  WHERE m.tenant_id = $1 AND m.status = 'sent'
+		  WHERE m.tenant_id = $1 AND m.status IN ('sent', 'delivered')
 		    AND m.sent_at >= date_trunc('month', now() AT TIME ZONE 'Africa/Addis_Ababa')`,
 		tenantID).Scan(&n)
 	return n, err

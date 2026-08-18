@@ -79,15 +79,18 @@ type Preview struct {
 
 // LogRow is one line of "what we sent, to whom, and what happened".
 type LogRow struct {
-	ID          uuid.UUID  `json:"-"`
-	Kind        string     `json:"kind"`
-	Lang        string     `json:"lang"`
-	MSISDN      string     `json:"msisdn"`
-	Body        string     `json:"body"`
-	Segments    int        `json:"segments"`
-	Cost        string     `json:"cost"`
-	Status      string     `json:"status"`
-	SkipReason  string     `json:"skip_reason,omitempty"`
+	ID         uuid.UUID `json:"-"`
+	Kind       string    `json:"kind"`
+	Lang       string    `json:"lang"`
+	MSISDN     string    `json:"msisdn"`
+	Body       string    `json:"body"`
+	Segments   int       `json:"segments"`
+	Cost       string    `json:"cost"`
+	Status     string    `json:"status"`
+	SkipReason string    `json:"skip_reason,omitempty"`
+	// DeliveredAt is set only when the handset confirmed it. "Sent" and "delivered"
+	// are different facts and the UI must not blur them.
+	DeliveredAt string     `json:"delivered_at,omitempty"`
 	LastError   string     `json:"last_error,omitempty"`
 	ScheduledAt string     `json:"scheduled_for"`
 	SentAt      string     `json:"sent_at,omitempty"`

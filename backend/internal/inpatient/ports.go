@@ -101,14 +101,14 @@ type WardOccupancy struct {
 }
 
 type Report struct {
-	TotalBeds      int             `json:"total_beds"`
-	Occupied       int             `json:"occupied"`
-	Available      int             `json:"available"`
-	ByWard         []WardOccupancy `json:"by_ward"`
-	CurrentPatients int            `json:"current_patients"`
-	AvgLOSDays     float64         `json:"avg_los_days"`
-	BedRevenue     string          `json:"bed_revenue"`
-	Overdue        []Admission     `json:"overdue"`
+	TotalBeds       int             `json:"total_beds"`
+	Occupied        int             `json:"occupied"`
+	Available       int             `json:"available"`
+	ByWard          []WardOccupancy `json:"by_ward"`
+	CurrentPatients int             `json:"current_patients"`
+	AvgLOSDays      float64         `json:"avg_los_days"`
+	BedRevenue      string          `json:"bed_revenue"`
+	Overdue         []Admission     `json:"overdue"`
 }
 
 // Service is the inpatient module API.

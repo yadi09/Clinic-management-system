@@ -16,11 +16,11 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/reicb/clinicsaas/internal/billing"
+	"github.com/reicb/clinicsaas/internal/inpatient"
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
 	"github.com/reicb/clinicsaas/internal/kernel/events"
 	"github.com/reicb/clinicsaas/internal/kernel/tenancy"
-	"github.com/reicb/clinicsaas/internal/inpatient"
 )
 
 type Service struct {
@@ -51,7 +51,7 @@ func activeBranchOf(ctx context.Context) *uuid.UUID {
 	return nil
 }
 
-func money(s string) float64 { f, _ := strconv.ParseFloat(s, 64); return f }
+func money(s string) float64    { f, _ := strconv.ParseFloat(s, 64); return f }
 func fmtMoney(f float64) string { return strconv.FormatFloat(f, 'f', 2, 64) }
 
 // billedDays is ceil(elapsed/24h) in the clinic's local time, minimum 1.

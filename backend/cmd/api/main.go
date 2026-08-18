@@ -298,7 +298,7 @@ func buildStorage(cfg config.Config, log *slog.Logger) storage.Provider {
 // was contacted when no message left the building.
 func smsGatewayFor(cfg config.Config, log *slog.Logger) sms.Gateway {
 	if cfg.SMS.Configured() {
-		return sms.NewEthiopiaGateway(cfg.SMS.APIKey, cfg.SMS.BaseURL)
+		return sms.NewEthiopiaGateway(cfg.SMS.APIKey, cfg.SMS.BaseURL, log)
 	}
 	log.Warn("SMS not configured — patient messages will be logged, not sent")
 	return sms.NewLogGateway(log)

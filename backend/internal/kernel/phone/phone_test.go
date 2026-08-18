@@ -14,7 +14,10 @@ func TestMSISDN(t *testing.T) {
 		{"+251911223344", "251911223344", OK},
 		{"251911223344", "251911223344", OK},
 		{"911223344", "251911223344", OK},
-		{"0712345678", "251712345678", OK}, // Safaricom Ethiopia
+		// Safaricom Ethiopia: a real mobile, but this gateway is Ethio-Telecom-direct
+		// and requires a 2519 prefix, so it is refused locally rather than at cost.
+		{"0712345678", "", Unsupported},
+		{"+251712345678", "", Unsupported},
 		{"", "", Missing},
 		{"   ", "", Missing},
 		{"0565565", "", Invalid},     // truncated

@@ -28,28 +28,28 @@ import (
 // structural constants for the demo; the per-disease dataElement IDs and counts
 // live in the database (editable). See the integration spec.
 const (
-	DataSet            = "JXiOYKPIaQ1" // Disease Registration, Monthly
-	OrgUnit            = "B4BMy0ufdrd" // Harer Medium Clinic
-	Period             = "202506"      // Gregorian YYYYMM (UI shows "Sene 2018")
+	DataSet           = "JXiOYKPIaQ1" // Disease Registration, Monthly
+	OrgUnit           = "B4BMy0ufdrd" // Harer Medium Clinic
+	Period            = "202506"      // Gregorian YYYYMM (UI shows "Sene 2018")
 	attrCategoryCombo = "OjWAOYgrrP2" // dataset's attribute category combo (Department × Outcome)
 )
 
 // Context labels shown in the UI header (purely cosmetic).
 const (
-	OrgUnitName    = "Harer Medium Clinic"
-	DataSetName    = "Disease Registration (Monthly)"
-	PeriodLabel    = "Sene 2018"
-	Department     = "OPD1"
-	Outcome        = "Morbidity"
+	OrgUnitName = "Harer Medium Clinic"
+	DataSetName = "Disease Registration (Monthly)"
+	PeriodLabel = "Sene 2018"
+	Department  = "OPD1"
+	Outcome     = "Morbidity"
 )
 
 // CocByKey maps a seeded count key ({M|F}_{ageband}) to its DHIS2
 // categoryOptionCombo (age × sex cell). Age bands: 1(<1), 1_4, 5_14, 15_29,
 // 30_64, 65(≥65).
 var CocByKey = map[string]string{
-	"M_1":     "OfFSKnXhaBU", "M_1_4": "ZDTa17hJpOB", "M_5_14": "UWUZ8Tr6h0m",
+	"M_1": "OfFSKnXhaBU", "M_1_4": "ZDTa17hJpOB", "M_5_14": "UWUZ8Tr6h0m",
 	"M_15_29": "CYNJysr5r93", "M_30_64": "WrECL06zVeA", "M_65": "aQNfi3OSCJB",
-	"F_1":     "c320cNK3wFH", "F_1_4": "X8QpQ0AUa9g", "F_5_14": "BwqbjDm3hhY",
+	"F_1": "c320cNK3wFH", "F_1_4": "X8QpQ0AUa9g", "F_5_14": "BwqbjDm3hhY",
 	"F_15_29": "sOvBOGZBqa1", "F_30_64": "rUK6L6E2Toz", "F_65": "TnOFX5D5Qjo",
 }
 
@@ -74,8 +74,8 @@ type Client struct {
 	baseURL string
 	http    *http.Client
 
-	mu       sync.Mutex
-	attrOpt  string // resolved attributeOptionCombo ("OPD1, Morbidity"), cached
+	mu      sync.Mutex
+	attrOpt string // resolved attributeOptionCombo ("OPD1, Morbidity"), cached
 }
 
 // New builds a client. An empty token disables it (Configured()==false).

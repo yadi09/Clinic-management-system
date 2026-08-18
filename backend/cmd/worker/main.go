@@ -53,9 +53,13 @@ func main() {
 			log.Error("privileged database connect failed — patient messages will not be sent", "err", perr)
 		} else {
 			defer privDB.Close()
-			d := dispatch.New(privDB, gatewayFor(cfg, log), log)
-			go d.Run(ctx, 10*time.Second)
-			log.Info("worker started: message dispatcher polling")
+			gw := gatewayFor(cfg, log)
+			go dispatch.New(privDB, gw, log).Run(ctx, 10*time.Second)
+			// Delivery confirmation is a separate loop on a slower beat: it is
+			// background work competing with sending for the account's shared rate
+			// limit, and sending is what the patient is waiting for.
+			go dispatch.NewReconciler(privDB, gw, log).Run(ctx, 30*time.Second)
+			log.Info("worker started: message dispatcher + delivery reconciler polling")
 		}
 	} else {
 		log.Warn("PLATFORM_DATABASE_URL unset — patient messages will not be sent")
@@ -73,7 +77,7 @@ func main() {
 func gatewayFor(cfg config.Config, log *slog.Logger) sms.Gateway {
 	if cfg.SMS.Configured() {
 		log.Info("sms gateway configured", "gateway", "smsethiopia")
-		return sms.NewEthiopiaGateway(cfg.SMS.APIKey, cfg.SMS.BaseURL)
+		return sms.NewEthiopiaGateway(cfg.SMS.APIKey, cfg.SMS.BaseURL, log)
 	}
 	log.Warn("SMS_API_KEY unset — queued messages will be skipped as not configured")
 	return sms.NewLogGateway(log)

@@ -374,7 +374,10 @@ function SegmentCounter({ preview, cost }: { preview?: { segments: number; unico
 // --- Log -----------------------------------------------------------------------
 
 const STATUS: Record<string, { label: string; variant: "success" | "warning" | "destructive" | "outline" }> = {
-  sent: { label: "Sent", variant: "success" },
+  // Two words on purpose. "Sent" is all the gateway promises on acceptance;
+  // "Delivered" is a handset confirming, which arrives later or not at all.
+  delivered: { label: "Delivered", variant: "success" },
+  sent: { label: "Sent", variant: "warning" },
   scheduled: { label: "Queued", variant: "warning" },
   sending: { label: "Sending", variant: "warning" },
   failed: { label: "Failed", variant: "destructive" },
@@ -386,6 +389,7 @@ const STATUS: Record<string, { label: string; variant: "success" | "warning" | "
 // the enum the database stores.
 const SKIP_REASON: Record<string, string> = {
   not_configured: "no SMS account is connected",
+  unsupported_network: "this gateway only reaches Ethio Telecom numbers (09…)",
   sending_off: "sending was switched off",
   quota: "the monthly allowance was used up",
   no_phone: "no phone number on file",
@@ -414,7 +418,8 @@ function LogTab() {
           <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All messages</SelectItem>
-            <SelectItem value="sent">Sent</SelectItem>
+            <SelectItem value="delivered">Delivered</SelectItem>
+            <SelectItem value="sent">Sent, not yet confirmed</SelectItem>
             <SelectItem value="scheduled">Queued</SelectItem>
             <SelectItem value="failed">Failed</SelectItem>
             <SelectItem value="skipped">Not sent</SelectItem>
@@ -441,7 +446,7 @@ function LogTab() {
 
 function LogRow({ row }: { row: MessageRow }) {
   const meta = STATUS[row.status] ?? { label: row.status, variant: "outline" as const };
-  const when = row.sent_at ?? row.scheduled_for ?? row.created_at;
+  const when = row.delivered_at ?? row.sent_at ?? row.scheduled_for ?? row.created_at;
   return (
     <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5 px-4 py-3 text-sm hover:bg-muted/30">
       <Badge variant={meta.variant}>{meta.label}</Badge>
@@ -465,6 +470,11 @@ function LogRow({ row }: { row: MessageRow }) {
         )}
         {row.status === "failed" && row.last_error && (
           <p className="mt-0.5 text-xs text-destructive">Failed — {row.last_error}</p>
+        )}
+        {row.status === "sent" && (
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            The network accepted it. Waiting for the handset to confirm.
+          </p>
         )}
         {row.status === "scheduled" && (
           <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">

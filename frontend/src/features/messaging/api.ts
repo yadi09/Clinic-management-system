@@ -33,7 +33,13 @@ export interface MessagePreview {
   cost: string;
 }
 
-export type MessageStatus = "scheduled" | "sending" | "sent" | "failed" | "skipped" | "cancelled";
+/**
+ * "sent" means the network accepted it; "delivered" means a handset confirmed it.
+ * Two different facts, and the gap between them is exactly what a patient means by
+ * "I never got it", so they are never merged.
+ */
+export type MessageStatus =
+  | "scheduled" | "sending" | "sent" | "delivered" | "failed" | "skipped" | "cancelled";
 
 export interface MessageRow {
   id: string;
@@ -48,6 +54,7 @@ export interface MessageRow {
   last_error?: string;
   scheduled_for: string;
   sent_at?: string;
+  delivered_at?: string;
   created_at: string;
   patient_id?: string;
   patient_name?: string;

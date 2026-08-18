@@ -183,7 +183,10 @@ func TestValidateRow(t *testing.T) {
 	}
 
 	// Missing / invalid values must be reported, not guessed at.
-	for _, tc := range []struct{ row patient.ImportRow; want string }{
+	for _, tc := range []struct {
+		row  patient.ImportRow
+		want string
+	}{
 		{patient.ImportRow{Name: "", Age: "30"}, "Missing patient name"},
 		{patient.ImportRow{Name: "A B", Age: "30", Phone: "ABC123"}, "Invalid phone number format"},
 		{patient.ImportRow{Name: "A B", Age: "30", Gender: "banana"}, `Invalid gender value "banana"`},
