@@ -80,7 +80,9 @@ func TestErrorClassification(t *testing.T) {
 			"10005", true, "out of credit"},
 		{"bad msisdn", 400, `{"error_message":"invalid. Error Code :: 10000"}`, "10000", true, "rejected the phone number"},
 		{"campaign inactive", 400, `{"error_message":"nope. Error Code :: 10002"}`, "10002", true, "not active"},
-		{"sender unapproved", 400, `{"error_message":"nope. Error Code :: 10006"}`, "10006", true, "not approved"},
+		// Worded as the wait it is: approval is a 1–2 day human process at Ethio
+		// Telecom, so a clinic's first day must not read as a broken integration.
+		{"sender unapproved", 400, `{"error_message":"nope. Error Code :: 10006"}`, "10006", true, "waiting for Ethio Telecom approval"},
 		{"not whitelisted", 400, `{"error_message":"nope. Error Code :: 10007"}`, "10007", true, "allowed list"},
 		{"unknown code kept as prose", 400, `{"error_message":"Something odd. Error Code :: 19999"}`, "19999", true, "Something odd"},
 		{"missing fields", 400, `{"msisdn":"msisdn is mandatory"}`, "", true, "mandatory"},
