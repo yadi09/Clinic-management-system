@@ -25,7 +25,7 @@
     --secondary-foreground: 209 59% 29%;
 
     --muted: 210 30% 94%;
-    --muted-foreground: 220 9% 46%; /* #6B7280 */
+    --muted-foreground: 220 9% 42%; /* #616875 — 4.5:1+ even on bg-muted; was 46% which fell to ~4.2:1 there */
 
     --accent: 206 50% 92%;
     --accent-foreground: 215 28% 17%;
@@ -87,5 +87,32 @@
   /* Tabular, lining numerals in data contexts. */
   .tabular-nums {
     font-variant-numeric: tabular-nums;
+  }
+}
+
+/* --- Mobile foundations ------------------------------------------------------
+
+   The app was desktop-first; these are the pieces a phone needs that no Tailwind
+   class provides. Kept deliberately small: structural mobile behavior lives in the
+   components, not in global overrides. */
+@layer utilities {
+  /* Safe areas (notches, home indicators). viewport-fit=cover in index.html makes
+     env() report real values; elsewhere these resolve to 0 and cost nothing. */
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+  .pt-safe { padding-top: env(safe-area-inset-top); }
+  .h-safe-bottom { height: env(safe-area-inset-bottom); }
+
+  /* Invisible touch-target expansion. WCAG wants 44px; many of our icon buttons
+     are visually 28-32px and must stay that size on desktop-dense rows. The
+     pseudo-element enlarges the hit area without moving a single pixel of layout —
+     clicks on ::after land on the element itself. */
+  .touch-hit { position: relative; }
+  .touch-hit::after { content: ""; position: absolute; inset: -8px; }
+}
+
+@layer base {
+  /* Tap highlight looks broken next to our own pressed states. */
+  @media (max-width: 767px) {
+    html { -webkit-tap-highlight-color: transparent; }
   }
 }

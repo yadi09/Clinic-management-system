@@ -7,6 +7,7 @@ import { navSections } from "@/app/nav";
 import { inboxCount } from "@/features/lab/api";
 import { PageHelp } from "@/features/help/PageHelp";
 import { CommandPalette } from "@/app/command-palette";
+import { MobileNav } from "@/app/layouts/MobileNav";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -76,7 +77,7 @@ export function AppShell() {
     <div className="min-h-screen bg-background">
       {/* Top bar (brand-blue, full width) */}
       <header className="sticky top-0 z-40 flex h-16 items-stretch bg-brand text-brand-foreground">
-        <div className="flex w-60 items-center gap-2 px-5">
+        <div className="flex items-center gap-2 px-4 md:w-60 md:px-5">
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15">
             <Activity className="h-5 w-5" />
           </span>
@@ -124,6 +125,15 @@ export function AppShell() {
             <span>Search…</span>
             <kbd className="ml-auto rounded bg-white/15 px-1.5 py-0.5 text-[10px] font-semibold">⌘K</kbd>
           </button>
+          {/* The same palette, reachable by thumb. Without this, phones had no
+              search anywhere — the box above is hidden below sm. */}
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent("open-command"))}
+            aria-label="Search"
+            className="rounded-md p-2 touch-hit hover:bg-white/10 sm:hidden"
+          >
+            <Search className="h-5 w-5" />
+          </button>
           <PageHelp />
           <button className="relative rounded-md p-2 hover:bg-white/10" aria-label="Notifications">
             <Bell className="h-5 w-5" />
@@ -143,6 +153,28 @@ export function AppShell() {
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              {/* On phones the header switcher is hidden, so this menu is the one
+                  place a multi-branch user can still change branch. */}
+              {showSwitcher && (
+                <div className="md:hidden">
+                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                    Branch · {branchLabel}
+                  </DropdownMenuLabel>
+                  {branches.map((b) => (
+                    <DropdownMenuItem key={b.id} onSelect={() => void doSwitch(b.id)}>
+                      <span className="flex-1 truncate">{b.name}</span>
+                      {activeBranch?.id === b.id && <Check className="h-4 w-4" />}
+                    </DropdownMenuItem>
+                  ))}
+                  {allBranches && (
+                    <DropdownMenuItem onSelect={() => void doSwitch("all")}>
+                      <span className="flex-1">All branches</span>
+                      {!activeBranch && <Check className="h-4 w-4" />}
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
+                </div>
+              )}
               <DropdownMenuItem onSelect={() => navigate("/settings")}>Settings</DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => void signOut()}>
@@ -193,11 +225,12 @@ export function AppShell() {
           <p className="px-3 text-xs text-brand-foreground/40">v3 · Tenant</p>
         </aside>
 
-        <main className="min-w-0 flex-1 p-6 lg:p-8">
+        <main className="min-w-0 flex-1 p-4 pb-24 sm:p-6 md:pb-6 lg:p-8">
           <Outlet />
         </main>
       </div>
 
+      <MobileNav sections={sections} />
       <CommandPalette />
     </div>
   );

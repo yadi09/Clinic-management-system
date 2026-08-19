@@ -23,22 +23,57 @@ const DialogOverlay = React.forwardRef<
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
+interface DialogContentProps extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> {
+  /**
+   * On a phone this dialog is a focused task rather than a quick decision, so it
+   * takes the whole screen instead of a bottom sheet. Use for multi-section forms
+   * (a treatment plan, a certificate); leave off for confirmations and short forms.
+   */
+  fullOnMobile?: boolean;
+}
+
+/**
+ * One dialog, two shapes.
+ *
+ * Below `sm` every dialog renders as a bottom sheet: full width, anchored to the
+ * bottom where the thumb already is, sliding up, capped at 85dvh so the page
+ * behind stays visible as context. A centered floating box on a phone is a
+ * desktop convention that leaves the primary buttons in the hardest place to
+ * reach and fights the keyboard for the middle of the screen.
+ *
+ * This is done here, once, because 30 call sites use DialogContent — restyling the
+ * primitive converts every confirmation, form and picker in the app in one move,
+ * and new dialogs inherit the behavior without anyone remembering to ask for it.
+ * Desktop is untouched: the centered modal at `sm:` and up is exactly what it was.
+ */
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+  DialogContentProps
+>(({ className, children, fullOnMobile, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 overflow-y-auto rounded-[14px] border bg-card p-6 shadow-modal duration-150 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:w-full",
+        // shared
+        "fixed z-50 grid w-full max-w-lg gap-4 overflow-y-auto border bg-card shadow-modal duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        // phone: a bottom sheet
+        "inset-x-0 bottom-0 mx-auto border-b-0 border-x-0 p-4 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] data-[state=open]:slide-in-from-bottom-8 data-[state=closed]:slide-out-to-bottom-8",
+        fullOnMobile
+          ? "h-[100dvh] max-h-[100dvh] rounded-none"
+          : "max-h-[85dvh] rounded-t-[14px]",
+        // desktop: the centered modal, unchanged
+        "sm:inset-x-auto sm:bottom-auto sm:left-[50%] sm:top-[50%] sm:h-auto sm:max-h-[90dvh] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-[14px] sm:border sm:p-6 sm:data-[state=open]:slide-in-from-bottom-0 sm:data-[state=closed]:slide-out-to-bottom-0 sm:data-[state=open]:zoom-in-95 sm:data-[state=closed]:zoom-out-95",
         className,
       )}
       {...props}
     >
+      {/* The sheet's grab-handle cue. Visual only — dismissal is the overlay, the
+          X, or the back gesture; a fake affordance that did nothing would be worse,
+          so the sheet also closes on downward overlay taps like any dialog. */}
+      {!fullOnMobile && <div aria-hidden className="mx-auto -mb-1 h-1 w-9 rounded-full bg-border sm:hidden" />}
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring">
+      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm p-1 opacity-70 transition-opacity touch-hit hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring">
         <X className="h-4 w-4" />
         <span className="sr-only">Close</span>
       </DialogPrimitive.Close>

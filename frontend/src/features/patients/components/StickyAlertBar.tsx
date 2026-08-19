@@ -60,7 +60,7 @@ export function StickyAlertBar({ alerts, show, patientName }: {
       role="status"
       aria-live="polite"
       className={cn(
-        "sticky top-0 z-30 -mx-2 mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-b-lg border-b px-4 py-2 shadow-sm backdrop-blur",
+        "sticky top-16 z-30 -mx-2 mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-b-lg border-b px-4 py-2 shadow-sm backdrop-blur",
         danger ? "border-rose-300 bg-rose-50/95 text-rose-900" : "border-amber-300 bg-amber-50/95 text-amber-900",
       )}
     >

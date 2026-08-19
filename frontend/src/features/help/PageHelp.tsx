@@ -18,9 +18,9 @@ export function PageHelp() {
       <button
         onClick={() => setOpen(true)}
         title="How this page works"
-        className="flex items-center gap-1.5 rounded-md border border-white/20 px-2.5 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10 hover:text-white"
+        className="flex items-center gap-1.5 rounded-md border border-white/20 px-2.5 py-1.5 text-xs font-medium text-white/80 touch-hit hover:bg-white/10 hover:text-white" aria-label="How this page works"
       >
-        <HelpCircle className="h-4 w-4" /> How this works
+        <HelpCircle className="h-4 w-4" /> <span className="hidden md:inline">How this works</span>
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>

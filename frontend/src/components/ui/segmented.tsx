@@ -58,7 +58,10 @@ export function Segmented<T extends string>({
       role="tablist"
       aria-label={ariaLabel}
       onKeyDown={onKeyDown}
-      className={cn("inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5", className)}
+      // max-w-full + overflow-x-auto: at phone widths a long tab set scrolls in place
+      // instead of wrapping each label into a 3-line slab — measured on five screens
+      // (finance, chairside, unbilled, messages, cashier) from this one file.
+      className={cn("flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg bg-muted p-0.5 sm:inline-flex sm:overflow-visible", className)}
     >
       {options.map((o) => {
         const on = o.value === value;
@@ -72,8 +75,8 @@ export function Segmented<T extends string>({
             tabIndex={on ? 0 : -1}
             onClick={() => onChange(o.value)}
             className={cn(
-              "rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40",
-              size === "sm" ? "px-2.5 py-1 text-xs" : "px-3 py-1.5 text-sm",
+              "shrink-0 whitespace-nowrap rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40",
+              size === "sm" ? "px-2.5 py-1.5 text-xs sm:py-1" : "px-3 py-2 text-sm sm:py-1.5",
               on ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
             )}
           >
