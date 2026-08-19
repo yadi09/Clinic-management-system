@@ -36,7 +36,7 @@ import { getPatient } from "@/features/patients/api";
 import { getClinic, listBranches } from "@/features/admin/api";
 import { TOOTH_QUADRANTS } from "@/features/dental/ToothChart";
 import { printExamination } from "@/features/dental/printExam";
-import { ANAESTHESIA, EXAM_GROUPS, examHeadline, isBlankExam, toggleOption, type ExamGroup } from "@/features/dental/examination";
+import { ANAESTHESIA, EXAM_GROUPS, examHeadline, isAbnormal, isBlankExam, toggleOption, type ExamGroup } from "@/features/dental/examination";
 import {
   createExam, deleteExam, listExams, updateExam,
   type Exam, type ExamBody, type ExamProcedure,
@@ -187,65 +187,101 @@ function ExamRow({ patientId, exam, editable, onEdit, onChanged }: {
       >
         {open ? <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
               : <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />}
+        {/* The headline stands in for content that is hidden. Once the record is
+            open the diagnosis leads it two lines below, and the treatment chips
+            appear under "What we did" — so keeping them here as well printed the
+            same two things twice, one above the other. Open, this row is reduced
+            to what identifies the visit: when it was, and who saw the patient. */}
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <span className="font-medium">{examHeadline(exam)}</span>
-            <span className="text-xs text-muted-foreground">{dualDate(exam.visit_date)}</span>
-          </div>
-          {exam.treatment_given.length > 0 && (
-            <div className="mt-1 flex flex-wrap gap-1">
-              {exam.treatment_given.map((t) => (
-                <span key={t} className="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-secondary-foreground">{t}</span>
-              ))}
+          {open ? (
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
+              <span className="font-medium">{dualDate(exam.visit_date)}</span>
+              {exam.recorded_by && (
+                <span className="text-xs text-muted-foreground">· examined by {exam.recorded_by}</span>
+              )}
             </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <span className="font-medium">{examHeadline(exam)}</span>
+                <span className="text-xs text-muted-foreground">{dualDate(exam.visit_date)}</span>
+              </div>
+              {exam.treatment_given.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {exam.treatment_given.map((t) => (
+                    <span key={t} className="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-secondary-foreground">{t}</span>
+                  ))}
+                </div>
+              )}
+              {exam.recorded_by && <p className="mt-1 text-xs text-muted-foreground">Examined by {exam.recorded_by}</p>}
+            </>
           )}
-          {exam.recorded_by && <p className="mt-1 text-xs text-muted-foreground">Examined by {exam.recorded_by}</p>}
         </div>
       </button>
 
       {open && (
-        <div className="space-y-4 border-t px-4 py-3">
-          <ReadBlock title="Presenting complaint" text={[exam.chief_complaint, exam.hpi].filter(Boolean).join("\n")} />
-          <ReadBlock title="Past dental history" text={exam.past_dental_history} />
-          <ReadFindings title="Extraoral examination" items={exam.extraoral} notes={exam.extraoral_notes} />
-          <ReadFindings title="Intraoral examination" items={exam.intraoral} notes={exam.intraoral_notes} />
-          <ReadFindings title="Investigations" items={exam.investigations} notes={exam.investigation_results} />
-          <ReadBlock title="Diagnosis" text={exam.diagnosis} emphasis />
-          <ReadBlock title="Treatment plan" text={exam.treatment_plan} />
-          <ReadFindings
-            title="Treatment given this visit"
-            items={exam.treatment_given}
-            notes={[exam.anaesthesia && exam.anaesthesia !== "None" ? `Anaesthesia: ${exam.anaesthesia}` : "",
-                    exam.complications ? `Complications: ${exam.complications}` : ""].filter(Boolean).join("\n")}
-          />
-          {exam.procedures.length > 0 && (
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Per-tooth work</p>
-              <div className="mt-1 overflow-x-auto">
-                <table className="w-full min-w-[420px] text-sm">
-                  <thead>
-                    <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                      <th className="pb-1 pr-3 font-medium">Tooth</th>
-                      <th className="pb-1 pr-3 font-medium">Procedure / material</th>
-                      <th className="pb-1 font-medium">Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {exam.procedures.map((p, i) => (
-                      <tr key={i} className="border-t">
-                        <td className="whitespace-nowrap py-1.5 pr-3 font-medium">{p.tooth}</td>
-                        <td className="py-1.5 pr-3">{p.procedure}</td>
-                        <td className="py-1.5 text-muted-foreground">{p.notes}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+        <div className="border-t">
+          {/* The conclusion, first and largest.
+              A clinician opening an old examination is almost always answering one
+              of two questions — what did we decide, and what did we do — and the
+              diagnosis was previously the sixth of eleven identically-weighted
+              blocks. It is the one thing on this record that the eye should land
+              on without searching. */}
+          {filled(exam.diagnosis) && (
+            <div className="border-b border-brand/20 bg-brand/[0.06] px-4 py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-brand">Diagnosis</p>
+              <p className="mt-0.5 whitespace-pre-wrap text-base font-semibold leading-snug">{exam.diagnosis}</p>
             </div>
           )}
-          <ReadBlock title="Post-operative instructions" text={exam.postop} />
 
-          <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+          {/* The rest follows the shape of the encounter itself — why they came,
+              what was found, what was done, what happens next. Four groups a
+              clinician already thinks in, instead of eleven flat headings that
+              have to be read in order to be navigated. */}
+          <div className="space-y-5 px-4 py-4">
+            <ReadGroup title="Why they came" hide={!filled(exam.chief_complaint, exam.hpi, exam.past_dental_history)}>
+              <ReadField label="Complaint" text={exam.chief_complaint} strong />
+              <ReadField label="History" text={exam.hpi} />
+              <ReadField label="Past dental history" text={exam.past_dental_history} />
+            </ReadGroup>
+
+            <ReadGroup title="What we found"
+              hide={!filled(exam.extraoral_notes, exam.intraoral_notes, exam.investigation_results)
+                && exam.extraoral.length + exam.intraoral.length + exam.investigations.length === 0}>
+              <ReadFindings label="Extraoral" items={exam.extraoral} notes={exam.extraoral_notes} tone="finding" />
+              <ReadFindings label="Intraoral" items={exam.intraoral} notes={exam.intraoral_notes} tone="finding" />
+              <ReadFindings label="Investigations" items={exam.investigations} notes={exam.investigation_results} tone="test" />
+            </ReadGroup>
+
+            <ReadGroup title="What we did"
+              hide={exam.treatment_given.length === 0 && exam.procedures.length === 0
+                && !filled(exam.complications) && !anaesthesiaGiven(exam.anaesthesia)}>
+              <ReadFindings label="Treatment" items={exam.treatment_given} tone="done" />
+              {anaesthesiaGiven(exam.anaesthesia) && <ReadField label="Anaesthesia" text={exam.anaesthesia} />}
+              {exam.procedures.length > 0 && (
+                <div className="grid gap-1 sm:grid-cols-[9.5rem_1fr] sm:gap-3">
+                  <p className="pt-1.5 text-xs text-muted-foreground">Per tooth</p>
+                  <ReadToothWork rows={exam.procedures} />
+                </div>
+              )}
+              {/* An adverse event is not a footnote in a notes blob. */}
+              {filled(exam.complications) && (
+                <div className="grid gap-1 sm:grid-cols-[9.5rem_1fr] sm:gap-3">
+                  <p className="pt-0.5 text-xs text-muted-foreground">Complications</p>
+                  <p className="whitespace-pre-wrap rounded-md border-l-2 border-amber-400 bg-amber-50 px-3 py-1.5 text-sm text-amber-900">
+                    {exam.complications}
+                  </p>
+                </div>
+              )}
+            </ReadGroup>
+
+            <ReadGroup title="What happens next" hide={!filled(exam.treatment_plan, exam.postop)}>
+              <ReadField label="Treatment plan" text={exam.treatment_plan} strong />
+              <ReadField label="Given to the patient" text={exam.postop} />
+            </ReadGroup>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 border-t px-4 py-3">
             <Button size="sm" variant="outline" onClick={print}><Printer className="h-3.5 w-3.5" /> Print</Button>
             {editable && <Button size="sm" variant="outline" onClick={onEdit}><Pencil className="h-3.5 w-3.5" /> Edit</Button>}
             {editable && (confirming ? (
@@ -266,27 +302,115 @@ function ExamRow({ patientId, exam, editable, onEdit, onChanged }: {
   );
 }
 
-function ReadBlock({ title, text, emphasis }: { title: string; text?: string; emphasis?: boolean }) {
-  if (!(text || "").trim()) return null;
+/** Any of these strings carrying content. */
+function filled(...vals: (string | undefined)[]) {
+  return vals.some((v) => (v || "").trim() !== "");
+}
+
+/** "None" is the default, and recording that nothing was given is not a fact. */
+function anaesthesiaGiven(v?: string) {
+  return !!v && v.trim() !== "" && v !== "None";
+}
+
+/**
+ * One stage of the encounter.
+ *
+ * The heading is set off by a rule rather than being another line of small grey
+ * capitals, because its job is to break the record into parts a reader can jump
+ * between — which the old layout, eleven identical labels deep, could not do.
+ */
+function ReadGroup({ title, hide, children }: { title: string; hide?: boolean; children: React.ReactNode }) {
+  if (hide) return null;
   return (
-    <div>
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
-      <p className={cn("mt-0.5 whitespace-pre-wrap text-sm", emphasis && "font-medium")}>{text}</p>
+    <section>
+      <h4 className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {title}
+        <span className="h-px flex-1 bg-border" />
+      </h4>
+      <div className="space-y-2">{children}</div>
+    </section>
+  );
+}
+
+/**
+ * A labelled value.
+ *
+ * Labels sit in a fixed left column from the small breakpoint up, so the values
+ * line up on one edge and the eye runs straight down them. Stacked headings meant
+ * re-finding the start of every value.
+ */
+function ReadField({ label, text, strong }: { label: string; text?: string; strong?: boolean }) {
+  if (!filled(text)) return null;
+  return (
+    <div className="grid gap-0.5 sm:grid-cols-[9.5rem_1fr] sm:gap-3">
+      <p className="pt-0.5 text-xs text-muted-foreground">{label}</p>
+      <p className={cn("whitespace-pre-wrap text-sm leading-relaxed", strong && "font-medium")}>{text}</p>
     </div>
   );
 }
 
-function ReadFindings({ title, items, notes }: { title: string; items: string[]; notes?: string }) {
-  if (items.length === 0 && !(notes || "").trim()) return null;
+/**
+ * A row of selected options, coloured by what the selection actually means.
+ *
+ * Previously four different things wore one grey chip: findings that something is
+ * wrong with the patient, tests that were performed, and treatments that were
+ * carried out. "Caries present" looked exactly like "Bitewing X-ray". Colour here
+ * is carrying the category, not decorating it — and within a findings row the
+ * reassuring options stay quiet, because rendering "Within normal limits" as an
+ * alert would say the opposite of what it means.
+ */
+function ReadFindings({ label, items, notes, tone }: {
+  label: string;
+  items: string[];
+  notes?: string;
+  tone: "finding" | "test" | "done";
+}) {
+  if (items.length === 0 && !filled(notes)) return null;
   return (
-    <div>
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
-      {items.length > 0 && (
-        <div className="mt-1 flex flex-wrap gap-1">
-          {items.map((i) => <span key={i} className="rounded-full border px-2 py-0.5 text-xs">{i}</span>)}
+    <div className="grid gap-1 sm:grid-cols-[9.5rem_1fr] sm:gap-3">
+      <p className="pt-0.5 text-xs text-muted-foreground">{label}</p>
+      <div className="min-w-0 space-y-1.5">
+        {items.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {items.map((i) => <ReadChip key={i} label={i} tone={tone} />)}
+          </div>
+        )}
+        {filled(notes) && <p className="whitespace-pre-wrap text-sm leading-relaxed">{notes}</p>}
+      </div>
+    </div>
+  );
+}
+
+function ReadChip({ label, tone }: { label: string; tone: "finding" | "test" | "done" }) {
+  const style =
+    tone === "done" ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+      : tone === "test" ? "border-slate-200 bg-slate-50 text-slate-600"
+        : isAbnormal(label) ? "border-amber-300 bg-amber-50 text-amber-900 font-medium"
+          : "border-emerald-200 bg-white text-emerald-700";
+  return (
+    <span className={cn("rounded-full border px-2 py-0.5 text-xs", style)}>{label}</span>
+  );
+}
+
+/**
+ * The teeth that were worked on.
+ *
+ * The tooth is the key a dentist looks for, so it leads in a fixed-width mono
+ * badge — scanning a column of aligned codes is a different task from reading a
+ * table, and it is the one actually being performed here.
+ */
+function ReadToothWork({ rows }: { rows: ExamProcedure[] }) {
+  return (
+    <div className="divide-y overflow-hidden rounded-md border">
+      {rows.map((p, i) => (
+        <div key={i} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-2.5 py-2 text-sm">
+          <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs font-semibold">
+            {p.tooth || "—"}
+          </span>
+          <span className="min-w-0 flex-1">{p.procedure}</span>
+          {filled(p.notes) && <span className="w-full text-xs text-muted-foreground sm:w-auto">{p.notes}</span>}
         </div>
-      )}
-      {(notes || "").trim() && <p className="mt-1 whitespace-pre-wrap text-sm">{notes}</p>}
+      ))}
     </div>
   );
 }

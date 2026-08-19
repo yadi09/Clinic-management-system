@@ -95,6 +95,27 @@ export function toggleOption(group: ExamGroup, selected: string[], option: strin
 }
 
 /**
+ * The findings that mean "nothing wrong here".
+ *
+ * Every other option in the extraoral and intraoral lists is a positive finding —
+ * something the clinician saw that should not be there. The saved record colours
+ * those to stand out, which only works if the reassuring ones are told apart:
+ * "Within normal limits" rendered as an alert would be exactly backwards.
+ *
+ * Kept beside the option lists so a clinic adding "Gingiva healthy" later declares
+ * it in the same place it declares the wording.
+ */
+export const REASSURING_FINDINGS = new Set([
+  "Within normal limits",
+  "Lip competence normal",
+]);
+
+/** True when a finding is something the clinician found wrong. */
+export function isAbnormal(option: string): boolean {
+  return !REASSURING_FINDINGS.has(option);
+}
+
+/**
  * The one-line summary shown on a collapsed examination row. Diagnosis is what a
  * clinician scans a history for, so it leads; the complaint is the fallback.
  */
