@@ -57,7 +57,7 @@ export function RecordShelf({ patientId, panels }: { patientId: string; panels: 
       <div className="flex flex-col lg:flex-row">
         <nav
           aria-label="Patient record"
-          className="flex shrink-0 gap-1 overflow-x-auto border-b p-2 lg:w-56 lg:flex-col lg:overflow-visible lg:border-b-0 lg:border-r"
+          className="scrollbar-none flex shrink-0 gap-1 overflow-x-auto border-b p-2 lg:w-56 lg:flex-col lg:overflow-visible lg:border-b-0 lg:border-r"
         >
           {panels.map((p) => {
             const on = p.key === current.key;

@@ -58,12 +58,12 @@ const DialogContent = React.forwardRef<
         // shared
         "fixed z-50 grid w-full max-w-lg gap-4 overflow-y-auto border bg-card shadow-modal duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         // phone: a bottom sheet
-        "inset-x-0 bottom-0 mx-auto border-b-0 border-x-0 p-4 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] data-[state=open]:slide-in-from-bottom-8 data-[state=closed]:slide-out-to-bottom-8",
+        "inset-x-0 bottom-0 mx-auto p-6 max-sm:border-x-0 max-sm:border-b-0 max-sm:pt-3 max-sm:pb-[max(1.25rem,env(safe-area-inset-bottom))] data-[state=open]:slide-in-from-bottom-8 data-[state=closed]:slide-out-to-bottom-8",
         fullOnMobile
           ? "h-[100dvh] max-h-[100dvh] rounded-none"
           : "max-h-[85dvh] rounded-t-[14px]",
         // desktop: the centered modal, unchanged
-        "sm:inset-x-auto sm:bottom-auto sm:left-[50%] sm:top-[50%] sm:h-auto sm:max-h-[90dvh] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-[14px] sm:border sm:p-6 sm:data-[state=open]:slide-in-from-bottom-0 sm:data-[state=closed]:slide-out-to-bottom-0 sm:data-[state=open]:zoom-in-95 sm:data-[state=closed]:zoom-out-95",
+        "sm:inset-x-auto sm:bottom-auto sm:left-[50%] sm:top-[50%] sm:h-auto sm:max-h-[90dvh] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-[14px] sm:data-[state=open]:slide-in-from-bottom-0 sm:data-[state=closed]:slide-out-to-bottom-0 sm:data-[state=open]:zoom-in-95 sm:data-[state=closed]:zoom-out-95",
         className,
       )}
       {...props}
@@ -86,7 +86,9 @@ const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivEleme
   <div className={cn("flex flex-col space-y-1.5 text-left", className)} {...props} />
 );
 const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className)} {...props} />
+  // Sticky inside the phone sheet: a sheet taller than the viewport otherwise
+  // leaves its primary button below the scroll fold, half-cut at the screen edge.
+  <div className={cn("flex flex-col-reverse gap-2 max-sm:sticky max-sm:bottom-[calc(-1*max(1.25rem,env(safe-area-inset-bottom)))] max-sm:-mx-6 max-sm:-mb-[max(1.25rem,env(safe-area-inset-bottom))] max-sm:border-t max-sm:bg-card max-sm:px-6 max-sm:py-3 max-sm:pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row sm:justify-end", className)} {...props} />
 );
 
 const DialogTitle = React.forwardRef<

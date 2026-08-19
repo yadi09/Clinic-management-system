@@ -873,10 +873,13 @@ function DiagnosisCatalogCard({ manage }: { manage: boolean }) {
               <span key={c.id} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${c.is_active ? "" : "opacity-50"}`}>
                 {c.name}
                 {manage && (
-                  <>
+                  // Phones widen the gap between the two micro-icons so their
+                  // coarse-pointer hit halos stop overlapping; desktop keeps the
+                  // dense gap-1.5 pill untouched.
+                  <span className="inline-flex items-center gap-1.5 max-md:gap-3">
                     <button onClick={() => setCatDialog(c)} aria-label={`Edit category ${c.name}`} className="touch-hit text-muted-foreground hover:text-foreground" title="Edit category"><Pencil className="h-3 w-3" /></button>
                     <button onClick={() => tryDeleteCat(c)} aria-label={`Delete category ${c.name}`} className="touch-hit text-muted-foreground hover:text-destructive" title="Delete category"><Plus className="h-3 w-3 rotate-45" /></button>
-                  </>
+                  </span>
                 )}
               </span>
             ))}
@@ -1093,8 +1096,12 @@ function VitalsFormCard({ manage }: { manage: boolean }) {
               {fields.map((f, i) => (
                 <tr key={f.key} className={f.enabled ? "" : "opacity-50"}>
                   <td className="py-1.5 pr-2">
-                    {/* A bare checkbox is too small for a thumb — pad the hit area invisibly. */}
-                    <input type="checkbox" className="touch-hit" checked={f.enabled} disabled={!manage} onChange={(e) => patch(i, { enabled: e.target.checked })} />
+                    {/* A bare checkbox is too small for a thumb, and .touch-hit's ::after
+                        cannot render on an <input> — the padded label carries the halo and
+                        forwards the tap; its negative margin keeps the layout untouched. */}
+                    <label className="touch-hit -m-1.5 inline-flex items-center p-1.5">
+                      <input type="checkbox" checked={f.enabled} disabled={!manage} onChange={(e) => patch(i, { enabled: e.target.checked })} />
+                    </label>
                   </td>
                   <td className="py-1.5 pr-2">
                     <Input className="h-8 w-32" value={f.label} disabled={!manage} onChange={(e) => patch(i, { label: e.target.value })} />
@@ -1115,7 +1122,9 @@ function VitalsFormCard({ manage }: { manage: boolean }) {
                     </td>
                   ))}
                   <td className="py-1.5 pl-2 text-center">
-                    <input type="checkbox" className="touch-hit" checked={f.required} disabled={!manage || !f.enabled} onChange={(e) => patch(i, { required: e.target.checked })} />
+                    <label className="touch-hit -m-1.5 inline-flex items-center p-1.5">
+                      <input type="checkbox" checked={f.required} disabled={!manage || !f.enabled} onChange={(e) => patch(i, { required: e.target.checked })} />
+                    </label>
                   </td>
                 </tr>
               ))}

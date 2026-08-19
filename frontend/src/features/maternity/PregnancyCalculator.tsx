@@ -239,7 +239,7 @@ function Metric({ label, big, sub }: { label: string; big: string; sub: string }
 export function PregnancyDatingDialog({ patientId, open, onOpenChange, onSaved }: { patientId: string; open: boolean; onOpenChange: (o: boolean) => void; onSaved?: () => void }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent fullOnMobile className="flex max-h-[90dvh] max-w-3xl flex-col gap-0 p-0">
+      <DialogContent fullOnMobile className="flex max-w-3xl flex-col gap-0 p-0">
         <DialogHeader className="shrink-0 border-b px-6 py-4">
           <DialogTitle className="flex items-center gap-2"><Baby className="h-5 w-5 text-primary" /> Pregnancy dating</DialogTitle>
         </DialogHeader>

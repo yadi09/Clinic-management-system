@@ -7,18 +7,31 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Segmented } from "@/components/ui/segmented";
 import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
 import { useAuth } from "@/app/auth-context";
 import { listUsers } from "@/features/admin/api";
 import { assignProvider, listUnassigned, listWorklist, transitionQueue } from "@/features/scheduling/api";
 import { dentalOutstanding } from "@/features/dental/api";
-import { DateRangeFilter, windowFor, type DateWindow } from "@/components/ui/date-range-filter";
+import { windowFor, type DateWindow } from "@/components/ui/date-range-filter";
 
 function waitMins(iso: string) {
   return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
 }
 const birr = (s: string) => `${Number(s || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} ETB`;
+
+// Chairside date scopes. "Today" is the default — a dentist opens this page to see
+// who is waiting at the chair right now. A patient sent days ago and never checked
+// out is still reachable: "All" is one tap away.
+type ChairRange = "today" | "3d" | "7d" | "all";
+const DAY = 86_400_000;
+function chairWindow(r: ChairRange): DateWindow {
+  if (r !== "7d") return windowFor(r);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return { from: new Date(today.getTime() - 6 * DAY).toISOString(), to: new Date(today.getTime() + DAY).toISOString() };
+}
 
 // The dentist's chairside list: patients reception has sent to the chair today.
 // Reuses the shared queue (walk-in → worklist → transition) but opens the DENTAL
@@ -29,10 +42,8 @@ export function ChairsidePage() {
   const { can, user } = useAuth();
   const canPickProvider = can("user.read");
 
-  // A patient at the chair may have been sent yesterday or last week (open until
-  // checked out), so default to "All" — the board is a live who's-here view, not a
-  // day log. The filter lets the dentist narrow to Today.
-  const [win, setWin] = useState<DateWindow>(() => windowFor("all"));
+  const [range, setRange] = useState<ChairRange>("today");
+  const win = useMemo(() => chairWindow(range), [range]);
   const providers = useQuery({ queryKey: ["users"], queryFn: listUsers, enabled: canPickProvider });
   const [provider, setProvider] = useState(""); // "" = me
   const providerId = provider || undefined;
@@ -94,7 +105,17 @@ export function ChairsidePage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <DateRangeFilter onChange={setWin} initial="all" />
+          <Segmented
+            ariaLabel="Date range"
+            value={range}
+            onChange={setRange}
+            options={[
+              { value: "today", label: "Today" },
+              { value: "3d", label: "3 days" },
+              { value: "7d", label: "7 days" },
+              { value: "all", label: "All" },
+            ]}
+          />
           {canPickProvider && (
             <div className="w-52">
               <Select value={provider || "me"} onValueChange={(v) => setProvider(v === "me" ? "" : v)}>

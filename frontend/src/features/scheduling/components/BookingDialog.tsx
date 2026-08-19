@@ -16,8 +16,12 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { searchPatients } from "@/features/patients/api";
 import { getSettings, listDepartments, listProviders } from "@/features/admin/api";
 import { bookAppointment, rescheduleAppointment, type Appointment } from "@/features/scheduling/api";
+import { formatEthiopian } from "@/lib/ethiopian";
 
 const DURATIONS = [15, 20, 30, 45, 60];
+// A complete yyyy-mm-dd — the native input emits "" while a date is half-typed,
+// and converting that would print garbage under the field.
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 interface Props {
   open: boolean;
@@ -170,6 +174,12 @@ export function BookingDialog({ open, onOpenChange, branchId, defaultDate, exist
             <div className="space-y-1.5">
               <Label>Date</Label>
               <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              {/* The app dual-displays EC everywhere it shows a date; the picker was
+                  the one place a date got chosen blind. Live conversion lets the
+                  receptionist confirm the Ethiopian day the patient actually said. */}
+              {ISO_DAY.test(date) && (
+                <p className="text-xs text-muted-foreground">{formatEthiopian(date)}</p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>Time</Label>

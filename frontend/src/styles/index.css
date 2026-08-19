@@ -107,7 +107,18 @@
      pseudo-element enlarges the hit area without moving a single pixel of layout —
      clicks on ::after land on the element itself. */
   .touch-hit { position: relative; }
-  .touch-hit::after { content: ""; position: absolute; inset: -8px; }
+  /* Coarse pointers only: a mouse needs no halo, and on desktop the halos of
+     adjacent dense-row icons would overlap. Note ::after does not render on
+     <input> elements — wrap form controls in a padded label instead. */
+  @media (pointer: coarse) {
+    .touch-hit::after { content: ""; position: absolute; inset: -8px; }
+  }
+
+  /* Horizontal tab strips scroll on phones; the default scrollbar track under
+     them reads as a broken border. The strip's overflow is still discoverable —
+     the last item is deliberately allowed to peek past the edge. */
+  .scrollbar-none { scrollbar-width: none; }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
 }
 
 @layer base {

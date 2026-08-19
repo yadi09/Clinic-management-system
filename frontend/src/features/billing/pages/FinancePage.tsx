@@ -246,7 +246,7 @@ export function FinancePage() {
 
       {tab === "overview" && (
         <OverviewTab data={overview.data} owed={receivables.data} loading={overview.isLoading}
-          dental={flagOn("dental")} comparing={comparing} />
+          dental={flagOn("dental")} comparing={comparing} onOpenReceivables={() => set({ tab: "receivables" })} />
       )}
       {tab === "receivables" && <ReceivablesTab data={receivables.data} loading={receivables.isLoading} params={params} onSet={set} />}
       {tab === "cash" && <CashTab data={cash.data} loading={cash.isLoading} />}
@@ -258,15 +258,27 @@ export function FinancePage() {
 
 // --- Overview ---------------------------------------------------------------
 
-function Kpi({ label, value, tone, foot }: { label: string; value: string; tone?: string; foot?: React.ReactNode }) {
-  return (
-    <div className="rounded-lg border bg-card p-4 shadow-sm">
+function Kpi({ label, value, tone, foot, onClick, cta }: {
+  label: string; value: string; tone?: string; foot?: React.ReactNode;
+  /** When set, the card is a real button (e.g. "Owed to you" opens Receivables); cta is its affordance line. */
+  onClick?: () => void; cta?: string;
+}) {
+  const body = (
+    <>
       <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
       {/* Proportional figures: tabular-nums belongs on numbers that align
           vertically (table rows, axis ticks), not on a display-size total. */}
       <div className={cn("mt-1 text-2xl font-bold", tone)}>{value}</div>
       {foot && <div className="mt-1 text-xs text-muted-foreground">{foot}</div>}
-    </div>
+      {cta && <div className="mt-1.5 text-xs font-medium text-brand">{cta}</div>}
+    </>
+  );
+  if (!onClick) return <div className="rounded-lg border bg-card p-4 shadow-sm">{body}</div>;
+  return (
+    <button type="button" onClick={onClick}
+      className="rounded-lg border bg-card p-4 text-left shadow-sm transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      {body}
+    </button>
   );
 }
 
@@ -281,8 +293,9 @@ function AttentionRow({ a }: { a: FinAlert }) {
   );
 }
 
-function OverviewTab({ data, owed, loading, dental, comparing }: {
+function OverviewTab({ data, owed, loading, dental, comparing, onOpenReceivables }: {
   data?: FinOverview; owed?: FinReceivables; loading: boolean; dental: boolean; comparing: string;
+  onOpenReceivables: () => void;
 }) {
   if (loading || !data) return <p className="p-8 text-center text-sm text-muted-foreground">Loading…</p>;
   const now = num(data.collected);
@@ -311,9 +324,11 @@ function OverviewTab({ data, owed, loading, dental, comparing }: {
               <span>{data.collected_count} payment(s) · vs {etb(data.collected_prev)} before</span>
             </span>
           } />
+        {/* Not a dead end: the figure answers "how much", the tap answers "who". */}
         <Kpi label="Owed to you" value={etb(owed?.total ?? data.outstanding)}
           tone={num(owed?.total ?? data.outstanding) > 0 ? "text-destructive" : ""}
-          foot={owed ? `${owed.count} patient(s) · oldest ${data.oldest_days} days` : `${data.outstanding_patients} patient(s)`} />
+          foot={owed ? `${owed.count} patient(s) · oldest ${data.oldest_days} days` : `${data.outstanding_patients} patient(s)`}
+          onClick={onOpenReceivables} cta="View patients →" />
         <Kpi label="Leakage" value={etb(leak)} tone={leak > 0 ? "text-amber-600" : ""}
           foot={`refunded ${etb(data.refunded)} · waived ${etb(data.waived)}`} />
         {dental

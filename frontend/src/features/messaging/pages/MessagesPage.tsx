@@ -90,7 +90,7 @@ function UsageMeter({ usage }: { usage?: MessagingUsage }) {
   const pct = cap && cap > 0 ? Math.min(100, Math.round((usage.used_segments / cap) * 100)) : 0;
   const tone = pct >= 100 ? "bg-destructive" : pct >= 80 ? "bg-amber-500" : "bg-brand";
   return (
-    <div className="min-w-56 rounded-lg border bg-card px-4 py-2.5 shadow-sm">
+    <div className="min-w-56 rounded-lg border bg-card px-4 py-2.5 shadow-sm max-sm:w-full">
       <div className="flex items-baseline justify-between gap-3 text-sm">
         <span className="whitespace-nowrap font-medium tabular-nums">
           {usage.used_segments.toLocaleString()}

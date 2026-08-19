@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -17,6 +17,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Segmented } from "@/components/ui/segmented";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
@@ -64,6 +65,31 @@ const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDat
 const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 const mondayOf = (d: Date) => addDays(startOfDay(d), -((d.getDay() + 6) % 7));
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/** Group appointments by local calendar day, each day sorted by start time.
+ *  The one derivation both the week agenda and the month grid read, so the two
+ *  views cannot drift apart on how a day's list is built. */
+function groupByDay(items: Appointment[]): Record<string, Appointment[]> {
+  const m: Record<string, Appointment[]> = {};
+  for (const a of items) (m[dayKey(new Date(a.starts_at))] ??= []).push(a);
+  for (const k of Object.keys(m)) m[k].sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+  return m;
+}
+
+const MD_QUERY = "(min-width: 768px)";
+const mdMq = () => window.matchMedia(MD_QUERY);
+/** Tracks the md breakpoint, so the week view mounts only its active
+ *  representation instead of rendering both and hiding one with CSS. */
+function useIsDesktop() {
+  return useSyncExternalStore(
+    (onChange) => {
+      const mq = mdMq();
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
+    },
+    () => mdMq().matches,
+  );
+}
 
 // Dental treatment session: a visually distinct layer from appointments, coloured
 // by money state so the doctor spots owed/paid at a glance.
@@ -163,8 +189,9 @@ export function AppointmentsPage() {
   // the only arrival view that is readable there. A patient deep-link keeps
   // "month" everywhere: it answers "when are they next in", which one day cannot.
   const [view, setView] = useState<View>(() =>
-    params.get("patient") ? "month" : window.matchMedia("(min-width: 768px)").matches ? "week" : "day",
+    params.get("patient") ? "month" : mdMq().matches ? "week" : "day",
   );
+  const isDesktop = useIsDesktop();
   const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Appointment | null>(null);
@@ -316,19 +343,22 @@ export function AppointmentsPage() {
           <p className="text-sm text-muted-foreground">{label}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 max-md:w-full">
-          {/* On phones the strip scrolls instead of wrapping, so tabs, Today and
-              Book hold a single line. */}
-          <div className="flex rounded-md border bg-card p-0.5 max-md:min-w-0 max-md:flex-1 max-md:overflow-x-auto">
-            {(["day", "week", "month", "followups"] as const).map((v) => (
-              <button
-                key={v}
-                onClick={() => setView(v)}
-                className={`shrink-0 whitespace-nowrap rounded px-3 py-1 text-sm font-medium capitalize max-md:min-h-9 ${view === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                {v === "followups" ? "Follow-ups" : v}
-              </button>
-            ))}
-          </div>
+          {/* The shared Segmented tablist: real aria-selected/arrow-key semantics
+              and the same white selected pill as every other view switcher. On
+              phones it scrolls in place, so all four tabs stay reachable at 360px
+              while Today and Book hold the same line. */}
+          <Segmented
+            value={view}
+            onChange={setView}
+            ariaLabel="Calendar view"
+            className="max-md:min-w-0 max-md:flex-1"
+            options={[
+              { value: "day", label: "Day" },
+              { value: "week", label: "Week" },
+              { value: "month", label: "Month" },
+              { value: "followups", label: "Follow-ups" },
+            ]}
+          />
           {/* Filter to one patient. A doctor with forty appointments a week cannot
               answer "when is Yaz T next in" by reading the grid; this is that
               question. The name is fetched rather than taken from the visible
@@ -412,19 +442,22 @@ export function AppointmentsPage() {
         ) : appts.isLoading ? (
           <Card className="flex h-full flex-col gap-2 p-4">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</Card>
         ) : view === "day" ? (
-          <DayLanes items={dayItems} sessions={sessByDay[dayKey(anchor)] ?? []} providers={providers.data ?? []} filter={providerFilter} actions={actions} />
+          <DayLanes items={dayItems} sessions={sessByDay[dayKey(anchor)] ?? []} providers={providers.data ?? []} filter={providerFilter} actions={actions} onWeek={() => setView("week")} />
         ) : view === "week" ? (
-          <>
-            {/* At 390px the 7-column paint gives each day ~41px — events become
-                ~20px chips nobody can read or tap. Phones get the week as a
-                stacked agenda; the time grid is untouched from md up. */}
-            <div className="md:hidden">
-              <WeekAgenda days={weekDays} items={items} sessByDay={sessByDay} actions={actions} />
-            </div>
+          // At 390px the 7-column paint gives each day ~41px — events become
+          // ~20px chips nobody can read or tap. Phones get the week as a stacked
+          // agenda; the time grid is untouched from md up. Only the active
+          // representation mounts (the breakpoint classes stay as a guard for the
+          // instant between a resize and the media-query re-render).
+          isDesktop ? (
             <div className="hidden h-full md:block">
               <WeekTimeGrid days={weekDays} items={items} sessByDay={sessByDay} actions={actions} />
             </div>
-          </>
+          ) : (
+            <div className="md:hidden">
+              <WeekAgenda days={weekDays} items={items} sessByDay={sessByDay} actions={actions} />
+            </div>
+          )
         ) : (
           <MonthGrid days={monthDays} monthIndex={anchor.getMonth()} items={items} sessByDay={sessByDay} actions={actions} />
         )}
@@ -500,7 +533,7 @@ function ApptCard({ a, actions }: { a: Appointment; actions: Actions }) {
   );
 }
 
-function DayLanes({ items, sessions, providers, filter, actions }: { items: Appointment[]; sessions: DentalSessionCal[]; providers: { id: string; full_name: string }[]; filter: string; actions: Actions }) {
+function DayLanes({ items, sessions, providers, filter, actions, onWeek }: { items: Appointment[]; sessions: DentalSessionCal[]; providers: { id: string; full_name: string }[]; filter: string; actions: Actions; onWeek: () => void }) {
   const lanes = useMemo(() => {
     const byProvider = new Map<string, Appointment[]>();
     for (const a of items) (byProvider.get(a.provider_id) ?? byProvider.set(a.provider_id, []).get(a.provider_id)!).push(a);
@@ -511,12 +544,23 @@ function DayLanes({ items, sessions, providers, filter, actions }: { items: Appo
   }, [items, providers]);
 
   if (items.length === 0 && sessions.length === 0) {
-    return <Card className="flex h-full items-center justify-center p-12 text-center text-sm text-muted-foreground">{filter === "all" ? "No appointments or treatment sessions for this day." : "No appointments for this provider today."}</Card>;
+    // Day view fetches exactly one day, so "the next booked day" is not in the
+    // data already on hand — the honest escape from an empty day is the week.
+    // Phone-only: on desktop the week grid is one click away in the switcher.
+    return (
+      <Card className="flex h-full items-center justify-center p-12 text-center text-sm text-muted-foreground max-md:flex-col max-md:gap-3">
+        <span>{filter === "all" ? "No appointments or treatment sessions for this day." : "No appointments for this provider today."}</span>
+        <Button variant="outline" size="sm" className="min-h-9 md:hidden" onClick={onWeek}>Look at the week</Button>
+      </Card>
+    );
   }
+  // Below md the 300px lane rack panned sideways with no cue — lanes stack
+  // vertically instead (provider header + that provider's cards). The horizontal
+  // rack is untouched from md up.
   return (
-    <div className="flex h-full gap-4 overflow-x-auto pb-2">
+    <div className="flex h-full gap-4 overflow-x-auto pb-2 max-md:flex-col max-md:overflow-x-visible">
       {sessions.length > 0 && (
-        <Card className="flex w-[300px] shrink-0 flex-col border-l-4 border-l-violet-500 p-3">
+        <Card className="flex w-[300px] shrink-0 flex-col border-l-4 border-l-violet-500 p-3 max-md:w-full">
           <div className="mb-2 flex items-center justify-between gap-2 border-b pb-2">
             <div className="flex min-w-0 items-center gap-2">
               <Stethoscope className="h-4 w-4 shrink-0 text-violet-600" />
@@ -530,7 +574,7 @@ function DayLanes({ items, sessions, providers, filter, actions }: { items: Appo
         </Card>
       )}
       {lanes.map((lane) => (
-        <Card key={lane.id} className="flex w-[300px] shrink-0 flex-col p-3">
+        <Card key={lane.id} className="flex w-[300px] shrink-0 flex-col p-3 max-md:w-full">
           <div className="mb-2 flex items-center justify-between gap-2 border-b pb-2">
             <div className="flex min-w-0 items-center gap-2">
               <span className="truncate font-semibold text-brand">{lane.name}</span>
@@ -552,12 +596,7 @@ function DayLanes({ items, sessions, providers, filter, actions }: { items: Appo
  *  unreadable and untappable. A list gives every event a full-width ≥44px card.
  *  Rendered only below md; the time grid keeps md and up. */
 function WeekAgenda({ days, items, sessByDay, actions }: { days: Date[]; items: Appointment[]; sessByDay: Record<string, DentalSessionCal[]>; actions: Actions }) {
-  const byDay = useMemo(() => {
-    const m: Record<string, Appointment[]> = {};
-    for (const a of items) (m[dayKey(new Date(a.starts_at))] ??= []).push(a);
-    for (const k of Object.keys(m)) m[k].sort((a, b) => a.starts_at.localeCompare(b.starts_at));
-    return m;
-  }, [items]);
+  const byDay = useMemo(() => groupByDay(items), [items]);
   const todayKey = dayKey(new Date());
   const total = items.length + days.reduce((n, d) => n + (sessByDay[dayKey(d)] ?? []).length, 0);
   if (total === 0) {
@@ -742,12 +781,7 @@ function WeekTimeGrid({ days, items, sessByDay, actions }: { days: Date[]; items
 }
 
 function MonthGrid({ days, monthIndex, items, sessByDay, actions }: { days: Date[]; monthIndex: number; items: Appointment[]; sessByDay: Record<string, DentalSessionCal[]>; actions: Actions }) {
-  const byDay = useMemo(() => {
-    const m: Record<string, Appointment[]> = {};
-    for (const a of items) (m[dayKey(new Date(a.starts_at))] ??= []).push(a);
-    for (const k of Object.keys(m)) m[k].sort((a, b) => a.starts_at.localeCompare(b.starts_at));
-    return m;
-  }, [items]);
+  const byDay = useMemo(() => groupByDay(items), [items]);
   const todayKey = dayKey(new Date());
 
   return (

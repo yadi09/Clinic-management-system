@@ -31,7 +31,11 @@ const TAB_PRIORITY = [
   "/messages",
 ];
 
-export function MobileNav({ sections }: { sections: NavSection[] }) {
+export function MobileNav({ sections, badgeCount }: {
+  sections: NavSection[];
+  /** Live alert count for a nav item's badge key (the sidebar's own numbers). */
+  badgeCount?: (key?: string) => number;
+}) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { pathname } = useLocation();
 
@@ -40,6 +44,16 @@ export function MobileNav({ sections }: { sections: NavSection[] }) {
     .map((to) => items.find((i) => i.to === to))
     .filter((i): i is NonNullable<typeof i> => !!i)
     .slice(0, 4);
+  // The sheet exists for what the bar cannot hold. Repeating the four tab
+  // destinations at the top pushed the ones ONLY reachable here (Cashier,
+  // Finance, Messages, Settings…) below the fold of a 20-item list.
+  const tabSet = new Set(tabs.map((t) => t.to));
+  const sheetSections = sections
+    .map((s) => ({ ...s, items: s.items.filter((i) => !tabSet.has(i.to)) }))
+    .filter((s) => s.items.length > 0);
+  // Any live alert on a destination that did not earn a tab surfaces on Menu, so
+  // a critical lab result is never invisible just because of tab arithmetic.
+  const menuAlert = items.some((i) => !tabSet.has(i.to) && (badgeCount?.(i.badge) ?? 0) > 0);
 
   // Is the current page reachable from a tab? If not, Menu shows as the active
   // slot, so the bar never claims you are somewhere you are not.
@@ -52,7 +66,9 @@ export function MobileNav({ sections }: { sections: NavSection[] }) {
         aria-label="Primary"
         className="fixed inset-x-0 bottom-0 z-40 border-t bg-card pb-safe md:hidden"
       >
-        <div className="grid h-16 grid-cols-5">
+        {/* Column count follows the earned tabs — a role with two visible
+            destinations gets three wide comfortable slots, not five slivers. */}
+        <div className="grid h-16" style={{ gridTemplateColumns: `repeat(${tabs.length + 1}, minmax(0, 1fr))` }}>
           {tabs.map((t) => (
             <NavLink
               key={t.to}
@@ -67,7 +83,14 @@ export function MobileNav({ sections }: { sections: NavSection[] }) {
             >
               {({ isActive }) => (
                 <>
-                  <t.icon className={cn("h-5 w-5", isActive && "stroke-[2.25]")} />
+                  <span className="relative">
+                    <t.icon className={cn("h-5 w-5", isActive && "stroke-[2.25]")} />
+                    {(badgeCount?.(t.badge) ?? 0) > 0 && (
+                      <span className="absolute -right-2 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-semibold text-white">
+                        {badgeCount!(t.badge)}
+                      </span>
+                    )}
+                  </span>
                   <span>{t.label === "Patient messages" ? "Messages" : t.label}</span>
                 </>
               )}
@@ -82,7 +105,12 @@ export function MobileNav({ sections }: { sections: NavSection[] }) {
               !onTab ? "text-brand" : "text-muted-foreground",
             )}
           >
-            <Menu className={cn("h-5 w-5", !onTab && "stroke-[2.25]")} />
+            <span className="relative">
+              <Menu className={cn("h-5 w-5", !onTab && "stroke-[2.25]")} />
+              {menuAlert && (
+                <span className="absolute -right-1.5 -top-0.5 h-2 w-2 rounded-full bg-rose-600" />
+              )}
+            </span>
             <span>Menu</span>
           </button>
         </div>
@@ -94,7 +122,7 @@ export function MobileNav({ sections }: { sections: NavSection[] }) {
         <DialogContent className="gap-3">
           <DialogTitle className="text-base">Go to</DialogTitle>
           <div className="space-y-4">
-            {sections.map((section, i) => (
+            {sheetSections.map((section, i) => (
               <div key={i}>
                 {section.heading && (
                   <p className="px-1 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -117,6 +145,11 @@ export function MobileNav({ sections }: { sections: NavSection[] }) {
                     >
                       <item.icon className="h-4 w-4 shrink-0 text-muted-foreground" />
                       <span className="min-w-0 truncate">{item.label}</span>
+                      {(badgeCount?.(item.badge) ?? 0) > 0 && (
+                        <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1.5 text-xs font-semibold text-white">
+                          {badgeCount!(item.badge)}
+                        </span>
+                      )}
                     </NavLink>
                   ))}
                 </div>

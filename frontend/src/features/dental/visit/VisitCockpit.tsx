@@ -180,7 +180,9 @@ export function VisitCockpit({
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h3 className="text-lg font-semibold leading-tight">{plan.title}</h3>
           {plan.tooth && <Badge variant="outline">{plan.tooth}</Badge>}
-          <span className="ml-auto text-sm text-muted-foreground">
+          {/* On a phone the right-pushed meta zig-zagged against the rail below;
+              under sm it takes its own line, left-aligned beneath the title. */}
+          <span className="ml-auto text-sm text-muted-foreground max-sm:ml-0 max-sm:w-full">
             visit <b className="text-foreground">{seq}</b> of {liveCount} · <b className="text-foreground tabular-nums">{birr(session.amount_due)}</b>
           </span>
         </div>
@@ -368,7 +370,7 @@ function CourseRail({ plan, currentId, onPick, onAdd, onNewPlan, canEdit }: {
               title={`Session ${s.seq} · ${s.scheduled_date} · ${birr(s.amount_due)}`}
               aria-current={current ? "step" : undefined}
               className={cn(
-                "flex h-7 min-w-7 items-center justify-center rounded-full border px-2 text-xs font-semibold tabular-nums transition-colors",
+                "touch-hit flex h-7 min-w-7 items-center justify-center rounded-full border px-2 text-xs font-semibold tabular-nums transition-colors",
                 current ? "border-brand bg-brand text-brand-foreground"
                   : done ? "border-emerald-600/40 bg-emerald-600/15 text-emerald-700"
                     : "border-border bg-background text-muted-foreground hover:bg-muted",
@@ -380,7 +382,7 @@ function CourseRail({ plan, currentId, onPick, onAdd, onNewPlan, canEdit }: {
         })}
         {canEdit && onAdd && (
           <button type="button" onClick={onAdd} title="Add a visit to this course"
-            className="flex h-7 items-center gap-1 rounded-full border border-dashed px-2 text-xs font-medium text-muted-foreground hover:bg-muted">
+            className="touch-hit flex h-7 items-center gap-1 rounded-full border border-dashed px-2 text-xs font-medium text-muted-foreground hover:bg-muted">
             <Plus className="h-3 w-3" /> visit
           </button>
         )}
@@ -390,7 +392,7 @@ function CourseRail({ plan, currentId, onPick, onAdd, onNewPlan, canEdit }: {
             course it is NOT part of, and worded so the difference is plain. */}
         {canEdit && onNewPlan && (
           <button type="button" onClick={onNewPlan}
-            className="ml-auto flex h-7 items-center gap-1 rounded-full border border-brand/40 bg-brand/5 px-2.5 text-xs font-semibold text-brand hover:bg-brand/10">
+            className="touch-hit ml-auto flex h-7 items-center gap-1 rounded-full border border-brand/40 bg-brand/5 px-2.5 text-xs font-semibold text-brand hover:bg-brand/10 max-sm:ml-0">
             <Plus className="h-3 w-3" /> New treatment
           </button>
         )}

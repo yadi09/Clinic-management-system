@@ -52,49 +52,56 @@ export function PatientsListPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1>Patients</h1>
-          <p className="text-sm text-muted-foreground">
-            {isLoading ? "Loading…" : debouncedQ || filtered ? `${total} matching` : `${total} registered`}
-          </p>
-        </div>
-        {can("patient.create") && (
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => navigate("/patients/import")}>
-              <FileUp /> Import old records
-            </Button>
-            <Button onClick={() => navigate("/patients/new")}>
-              <UserPlus /> Register patient
-            </Button>
+      {/* On a phone the first job is finding a patient, so search comes right after
+          the title and the action buttons demote below it. display:contents lets the
+          three blocks reorder as flex siblings below md while md+ keeps the exact
+          two-row desktop layout. */}
+      <div className="flex flex-col gap-6">
+        <div className="max-md:contents md:flex md:flex-wrap md:items-center md:justify-between md:gap-3">
+          <div className="max-md:order-1">
+            <h1>Patients</h1>
+            <p className="text-sm text-muted-foreground">
+              {isLoading ? "Loading…" : debouncedQ || filtered ? `${total} matching` : `${total} registered`}
+            </p>
           </div>
-        )}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative min-w-[16rem] flex-1 md:max-w-xl">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="pl-9"
-            placeholder="Search by name, MRN, phone, or national ID…"
-            value={q}
-            onChange={(e) => {
-              setQ(e.target.value);
-              setPage(1);
-            }}
-          />
+          {can("patient.create") && (
+            <div className="flex items-center gap-2 max-md:order-3">
+              {/* Register leads on phones; importing old registers is the rarer task. */}
+              <Button variant="outline" className="max-md:order-last" onClick={() => navigate("/patients/import")}>
+                <FileUp /> Import old records
+              </Button>
+              <Button onClick={() => navigate("/patients/new")}>
+                <UserPlus /> Register patient
+              </Button>
+            </div>
+          )}
         </div>
 
-        <Select value={gender} onValueChange={(v) => { setGender(v); setPage(1); }}>
-          <SelectTrigger className="w-[9.5rem]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All genders</SelectItem>
-            <SelectItem value="male">Male</SelectItem>
-            <SelectItem value="female">Female</SelectItem>
-            <SelectItem value="other">Other</SelectItem>
-            <SelectItem value="unknown">Unknown</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex flex-wrap items-center gap-3 max-md:order-2">
+          <div className="relative min-w-[16rem] flex-1 md:max-w-xl">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              className="pl-9"
+              placeholder="Name, MRN, or phone"
+              value={q}
+              onChange={(e) => {
+                setQ(e.target.value);
+                setPage(1);
+              }}
+            />
+          </div>
+
+          <Select value={gender} onValueChange={(v) => { setGender(v); setPage(1); }}>
+            <SelectTrigger className="w-[9.5rem]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All genders</SelectItem>
+              <SelectItem value="male">Male</SelectItem>
+              <SelectItem value="female">Female</SelectItem>
+              <SelectItem value="other">Other</SelectItem>
+              <SelectItem value="unknown">Unknown</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <Card className="overflow-hidden">
@@ -137,8 +144,18 @@ export function PatientsListPage() {
               {data.items.map((p) => (
                 <li
                   key={p.id}
-                  className="cursor-pointer space-y-1 p-4 transition-colors active:bg-accent/60"
+                  // The whole card is the tap target, so it must be a keyboard target
+                  // too: a real tab stop that Enter/Space follows like the link it is.
+                  role="link"
+                  tabIndex={0}
+                  className="cursor-pointer space-y-1 p-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring active:bg-accent/60"
                   onClick={() => navigate(`/patients/${p.id}`)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      navigate(`/patients/${p.id}`);
+                    }
+                  }}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 font-semibold text-brand">

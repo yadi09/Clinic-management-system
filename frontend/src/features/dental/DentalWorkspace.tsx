@@ -35,7 +35,7 @@ import { useFocusVisit } from "@/features/dental/visit/useFocusVisit";
 import { AllergyDialog } from "@/features/dental/AllergyDialog";
 import { ExaminationCard } from "@/features/dental/ExaminationCard";
 import { invalidateDental } from "@/features/dental/invalidate";
-import { ToothChart } from "@/features/dental/ToothChart";
+import { STATUS_LABEL, ToothChart } from "@/features/dental/ToothChart";
 import { FLAT_TEETH, ToothMultiSelect } from "@/features/dental/shared/pickers";
 import { PriceAgainstList, ServicePicker } from "@/features/dental/shared/ServicePicker";
 import { PatientMessages } from "@/features/messaging/PatientMessages";
@@ -242,14 +242,11 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
     if (last) saveChart(patientId, last).catch(() => {});
   }, [patientId]);
 
-  const toggleTooth = (code: string) => {
-    // Computed outside the state updater: React may run an updater more than once,
-    // and starting a save from inside one is a side effect in a place that promises
-    // to be pure.
-    const cycle = ["", "healthy", "decayed", "filled", "extracted", "crown"];
-    const next = cycle[(cycle.indexOf(draft.current[code] ?? "") + 1) % cycle.length];
+  // One status onto one tooth, through the debounced save. Both a tap and its Undo
+  // come through here, so an undo is saved exactly like the edit it reverts.
+  const applyTooth = (code: string, status: string) => {
     const map = { ...draft.current };
-    if (next) map[code] = next; else delete map[code];
+    if (status) map[code] = status; else delete map[code];
     showChart(map);
     queued.current = map;
     if (timer.current) clearTimeout(timer.current);
@@ -258,6 +255,23 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
       const send = queued.current;
       if (send) chartSave.mutate({ map: send, seq: ++sentSeq.current });
     }, 700);
+  };
+
+  const toggleTooth = (code: string) => {
+    // Computed outside the state updater: React may run an updater more than once,
+    // and starting a save from inside one is a side effect in a place that promises
+    // to be pure.
+    const cycle = ["", "healthy", "decayed", "filled", "extracted", "crown"];
+    const prev = draft.current[code] ?? "";
+    const next = cycle[(cycle.indexOf(prev) + 1) % cycle.length];
+    applyTooth(code, next);
+    // Tap-to-cycle with autosave means a stray thumb-tap silently rewrites the
+    // record. Name what just changed and offer the way back; one toast id per
+    // tooth, so re-taps update the toast instead of stacking five of them.
+    toast(`${code} → ${next ? STATUS_LABEL[next] ?? next : "Cleared"}`, {
+      id: `tooth-${code}`,
+      action: { label: "Undo", onClick: () => applyTooth(code, prev) },
+    });
   };
 
   const [newPlan, setNewPlan] = useState(false);
@@ -288,7 +302,9 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
 
   return (
     <div className="space-y-6">
-      <button onClick={() => navigate("/patients")} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+      {/* ~24px of text is a cursor target, not a thumb one — touch-hit adds the
+          invisible halo on coarse pointers only, so desktop pixels do not move. */}
+      <button onClick={() => navigate("/patients")} className="touch-hit flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="h-4 w-4" /> Patients
       </button>
 
@@ -322,8 +338,12 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
           </div>
           <p className="text-sm text-brand-foreground/80 tabular-nums">
             MRN {p.mrn} · {age(p.dob)} · <span className="capitalize">{p.gender}</span>
-            {/* Inline only where a phone number is something you read. */}
-            {p.phone ? <span className="max-md:hidden"> · {p.phone}</span> : null}
+            {/* The full number, never shortened — and a tel: link at the desk too,
+                for softphones. Hidden below md, where the dedicated tap line below
+                takes over, so the number is never shown twice. */}
+            {p.phone ? (
+              <span className="max-md:hidden"> · <a href={`tel:${p.phone}`} className="hover:underline">{p.phone}</a></span>
+            ) : null}
             {p.blood_group ? ` · ${p.blood_group}` : ""}
           </p>
           {/* On the device that can place the call, the number is a tel: link on its
@@ -402,7 +422,7 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
             badge: Object.keys(teeth).length || undefined,
             render: () => (
               <div className="space-y-2">
-                <p className="text-xs text-muted-foreground">Click a tooth to cycle its condition. Saved automatically.</p>
+                <p className="text-xs text-muted-foreground">Tap a tooth to cycle its condition. Saved automatically.</p>
                 <div className="overflow-x-auto"><ToothChart teeth={teeth} editable={editable} onToggle={toggleTooth} /></div>
               </div>
             ),

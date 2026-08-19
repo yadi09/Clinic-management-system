@@ -81,9 +81,9 @@ export function AppShell() {
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15">
             <Activity className="h-5 w-5" />
           </span>
-          <span className="text-lg font-bold tracking-tight">ClinicOS</span>
+          <span className="text-base font-bold tracking-tight sm:text-lg">ClinicOS</span>
         </div>
-        <div className="flex flex-1 items-center gap-3 px-5">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 px-2 sm:gap-3 sm:px-5">
           {showSwitcher ? (
             <DropdownMenu>
               <DropdownMenuTrigger className="hidden items-center gap-2 rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium hover:bg-white/15 focus:outline-none md:flex">
@@ -188,7 +188,7 @@ export function AppShell() {
       <div className="flex">
         {/* Left nav rail (brand-blue) */}
         <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-60 shrink-0 flex-col bg-brand px-3 py-4 text-brand-foreground md:flex">
-          <nav className="min-h-0 flex-1 space-y-6 overflow-y-auto pr-1">
+          <nav className="min-h-0 flex-1 space-y-6 overflow-y-auto pr-1 [scrollbar-width:thin]">
             {sections.map((section, i) => (
               <div key={i}>
                 {section.heading && (
@@ -225,12 +225,12 @@ export function AppShell() {
           <p className="px-3 text-xs text-brand-foreground/40">v3 · Tenant</p>
         </aside>
 
-        <main className="min-w-0 flex-1 p-4 pb-24 sm:p-6 md:pb-6 lg:p-8">
+        <main className="min-w-0 flex-1 p-4 pb-24 sm:p-6 sm:pb-24 md:pb-6 lg:p-8 lg:pb-8">
           <Outlet />
         </main>
       </div>
 
-      <MobileNav sections={sections} />
+      <MobileNav sections={sections} badgeCount={badgeCount} />
       <CommandPalette />
     </div>
   );

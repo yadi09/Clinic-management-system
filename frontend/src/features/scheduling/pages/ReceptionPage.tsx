@@ -169,13 +169,17 @@ export function ReceptionPage() {
   // The primary action, built once and placed twice: in the card where desktop
   // expects it, and in the sticky bottom bar phones need — on a 390px screen the
   // card copy sits ~2.5 screens down, which is how visits end up half-registered.
-  const primaryAction = !cashierMode && hasFee ? (
-    <Button className="w-full" disabled={!routeReady || hasPending} loading={send.isPending} onClick={() => send.mutate({ action: "collect", method })}>
-      <HandCoins className="h-4 w-4" /> Collect ETB {total.toFixed(2)} &amp; send to {destWord}
+  // `withAmount` puts the total in the label only where nothing else states it
+  // (the desktop card); the sticky bar already shows the total as text, and the
+  // long "Collect ETB 300.00 & …" label painted past the pill edge on phones.
+  // The truncate span is a guard, not the plan — labels are sized to fit.
+  const sendAction = (withAmount: boolean) => !cashierMode && hasFee ? (
+    <Button className="min-w-0 w-full" disabled={!routeReady || hasPending} loading={send.isPending} onClick={() => send.mutate({ action: "collect", method })}>
+      <HandCoins className="h-4 w-4" /> <span className="min-w-0 truncate">{withAmount ? `Collect ETB ${total.toFixed(2)} & send to ${destWord}` : `Collect & send to ${destWord}`}</span>
     </Button>
   ) : (
-    <Button className="w-full" disabled={!routeReady || hasPending} loading={send.isPending} onClick={() => send.mutate({ action: "cashier" })}>
-      {hasFee ? "Send to cashier" : `Send to ${destWord}`}
+    <Button className="min-w-0 w-full" disabled={!routeReady || hasPending} loading={send.isPending} onClick={() => send.mutate({ action: "cashier" })}>
+      <span className="min-w-0 truncate">{hasFee ? "Send to cashier" : `Send to ${destWord}`}</span>
     </Button>
   );
 
@@ -185,7 +189,7 @@ export function ReceptionPage() {
         <h1>Reception</h1>
         <p className="text-sm text-muted-foreground">
           {isDental
-            ? "Find the patient and send them to a dentist. Add a registration/visit fee only if you take one — treatment is billed later from the plan."
+            ? "Find the patient and send them to a dentist. The registration/visit fee is collected up front — treatment is billed later from the plan."
             : "Register the visit, choose the service(s) the patient is here for, and route them."}
         </p>
       </div>
@@ -334,7 +338,7 @@ export function ReceptionPage() {
                 on one phone screen is one too many. */}
             {cashierMode ? (
               <>
-                <div className="max-lg:hidden">{primaryAction}</div>
+                <div className="max-lg:hidden">{sendAction(true)}</div>
                 {hasFee && (
                   <p className="text-center text-xs text-muted-foreground">Raises a pending payment; the patient advances once the cashier settles it.</p>
                 )}
@@ -357,26 +361,26 @@ export function ReceptionPage() {
                   </div>
                   <Button variant="outline" disabled={!routeReady || hasPending} onClick={() => setWaiveOpen(true)}>Waive…</Button>
                 </div>
-                <div className="max-lg:hidden">{primaryAction}</div>
+                <div className="max-lg:hidden">{sendAction(true)}</div>
               </div>
             ) : (
-              <div className="max-lg:hidden">{primaryAction}</div>
+              <div className="max-lg:hidden">{sendAction(true)}</div>
             )}
           </CardContent>
         </Card>
       </div>
 
       {/* Below lg the cards stack and the send/collect button lands ~2.5 screens
-          down; pin the decision — total + the same primaryAction — to the bottom
+          down; pin the decision — the total (shown once, here) + the action — to the bottom
           of the screen. Sticky in the page flow (not fixed) so it settles into its
           natural place at the end of the page; below md it sits up by the tab
           bar's height (+ safe area) because the fixed MobileNav owns bottom-0. */}
       <div className="sticky bottom-0 z-10 flex items-center gap-3 border-t bg-card p-3 max-md:bottom-[calc(4rem+env(safe-area-inset-bottom))] lg:hidden">
-        <div className="min-w-0">
+        <div className="shrink-0">
           <p className="text-xs text-muted-foreground">Total</p>
           <p className="whitespace-nowrap font-mono text-sm font-semibold tabular-nums">ETB {total.toFixed(2)}</p>
         </div>
-        <div className="min-w-0 flex-1">{primaryAction}</div>
+        <div className="min-w-0 flex-1">{sendAction(false)}</div>
       </div>
 
       {/* Waive dialog (reception-collect mode) */}

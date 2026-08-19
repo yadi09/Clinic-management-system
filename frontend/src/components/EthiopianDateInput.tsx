@@ -65,7 +65,7 @@ export function EthiopianDateInput({ value, onChange, id, showAge = true }: { va
             key={mo}
             type="button"
             onClick={() => switchMode(mo)}
-            className={`rounded px-2.5 py-1 font-medium ${mode === mo ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            className={`rounded px-2.5 py-1 font-medium max-md:min-h-9 max-md:px-3 ${mode === mo ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
           >
             {mo === "ethiopian" ? "Ethiopian" : "Gregorian"}
           </button>

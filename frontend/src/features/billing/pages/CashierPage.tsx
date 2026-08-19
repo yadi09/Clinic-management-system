@@ -246,12 +246,20 @@ function PatientCheckout({ group, onWaive, onVoid, onPaid }: {
       <div className="flex-1 divide-y">
         {group.items.map((c) => (
           <div key={c.id} className="group flex items-center justify-between gap-2 px-4 py-2.5 text-sm">
-            <span className="min-w-0 truncate">
-              {c.description}
-              <Badge variant="outline" className="ml-2 align-middle text-[10px] capitalize">{c.source}</Badge>
-            </span>
+            {/* Phones: descriptions carry the identifying tail ("… / Bed-12"), so let
+                them wrap to two lines instead of truncating it away, keep the amount
+                on one line, and give the source badge its own row — inline it rode
+                inside the truncated span and vanished first. Desktop keeps the
+                single-line row with the inline badge. */}
+            <div className="min-w-0">
+              <span className="max-md:line-clamp-2 md:block md:truncate">
+                {c.description}
+                <Badge variant="outline" className="ml-2 align-middle text-[10px] capitalize max-md:hidden">{c.source}</Badge>
+              </span>
+              <Badge variant="outline" className="mt-0.5 text-[10px] capitalize md:hidden">{c.source}</Badge>
+            </div>
             <div className="flex items-center gap-1">
-              <span className="font-mono">{c.currency} {c.amount}</span>
+              <span className="font-mono max-md:whitespace-nowrap max-md:text-right">{c.currency} {c.amount}</span>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   {/* Waive/Void must not hide behind hover — touch has none, so the kebab was

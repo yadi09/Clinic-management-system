@@ -1,9 +1,9 @@
 // Odontogram — a Palmer-notation tooth chart. Four quadrants (upper-right,
-// upper-left, lower-right, lower-left), 8 teeth each. Click a tooth to cycle its
+// upper-left, lower-right, lower-left), 8 teeth each. Tap a tooth to cycle its
 // status; colors mirror the clinic's existing paper chart.
 import { cn } from "@/lib/utils";
 
-// The status cycle a click walks through (empty → … → empty).
+// The status cycle a tap walks through (empty → … → empty).
 const CYCLE = ["", "healthy", "decayed", "filled", "extracted", "crown"] as const;
 
 const STATUS_STYLE: Record<string, { background: string; borderColor: string; color: string }> = {
@@ -59,7 +59,7 @@ function Tooth({ code, status, editable, onToggle }: { code: string; status: str
       className={cn(
         // 28×32px was fine under a cursor; under a thumb it cycles the neighbour.
         // Below md each tooth shares its quadrant row at a 40px floor.
-        "flex h-8 w-7 items-center justify-center rounded-md border text-xs font-semibold tabular-nums transition-transform max-md:h-10 max-md:min-w-10 max-md:flex-1",
+        "flex h-8 w-7 items-center justify-center rounded-md border text-xs font-semibold tabular-nums transition-transform max-md:h-10 max-md:w-full",
         editable ? "cursor-pointer hover:scale-110" : "cursor-default",
       )}
     >
@@ -74,7 +74,11 @@ function Quadrant({ label, codes, teeth, editable, onToggle, align }: { label: s
       {/* Stacked one per row below md, position no longer says which quadrant a
           row is — so the row says it itself. Hidden where layout still speaks. */}
       <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground md:hidden">{label}</p>
-      <div className={cn("flex gap-1", align === "end" ? "justify-end" : "justify-start")}>
+      <div className={cn(
+        // Eight equal columns below md: the flex row with a 40px floor clipped the
+        // eighth tooth at 390px; a grid divides whatever width exists exactly.
+        "max-md:grid max-md:grid-cols-8 max-md:gap-1 md:flex md:gap-1",
+        align === "end" ? "md:justify-end" : "md:justify-start")}>
         {codes.map((c) => (
           <Tooth key={c} code={c} status={teeth[c] ?? ""} editable={editable} onToggle={onToggle} />
         ))}
