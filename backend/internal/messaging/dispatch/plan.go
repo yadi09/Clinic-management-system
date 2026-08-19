@@ -67,6 +67,17 @@ func (p *Planner) once(ctx context.Context) {
 	} else if n > 0 {
 		p.log.Info("bill reminders queued", "count", n)
 	}
+	// A dental clinic keeps both of these somewhere else — see plan_dental.go.
+	if n, err := p.PlanDentalAppointments(ctx); err != nil {
+		p.log.Error("dental visit reminder planning failed", "err", err)
+	} else if n > 0 {
+		p.log.Info("dental visit reminders queued", "count", n)
+	}
+	if n, err := p.PlanDentalBills(ctx); err != nil {
+		p.log.Error("dental bill reminder planning failed", "err", err)
+	} else if n > 0 {
+		p.log.Info("dental bill reminders queued", "count", n)
+	}
 }
 
 // queue writes one planned message, or silently does nothing if its dedupe key is

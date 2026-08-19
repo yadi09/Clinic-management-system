@@ -30,6 +30,11 @@ var Vars = map[string]string{
 
 var placeholder = regexp.MustCompile(`\{\{\s*([a-z_]+)\s*\}\}`)
 
+// danglingWord matches a short connecting word left with nothing after it, at the
+// end of a sentence or the whole message. Deliberately a closed list — stripping
+// any trailing word would eat real content.
+var danglingWord = regexp.MustCompile(`(?i)\s+(at|on|for|to|of|by)\s*([.,;!?]|$)`)
+
 // VarNames lists the placeholders in a stable order, for the UI's insert buttons.
 func VarNames() []string {
 	out := make([]string, 0, len(Vars))
@@ -94,6 +99,12 @@ func Render(body string, vals map[string]string) string {
 	// Substituting an empty value can leave doubled spaces or a space before a
 	// full stop, which reads as a bug to the person holding the phone.
 	out = regexp.MustCompile(`\s{2,}`).ReplaceAllString(out, " ")
+	// It can also strand the word that introduced the value. A dental visit has a
+	// date but no clock time, so "on {{date}} at {{time}}." would otherwise reach
+	// the patient as "on 21 Aug at." — the same template has to read correctly
+	// whether or not the appointment has a time, because a clinic should not be
+	// made to keep two versions of one sentence.
+	out = danglingWord.ReplaceAllString(out, "$2")
 	out = strings.ReplaceAll(out, " .", ".")
 	out = strings.ReplaceAll(out, " ,", ",")
 	return strings.TrimSpace(out)
