@@ -362,8 +362,9 @@ function SendingTab({ settings, manage }: { settings?: MessagingSettings; manage
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
-            Nothing is sent during quiet hours. A message that comes due then is held until they end —
-            it is not cancelled.
+            Reminders and written messages are held during quiet hours until they end — never cancelled.
+            A <b>welcome</b> or a <b>test</b> goes straight away whatever the hour: the patient is at the
+            desk, or you are watching your own phone for it.
           </p>
 
           {form.lang === "am" && (

@@ -92,6 +92,9 @@ func (p *Planner) queueWelcome(ctx context.Context, tenantID, patientID uuid.UUI
 			return nil
 		}
 		m.when = time.Now()
+		// The patient is at the desk. Quiet hours are for messages nobody asked
+		// for, and this one exists because they just handed over their details.
+		m.bypassQuiet = true
 		_, e = p.queue(ctx, tx, m)
 		return e
 	})

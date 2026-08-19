@@ -393,9 +393,12 @@ func (s *Service) SendTest(ctx context.Context, rawPhone, body string) error {
 		if e := limits.EnsureSMSRoom(ctx, tx, tid, int64(segs)); e != nil {
 			return e
 		}
+		// bypass_quiet_hours: whoever pressed this is watching their own phone for
+		// it. Holding a test until morning teaches them the feature is broken.
 		_, e := tx.Exec(ctx,
-			`INSERT INTO messages (tenant_id, kind, lang, msisdn, body, segments, cost, status, scheduled_for, created_by)
-			 VALUES ($1, 'custom', $2, $3, $4, $5, $6, 'scheduled', now(), $7)`,
+			`INSERT INTO messages (tenant_id, kind, lang, msisdn, body, segments, cost, status,
+			                       scheduled_for, created_by, bypass_quiet_hours)
+			 VALUES ($1, 'custom', $2, $3, $4, $5, $6, 'scheduled', now(), $7, true)`,
 			tid, set.Lang, msisdn, full, segs, float64(segs)*s.cost, actor)
 		return e
 	})

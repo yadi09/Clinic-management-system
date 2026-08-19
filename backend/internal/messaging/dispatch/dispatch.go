@@ -160,6 +160,8 @@ type due struct {
 	quiet bool
 	// nextOpen is when those quiet hours end, in absolute time.
 	nextOpen time.Time
+	// bypassQuiet marks a message somebody is waiting on right now.
+	bypassQuiet bool
 }
 
 func (d *Dispatcher) processOne(ctx context.Context) (bool, error) {
@@ -176,7 +178,7 @@ func (d *Dispatcher) processOne(ctx context.Context) (bool, error) {
 		// has already passed. That is correct whether or not the quiet window wraps
 		// midnight, which is why it is expressed this way rather than as two cases.
 		e := tx.QueryRow(ctx,
-			`SELECT m.id, m.tenant_id, m.msisdn, m.body, m.segments, m.attempts,
+			`SELECT m.id, m.tenant_id, m.msisdn, m.body, m.segments, m.attempts, m.bypass_quiet_hours,
 			        c.sms_enabled, coalesce(c.sms_api_key_enc,''), coalesce(c.sms_sender_id,''),
 			        c.sms_sender_status, coalesce(c.sms_sender_name,''),
 			        CASE WHEN c.sms_quiet_from = c.sms_quiet_to THEN false
@@ -201,7 +203,7 @@ func (d *Dispatcher) processOne(ctx context.Context) (bool, error) {
 			  ORDER BY m.scheduled_for
 			  LIMIT 1
 			  FOR UPDATE OF m SKIP LOCKED`).
-			Scan(&m.id, &m.tenantID, &m.msisdn, &m.body, &m.segments, &m.attempts,
+			Scan(&m.id, &m.tenantID, &m.msisdn, &m.body, &m.segments, &m.attempts, &m.bypassQuiet,
 				&m.enabled, &m.creds.APIKeyEnc, &m.creds.SenderID, &m.creds.SenderStatus,
 				&m.creds.SenderName, &m.quiet, &m.nextOpen)
 		if errors.Is(e, pgx.ErrNoRows) {
@@ -219,7 +221,12 @@ func (d *Dispatcher) processOne(ctx context.Context) (bool, error) {
 
 		// Gate 2 — quiet hours. Deferred, never dropped: a 4am reminder is still
 		// wanted at 7am. The row stays 'scheduled' and comes back round.
-		if m.quiet {
+		//
+		// Skipped for messages somebody is actively waiting on. A welcome exists
+		// because the patient is at the desk right now, and a test send exists
+		// because a staff member is staring at their own phone; holding either
+		// until morning is not discretion, it is a fault they will report.
+		if m.quiet && !m.bypassQuiet {
 			_, e := tx.Exec(ctx,
 				`UPDATE messages SET scheduled_for = $2, updated_at = now() WHERE id = $1`,
 				m.id, m.nextOpen)

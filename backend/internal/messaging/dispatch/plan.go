@@ -80,11 +80,13 @@ func (p *Planner) queue(ctx context.Context, tx pgx.Tx, m plannedMessage) (bool,
 	segs, _ := sms.Segments(m.body)
 	ct, err := tx.Exec(ctx,
 		`INSERT INTO messages (tenant_id, branch_id, patient_id, kind, lang, msisdn, body,
-		                       segments, cost, status, skip_reason, scheduled_for, dedupe_key)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		                       segments, cost, status, skip_reason, scheduled_for, dedupe_key,
+		                       bypass_quiet_hours)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 		 ON CONFLICT (tenant_id, dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
 		m.tenantID, m.branchID, m.patientID, m.kind, m.lang, m.msisdn, m.body,
-		segs, float64(segs)*p.cost, m.status, m.skipReason, m.when, m.dedupeKey)
+		segs, float64(segs)*p.cost, m.status, m.skipReason, m.when, m.dedupeKey,
+		m.bypassQuiet)
 	if err != nil {
 		return false, err
 	}
@@ -103,6 +105,8 @@ type plannedMessage struct {
 	skipReason any
 	when       time.Time
 	dedupeKey  string
+	// bypassQuiet is set for messages the recipient is waiting on right now.
+	bypassQuiet bool
 }
 
 // --- appointment reminders ----------------------------------------------------
