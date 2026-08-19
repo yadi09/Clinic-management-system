@@ -109,10 +109,16 @@ type LogRow struct {
 	SkipReason string    `json:"skip_reason,omitempty"`
 	// DeliveredAt is set only when the handset confirmed it. "Sent" and "delivered"
 	// are different facts and the UI must not blur them.
-	DeliveredAt string     `json:"delivered_at,omitempty"`
-	LastError   string     `json:"last_error,omitempty"`
-	ScheduledAt string     `json:"scheduled_for"`
-	SentAt      string     `json:"sent_at,omitempty"`
+	DeliveredAt string `json:"delivered_at,omitempty"`
+	LastError   string `json:"last_error,omitempty"`
+	ScheduledAt string `json:"scheduled_for"`
+	SentAt      string `json:"sent_at,omitempty"`
+	// CanResend / CanSendNow are decided server-side: a button that is offered and
+	// then refused is worse than no button. Retried says a later attempt exists, so
+	// a failed message that has since gone out stops advertising one.
+	CanResend   bool       `json:"can_resend"`
+	CanSendNow  bool       `json:"can_send_now"`
+	Retried     bool       `json:"retried"`
 	PatientID   *uuid.UUID `json:"-"`
 	PatientName string     `json:"patient_name,omitempty"`
 	MRN         string     `json:"mrn,omitempty"`
@@ -235,6 +241,12 @@ type Service interface {
 	SaveTemplate(ctx context.Context, kind, lang, body string) error
 	ListRules(ctx context.Context) ([]Rule, error)
 	SaveRule(ctx context.Context, in RuleInput) error
+
+	// Resend has another go at a message that did not reach the patient, as a new
+	// row so both attempts stay on the record. SendNow releases one still waiting
+	// out quiet hours.
+	Resend(ctx context.Context, messageID uuid.UUID) error
+	SendNow(ctx context.Context, messageID uuid.UUID) error
 
 	// Audience lists candidates for a hand-picked send.
 	Audience(ctx context.Context, f AudienceFilter) ([]Audience, error)

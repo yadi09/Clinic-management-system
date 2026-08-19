@@ -40,4 +40,9 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	// desk that knows a holiday is coming and who to tell.
 	g.GET("/audience", use, h.Audience)
 	g.POST("/campaigns", use, h.SendCampaign)
+
+	// Trying again is the front desk's job — they are the ones who just corrected
+	// the phone number that made it fail in the first place.
+	g.POST("/messages/:id/resend", use, h.Resend)
+	g.POST("/messages/:id/send-now", use, h.SendNow)
 }

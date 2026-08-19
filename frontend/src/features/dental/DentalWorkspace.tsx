@@ -39,6 +39,7 @@ import { ToothChart } from "@/features/dental/ToothChart";
 import { FLAT_TEETH, ToothMultiSelect } from "@/features/dental/shared/pickers";
 import { PriceAgainstList, ServicePicker } from "@/features/dental/shared/ServicePicker";
 import { PatientMessages } from "@/features/messaging/PatientMessages";
+import { messageLog } from "@/features/messaging/api";
 import { splitRounded } from "@/features/dental/money";
 import { DepositCallout, depositOutstanding } from "@/features/dental/shared/Deposit";
 import { ImageGallery } from "@/features/dental/shared/visitRecord";
@@ -108,6 +109,16 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
   // Reception is the one asked "did she get it?", so reading is enough — this is
   // a record of what happened, not a place to send anything.
   const canMessage = can("message.send") || can("message.manage");
+  // Only the count of messages that never arrived, and only when this user could
+  // do something about it. Cheap enough to run beside the summary; the panel
+  // itself does the real fetching.
+  const msgTrouble = useQuery({
+    queryKey: ["message-log", "patient", patientId],
+    queryFn: () => messageLog({ patient: patientId }),
+    enabled: canMessage,
+  });
+  const unreadMessageTrouble =
+    (msgTrouble.data ?? []).filter((m) => m.status === "failed" || m.status === "skipped").length;
   // The dentist owns the clinical record; the front desk can still see it and take
   // payment for sessions, and correct the patient's personal details.
   const editable = can("dental.manage");
@@ -403,6 +414,9 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
             // "Did she get the reminder?" is asked at the desk about one patient,
             // not about the clinic, so the answer belongs on the patient.
             key: "messages", label: "Messages", icon: SHELF_ICONS.MessageSquare,
+            // A message that never arrived is worth noticing without opening the
+            // tab — that is the whole failure mode this panel exists for.
+            badge: unreadMessageTrouble || undefined,
             render: () => <PatientMessages patientId={patientId} />,
           }] : []),
           {

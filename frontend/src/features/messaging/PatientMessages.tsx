@@ -9,11 +9,17 @@
 // The clinic-wide log answers "did anything go out?". This answers the question
 // actually asked at the desk, which is "did *she* get hers?" — and, when the answer
 // is no, says which of the several possible reasons applies.
-import { useQuery } from "@tanstack/react-query";
-import { Clock, MessageSquare } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Clock, MessageSquare, RotateCw, Send } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { messageLog, type MessageRow } from "@/features/messaging/api";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/sonner";
+import { AppError } from "@/lib/api-client";
+import { useAuth } from "@/app/auth-context";
+import {
+  messageLog, resendMessage, sendMessageNow, type MessageRow,
+} from "@/features/messaging/api";
 
 const KIND: Record<string, string> = {
   welcome: "Welcome",
@@ -46,6 +52,14 @@ const WHY: Record<string, string> = {
 };
 
 export function PatientMessages({ patientId }: { patientId: string }) {
+  const { can } = useAuth();
+  const qc = useQueryClient();
+  const canSend = can("message.send") || can("message.manage");
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["message-log"] });
+    qc.invalidateQueries({ queryKey: ["messaging-usage"] });
+  };
+
   const log = useQuery({
     queryKey: ["message-log", "patient", patientId],
     queryFn: () => messageLog({ patient: patientId }),
@@ -71,16 +85,40 @@ export function PatientMessages({ patientId }: { patientId: string }) {
     );
   }
 
+  const stuck = rows.filter((r) => r.status === "failed" || r.status === "skipped").length;
+
   return (
     <div className="space-y-2">
-      {rows.map((r) => <Row key={r.id} row={r} />)}
+      {/* Said once at the top rather than repeated on every row: the common case
+          is several messages failing for the same reason, and the useful summary
+          is how many people were not reached. */}
+      {stuck > 0 && (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          {stuck} message{stuck === 1 ? "" : "s"} never reached this patient. Fix what each one names below,
+          then send it again — a retry re-reads the phone number from their record.
+        </p>
+      )}
+      {rows.map((r) => <Row key={r.id} row={r} canSend={canSend} onDone={refresh} />)}
     </div>
   );
 }
 
-function Row({ row }: { row: MessageRow }) {
+function Row({ row, canSend, onDone }: {
+  row: MessageRow; canSend: boolean; onDone: () => void;
+}) {
   const meta = STATUS[row.status] ?? { label: row.status, variant: "outline" as const };
   const when = row.delivered_at ?? row.sent_at ?? row.created_at;
+
+  const resend = useMutation({
+    mutationFn: () => resendMessage(row.id),
+    onSuccess: () => { toast.success("Queued to send again"); onDone(); },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not send it again"),
+  });
+  const now = useMutation({
+    mutationFn: () => sendMessageNow(row.id),
+    onSuccess: () => { toast.success("Sending now"); onDone(); },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not send it now"),
+  });
   return (
     <div className="rounded-md border bg-background px-3 py-2.5 text-sm">
       <div className="flex flex-wrap items-center gap-2">
@@ -117,6 +155,35 @@ function Row({ row }: { row: MessageRow }) {
       )}
       {row.status === "failed" && row.last_error && (
         <p className="mt-1 text-xs text-destructive">Failed — {row.last_error}</p>
+      )}
+
+      {canSend && (row.can_resend || row.can_send_now) && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {row.can_send_now && (
+            <Button size="sm" variant="outline" className="h-7 px-2 text-xs"
+              loading={now.isPending} onClick={() => now.mutate()}>
+              <Send className="h-3.5 w-3.5" /> Send now
+            </Button>
+          )}
+          {row.can_resend && !row.retried && (
+            <Button size="sm" variant="outline" className="h-7 px-2 text-xs"
+              loading={resend.isPending} onClick={() => resend.mutate()}>
+              <RotateCw className="h-3.5 w-3.5" />
+              {row.status === "delivered" || row.status === "sent" ? "Send again" : "Try again"}
+            </Button>
+          )}
+          {/* A message that has already been retried keeps the record but stops
+              offering a button somebody has pressed — the newer attempt is the
+              row above, with its own outcome. */}
+          {row.retried && (
+            <span className="text-xs text-muted-foreground">Tried again — see the newer attempt above.</span>
+          )}
+          {row.can_resend && !row.retried && (
+            <span className="text-xs text-muted-foreground">
+              Costs {row.cost} ETB and re-reads the number from this patient&apos;s record.
+            </span>
+          )}
+        </div>
       )}
     </div>
   );

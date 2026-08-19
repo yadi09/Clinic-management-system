@@ -158,3 +158,31 @@ func (h *Handlers) SendCampaign(c *gin.Context) {
 		"skipped": res.Skipped, "segments": res.Segments, "cost": res.Cost,
 	})
 }
+
+// Resend has another go at a message that did not reach the patient.
+func (h *Handlers) Resend(c *gin.Context) {
+	mid, err := id.Decode(id.PrefixMessage, strings.TrimSpace(c.Param("id")))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("unknown message"))
+		return
+	}
+	if err := h.svc.Resend(c.Request.Context(), mid); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+// SendNow releases a message waiting out the clinic's quiet hours.
+func (h *Handlers) SendNow(c *gin.Context) {
+	mid, err := id.Decode(id.PrefixMessage, strings.TrimSpace(c.Param("id")))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("unknown message"))
+		return
+	}
+	if err := h.svc.SendNow(c.Request.Context(), mid); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}

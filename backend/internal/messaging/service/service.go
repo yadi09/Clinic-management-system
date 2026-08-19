@@ -314,6 +314,7 @@ func (s *Service) Log(ctx context.Context, f messaging.LogFilter) ([]messaging.L
 			`SELECT m.id, m.kind, m.lang, m.msisdn, m.body, m.segments, m.cost::text, m.status,
 			        coalesce(m.skip_reason,''), coalesce(m.last_error,''),
 			        m.scheduled_for, m.sent_at, m.created_at, m.delivered_at, m.patient_id,
+			        EXISTS (SELECT 1 FROM messages r WHERE r.resent_from = m.id) AS retried,
 			        trim(coalesce(p.first_name,'') || ' ' || coalesce(p.last_name,'')), coalesce(p.mrn,'')
 			   FROM messages m
 			   LEFT JOIN patients p ON p.id = m.patient_id AND p.tenant_id = m.tenant_id
@@ -334,9 +335,14 @@ func (s *Service) Log(ctx context.Context, f messaging.LogFilter) ([]messaging.L
 			var sentAt, deliveredAt *time.Time
 			if e := rows.Scan(&r.ID, &r.Kind, &r.Lang, &r.MSISDN, &r.Body, &r.Segments, &r.Cost, &r.Status,
 				&r.SkipReason, &r.LastError, &sched, &sentAt, &created, &deliveredAt, &r.PatientID,
-				&r.PatientName, &r.MRN); e != nil {
+				&r.Retried, &r.PatientName, &r.MRN); e != nil {
 				return e
 			}
+			r.CanSendNow = r.Status == "scheduled"
+			r.CanResend = (r.Status == "failed" || r.Status == "skipped" ||
+				r.Status == "sent" || r.Status == "delivered") &&
+				r.SkipReason != "no_consent"
+
 			if deliveredAt != nil {
 				r.DeliveredAt = deliveredAt.Format(time.RFC3339)
 			}

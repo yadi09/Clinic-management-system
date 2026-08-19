@@ -62,6 +62,11 @@ export interface MessageRow {
   scheduled_for: string;
   sent_at?: string;
   delivered_at?: string;
+  /** Decided server-side so the UI never offers a button that would be refused. */
+  can_resend: boolean;
+  can_send_now: boolean;
+  /** A later attempt already exists, so this one stops advertising a retry. */
+  retried: boolean;
   created_at: string;
   patient_id?: string;
   patient_name?: string;
@@ -93,6 +98,14 @@ export function messageLog(p: { kind?: string; status?: string; patient?: string
   if (p.patient) q.set("patient", p.patient);
   const s = q.toString();
   return apiFetch<MessageRow[]>(`/messaging/log${s ? `?${s}` : ""}`);
+}
+/** Try again — a new message, so both attempts stay on the patient's record. */
+export function resendMessage(id: string) {
+  return apiFetch<void>(`/messaging/messages/${id}/resend`, { method: "POST" });
+}
+/** Release one that is waiting out quiet hours. */
+export function sendMessageNow(id: string) {
+  return apiFetch<void>(`/messaging/messages/${id}/send-now`, { method: "POST" });
 }
 export function sendTestMessage(phone: string, body: string) {
   return apiFetch<void>("/messaging/test", { method: "POST", body: { phone, body } });
