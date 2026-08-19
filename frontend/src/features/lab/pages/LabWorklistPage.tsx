@@ -99,38 +99,41 @@ export function LabWorklistPage() {
       </div>
 
       <Card className="overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <tr>
-              <th className="p-3 font-medium">Sample</th>
-              <th className="font-medium">Test</th>
-              <th className="font-medium">Patient</th>
-              <th className="font-medium">Priority</th>
-              <th className="font-medium">Ordered</th>
-              <th className="p-3 font-medium">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((it) => (
-              <tr key={it.id} className="cursor-pointer border-b hover:bg-muted/30" onClick={() => navigate(`/lab/items/${it.id}`)}>
-                <td className="p-3 font-mono text-xs">S-{it.sample_no}</td>
-                <td>{it.test_name}</td>
-                <td>
-                  {it.patient_name} <span className="font-mono text-xs text-muted-foreground">{it.mrn}</span>
-                </td>
-                <td>
-                  <Badge variant="outline" className={PRIORITY[it.priority] ?? PRIORITY.routine}>
-                    {it.priority}
-                  </Badge>
-                </td>
-                <td className="text-xs text-muted-foreground">{waitMins(it.ordered_at)}m ago</td>
-                <td className="p-3">
-                  <Badge variant="outline">{it.status.replace("_", " ")}</Badge>
-                </td>
+        <div className="overflow-x-auto">
+          {/* Phones: this table is wider than the screen — scroll it sideways instead of crushing the columns. */}
+          <table className="w-full min-w-[560px] text-sm">
+            <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="p-3 font-medium">Sample</th>
+                <th className="font-medium">Test</th>
+                <th className="font-medium">Patient</th>
+                <th className="font-medium">Priority</th>
+                <th className="font-medium">Ordered</th>
+                <th className="p-3 font-medium">Status</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rows.map((it) => (
+                <tr key={it.id} className="cursor-pointer border-b hover:bg-muted/30" onClick={() => navigate(`/lab/items/${it.id}`)}>
+                  <td className="p-3 font-mono text-xs">S-{it.sample_no}</td>
+                  <td>{it.test_name}</td>
+                  <td>
+                    {it.patient_name} <span className="font-mono text-xs text-muted-foreground">{it.mrn}</span>
+                  </td>
+                  <td>
+                    <Badge variant="outline" className={PRIORITY[it.priority] ?? PRIORITY.routine}>
+                      {it.priority}
+                    </Badge>
+                  </td>
+                  <td className="text-xs text-muted-foreground">{waitMins(it.ordered_at)}m ago</td>
+                  <td className="p-3">
+                    <Badge variant="outline">{it.status.replace("_", " ")}</Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {rows.length === 0 && (
           <div className="p-10 text-center">
             <FlaskConical className="mx-auto h-5 w-5 text-muted-foreground" />

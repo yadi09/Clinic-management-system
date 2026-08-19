@@ -50,39 +50,42 @@ export function PurchasingPage() {
       </div>
 
       <Card className="overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <tr>
-              <th className="p-3 font-medium">PO</th>
-              <th className="font-medium">Supplier</th>
-              <th className="font-medium">Items</th>
-              <th className="font-medium">Value</th>
-              <th className="font-medium">Status</th>
-              <th className="p-3 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {(pos.data ?? []).map((p) => (
-              <tr key={p.id} className="border-b">
-                <td className="p-3 font-mono text-xs">PO-{p.po_no}</td>
-                <td>{p.supplier}</td>
-                <td>{p.item_count}</td>
-                <td className="font-medium">{p.total}</td>
-                <td>{statusBadge(p.status)}</td>
-                <td className="p-3 text-right">
-                  <div className="flex justify-end gap-3">
-                    {p.status === "draft" && (
-                      <button className="text-xs text-primary hover:underline" onClick={() => status.mutate({ id: p.id, s: "ordered" })}>Mark ordered</button>
-                    )}
-                    {(p.status === "draft" || p.status === "ordered") && (
-                      <button className="text-xs text-primary hover:underline" onClick={() => setReceiving(p.id)}>Receive</button>
-                    )}
-                  </div>
-                </td>
+        <div className="overflow-x-auto">
+          {/* Phones: this table is wider than the screen — scroll it sideways instead of crushing the columns. */}
+          <table className="w-full min-w-[560px] text-sm">
+            <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="p-3 font-medium">PO</th>
+                <th className="font-medium">Supplier</th>
+                <th className="font-medium">Items</th>
+                <th className="font-medium">Value</th>
+                <th className="font-medium">Status</th>
+                <th className="p-3 font-medium"></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {(pos.data ?? []).map((p) => (
+                <tr key={p.id} className="border-b">
+                  <td className="p-3 font-mono text-xs">PO-{p.po_no}</td>
+                  <td>{p.supplier}</td>
+                  <td>{p.item_count}</td>
+                  <td className="font-medium">{p.total}</td>
+                  <td>{statusBadge(p.status)}</td>
+                  <td className="p-3 text-right">
+                    <div className="flex justify-end gap-3">
+                      {p.status === "draft" && (
+                        <button className="text-xs text-primary hover:underline" onClick={() => status.mutate({ id: p.id, s: "ordered" })}>Mark ordered</button>
+                      )}
+                      {(p.status === "draft" || p.status === "ordered") && (
+                        <button className="text-xs text-primary hover:underline" onClick={() => setReceiving(p.id)}>Receive</button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {(pos.data?.length ?? 0) === 0 && <p className="p-8 text-center text-sm text-muted-foreground">No purchase orders yet.</p>}
       </Card>
 

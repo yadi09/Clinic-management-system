@@ -52,9 +52,14 @@ function Tooth({ code, status, editable, onToggle }: { code: string; status: str
       disabled={!editable}
       onClick={() => onToggle(code)}
       title={`Palmer ${code}${status ? ` · ${STATUS_LABEL[status] ?? status}` : ""}`}
+      // title= never surfaces on touch, so the status has to be readable another
+      // way — this is also what a screen reader announces per tooth.
+      aria-label={`${code}${status ? ` — ${STATUS_LABEL[status] ?? status}` : ""}`}
       style={st}
       className={cn(
-        "flex h-8 w-7 items-center justify-center rounded-md border text-xs font-semibold tabular-nums transition-transform",
+        // 28×32px was fine under a cursor; under a thumb it cycles the neighbour.
+        // Below md each tooth shares its quadrant row at a 40px floor.
+        "flex h-8 w-7 items-center justify-center rounded-md border text-xs font-semibold tabular-nums transition-transform max-md:h-10 max-md:min-w-10 max-md:flex-1",
         editable ? "cursor-pointer hover:scale-110" : "cursor-default",
       )}
     >
@@ -63,12 +68,17 @@ function Tooth({ code, status, editable, onToggle }: { code: string; status: str
   );
 }
 
-function Quadrant({ codes, teeth, editable, onToggle, align }: { codes: string[]; teeth: Record<string, string>; editable: boolean; onToggle: (c: string) => void; align: "end" | "start" }) {
+function Quadrant({ label, codes, teeth, editable, onToggle, align }: { label: string; codes: string[]; teeth: Record<string, string>; editable: boolean; onToggle: (c: string) => void; align: "end" | "start" }) {
   return (
-    <div className={cn("flex gap-1", align === "end" ? "justify-end" : "justify-start")}>
-      {codes.map((c) => (
-        <Tooth key={c} code={c} status={teeth[c] ?? ""} editable={editable} onToggle={onToggle} />
-      ))}
+    <div>
+      {/* Stacked one per row below md, position no longer says which quadrant a
+          row is — so the row says it itself. Hidden where layout still speaks. */}
+      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground md:hidden">{label}</p>
+      <div className={cn("flex gap-1", align === "end" ? "justify-end" : "justify-start")}>
+        {codes.map((c) => (
+          <Tooth key={c} code={c} status={teeth[c] ?? ""} editable={editable} onToggle={onToggle} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -76,13 +86,15 @@ function Quadrant({ codes, teeth, editable, onToggle, align }: { codes: string[]
 export function ToothChart({ teeth, editable, onToggle }: { teeth: Record<string, string>; editable: boolean; onToggle: (code: string) => void }) {
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-2 gap-x-4 gap-y-2 border-b pb-3">
-        <Quadrant codes={UPPER[0]} teeth={teeth} editable={editable} onToggle={onToggle} align="end" />
-        <Quadrant codes={UPPER[1]} teeth={teeth} editable={editable} onToggle={onToggle} align="start" />
+      {/* Side by side the two arches need ~520px; a phone gets one quadrant per
+          row so eight teeth fill the width instead of shrinking below a finger. */}
+      <div className="grid grid-cols-1 gap-x-4 gap-y-2 border-b pb-3 md:grid-cols-2">
+        <Quadrant label="Upper right" codes={UPPER[0]} teeth={teeth} editable={editable} onToggle={onToggle} align="end" />
+        <Quadrant label="Upper left" codes={UPPER[1]} teeth={teeth} editable={editable} onToggle={onToggle} align="start" />
       </div>
-      <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-        <Quadrant codes={LOWER[0]} teeth={teeth} editable={editable} onToggle={onToggle} align="end" />
-        <Quadrant codes={LOWER[1]} teeth={teeth} editable={editable} onToggle={onToggle} align="start" />
+      <div className="grid grid-cols-1 gap-x-4 gap-y-2 md:grid-cols-2">
+        <Quadrant label="Lower right" codes={LOWER[0]} teeth={teeth} editable={editable} onToggle={onToggle} align="end" />
+        <Quadrant label="Lower left" codes={LOWER[1]} teeth={teeth} editable={editable} onToggle={onToggle} align="start" />
       </div>
       <div className="flex flex-wrap gap-3 pt-1">
         {TOOTH_STATUSES.map((s) => {

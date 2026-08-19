@@ -124,7 +124,10 @@ export function ComposeTab({ settings }: { settings?: MessagingSettings }) {
               <Input id="aud-q" value={q} onChange={(e) => { setQ(e.target.value); setDropped({}); }}
                 placeholder="Search…" />
             </div>
-            <label className="flex cursor-pointer items-end gap-2 pb-2 text-sm">
+            {/* Below sm the grid stacks, so items-end (which lines this up with the
+                inputs beside it) has nothing to align to — centre it and give the
+                tap target real height instead. */}
+            <label className="flex cursor-pointer items-end gap-2 pb-2 text-sm max-sm:min-h-11 max-sm:items-center max-sm:pb-0">
               <input type="checkbox" checked={owing} onChange={(e) => { setOwing(e.target.checked); setDropped({}); }} />
               <span>Only patients who owe money</span>
             </label>
@@ -140,10 +143,10 @@ export function ComposeTab({ settings }: { settings?: MessagingSettings }) {
               <span className="text-muted-foreground">· {optedOut.length} asked not to be messaged</span>
             )}
             <div className="ml-auto flex gap-2">
-              <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setDropped({})}>
+              <Button size="sm" variant="ghost" className="touch-hit h-7 px-2 text-xs" onClick={() => setDropped({})}>
                 Select all
               </Button>
-              <Button size="sm" variant="ghost" className="h-7 px-2 text-xs"
+              <Button size="sm" variant="ghost" className="touch-hit h-7 px-2 text-xs"
                 onClick={() => setDropped(Object.fromEntries(selectable.map((r) => [r.id, true])))}>
                 Clear
               </Button>
@@ -191,7 +194,7 @@ export function ComposeTab({ settings }: { settings?: MessagingSettings }) {
               placeholder="Dear {{name}}, the clinic is closed on Monday for the holiday." />
             <div className="flex flex-wrap gap-1.5">
               <button type="button" onClick={() => setBody((b) => b + "{{name}}")}
-                className="rounded-full border px-2 py-0.5 text-[11px] font-medium hover:bg-muted">
+                className="touch-hit rounded-full border px-2 py-0.5 text-[11px] font-medium hover:bg-muted">
                 {"{{name}}"}
               </button>
             </div>
@@ -200,7 +203,7 @@ export function ComposeTab({ settings }: { settings?: MessagingSettings }) {
                 {preview.data.chars} characters · <b>{segs} message{segs === 1 ? "" : "s"}</b>{" "}
                 ({preview.data.per_segment} characters each{preview.data.unicode ? ", Amharic" : ""})
                 {" · "}
-                {chosen.length} recipient{chosen.length === 1 ? "" : "s"} ≈ <b>{cost} ETB</b>
+                {chosen.length} recipient{chosen.length === 1 ? "" : "s"} ≈ <b className="whitespace-nowrap tabular-nums">{cost} ETB</b>
               </p>
             )}
           </div>
@@ -240,8 +243,10 @@ function AudienceLine({ row, checked, onToggle }: {
   row: AudienceRow; checked: boolean; onToggle: () => void;
 }) {
   const blocked = !row.reachable || row.opted_out;
+  // min-h-11 below md: the whole row is the checkbox's tap target, and py-2 alone
+  // leaves it ~36px tall — fingers pick the neighbouring patient.
   return (
-    <label className={cn("flex flex-wrap items-center gap-2 px-3 py-2 text-sm",
+    <label className={cn("flex flex-wrap items-center gap-2 px-3 py-2 text-sm max-md:min-h-11",
       blocked ? "bg-muted/30" : "cursor-pointer hover:bg-muted/40")}>
       <input type="checkbox" checked={checked} disabled={blocked} onChange={onToggle} />
       <span className={cn("min-w-0 flex-1 truncate", blocked && "text-muted-foreground")}>
@@ -249,12 +254,12 @@ function AudienceLine({ row, checked, onToggle }: {
         {row.mrn && <span className="ml-2 text-xs text-muted-foreground">{row.mrn}</span>}
       </span>
       {row.owes && Number(row.owes) > 0 && (
-        <span className="text-xs tabular-nums text-amber-700">owes {Math.round(Number(row.owes))} ETB</span>
+        <span className="whitespace-nowrap text-xs tabular-nums text-amber-700">owes {Math.round(Number(row.owes))} ETB</span>
       )}
       {row.opted_out
         ? <Badge variant="outline">Asked not to be messaged</Badge>
         : row.reachable
-          ? <span className="text-xs tabular-nums text-muted-foreground">{row.phone}</span>
+          ? <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">{row.phone}</span>
           : <Badge variant="warning">{ISSUE[row.phone_issue ?? ""] ?? "cannot be reached"}</Badge>}
     </label>
   );

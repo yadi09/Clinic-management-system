@@ -34,46 +34,49 @@ export function DispenseQueuePage() {
       </div>
 
       <Card className="overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <tr>
-              <th className="p-3 font-medium">Rx</th>
-              <th className="font-medium">Patient</th>
-              <th className="font-medium">Prescriber</th>
-              <th className="font-medium">Items</th>
-              <th className="font-medium">Flags</th>
-              <th className="p-3 font-medium">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(q.data?.items ?? []).map((it) => (
-              <tr
-                key={it.id}
-                className={`border-b ${it.dispensed ? "" : "cursor-pointer hover:bg-muted/30"}`}
-                onClick={() => !it.dispensed && navigate(`/pharmacy/dispense/${it.id}`)}
-              >
-                <td className="p-3 font-mono text-xs">R-{it.rx_no}</td>
-                <td>
-                  {it.patient_name} <span className="font-mono text-xs text-muted-foreground">{it.mrn}</span>
-                </td>
-                <td>{it.prescriber || "—"}</td>
-                <td>{it.item_count}</td>
-                <td>
-                  {it.flags.map((f) => (
-                    <Badge key={f} variant="outline" className="mr-1 border-amber-300 text-amber-700">
-                      {f}
-                    </Badge>
-                  ))}
-                </td>
-                <td className="p-3">
-                  <Badge variant={it.dispensed ? "success" : it.awaiting_payment ? "warning" : "outline"}>
-                    {it.dispensed ? "dispensed" : it.awaiting_payment ? "awaiting payment" : "ready"}
-                  </Badge>
-                </td>
+        <div className="overflow-x-auto">
+          {/* Phones: this table is wider than the screen — scroll it sideways instead of crushing the columns. */}
+          <table className="w-full min-w-[560px] text-sm">
+            <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="p-3 font-medium">Rx</th>
+                <th className="font-medium">Patient</th>
+                <th className="font-medium">Prescriber</th>
+                <th className="font-medium">Items</th>
+                <th className="font-medium">Flags</th>
+                <th className="p-3 font-medium">Status</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {(q.data?.items ?? []).map((it) => (
+                <tr
+                  key={it.id}
+                  className={`border-b ${it.dispensed ? "" : "cursor-pointer hover:bg-muted/30"}`}
+                  onClick={() => !it.dispensed && navigate(`/pharmacy/dispense/${it.id}`)}
+                >
+                  <td className="p-3 font-mono text-xs">R-{it.rx_no}</td>
+                  <td>
+                    {it.patient_name} <span className="font-mono text-xs text-muted-foreground">{it.mrn}</span>
+                  </td>
+                  <td>{it.prescriber || "—"}</td>
+                  <td>{it.item_count}</td>
+                  <td>
+                    {it.flags.map((f) => (
+                      <Badge key={f} variant="outline" className="mr-1 border-amber-300 text-amber-700">
+                        {f}
+                      </Badge>
+                    ))}
+                  </td>
+                  <td className="p-3">
+                    <Badge variant={it.dispensed ? "success" : it.awaiting_payment ? "warning" : "outline"}>
+                      {it.dispensed ? "dispensed" : it.awaiting_payment ? "awaiting payment" : "ready"}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {(q.data?.items?.length ?? 0) === 0 && (
           <div className="p-10 text-center">
             <p className="text-sm font-medium">Nothing to dispense right now</p>

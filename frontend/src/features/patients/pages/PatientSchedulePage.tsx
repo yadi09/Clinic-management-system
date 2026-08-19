@@ -385,15 +385,16 @@ function Row({ e, today, onMove }: { e: Entry; today: string; onMove?: () => voi
       </div>
 
       {e.amount && num(e.amount) > 0 && (
-        <span className="font-mono text-sm tabular-nums text-muted-foreground">{birr(e.amount)}</span>
+        <span className="whitespace-nowrap font-mono text-sm tabular-nums text-muted-foreground">{birr(e.amount)}</span>
       )}
       <span className={cn("w-20 text-right text-sm font-medium capitalize", tone)}>{e.status}</span>
 
-      {/* Actions stay quiet until the row is hovered, so the timeline reads cleanly. */}
+      {/* Actions stay quiet until the row is hovered — but only where hover exists.
+          Touch has none, so phones always show the button, at a thumb-sized height. */}
       <div className="w-[7.5rem] text-right">
         {onMove && (
           <Button size="sm" variant="ghost" onClick={onMove}
-            className={cn("opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100", e.missed && "opacity-100")}>
+            className={cn("opacity-100 transition-opacity focus-visible:opacity-100 max-md:min-h-9 md:opacity-0 md:group-hover:opacity-100", e.missed && "md:opacity-100")}>
             <CalendarClock className="h-3.5 w-3.5" /> Reschedule
           </Button>
         )}

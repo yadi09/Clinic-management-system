@@ -209,50 +209,53 @@ function ItemInner({ d, onChanged, onBack }: { d: OrderItemDetail; onChanged: ()
               )}
             </div>
           </div>
-          <table className="w-full text-sm">
-            <thead className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="py-2 font-medium">Analyte</th>
-                <th className="font-medium">Reference</th>
-                <th className="font-medium">Value</th>
-                <th className="py-2 font-medium">Flag</th>
-              </tr>
-            </thead>
-            <tbody>
-              {d.analytes.map((a) => {
-                const v = vals[a.analyte_id] ?? a.value ?? "";
-                const flag = editable ? previewFlag(v, a) : a.flag || "normal";
-                const ref = [a.ref_low, a.ref_high].some(Boolean) ? `${a.ref_low ?? ""}–${a.ref_high ?? ""}${a.unit ? ` ${a.unit}` : ""}` : "—";
-                return (
-                  <tr key={a.analyte_id} className="border-b last:border-0">
-                    <td className="py-2">{a.name}</td>
-                    <td className="text-xs text-muted-foreground">{ref}</td>
-                    <td className="w-40">
-                      {editable ? (
-                        <Input
-                          className="h-8 w-32"
-                          value={vals[a.analyte_id] ?? ""}
-                          placeholder={a.unit || ""}
-                          onChange={(e) => setVals({ ...vals, [a.analyte_id]: e.target.value })}
-                        />
-                      ) : (
-                        <span className="font-medium">{a.value || "—"}{a.value && a.unit ? ` ${a.unit}` : ""}</span>
-                      )}
-                    </td>
-                    <td className="py-2">
-                      {v.trim() ? (
-                        <Badge variant="outline" className={FLAG[flag]?.cls ?? FLAG.normal.cls}>
-                          {FLAG[flag]?.label ?? flag}
-                        </Badge>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            {/* Phones: this table is wider than the screen — scroll it sideways instead of crushing the columns. */}
+            <table className="w-full min-w-[560px] text-sm">
+              <thead className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="py-2 font-medium">Analyte</th>
+                  <th className="font-medium">Reference</th>
+                  <th className="font-medium">Value</th>
+                  <th className="py-2 font-medium">Flag</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.analytes.map((a) => {
+                  const v = vals[a.analyte_id] ?? a.value ?? "";
+                  const flag = editable ? previewFlag(v, a) : a.flag || "normal";
+                  const ref = [a.ref_low, a.ref_high].some(Boolean) ? `${a.ref_low ?? ""}–${a.ref_high ?? ""}${a.unit ? ` ${a.unit}` : ""}` : "—";
+                  return (
+                    <tr key={a.analyte_id} className="border-b last:border-0">
+                      <td className="py-2">{a.name}</td>
+                      <td className="text-xs text-muted-foreground">{ref}</td>
+                      <td className="w-40">
+                        {editable ? (
+                          <Input
+                            className="h-8 w-32"
+                            value={vals[a.analyte_id] ?? ""}
+                            placeholder={a.unit || ""}
+                            onChange={(e) => setVals({ ...vals, [a.analyte_id]: e.target.value })}
+                          />
+                        ) : (
+                          <span className="font-medium">{a.value || "—"}{a.value && a.unit ? ` ${a.unit}` : ""}</span>
+                        )}
+                      </td>
+                      <td className="py-2">
+                        {v.trim() ? (
+                          <Badge variant="outline" className={FLAG[flag]?.cls ?? FLAG.normal.cls}>
+                            {FLAG[flag]?.label ?? flag}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
           {editable && (
             <div className="mt-4 flex items-center justify-end gap-2">

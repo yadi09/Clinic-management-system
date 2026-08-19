@@ -169,7 +169,9 @@ function PrescriptionDialog({ patientId, sessionId, onClose, onSaved }: { patien
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl">
+      {/* Full-screen on a phone: several medication lines plus an allergy override
+          do not fit in a bottom sheet's letterbox. */}
+      <DialogContent className="max-w-2xl" fullOnMobile>
         <DialogHeader><DialogTitle>New prescription</DialogTitle></DialogHeader>
         {/* The allergy must be visible while the drug is being chosen, not behind this dialog. */}
         <PatientAllergyLine patientId={patientId} />
@@ -370,8 +372,12 @@ export function ImageGallery({ images, editable, onDelete, thumb }: { images: De
             <button type="button" className="block h-full w-full" title="Preview" onClick={() => setIdx(i)}>
               <img src={im.url} alt={im.filename} loading="lazy" className="h-full w-full object-cover transition-transform group-hover:scale-105" />
             </button>
+            {/* Hover-revealed is never revealed on touch — the button shows by
+                default there and desktop keeps its quiet-until-hover look. */}
             {editable && (
-              <button className="absolute right-1 top-1 rounded-full bg-black/55 p-1 text-white opacity-0 transition-opacity hover:bg-destructive group-hover:opacity-100" title="Remove" onClick={() => setConfirmDel(im)}>
+              <button
+                className="touch-hit absolute right-1 top-1 rounded-full bg-black/55 p-1 text-white opacity-100 transition-opacity hover:bg-destructive focus-visible:opacity-100 max-md:p-2 md:opacity-0 md:group-hover:opacity-100"
+                title="Remove" aria-label="Remove image" onClick={() => setConfirmDel(im)}>
                 <Trash2 className="h-3 w-3" />
               </button>
             )}

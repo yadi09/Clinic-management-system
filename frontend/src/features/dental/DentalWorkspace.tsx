@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  AlertTriangle, ArrowLeft, CalendarClock, CalendarDays, ImagePlus, Pencil, Plus,
+  AlertTriangle, ArrowLeft, CalendarClock, CalendarDays, ImagePlus, Pencil, Phone, Plus,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -300,28 +300,41 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-h2 leading-tight">{fullName}</h2>
+            {/* px-2.5 py-1 makes a ~26px pill — fine under a cursor, unhittable under
+                a thumb. Below md they grow to a 36px target; desktop keeps its size. */}
             {canEditPatient && (
               <button onClick={() => setEditingPatient(true)}
-                className="flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium hover:bg-white/25">
+                className="flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium hover:bg-white/25 max-md:min-h-9 max-md:px-3">
                 <Pencil className="h-3 w-3" /> Edit details
               </button>
             )}
             <button onClick={() => navigate(`/patients/${patientId}/schedule`)}
-                className="flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium hover:bg-white/25">
+                className="flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium hover:bg-white/25 max-md:min-h-9 max-md:px-3">
                 <CalendarClock className="h-3 w-3" /> Schedule
               </button>
             {/* "When is this patient next in?" is a calendar question, and the answer
                 was to open the calendar and read every other patient's week looking
                 for this one. The filter travels in the URL. */}
             <button onClick={() => navigate(`/appointments?patient=${patientId}`)}
-                className="flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium hover:bg-white/25">
+                className="flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium hover:bg-white/25 max-md:min-h-9 max-md:px-3">
                 <CalendarDays className="h-3 w-3" /> On the calendar
               </button>
           </div>
           <p className="text-sm text-brand-foreground/80 tabular-nums">
             MRN {p.mrn} · {age(p.dob)} · <span className="capitalize">{p.gender}</span>
-            {p.phone ? ` · ${p.phone}` : ""}{p.blood_group ? ` · ${p.blood_group}` : ""}
+            {/* Inline only where a phone number is something you read. */}
+            {p.phone ? <span className="max-md:hidden"> · {p.phone}</span> : null}
+            {p.blood_group ? ` · ${p.blood_group}` : ""}
           </p>
+          {/* On the device that can place the call, the number is a tel: link on its
+              own line — whole, never truncated, and one tap from ringing. */}
+          {p.phone && (
+            <a href={`tel:${p.phone}`}
+              className="inline-flex min-h-9 items-center gap-1.5 text-sm font-medium text-brand-foreground underline underline-offset-2 md:hidden">
+              <Phone className="h-3.5 w-3.5" />
+              <span className="whitespace-nowrap tabular-nums">{p.phone}</span>
+            </a>
+          )}
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {/* Money is deliberately NOT a red pill here any more: it used to be
@@ -344,7 +357,7 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
               allergies" whether or not anyone had asked. */}
           {editable ? (
             <button onClick={() => setEditingAllergies(true)}
-              className={cn("flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-white/25",
+              className={cn("flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-white/25 max-md:min-h-9",
                 p.allergies.length === 0 ? "bg-white/15" : "bg-white/20")}>
               {p.allergies.length === 0 ? <><Plus className="h-3 w-3" /> Record allergies</> : <><Pencil className="h-3 w-3" /> Allergies</>}
             </button>
@@ -773,7 +786,9 @@ function NewPlanDialog({ patientId, teeth, onClose, onSaved }: { patientId: stri
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl">
+      {/* Full-screen on a phone: this is a multi-section task with a schedule
+          preview, and a bottom sheet leaves it editing through a letterbox. */}
+      <DialogContent className="max-w-2xl" fullOnMobile>
         <DialogHeader><DialogTitle>New treatment plan</DialogTitle></DialogHeader>
         <PatientAllergyLine patientId={patientId} />
         <div className="space-y-3">

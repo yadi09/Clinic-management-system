@@ -40,30 +40,33 @@ export function DrugCatalogPage() {
       </div>
 
       <Card className="overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <tr>
-              <th className="p-3 font-medium">Drug</th>
-              <th className="font-medium">Form</th>
-              <th className="font-medium">Class</th>
-              <th className="font-medium">On hand</th>
-              <th className="font-medium">Controlled</th>
-              <th className="p-3 font-medium">Price</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((d) => (
-              <tr key={d.id} className="border-b">
-                <td className="p-3 font-medium">{d.name}</td>
-                <td>{d.form || "—"}</td>
-                <td>{d.drug_class || "—"}</td>
-                <td className={d.on_hand <= d.reorder_level ? "font-medium text-amber-700" : ""}>{d.on_hand}</td>
-                <td>{d.is_controlled ? <Badge variant="outline">Yes</Badge> : "No"}</td>
-                <td className="p-3 font-medium">{d.unit_price}</td>
+        <div className="overflow-x-auto">
+          {/* Phones: this table is wider than the screen — scroll it sideways instead of crushing the columns. */}
+          <table className="w-full min-w-[560px] text-sm">
+            <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="p-3 font-medium">Drug</th>
+                <th className="font-medium">Form</th>
+                <th className="font-medium">Class</th>
+                <th className="font-medium">On hand</th>
+                <th className="font-medium">Controlled</th>
+                <th className="p-3 font-medium">Price</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rows.map((d) => (
+                <tr key={d.id} className="border-b">
+                  <td className="p-3 font-medium">{d.name}</td>
+                  <td>{d.form || "—"}</td>
+                  <td>{d.drug_class || "—"}</td>
+                  <td className={d.on_hand <= d.reorder_level ? "font-medium text-amber-700" : ""}>{d.on_hand}</td>
+                  <td>{d.is_controlled ? <Badge variant="outline">Yes</Badge> : "No"}</td>
+                  <td className="p-3 font-medium">{d.unit_price}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {rows.length === 0 && <p className="p-8 text-center text-sm text-muted-foreground">No drugs.</p>}
       </Card>
     </div>

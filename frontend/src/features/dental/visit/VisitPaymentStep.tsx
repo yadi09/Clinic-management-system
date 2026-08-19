@@ -83,7 +83,10 @@ function Pipeline({ stage }: { stage: FeeStage }) {
               )}>
                 {done ? <Check className="h-3.5 w-3.5" /> : i + 1}
               </span>
-              <span className={cn("text-[10px] font-semibold uppercase tracking-wide",
+              {/* max-md:text-xs on every 10/11px run that carries an amount or a
+                  payment state — on a phone that is the reading distance that
+                  decides whether "At cashier" gets seen at all. */}
+              <span className={cn("text-[10px] font-semibold uppercase tracking-wide max-md:text-xs",
                 here ? "text-foreground" : done ? "text-emerald-600" : "text-muted-foreground")}>
                 {s.label}
               </span>
@@ -128,7 +131,7 @@ function CourseRecap({ plan, current }: { plan: Plan; current: Session }) {
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border bg-border sm:grid-cols-4">
         {cells.map((c) => (
           <div key={c.k} className="bg-card px-3 py-2">
-            <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{c.k}</div>
+            <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground max-md:text-xs">{c.k}</div>
             <div className={cn("tabular-nums text-sm font-bold", c.tone)}>{birr(String(c.v))}</div>
           </div>
         ))}
@@ -138,7 +141,7 @@ function CourseRecap({ plan, current }: { plan: Plan; current: Session }) {
           <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
             <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
           </div>
-          <span className="text-[11px] font-semibold text-emerald-600">{pct}% collected</span>
+          <span className="text-[11px] font-semibold text-emerald-600 max-md:text-xs">{pct}% collected</span>
         </div>
       )}
       <CourseTrack plan={plan} current={current} />
@@ -230,7 +233,7 @@ function CourseTrack({ plan, current }: { plan: Plan; current: Session }) {
               </div>
             )}
             <div className="mt-1 tabular-nums text-xs font-bold">{birr(it.amount)}</div>
-            <div className={cn("text-[10px] font-semibold", it.now ? "text-brand" : it.st.cls)}>
+            <div className={cn("text-[10px] font-semibold max-md:text-xs", it.now ? "text-brand" : it.st.cls)}>
               {it.now ? "In the chair" : it.st.label}
             </div>
           </div>
@@ -430,8 +433,10 @@ export function VisitPaymentStep({ patientId, plan, session, canCollect, editabl
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">This visit's fee</span>
                 <span className="tabular-nums text-lg font-bold">{birr(session.amount_due)}</span>
+                {/* touch-hit keeps the quiet 28px look but gives a thumb the tap
+                    area the visual size denies it. */}
                 {editable && (
-                  <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setEditing(true)}>
+                  <Button variant="outline" size="sm" className="touch-hit h-7 px-2 text-xs" onClick={() => setEditing(true)}>
                     <Pencil className="h-3 w-3" /> Change
                   </Button>
                 )}
@@ -523,13 +528,13 @@ export function FeeStrip({ session, planTitle, onReopen }: {
   }[stage];
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-1.5 text-xs">
-      <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide", meta.cls)}>
+      <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide max-md:text-xs", meta.cls)}>
         {meta.label}
       </span>
       <span className="tabular-nums font-semibold">{birr(session.amount_due)}</span>
       <span className="text-muted-foreground">· {planTitle} · visit {session.seq}</span>
       {onReopen && (
-        <Button variant="ghost" size="sm" className="ml-auto h-6 px-2 text-xs" onClick={onReopen}>
+        <Button variant="ghost" size="sm" className="touch-hit ml-auto h-6 px-2 text-xs" onClick={onReopen}>
           Payment options
         </Button>
       )}

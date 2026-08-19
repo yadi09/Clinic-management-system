@@ -159,7 +159,10 @@ function AutomationCard({ meta, rule, template, lang, variables, manage, expande
             <CardDescription>{meta.what}</CardDescription>
             <p className="mt-1 text-xs text-muted-foreground">{whenLabel(meta.timing, rule)}</p>
           </div>
-          <div className="flex items-center gap-2">
+          {/* On phones this row shared the card with the description and left it
+              ~100px wide — one word per line; basis-full drops the actions to their
+              own row so the text gets the full card width. */}
+          <div className="flex items-center gap-2 max-sm:basis-full max-sm:justify-end">
             {manage && (
               <Button
                 size="sm"
@@ -226,12 +229,14 @@ function AutomationCard({ meta, rule, template, lang, variables, manage, expande
             </Label>
             <Textarea id={`body-${meta.kind}`} rows={3} value={body} disabled={!manage}
               onChange={(e) => setBody(e.target.value)} />
+            {/* touch-hit on the chips: they must stay visually this small, but a
+                fingertip needs more than 20px to land on one. */}
             {manage && (
               <div className="flex flex-wrap gap-1.5 pt-0.5">
                 {variables.map((v) => (
                   <button key={v.name} type="button" title={v.describes}
                     onClick={() => setBody((b) => `${b}{{${v.name}}}`)}
-                    className="rounded-full border px-2 py-0.5 text-[11px] font-medium hover:bg-muted">
+                    className="touch-hit rounded-full border px-2 py-0.5 text-[11px] font-medium hover:bg-muted">
                     {`{{${v.name}}}`}
                   </button>
                 ))}

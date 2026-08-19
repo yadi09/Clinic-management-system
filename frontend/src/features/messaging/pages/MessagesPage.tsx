@@ -92,7 +92,7 @@ function UsageMeter({ usage }: { usage?: MessagingUsage }) {
   return (
     <div className="min-w-56 rounded-lg border bg-card px-4 py-2.5 shadow-sm">
       <div className="flex items-baseline justify-between gap-3 text-sm">
-        <span className="font-medium">
+        <span className="whitespace-nowrap font-medium tabular-nums">
           {usage.used_segments.toLocaleString()}
           {cap ? <span className="text-muted-foreground"> / {cap.toLocaleString()}</span> : null}
         </span>
@@ -106,8 +106,10 @@ function UsageMeter({ usage }: { usage?: MessagingUsage }) {
         <p className="mt-1 text-xs text-muted-foreground">No monthly limit on your plan.</p>
       )}
       <p className="mt-1 text-xs text-muted-foreground">
-        {usage.sent} sent · {usage.cost} ETB
-        {usage.failed > 0 && <span className="text-destructive"> · {usage.failed} failed</span>}
+        {/* Figures hold together; at 360px the line breaks between facts, never inside a number. */}
+        <span className="whitespace-nowrap">{usage.sent} sent</span> ·{" "}
+        <span className="whitespace-nowrap tabular-nums">{usage.cost} ETB</span>
+        {usage.failed > 0 && <span className="whitespace-nowrap text-destructive"> · {usage.failed} failed</span>}
       </p>
     </div>
   );
@@ -572,9 +574,12 @@ function LogRow({ row }: { row: MessageRow }) {
           {row.mrn && <> · {row.mrn}</>}
           {row.msisdn && <>{row.patient_name ? " · " : ""}{row.msisdn}</>}
           {" · "}
-          {new Date(when).toLocaleString()}
+          {/* Timestamps and money never wrap mid-figure — the row breaks between facts instead. */}
+          <span className="whitespace-nowrap">{new Date(when).toLocaleString()}</span>
           {" · "}
-          {row.segments} msg{row.segments === 1 ? "" : "s"}, {row.cost} ETB
+          <span className="whitespace-nowrap tabular-nums">
+            {row.segments} msg{row.segments === 1 ? "" : "s"}, {row.cost} ETB
+          </span>
         </p>
         {row.status === "skipped" && row.skip_reason && (
           <p className="mt-0.5 text-xs text-amber-700">

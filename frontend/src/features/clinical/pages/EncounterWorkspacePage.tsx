@@ -591,7 +591,7 @@ function AssistPanel({ encounterId }: { encounterId: string }) {
 
           <div className="flex items-center justify-between border-t pt-2">
             <span className="text-[10px] text-muted-foreground">Suggestions only — the doctor decides.</span>
-            <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" loading={run.isPending} onClick={() => run.mutate()}>
+            <Button size="sm" variant="ghost" className="touch-hit h-6 px-2 text-[11px]" loading={run.isPending} onClick={() => run.mutate()}>
               Re-analyze
             </Button>
           </div>
@@ -783,19 +783,22 @@ function HistoryDetailDialog({ item, onClose }: { item: HistoryItem; onClose: ()
                               <Badge variant={it.status === "validated" ? "success" : "outline"}>{it.status.replace("_", " ")}</Badge>
                             </div>
                             {it.results.length > 0 && (
-                              <table className="mt-1.5 w-full text-xs">
-                                <tbody>
-                                  {it.results.map((r) => (
-                                    <tr key={r.analyte_id}>
-                                      <td className="py-0.5 text-muted-foreground">{r.name}</td>
-                                      <td className="py-0.5 font-medium">{r.value || "—"}{r.value && r.unit ? ` ${r.unit}` : ""}</td>
-                                      <td className="py-0.5 text-right">
-                                        {r.value ? <Badge variant="outline" className={FLAG_CLS[r.flag] ?? FLAG_CLS.normal}>{r.flag}</Badge> : null}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
+                              <div className="overflow-x-auto">
+                                {/* Phones: a long result value scrolls instead of overflowing the card (no width floor — this column is narrow on desktop too). */}
+                                <table className="mt-1.5 w-full text-xs">
+                                  <tbody>
+                                    {it.results.map((r) => (
+                                      <tr key={r.analyte_id}>
+                                        <td className="py-0.5 text-muted-foreground">{r.name}</td>
+                                        <td className="py-0.5 font-medium">{r.value || "—"}{r.value && r.unit ? ` ${r.unit}` : ""}</td>
+                                        <td className="py-0.5 text-right">
+                                          {r.value ? <Badge variant="outline" className={FLAG_CLS[r.flag] ?? FLAG_CLS.normal}>{r.flag}</Badge> : null}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
                             )}
                             {it.results.length === 0 && it.status !== "validated" && (
                               <p className="mt-1 text-xs text-muted-foreground">Awaiting lab…</p>
@@ -827,18 +830,21 @@ function HistoryDetailDialog({ item, onClose }: { item: HistoryItem; onClose: ()
                             )}
                             {r.result_summary && <p className="mt-0.5 whitespace-pre-wrap">{r.result_summary}</p>}
                             {(r.result_values?.length ?? 0) > 0 && (
-                              <table className="mt-1.5 w-full">
-                                <tbody>
-                                  {r.result_values!.map((v, i) => (
-                                    <tr key={i}>
-                                      <td className="py-0.5 text-muted-foreground">{v.name}</td>
-                                      <td className="py-0.5 font-medium">{v.value}{v.unit ? ` ${v.unit}` : ""}</td>
-                                      <td className="py-0.5 text-muted-foreground">{v.ref || ""}</td>
-                                      <td className="py-0.5 text-right">{v.flag ? <Badge variant="outline">{v.flag}</Badge> : null}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
+                              <div className="overflow-x-auto">
+                                {/* Phones: a long result value scrolls instead of overflowing the card (no width floor — this column is narrow on desktop too). */}
+                                <table className="mt-1.5 w-full">
+                                  <tbody>
+                                    {r.result_values!.map((v, i) => (
+                                      <tr key={i}>
+                                        <td className="py-0.5 text-muted-foreground">{v.name}</td>
+                                        <td className="py-0.5 font-medium">{v.value}{v.unit ? ` ${v.unit}` : ""}</td>
+                                        <td className="py-0.5 text-muted-foreground">{v.ref || ""}</td>
+                                        <td className="py-0.5 text-right">{v.flag ? <Badge variant="outline">{v.flag}</Badge> : null}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
                             )}
                             {(r.result_files?.length ?? 0) > 0 && (
                               <div className="mt-1.5 flex flex-wrap gap-2">
@@ -1087,19 +1093,22 @@ function LabOrders({ ws, locked }: { ws: Workspace; locked: boolean }) {
                       <Badge variant={it.status === "validated" ? "success" : "outline"}>{it.status.replace("_", " ")}</Badge>
                     </div>
                     {it.results.length > 0 && (
-                      <table className="mt-1.5 w-full text-xs">
-                        <tbody>
-                          {it.results.map((r) => (
-                            <tr key={r.analyte_id}>
-                              <td className="py-0.5 text-muted-foreground">{r.name}</td>
-                              <td className="py-0.5 font-medium">{r.value || "—"}{r.value && r.unit ? ` ${r.unit}` : ""}</td>
-                              <td className="py-0.5 text-right">
-                                {r.value ? <Badge variant="outline" className={FLAG_CLS[r.flag] ?? FLAG_CLS.normal}>{r.flag}</Badge> : null}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      <div className="overflow-x-auto">
+                        {/* Phones: a long result value scrolls instead of overflowing the card (no width floor — this column is narrow on desktop too). */}
+                        <table className="mt-1.5 w-full text-xs">
+                          <tbody>
+                            {it.results.map((r) => (
+                              <tr key={r.analyte_id}>
+                                <td className="py-0.5 text-muted-foreground">{r.name}</td>
+                                <td className="py-0.5 font-medium">{r.value || "—"}{r.value && r.unit ? ` ${r.unit}` : ""}</td>
+                                <td className="py-0.5 text-right">
+                                  {r.value ? <Badge variant="outline" className={FLAG_CLS[r.flag] ?? FLAG_CLS.normal}>{r.flag}</Badge> : null}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     )}
                     {it.results.length === 0 && it.status !== "validated" && (
                       <p className="mt-1 text-xs text-muted-foreground">Awaiting lab…</p>
@@ -1204,18 +1213,21 @@ function LabReferralPanel({ ws, locked, onChanged }: { ws: Workspace; locked: bo
                     )}
                     {r.result_summary && <p className="mt-0.5 whitespace-pre-wrap">{r.result_summary}</p>}
                     {(r.result_values?.length ?? 0) > 0 && (
-                      <table className="mt-1.5 w-full">
-                        <tbody>
-                          {r.result_values!.map((v, i) => (
-                            <tr key={i}>
-                              <td className="py-0.5 text-muted-foreground">{v.name}</td>
-                              <td className="py-0.5 font-medium">{v.value}{v.unit ? ` ${v.unit}` : ""}</td>
-                              <td className="py-0.5 text-muted-foreground">{v.ref || ""}</td>
-                              <td className="py-0.5 text-right">{v.flag ? <Badge variant="outline">{v.flag}</Badge> : null}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      <div className="overflow-x-auto">
+                        {/* Phones: a long result value scrolls instead of overflowing the card (no width floor — this column is narrow on desktop too). */}
+                        <table className="mt-1.5 w-full">
+                          <tbody>
+                            {r.result_values!.map((v, i) => (
+                              <tr key={i}>
+                                <td className="py-0.5 text-muted-foreground">{v.name}</td>
+                                <td className="py-0.5 font-medium">{v.value}{v.unit ? ` ${v.unit}` : ""}</td>
+                                <td className="py-0.5 text-muted-foreground">{v.ref || ""}</td>
+                                <td className="py-0.5 text-right">{v.flag ? <Badge variant="outline">{v.flag}</Badge> : null}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     )}
                     {(r.result_files?.length ?? 0) > 0 && (
                       <div className="mt-1.5 flex flex-wrap gap-2">

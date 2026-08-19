@@ -39,26 +39,29 @@ export function StockControlPage() {
         <CountDetail id={selected} onBack={() => setSelected(null)} />
       ) : (
         <Card className="overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="p-3 font-medium">Started</th>
-                <th className="font-medium">Status</th>
-                <th className="p-3 font-medium"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {(counts.data ?? []).map((c) => (
-                <tr key={c.id} className="border-b">
-                  <td className="p-3">{new Date(c.created_at).toLocaleString()}</td>
-                  <td><Badge variant={c.status === "approved" ? "success" : "outline"}>{c.status}</Badge></td>
-                  <td className="p-3 text-right">
-                    <button className="text-xs text-primary hover:underline" onClick={() => setSelected(c.id)}>Open</button>
-                  </td>
+          <div className="overflow-x-auto">
+            {/* Phones: this table is wider than the screen — scroll it sideways instead of crushing the columns. */}
+            <table className="w-full min-w-[560px] text-sm">
+              <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="p-3 font-medium">Started</th>
+                  <th className="font-medium">Status</th>
+                  <th className="p-3 font-medium"></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {(counts.data ?? []).map((c) => (
+                  <tr key={c.id} className="border-b">
+                    <td className="p-3">{new Date(c.created_at).toLocaleString()}</td>
+                    <td><Badge variant={c.status === "approved" ? "success" : "outline"}>{c.status}</Badge></td>
+                    <td className="p-3 text-right">
+                      <button className="text-xs text-primary hover:underline" onClick={() => setSelected(c.id)}>Open</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           {(counts.data?.length ?? 0) === 0 && <p className="p-8 text-center text-sm text-muted-foreground">No counts yet — start one.</p>}
         </Card>
       )}
@@ -84,48 +87,51 @@ function CountDetail({ id, onBack }: { id: string; onBack: () => void }) {
         {!locked && <Button size="sm" loading={approve.isPending} onClick={() => approve.mutate()}>Approve count</Button>}
         {locked && <Badge variant="success">approved</Badge>}
       </div>
-      <table className="w-full text-sm">
-        <thead className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-          <tr>
-            <th className="p-2 font-medium">Drug</th>
-            <th className="font-medium">On hand</th>
-            <th className="font-medium">Counted</th>
-            <th className="font-medium">Variance</th>
-            <th className="p-2 font-medium"></th>
-          </tr>
-        </thead>
-        <tbody>
-          {(count.data?.items ?? []).map((it) => (
-            <tr key={it.id} className="border-b">
-              <td className="p-2">{it.drug_name}</td>
-              <td>{it.on_hand}</td>
-              <td>
-                <Input
-                  type="number"
-                  className="w-20"
-                  defaultValue={it.counted}
-                  disabled={locked || it.adjusted}
-                  onBlur={(e) => {
-                    const v = Number(e.target.value);
-                    if (v !== it.counted) save.mutate({ itemId: it.id, counted: v });
-                  }}
-                />
-              </td>
-              <td>
-                <Badge variant="outline" className={it.variance === 0 ? "" : it.variance > 0 ? "border-emerald-300 text-emerald-700" : "border-rose-300 text-rose-700"}>
-                  {it.variance > 0 ? `+${it.variance}` : it.variance}
-                </Badge>
-              </td>
-              <td className="p-2 text-right">
-                {!locked && !it.adjusted && it.variance !== 0 && (
-                  <button className="text-xs text-primary hover:underline" onClick={() => adjust.mutate(it.id)}>Adjust</button>
-                )}
-                {it.adjusted && <span className="text-xs text-muted-foreground">adjusted</span>}
-              </td>
+      <div className="overflow-x-auto">
+        {/* Phones: this table is wider than the screen — scroll it sideways instead of crushing the columns. */}
+        <table className="w-full min-w-[560px] text-sm">
+          <thead className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
+              <th className="p-2 font-medium">Drug</th>
+              <th className="font-medium">On hand</th>
+              <th className="font-medium">Counted</th>
+              <th className="font-medium">Variance</th>
+              <th className="p-2 font-medium"></th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {(count.data?.items ?? []).map((it) => (
+              <tr key={it.id} className="border-b">
+                <td className="p-2">{it.drug_name}</td>
+                <td>{it.on_hand}</td>
+                <td>
+                  <Input
+                    type="number"
+                    className="w-20"
+                    defaultValue={it.counted}
+                    disabled={locked || it.adjusted}
+                    onBlur={(e) => {
+                      const v = Number(e.target.value);
+                      if (v !== it.counted) save.mutate({ itemId: it.id, counted: v });
+                    }}
+                  />
+                </td>
+                <td>
+                  <Badge variant="outline" className={it.variance === 0 ? "" : it.variance > 0 ? "border-emerald-300 text-emerald-700" : "border-rose-300 text-rose-700"}>
+                    {it.variance > 0 ? `+${it.variance}` : it.variance}
+                  </Badge>
+                </td>
+                <td className="p-2 text-right">
+                  {!locked && !it.adjusted && it.variance !== 0 && (
+                    <button className="text-xs text-primary hover:underline" onClick={() => adjust.mutate(it.id)}>Adjust</button>
+                  )}
+                  {it.adjusted && <span className="text-xs text-muted-foreground">adjusted</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </Card>
   );
 }

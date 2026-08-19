@@ -129,38 +129,89 @@ export function PatientsListPage() {
             )}
           </div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>MRN</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Gender</TableHead>
-                <TableHead>Date of birth</TableHead>
-                <TableHead>Age</TableHead>
-                <TableHead>Phone</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <>
+            {/* At 390px the six-column table clips the DOB mid-glyph and pushes phone
+                off-screen with no scroll affordance — below md each patient becomes a
+                card that fits the width and the whole card is the tap target. */}
+            <ul className="divide-y md:hidden">
               {data.items.map((p) => (
-                <TableRow key={p.id} className="cursor-pointer" onClick={() => navigate(`/patients/${p.id}`)}>
-                  <TableCell className="font-mono text-xs tabular-nums">{p.mrn}</TableCell>
-                  <TableCell className="font-medium text-brand">
-                    <span className="inline-flex items-center gap-2">
-                      {fullName(p)}
-                      {dental && owes.has(p.id) && <Badge variant="destructive">Owes {birr(owes.get(p.id)!)}</Badge>}
+                <li
+                  key={p.id}
+                  className="cursor-pointer space-y-1 p-4 transition-colors active:bg-accent/60"
+                  onClick={() => navigate(`/patients/${p.id}`)}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 font-semibold text-brand">
+                      <span className="break-words">{fullName(p)}</span>
+                      {dental && owes.has(p.id) && (
+                        <Badge variant="destructive" className="tabular-nums">Owes {birr(owes.get(p.id)!)}</Badge>
+                      )}
                     </span>
-                  </TableCell>
-                  <TableCell className="capitalize">{p.gender}</TableCell>
-                  <TableCell className="tabular-nums">
-                    <div>{p.dob}</div>
-                    {p.dob && <div className="text-xs text-muted-foreground">{formatEthiopian(p.dob)} EC</div>}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap font-medium tabular-nums">{ageLabel(p.dob)}</TableCell>
-                  <TableCell>{p.phone ?? "—"}</TableCell>
-                </TableRow>
+                    <Badge variant="outline" className="shrink-0 font-mono tabular-nums">{p.mrn}</Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    <span className="capitalize">{p.gender}</span>
+                    {" · "}
+                    <span className="font-medium tabular-nums text-foreground">{ageLabel(p.dob)}</span>
+                    {p.dob && (
+                      <>
+                        {" · "}
+                        <span className="tabular-nums">{p.dob}</span>{" "}
+                        <span className="text-xs">{formatEthiopian(p.dob)} EC</span>
+                      </>
+                    )}
+                  </p>
+                  {p.phone ? (
+                    <a
+                      href={`tel:${p.phone}`}
+                      className="touch-hit inline-block text-sm font-medium tabular-nums text-brand"
+                      // Dial the patient instead of following the card into the profile.
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {p.phone}
+                    </a>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">—</p>
+                  )}
+                </li>
               ))}
-            </TableBody>
-          </Table>
+            </ul>
+
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>MRN</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Gender</TableHead>
+                    <TableHead>Date of birth</TableHead>
+                    <TableHead>Age</TableHead>
+                    <TableHead>Phone</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.items.map((p) => (
+                    <TableRow key={p.id} className="cursor-pointer" onClick={() => navigate(`/patients/${p.id}`)}>
+                      <TableCell className="font-mono text-xs tabular-nums">{p.mrn}</TableCell>
+                      <TableCell className="font-medium text-brand">
+                        <span className="inline-flex items-center gap-2">
+                          {fullName(p)}
+                          {dental && owes.has(p.id) && <Badge variant="destructive">Owes {birr(owes.get(p.id)!)}</Badge>}
+                        </span>
+                      </TableCell>
+                      <TableCell className="capitalize">{p.gender}</TableCell>
+                      <TableCell className="tabular-nums">
+                        <div>{p.dob}</div>
+                        {p.dob && <div className="text-xs text-muted-foreground">{formatEthiopian(p.dob)} EC</div>}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap font-medium tabular-nums">{ageLabel(p.dob)}</TableCell>
+                      <TableCell>{p.phone ?? "—"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
         )}
       </Card>
 

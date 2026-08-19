@@ -715,7 +715,7 @@ function DrugLibraryCard({ manage }: { manage: boolean }) {
                     {[a.default_reaction, a.default_severity].filter(Boolean).join(" · ")}
                   </span>
                 )}
-                {manage && <button onClick={() => removeAllergen.mutate(a.id)} className="text-muted-foreground hover:text-destructive"><Plus className="h-3 w-3 rotate-45" /></button>}
+                {manage && <button onClick={() => removeAllergen.mutate(a.id)} aria-label={`Remove allergen ${a.name}`} className="touch-hit text-muted-foreground hover:text-destructive"><Plus className="h-3 w-3 rotate-45" /></button>}
               </span>
             ))}
             {(allergens.data?.length ?? 0) === 0 && <span className="text-sm text-muted-foreground">No allergens yet.</span>}
@@ -874,8 +874,8 @@ function DiagnosisCatalogCard({ manage }: { manage: boolean }) {
                 {c.name}
                 {manage && (
                   <>
-                    <button onClick={() => setCatDialog(c)} className="text-muted-foreground hover:text-foreground" title="Edit category"><Pencil className="h-3 w-3" /></button>
-                    <button onClick={() => tryDeleteCat(c)} className="text-muted-foreground hover:text-destructive" title="Delete category"><Plus className="h-3 w-3 rotate-45" /></button>
+                    <button onClick={() => setCatDialog(c)} aria-label={`Edit category ${c.name}`} className="touch-hit text-muted-foreground hover:text-foreground" title="Edit category"><Pencil className="h-3 w-3" /></button>
+                    <button onClick={() => tryDeleteCat(c)} aria-label={`Delete category ${c.name}`} className="touch-hit text-muted-foreground hover:text-destructive" title="Delete category"><Plus className="h-3 w-3 rotate-45" /></button>
                   </>
                 )}
               </span>
@@ -1093,7 +1093,8 @@ function VitalsFormCard({ manage }: { manage: boolean }) {
               {fields.map((f, i) => (
                 <tr key={f.key} className={f.enabled ? "" : "opacity-50"}>
                   <td className="py-1.5 pr-2">
-                    <input type="checkbox" checked={f.enabled} disabled={!manage} onChange={(e) => patch(i, { enabled: e.target.checked })} />
+                    {/* A bare checkbox is too small for a thumb — pad the hit area invisibly. */}
+                    <input type="checkbox" className="touch-hit" checked={f.enabled} disabled={!manage} onChange={(e) => patch(i, { enabled: e.target.checked })} />
                   </td>
                   <td className="py-1.5 pr-2">
                     <Input className="h-8 w-32" value={f.label} disabled={!manage} onChange={(e) => patch(i, { label: e.target.value })} />
@@ -1114,7 +1115,7 @@ function VitalsFormCard({ manage }: { manage: boolean }) {
                     </td>
                   ))}
                   <td className="py-1.5 pl-2 text-center">
-                    <input type="checkbox" checked={f.required} disabled={!manage || !f.enabled} onChange={(e) => patch(i, { required: e.target.checked })} />
+                    <input type="checkbox" className="touch-hit" checked={f.required} disabled={!manage || !f.enabled} onChange={(e) => patch(i, { required: e.target.checked })} />
                   </td>
                 </tr>
               ))}

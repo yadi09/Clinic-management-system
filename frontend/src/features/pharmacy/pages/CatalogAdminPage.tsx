@@ -31,36 +31,39 @@ export function CatalogAdminPage() {
       </div>
 
       <Card className="overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <tr>
-              <th className="p-3 font-medium">Drug</th>
-              <th className="font-medium">Form</th>
-              <th className="font-medium">Class</th>
-              <th className="font-medium">Reorder lvl</th>
-              <th className="font-medium">Price</th>
-              <th className="p-3 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {(drugs.data ?? []).map((d) => (
-              <tr key={d.id} className="border-b">
-                <td className="p-3 font-medium">
-                  {d.name} {!d.is_active && <Badge variant="outline">inactive</Badge>}
-                </td>
-                <td>{d.form || "—"}</td>
-                <td>{d.drug_class || "—"}{d.is_controlled ? " (controlled)" : ""}</td>
-                <td>{d.reorder_level}</td>
-                <td className="font-medium">{d.unit_price}</td>
-                <td className="p-3 text-right">
-                  <button className="text-xs text-primary hover:underline" onClick={() => setEditing({ ...d })}>
-                    Edit
-                  </button>
-                </td>
+        <div className="overflow-x-auto">
+          {/* Phones: this table is wider than the screen — scroll it sideways instead of crushing the columns. */}
+          <table className="w-full min-w-[560px] text-sm">
+            <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="p-3 font-medium">Drug</th>
+                <th className="font-medium">Form</th>
+                <th className="font-medium">Class</th>
+                <th className="font-medium">Reorder lvl</th>
+                <th className="font-medium">Price</th>
+                <th className="p-3 font-medium"></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {(drugs.data ?? []).map((d) => (
+                <tr key={d.id} className="border-b">
+                  <td className="p-3 font-medium">
+                    {d.name} {!d.is_active && <Badge variant="outline">inactive</Badge>}
+                  </td>
+                  <td>{d.form || "—"}</td>
+                  <td>{d.drug_class || "—"}{d.is_controlled ? " (controlled)" : ""}</td>
+                  <td>{d.reorder_level}</td>
+                  <td className="font-medium">{d.unit_price}</td>
+                  <td className="p-3 text-right">
+                    <button className="text-xs text-primary hover:underline" onClick={() => setEditing({ ...d })}>
+                      Edit
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {(drugs.data?.length ?? 0) === 0 && <p className="p-8 text-center text-sm text-muted-foreground">No drugs yet.</p>}
       </Card>
 

@@ -121,9 +121,23 @@ function PatientFilter({ value, onChange }: { value: string; onChange: (id: stri
     );
   }
   return (
-    <div className="w-[190px]">
+    <div className="w-[190px] max-md:w-full">
       <PatientCombobox value={null} onSelect={(p) => onChange(p.id)} />
     </div>
+  );
+}
+
+/** Dental-overlay legend. Two homes — inline under the toolbar on desktop, inside
+ *  the phone Filters panel — so the items live once. */
+function LegendItems() {
+  return (
+    <>
+      <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded border-l-2 border-l-primary bg-secondary/70" /> Appointment</span>
+      <span className="flex items-center gap-1"><Repeat2 className="h-3 w-3 text-primary" /> Follow-up visit</span>
+      <span className="flex items-center gap-1"><Stethoscope className="h-3 w-3 text-violet-600" /> Treatment session</span>
+      <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded border-l-2 border-l-rose-500 bg-rose-50" /> owes</span>
+      <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded border-l-2 border-l-emerald-500 bg-emerald-50" /> paid</span>
+    </>
   );
 }
 
@@ -144,11 +158,20 @@ export function AppointmentsPage() {
   };
   const patientFilter = params.get("patient") ?? "";
   const providerFilter = params.get("provider") ?? "all";
-  const [view, setView] = useState<View>(() => (params.get("patient") ? "month" : "week"));
+  // Seeded once, never forced per render — the user can still switch views. On a
+  // phone the week grid leaves each day ~41px after the hour gutter, so "day" is
+  // the only arrival view that is readable there. A patient deep-link keeps
+  // "month" everywhere: it answers "when are they next in", which one day cannot.
+  const [view, setView] = useState<View>(() =>
+    params.get("patient") ? "month" : window.matchMedia("(min-width: 768px)").matches ? "week" : "day",
+  );
   const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Appointment | null>(null);
   const [reassign, setReassign] = useState<Appointment | null>(null);
+  // Phones: patient filter + provider select + legend fold behind one disclosure
+  // row — inline they stacked the toolbar ~450px tall before the calendar started.
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const filteredPatient = useQuery({
     queryKey: ["patient", patientFilter],
@@ -267,20 +290,40 @@ export function AppointmentsPage() {
     canQueue: can("queue.manage"),
   };
 
+  const activeFilters = (patientFilter ? 1 : 0) + (providerFilter !== "all" ? 1 : 0);
+  // Rendered in two homes (inline on desktop, inside the phone Filters panel), so
+  // built once to keep the two in lockstep.
+  const providerSelect = (triggerCls: string) => (
+    <Select value={providerFilter} onValueChange={(v) => setParam({ provider: v === "all" ? "" : v })}>
+      <SelectTrigger className={triggerCls}><SelectValue /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">All providers</SelectItem>
+        {(providers.data ?? []).map((p) => (
+          <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+
+  // The viewport-height frame lets the week/month grids own their scroll on
+  // desktop. Below md the bottom tab bar (4rem + safe area) eats into 100dvh and
+  // the views are lists anyway — natural page scroll, no scroller-in-a-letterbox.
   return (
-    <div className="flex h-[calc(100dvh-8rem)] min-h-[560px] flex-col gap-5">
+    <div className="flex h-[calc(100dvh-8rem)] min-h-[560px] flex-col gap-5 max-md:h-auto max-md:min-h-0">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1>Appointments</h1>
           <p className="text-sm text-muted-foreground">{label}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex rounded-md border bg-card p-0.5">
+        <div className="flex flex-wrap items-center gap-2 max-md:w-full">
+          {/* On phones the strip scrolls instead of wrapping, so tabs, Today and
+              Book hold a single line. */}
+          <div className="flex rounded-md border bg-card p-0.5 max-md:min-w-0 max-md:flex-1 max-md:overflow-x-auto">
             {(["day", "week", "month", "followups"] as const).map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
-                className={`rounded px-3 py-1 text-sm font-medium capitalize ${view === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                className={`shrink-0 whitespace-nowrap rounded px-3 py-1 text-sm font-medium capitalize max-md:min-h-9 ${view === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
                 {v === "followups" ? "Follow-ups" : v}
               </button>
@@ -290,42 +333,53 @@ export function AppointmentsPage() {
               answer "when is Yaz T next in" by reading the grid; this is that
               question. The name is fetched rather than taken from the visible
               items, so the banner still reads properly in a month the patient has
-              nothing booked in — which is exactly when it is asked. */}
-          <PatientFilter
-            value={patientFilter}
-            onChange={(id) => setParam({ patient: id })}
-          />
-          {view !== "followups" && (providers.data?.length ?? 0) > 1 && (
-            <Select value={providerFilter} onValueChange={(v) => setParam({ provider: v === "all" ? "" : v })}>
-              <SelectTrigger className="w-[170px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All providers</SelectItem>
-                {(providers.data ?? []).map((p) => (
-                  <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
+              nothing booked in — which is exactly when it is asked.
+              On phones both filters live behind the Filters disclosure below;
+              md:contents keeps the desktop row's flex layout untouched. */}
+          <div className="hidden md:contents">
+            <PatientFilter
+              value={patientFilter}
+              onChange={(id) => setParam({ patient: id })}
+            />
+            {view !== "followups" && (providers.data?.length ?? 0) > 1 && providerSelect("w-[170px]")}
+          </div>
           {view !== "followups" && (
             <>
-              <Button variant="outline" size="icon" onClick={() => shift(-1)}><ChevronLeft /></Button>
-              <Button variant="outline" size="sm" onClick={() => setAnchor(startOfDay(new Date()))}>Today</Button>
-              <Button variant="outline" size="icon" onClick={() => shift(1)}><ChevronRight /></Button>
+              <Button variant="outline" size="icon" className="max-md:hidden" aria-label={`Previous ${view}`} onClick={() => shift(-1)}><ChevronLeft /></Button>
+              <Button variant="outline" size="sm" className="max-md:min-h-9" onClick={() => setAnchor(startOfDay(new Date()))}>Today</Button>
+              <Button variant="outline" size="icon" className="max-md:hidden" aria-label={`Next ${view}`} onClick={() => shift(1)}><ChevronRight /></Button>
             </>
           )}
           {can("appointment.manage") && branchId && (
             <Button onClick={() => { setEditing(null); setDialogOpen(true); }}><CalendarPlus /> Book</Button>
           )}
         </div>
+        {/* Phone-only second row: period nav plus the filter disclosure. */}
+        <div className="flex w-full items-center gap-2 md:hidden">
+          {view !== "followups" && (
+            <>
+              <Button variant="outline" size="icon" aria-label={`Previous ${view}`} onClick={() => shift(-1)}><ChevronLeft /></Button>
+              <Button variant="outline" size="icon" aria-label={`Next ${view}`} onClick={() => shift(1)}><ChevronRight /></Button>
+            </>
+          )}
+          <Button variant="outline" size="sm" className="ml-auto min-h-9 gap-1.5" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((v) => !v)}>
+            <Filter className="h-3.5 w-3.5" /> Filters{activeFilters > 0 ? ` (${activeFilters})` : ""}
+          </Button>
+        </div>
+        {filtersOpen && (
+          <div className="w-full space-y-3 rounded-md border bg-card p-3 md:hidden">
+            <PatientFilter value={patientFilter} onChange={(id) => setParam({ patient: id })} />
+            {view !== "followups" && (providers.data?.length ?? 0) > 1 && providerSelect("w-full")}
+            {dentalOn && view !== "followups" && (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground"><LegendItems /></div>
+            )}
+          </div>
+        )}
       </div>
 
       {dentalOn && view !== "followups" && (
-        <div className="-mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded border-l-2 border-l-primary bg-secondary/70" /> Appointment</span>
-          <span className="flex items-center gap-1"><Repeat2 className="h-3 w-3 text-primary" /> Follow-up visit</span>
-          <span className="flex items-center gap-1"><Stethoscope className="h-3 w-3 text-violet-600" /> Treatment session</span>
-          <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded border-l-2 border-l-rose-500 bg-rose-50" /> owes</span>
-          <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded border-l-2 border-l-emerald-500 bg-emerald-50" /> paid</span>
+        <div className="-mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground max-md:hidden">
+          <LegendItems />
         </div>
       )}
 
@@ -340,14 +394,14 @@ export function AppointmentsPage() {
           <Link to={`/patients/${patientFilter}`} className="text-xs font-medium text-brand underline-offset-2 hover:underline">
             Open their record
           </Link>
-          <Button variant="ghost" size="sm" className="ml-auto h-7 px-2 text-xs"
+          <Button variant="ghost" size="sm" className="ml-auto h-7 px-2 text-xs max-md:min-h-9"
             onClick={() => setParam({ patient: "" })}>
             <X className="h-3.5 w-3.5" /> Show everyone
           </Button>
         </div>
       )}
 
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 max-md:flex-none">
         {!branchId && !branches.isLoading ? (
           <Card className="flex h-full items-center justify-center p-10 text-center text-sm text-muted-foreground">Add a branch in Settings to start booking.</Card>
         ) : view === "followups" ? (
@@ -360,7 +414,17 @@ export function AppointmentsPage() {
         ) : view === "day" ? (
           <DayLanes items={dayItems} sessions={sessByDay[dayKey(anchor)] ?? []} providers={providers.data ?? []} filter={providerFilter} actions={actions} />
         ) : view === "week" ? (
-          <WeekTimeGrid days={weekDays} items={items} sessByDay={sessByDay} actions={actions} />
+          <>
+            {/* At 390px the 7-column paint gives each day ~41px — events become
+                ~20px chips nobody can read or tap. Phones get the week as a
+                stacked agenda; the time grid is untouched from md up. */}
+            <div className="md:hidden">
+              <WeekAgenda days={weekDays} items={items} sessByDay={sessByDay} actions={actions} />
+            </div>
+            <div className="hidden h-full md:block">
+              <WeekTimeGrid days={weekDays} items={items} sessByDay={sessByDay} actions={actions} />
+            </div>
+          </>
         ) : (
           <MonthGrid days={monthDays} monthIndex={anchor.getMonth()} items={items} sessByDay={sessByDay} actions={actions} />
         )}
@@ -397,7 +461,9 @@ function ApptMenu({ a, actions }: { a: Appointment; actions: Actions }) {
   const active = isActive(a.status);
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="rounded-md p-1.5 hover:bg-accent" onClick={(e) => e.stopPropagation()}><MoreHorizontal className="h-4 w-4" /></DropdownMenuTrigger>
+      {/* The only route to check-in/reassign/reschedule, yet p-1.5 leaves a ~28px
+          target. touch-hit grows the hit area to ~44px without touching row height. */}
+      <DropdownMenuTrigger aria-label="Appointment actions" className="touch-hit rounded-md p-1.5 hover:bg-accent" onClick={(e) => e.stopPropagation()}><MoreHorizontal className="h-4 w-4" /></DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {active && a.status !== "checked_in" && actions.canQueue && <DropdownMenuItem onSelect={() => actions.onCheckIn(a.id)}>Check in</DropdownMenuItem>}
         {active && <DropdownMenuItem onSelect={() => actions.onReassign(a)}>Reassign doctor</DropdownMenuItem>}
@@ -418,7 +484,7 @@ function ApptCard({ a, actions }: { a: Appointment; actions: Actions }) {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="text-sm font-semibold tabular-nums text-brand">{fmtTime(a.starts_at)}<span className="font-normal text-muted-foreground"> – {fmtTime(a.ends_at)}</span></div>
-          <button className="mt-0.5 block truncate font-medium text-brand hover:underline" onClick={() => actions.onOpenPatient(a.patient_id)}>{a.patient_name}</button>
+          <button className="touch-hit mt-0.5 block truncate font-medium text-brand hover:underline" onClick={() => actions.onOpenPatient(a.patient_id)}>{a.patient_name}</button>
           <div className="truncate text-xs text-muted-foreground">{a.mrn}{a.reason ? ` · ${a.reason}` : ""}</div>
         </div>
         <ApptMenu a={a} actions={actions} />
@@ -477,6 +543,77 @@ function DayLanes({ items, sessions, providers, filter, actions }: { items: Appo
           </div>
         </Card>
       ))}
+    </div>
+  );
+}
+
+/** Week as a stacked agenda for phones. At 390px the 7-column paint leaves each
+ *  day ~41px after the 56px hour gutter, so events shrink to ~20px chips —
+ *  unreadable and untappable. A list gives every event a full-width ≥44px card.
+ *  Rendered only below md; the time grid keeps md and up. */
+function WeekAgenda({ days, items, sessByDay, actions }: { days: Date[]; items: Appointment[]; sessByDay: Record<string, DentalSessionCal[]>; actions: Actions }) {
+  const byDay = useMemo(() => {
+    const m: Record<string, Appointment[]> = {};
+    for (const a of items) (m[dayKey(new Date(a.starts_at))] ??= []).push(a);
+    for (const k of Object.keys(m)) m[k].sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+    return m;
+  }, [items]);
+  const todayKey = dayKey(new Date());
+  const total = items.length + days.reduce((n, d) => n + (sessByDay[dayKey(d)] ?? []).length, 0);
+  if (total === 0) {
+    return <Card className="p-10 text-center text-sm text-muted-foreground">No appointments or treatment sessions this week.</Card>;
+  }
+  return (
+    <div className="space-y-4">
+      {days.map((d) => {
+        const k = dayKey(d);
+        const list = byDay[k] ?? [];
+        const sess = sessByDay[k] ?? [];
+        if (list.length === 0 && sess.length === 0) return null;
+        const today = k === todayKey;
+        const e = toEthiopian(d);
+        return (
+          <section key={k}>
+            <button
+              type="button"
+              onClick={() => actions.onOpenDay(d)}
+              aria-label={`Open ${d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}`}
+              className={`flex min-h-9 w-full items-baseline gap-2 px-1 text-left ${today ? "text-primary" : "text-brand"}`}
+            >
+              <span className="text-sm font-semibold">{d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}</span>
+              <span className="text-[11px] text-muted-foreground">{e.day} {ETH_MONTHS[e.month - 1]}</span>
+              <span className="ml-auto text-xs tabular-nums text-muted-foreground">{list.length + sess.length}</span>
+            </button>
+            <div className="mt-1 space-y-1.5">
+              {list.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => actions.onOpenPatient(a.patient_id)}
+                  className={`flex min-h-11 w-full items-center gap-2 rounded-md border border-l-4 bg-card px-3 py-2 text-left text-sm shadow-sm ${eventAccent(a.status)}`}
+                >
+                  <span className="shrink-0 font-semibold tabular-nums text-brand">{fmtTime(a.starts_at)}</span>
+                  {a.is_followup && <Repeat2 className="h-3.5 w-3.5 shrink-0 text-primary" />}
+                  <span className="min-w-0 flex-1 truncate font-medium text-brand">{a.patient_name}</span>
+                  <span className="shrink-0 whitespace-nowrap text-xs capitalize text-muted-foreground">{a.status.replace(/_/g, " ")}</span>
+                </button>
+              ))}
+              {sess.map((s) => (
+                <button
+                  key={s.session_id}
+                  type="button"
+                  onClick={() => actions.onOpenPatient(s.patient_id, s.session_id)}
+                  className={`flex min-h-11 w-full items-center gap-2 rounded-md border border-l-4 px-3 py-2 text-left text-sm shadow-sm ${sessAccent(s)}`}
+                >
+                  <Stethoscope className="h-3.5 w-3.5 shrink-0 text-violet-600" />
+                  <span className="min-w-0 flex-1 truncate font-medium text-brand">{s.patient_name}</span>
+                  <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-muted-foreground">S{s.seq}/{s.session_count}{sessOwes(s) ? " · owes" : s.payment === "paid" ? " · paid" : ""}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -628,11 +765,15 @@ function MonthGrid({ days, monthIndex, items, sessByDay, actions }: { days: Date
           const apptShown = Math.min(list.length, sess.length ? 2 : 4);
           const sessShown = Math.min(sess.length, 2);
           const more = (list.length - apptShown) + (sess.length - sessShown);
+          // Phones scroll the page naturally, so month rows no longer stretch to a
+          // fixed frame: the min-height floor keeps each day a real tap target, and
+          // the label speaks for a cell too small to read.
           return (
             <button
               key={dayKey(d)}
               onClick={() => actions.onOpenDay(d)}
-              className={`flex min-h-0 flex-col border-b border-r p-1.5 text-left transition-colors hover:bg-accent [&:nth-child(7n)]:border-r-0 ${inMonth ? "" : "bg-muted/30"}`}
+              aria-label={`${d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}${list.length + sess.length > 0 ? `, ${list.length + sess.length} booked` : ""}`}
+              className={`flex min-h-0 flex-col border-b border-r p-1.5 text-left transition-colors hover:bg-accent max-md:min-h-14 [&:nth-child(7n)]:border-r-0 ${inMonth ? "" : "bg-muted/30"}`}
             >
               <div className="mb-1 flex items-center justify-between gap-1">
                 <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold tabular-nums ${today ? "bg-primary text-primary-foreground" : inMonth ? "text-brand" : "text-muted-foreground"}`}>{d.getDate()}</span>
@@ -707,13 +848,13 @@ function LensSection({ title, hint, tone, items, actions }: { title: string; hin
               <div className="text-xs tabular-nums text-muted-foreground">{fmtTime(a.starts_at)}</div>
             </div>
             <div className="min-w-0 flex-1">
-              <button className="block truncate font-medium text-brand hover:underline" onClick={() => actions.onOpenPatient(a.patient_id)}>{a.patient_name}</button>
+              <button className="touch-hit block truncate font-medium text-brand hover:underline" onClick={() => actions.onOpenPatient(a.patient_id)}>{a.patient_name}</button>
               <div className="truncate text-xs text-muted-foreground">{handedOff(a) && a.ordered_by_name ? `Ordered by ${a.ordered_by_name} · ` : ""}{a.provider_name}{a.reason ? ` · ${a.reason}` : ""}</div>
             </div>
             <div className="flex items-center gap-1.5"><CoverageBadge a={a} />{!a.provider_active && <Badge variant="warning">handoff</Badge>}</div>
             <div className="flex gap-1.5">
-              <Button size="sm" variant="outline" onClick={() => actions.onReassign(a)}><ArrowLeftRight className="h-3.5 w-3.5" /> Reassign</Button>
-              <Button size="sm" variant="ghost" onClick={() => actions.onReschedule(a)}><CalendarClock className="h-3.5 w-3.5" /> Rebook</Button>
+              <Button size="sm" variant="outline" className="max-md:min-h-9" onClick={() => actions.onReassign(a)}><ArrowLeftRight className="h-3.5 w-3.5" /> Reassign</Button>
+              <Button size="sm" variant="ghost" className="max-md:min-h-9" onClick={() => actions.onReschedule(a)}><CalendarClock className="h-3.5 w-3.5" /> Rebook</Button>
             </div>
           </div>
         ))}
@@ -734,12 +875,12 @@ function sessPayBadge(s: DentalSessionCal) {
 function SessionDayCard({ s, onOpen }: { s: DentalSessionCal; onOpen: (pid: string, sessionId?: string) => void }) {
   return (
     <div className={`rounded-lg border border-l-4 bg-background p-3 shadow-sm ${sessAccent(s).split(" ")[0]}`}>
-      <button className="block truncate font-medium text-brand hover:underline" onClick={() => onOpen(s.patient_id, s.session_id)}>{s.patient_name}</button>
+      <button className="touch-hit block truncate font-medium text-brand hover:underline" onClick={() => onOpen(s.patient_id, s.session_id)}>{s.patient_name}</button>
       <div className="truncate text-xs text-muted-foreground">{s.title} · session {s.seq}/{s.session_count}{s.procedure ? ` · ${s.procedure}` : ""}{s.tooth ? ` (${s.tooth})` : ""}</div>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <Badge variant="outline" className="capitalize">{s.status}</Badge>
         {sessPayBadge(s)}
-        <span className="text-xs tabular-nums text-muted-foreground">{etb(s.amount_due)}</span>
+        <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">{etb(s.amount_due)}</span>
       </div>
     </div>
   );
@@ -783,10 +924,10 @@ function SessionLensSection({ title, tone, items, onOpen }: { title: string; ton
               <div className="text-xs tabular-nums text-muted-foreground">S{s.seq}/{s.session_count}</div>
             </div>
             <div className="min-w-0 flex-1">
-              <button className="block truncate font-medium text-brand hover:underline" onClick={() => onOpen(s.patient_id, s.session_id)}>{s.patient_name}</button>
+              <button className="touch-hit block truncate font-medium text-brand hover:underline" onClick={() => onOpen(s.patient_id, s.session_id)}>{s.patient_name}</button>
               <div className="truncate text-xs text-muted-foreground">{s.title}{s.procedure ? ` · ${s.procedure}` : ""}{s.tooth ? ` (${s.tooth})` : ""}</div>
             </div>
-            <div className="flex items-center gap-1.5"><Badge variant="outline" className="capitalize">{s.status}</Badge>{sessPayBadge(s)}<span className="text-xs tabular-nums text-muted-foreground">{etb(s.amount_due)}</span></div>
+            <div className="flex items-center gap-1.5"><Badge variant="outline" className="capitalize">{s.status}</Badge>{sessPayBadge(s)}<span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">{etb(s.amount_due)}</span></div>
           </div>
         ))}
       </Card>

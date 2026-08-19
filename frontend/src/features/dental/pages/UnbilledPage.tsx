@@ -222,7 +222,7 @@ export function UnbilledPage() {
                           <button
                             type="button"
                             onClick={() => navigate(`/patients/${r.patient_id}?visit=${r.session_id}`)}
-                            className="font-medium text-brand hover:underline"
+                            className="touch-hit font-medium text-brand hover:underline"
                           >
                             {r.patient_name}
                           </button>
@@ -246,11 +246,14 @@ export function UnbilledPage() {
                           <p className="mt-1 text-xs italic text-amber-800">“{r.pay_later_note}”</p>
                         )}
                       </div>
-                      <div className="flex shrink-0 flex-col items-end gap-1.5">
-                        <span className="text-lg font-bold tabular-nums">{birr(r.amount)}</span>
+                      {/* At 390px this column clipped the owed amount at the right edge —
+                          on a report about money. Below sm it drops to a full-width row
+                          under the title instead of overflowing; sm+ is unchanged. */}
+                      <div className="flex w-full flex-wrap items-center justify-between gap-1.5 sm:w-auto sm:shrink-0 sm:flex-col sm:items-end sm:justify-start">
+                        <span className="shrink-0 whitespace-nowrap text-lg font-bold tabular-nums">{birr(r.amount)}</span>
                         <div className="flex flex-wrap justify-end gap-1.5">
                           {r.phone && (
-                            <a href={`tel:${r.phone}`} className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-accent">
+                            <a href={`tel:${r.phone}`} className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-accent max-sm:min-h-9 max-sm:px-3">
                               <Phone className="h-3 w-3" /> {r.phone}
                             </a>
                           )}

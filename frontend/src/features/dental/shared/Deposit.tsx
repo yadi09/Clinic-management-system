@@ -122,8 +122,10 @@ export function DepositRow({ patientId, plan, canCollect }: {
       <span className="text-muted-foreground">Down payment</span>
       <span className="tabular-nums font-semibold">{birr(d.amount)}</span>
       <Badge variant={meta.variant}>{meta.label}</Badge>
+      {/* 24px tall stays 24px tall — touch-hit adds the invisible tap area a
+          thumb needs without loudening the audit row. */}
       {d.stage === "unpaid" && canCollect && (
-        <Button size="sm" variant="outline" className="h-6 px-2 text-xs"
+        <Button size="sm" variant="outline" className="touch-hit h-6 px-2 text-xs"
           loading={send.isPending} onClick={() => send.mutate()}>
           Send to cashier
         </Button>

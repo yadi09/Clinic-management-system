@@ -135,38 +135,41 @@ export function PlatformConsolePage() {
         <p className="mb-5 text-sm text-zinc-400">{clinics.length} clinic{clinics.length === 1 ? "" : "s"} on the platform.</p>
 
         <div className="overflow-hidden rounded-lg border border-zinc-800">
-          <table className="w-full text-sm">
-            <thead className="border-b border-zinc-800 bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
-              <tr><th className="p-3">Clinic</th><th>Workspace</th><th>Plan</th><th>Users</th><th>Patients</th><th>Status</th><th className="p-3 text-right">Actions</th></tr>
-            </thead>
-            <tbody>
-              {clinics.map((c: Clinic) => (
-                <tr key={c.id} className="border-b border-zinc-800 last:border-0">
-                  <td className="p-3">
-                    <div className="flex items-center gap-2"><Building2 className="h-4 w-4 text-zinc-500" /><span className="font-medium">{c.name}</span></div>
-                    <div className="ml-6 text-xs text-zinc-500">{c.owner_email}</div>
-                  </td>
-                  <td className="font-mono text-xs text-zinc-400">{c.slug}</td>
-                  <td><Badge variant="outline" className="border-zinc-700 text-zinc-300">{c.plan_name ?? "—"}</Badge></td>
-                  <td>{c.users}</td>
-                  <td>{c.patients}</td>
-                  <td><Badge variant={c.status === "active" ? "success" : "destructive"}>{c.status}</Badge></td>
-                  <td className="p-3 text-right">
-                    <div className="flex items-center justify-end gap-3">
-                      <button className="text-xs text-emerald-300 hover:underline" onClick={() => impersonate(c)}>Sign in as owner</button>
-                      <button className="text-xs text-sky-300 hover:underline" onClick={() => setPlanFor(c)}>Plan</button>
-                      <button className="text-xs text-zinc-300 hover:underline" onClick={() => setModulesFor(c)}>Modules</button>
-                      {c.status === "active" ? (
-                        <button className="text-xs text-rose-400 hover:underline" onClick={() => setStatus.mutate({ id: c.id, action: "suspend" })}>Suspend</button>
-                      ) : (
-                        <button className="text-xs text-emerald-400 hover:underline" onClick={() => setStatus.mutate({ id: c.id, action: "reactivate" })}>Reactivate</button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            {/* Phones: this table is wider than the screen — scroll it sideways instead of crushing the columns. */}
+            <table className="w-full min-w-[560px] text-sm">
+              <thead className="border-b border-zinc-800 bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
+                <tr><th className="p-3">Clinic</th><th>Workspace</th><th>Plan</th><th>Users</th><th>Patients</th><th>Status</th><th className="p-3 text-right">Actions</th></tr>
+              </thead>
+              <tbody>
+                {clinics.map((c: Clinic) => (
+                  <tr key={c.id} className="border-b border-zinc-800 last:border-0">
+                    <td className="p-3">
+                      <div className="flex items-center gap-2"><Building2 className="h-4 w-4 text-zinc-500" /><span className="font-medium">{c.name}</span></div>
+                      <div className="ml-6 text-xs text-zinc-500">{c.owner_email}</div>
+                    </td>
+                    <td className="font-mono text-xs text-zinc-400">{c.slug}</td>
+                    <td><Badge variant="outline" className="border-zinc-700 text-zinc-300">{c.plan_name ?? "—"}</Badge></td>
+                    <td>{c.users}</td>
+                    <td>{c.patients}</td>
+                    <td><Badge variant={c.status === "active" ? "success" : "destructive"}>{c.status}</Badge></td>
+                    <td className="p-3 text-right">
+                      <div className="flex items-center justify-end gap-3">
+                        <button className="text-xs text-emerald-300 hover:underline" onClick={() => impersonate(c)}>Sign in as owner</button>
+                        <button className="text-xs text-sky-300 hover:underline" onClick={() => setPlanFor(c)}>Plan</button>
+                        <button className="text-xs text-zinc-300 hover:underline" onClick={() => setModulesFor(c)}>Modules</button>
+                        {c.status === "active" ? (
+                          <button className="text-xs text-rose-400 hover:underline" onClick={() => setStatus.mutate({ id: c.id, action: "suspend" })}>Suspend</button>
+                        ) : (
+                          <button className="text-xs text-emerald-400 hover:underline" onClick={() => setStatus.mutate({ id: c.id, action: "reactivate" })}>Reactivate</button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           {clinics.length === 0 && !q.isLoading && <p className="p-8 text-center text-sm text-zinc-500">No clinics yet. Provision the first one.</p>}
           {q.isLoading && <p className="p-8 text-center text-sm text-zinc-500">Loading…</p>}
         </div>

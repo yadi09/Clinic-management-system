@@ -210,7 +210,7 @@ function IssueDialog({ patientId, onClose, onIssued }: {
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-3xl gap-3">
+      <DialogContent fullOnMobile className="max-w-3xl gap-3">
         <DialogHeader><DialogTitle>Issue a medical certificate</DialogTitle></DialogHeader>
 
         {/* Who it is for and who signs it — both facts, neither typed. */}

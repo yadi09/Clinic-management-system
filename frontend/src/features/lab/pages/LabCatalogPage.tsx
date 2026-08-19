@@ -117,12 +117,13 @@ function TestRow({ test, expanded, onToggle }: { test: LabTest; expanded: boolea
           >
             {test.is_active ? "Available" : "Unavailable"}
           </button>
-          <button onClick={() => setEdit(true)} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit test">
+          <button onClick={() => setEdit(true)} aria-label="Edit test" className="touch-hit rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit test">
             <Pencil className="h-4 w-4" />
           </button>
           <button
             onClick={() => { ask({ title: `Remove "${test.name}"?`, description: "It will no longer be orderable. Past results are kept.", confirmLabel: "Remove test", destructive: true }, () => del.mutateAsync()); }}
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive"
+            aria-label="Delete test"
+            className="touch-hit rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive"
             title="Delete test"
           >
             <Trash2 className="h-4 w-4" />
@@ -154,44 +155,49 @@ function AnalytePanel({ test }: { test: LabTest }) {
   return (
     <div className="border-t bg-muted/20 p-4">
       {dialog}
-      <table className="w-full text-sm">
-        <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-          <tr>
-            <th className="py-1 font-medium">Analyte</th>
-            <th className="font-medium">Unit</th>
-            <th className="font-medium">Reference</th>
-            <th className="font-medium">Critical</th>
-            <th className="w-16"></th>
-          </tr>
-        </thead>
-        <tbody>
-          {(analytes.data ?? []).map((a) => (
-            <tr key={a.id} className="group border-b last:border-0">
-              <td className="py-1.5">{a.name}</td>
-              <td className="text-muted-foreground">{a.unit || "—"}</td>
-              <td className="text-muted-foreground">{[a.ref_low, a.ref_high].some(Boolean) ? `${a.ref_low ?? ""}–${a.ref_high ?? ""}` : "—"}</td>
-              <td className="text-muted-foreground">{[a.critical_low, a.critical_high].some(Boolean) ? `${a.critical_low ?? ""}–${a.critical_high ?? ""}` : "—"}</td>
-              <td>
-                <div className="flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100">
-                  <button onClick={() => setEditing(a)} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit analyte">
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => { ask({ title: `Delete analyte "${a.name}"?`, description: "It is removed from this test's result form.", confirmLabel: "Delete analyte", destructive: true }, () => del.mutateAsync(a.id)); }}
-                    className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
-                    title="Delete analyte"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </td>
+      <div className="overflow-x-auto">
+        {/* Phones: this table is wider than the screen — scroll it sideways instead of crushing the columns. */}
+        <table className="w-full min-w-[560px] text-sm">
+          <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
+              <th className="py-1 font-medium">Analyte</th>
+              <th className="font-medium">Unit</th>
+              <th className="font-medium">Reference</th>
+              <th className="font-medium">Critical</th>
+              <th className="w-16"></th>
             </tr>
-          ))}
-          {(analytes.data?.length ?? 0) === 0 && (
-            <tr><td colSpan={5} className="py-2 text-xs text-muted-foreground">No analytes — add at least one.</td></tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {(analytes.data ?? []).map((a) => (
+              <tr key={a.id} className="group border-b last:border-0">
+                <td className="py-1.5">{a.name}</td>
+                <td className="text-muted-foreground">{a.unit || "—"}</td>
+                <td className="text-muted-foreground">{[a.ref_low, a.ref_high].some(Boolean) ? `${a.ref_low ?? ""}–${a.ref_high ?? ""}` : "—"}</td>
+                <td className="text-muted-foreground">{[a.critical_low, a.critical_high].some(Boolean) ? `${a.critical_low ?? ""}–${a.critical_high ?? ""}` : "—"}</td>
+                <td>
+                  {/* Touch has no hover — keep the row actions visible on phones; desktop keeps its quiet look. */}
+                  <div className="flex items-center justify-end gap-1 opacity-100 md:opacity-60 md:group-hover:opacity-100 md:focus-within:opacity-100">
+                    <button onClick={() => setEditing(a)} aria-label="Edit analyte" className="touch-hit rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:opacity-100" title="Edit analyte">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => { ask({ title: `Delete analyte "${a.name}"?`, description: "It is removed from this test's result form.", confirmLabel: "Delete analyte", destructive: true }, () => del.mutateAsync(a.id)); }}
+                      aria-label="Delete analyte"
+                      className="touch-hit rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive focus-visible:opacity-100"
+                      title="Delete analyte"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {(analytes.data?.length ?? 0) === 0 && (
+              <tr><td colSpan={5} className="py-2 text-xs text-muted-foreground">No analytes — add at least one.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
       <Button size="sm" variant="outline" className="mt-3" onClick={() => setAdd(true)}>
         <Plus className="h-3.5 w-3.5" /> Add analyte
       </Button>

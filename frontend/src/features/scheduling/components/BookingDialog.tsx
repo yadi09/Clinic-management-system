@@ -111,7 +111,9 @@ export function BookingDialog({ open, onOpenChange, branchId, defaultDate, exist
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      {/* Full-screen below sm: eight fields in a half-height sheet means booking
+          through a letterbox. */}
+      <DialogContent fullOnMobile>
         <DialogHeader>
           <DialogTitle>{editing ? "Reschedule appointment" : "Book appointment"}</DialogTitle>
         </DialogHeader>

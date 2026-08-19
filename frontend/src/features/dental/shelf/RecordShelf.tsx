@@ -75,8 +75,10 @@ export function RecordShelf({ patientId, panels }: { patientId: string; panels: 
               >
                 <Icon className="h-4 w-4 shrink-0" />
                 <span className="whitespace-nowrap">{p.label}</span>
+                {/* At every width: hiding badges below lg dropped the Money "!"
+                    and failed-message count exactly where the desk works by phone. */}
                 {p.badge != null && (
-                  <span className={cn("ml-auto hidden rounded-full px-1.5 text-xs tabular-nums lg:inline",
+                  <span className={cn("ml-auto rounded-full px-1.5 text-xs tabular-nums",
                     on ? "bg-brand/15" : "bg-muted-foreground/10")}>
                     {p.badge}
                   </span>

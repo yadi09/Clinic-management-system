@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Stethoscope, Trash2, UserRound, Users } from "lucide-react";
+import { Check, ChevronDown, MoreVertical, Pencil, Plus, Stethoscope, Trash2, UserRound, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Segmented } from "@/components/ui/segmented";
 import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/app/auth-context";
@@ -31,6 +32,13 @@ type Assignable = keyof typeof ASSIGNABLE;
 const ASSIGN_ORDER: Assignable[] = ["either", "clinician", "reception"];
 function assignOf(s: ServiceItem): Assignable {
   return (s.assignable_by in ASSIGNABLE ? s.assignable_by : "either") as Assignable;
+}
+
+/** Providers-pill tone: unknown is quiet, zero staff is a problem, staffed is healthy. */
+function providerPillCls(n: number | undefined) {
+  return n === undefined ? "border-slate-200 bg-slate-50 text-muted-foreground"
+    : n === 0 ? "border-rose-200 bg-rose-50 text-rose-700"
+    : "border-emerald-200 bg-emerald-50 text-emerald-700";
 }
 
 /** The body an update needs — every field, because the endpoint replaces the row. */
@@ -92,11 +100,23 @@ export function ServiceCatalogPage() {
     onSuccess: refresh,
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not update"),
   });
+  // On a phone the cycling pill is a silent edit: no hover title warns that a tap
+  // rewrites who may bill the service, so "Anyone" becomes "Front desk" by accident.
+  // The mobile card therefore names the target rule instead of asking for "next".
+  const setAssign = useMutation({
+    mutationFn: ({ s, next }: { s: ServiceItem; next: Assignable }) => updateService(s.id, bodyOf(s, { assignable_by: next })),
+    onSuccess: refresh,
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not update"),
+  });
   const del = useMutation({
     mutationFn: (id: string) => deleteService(id),
     onSuccess: () => { toast.success("Service removed"); refresh(); },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not delete"),
   });
+  // One confirm for both layouts, so what "remove" means can never drift between
+  // the table row and the phone card.
+  const confirmDelete = (s: ServiceItem) =>
+    ask({ title: `Remove "${s.name}"?`, description: "It can no longer be charged. Charges already raised are unaffected.", confirmLabel: "Remove service", destructive: true }, () => del.mutateAsync(s.id));
 
   return (
     <div className="space-y-6">
@@ -134,7 +154,102 @@ export function ServiceCatalogPage() {
       </div>
 
       <Card className="overflow-hidden">
-        <table className="w-full text-sm">
+        {/* Below md the eight-column table lost the viewport fight: the row actions sat
+            entirely off-screen, "Assigned by" clipped mid-word, and prices wrapped
+            between currency and amount. Same data, same mutations — stacked as cards.
+            The table is untouched from md up. */}
+        <div className="divide-y md:hidden">
+          {svcList.map((s) => {
+            const n = counts.data?.[s.id];
+            const a = assignOf(s);
+            return (
+              <div key={s.id} className="space-y-2.5 p-3">
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">{s.name}</p>
+                    <p className="font-mono text-xs text-muted-foreground">
+                      {s.code}
+                      {!onDental && s.category && <span className="capitalize"> · {s.category}</span>}
+                    </p>
+                  </div>
+                  <span className="whitespace-nowrap pt-px font-mono text-sm tabular-nums">{s.currency} {s.price}</span>
+                  {(mayEdit || !onDental) && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        {/* The table reveals actions on hover; a thumb has no hover, so one
+                            kebab holds them all. Explicit 44px — size="icon" relaxes to
+                            40px above sm, and these cards live all the way to md. The
+                            negative margin keeps the header line from inflating. */}
+                        <Button variant="ghost" size="icon" className="-my-2.5 -mr-2 h-11 w-11 shrink-0 text-muted-foreground" aria-label={`Actions for ${s.name}`}>
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {mayEdit && !onDental && <DropdownMenuItem onSelect={() => setAssigning(s)}><Users /> Assign staff</DropdownMenuItem>}
+                        {mayEdit && <DropdownMenuItem onSelect={() => setEditing(s)}><Pencil /> Edit</DropdownMenuItem>}
+                        {!onDental && (
+                          <DropdownMenuItem onSelect={() => toggleDefault.mutate(s)}>
+                            {s.is_default ? "Unset reception default" : "Make reception default"}
+                          </DropdownMenuItem>
+                        )}
+                        {mayEdit && <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => confirmDelete(s)}><Trash2 /> Delete</DropdownMenuItem>}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {mayEdit ? (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className={`inline-flex min-h-9 items-center gap-1 rounded-full border px-3 text-xs font-medium ${ASSIGNABLE[a].cls}`}>
+                          {a === "clinician" ? <Stethoscope className="h-3 w-3" /> : a === "reception" ? <UserRound className="h-3 w-3" /> : null}
+                          {ASSIGNABLE[a].label}
+                          <ChevronDown className="h-3 w-3 opacity-60" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-64">
+                        {ASSIGN_ORDER.map((v) => (
+                          <DropdownMenuItem key={v} onSelect={() => v !== a && setAssign.mutate({ s, next: v })}>
+                            <span className="min-w-0 flex-1">
+                              <span className="block font-medium">{ASSIGNABLE[v].label}</span>
+                              <span className="block text-xs text-muted-foreground">{ASSIGNABLE[v].hint}</span>
+                            </span>
+                            {v === a && <Check className="shrink-0 text-primary" />}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : (
+                    <span className={`inline-flex min-h-9 items-center gap-1 rounded-full border px-3 text-xs font-medium ${ASSIGNABLE[a].cls}`} title={ASSIGNABLE[a].hint}>
+                      {a === "clinician" ? <Stethoscope className="h-3 w-3" /> : a === "reception" ? <UserRound className="h-3 w-3" /> : null}
+                      {ASSIGNABLE[a].label}
+                    </span>
+                  )}
+                  {!onDental && (
+                    <button
+                      onClick={() => setAssigning(s)}
+                      className={`inline-flex min-h-9 items-center gap-1 rounded-full border px-3 text-xs font-medium ${providerPillCls(n)}`}
+                    >
+                      <Users className="h-3 w-3" />
+                      {n === undefined ? "…" : n === 0 ? "None — assign" : `${n} staff`}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => toggle.mutate(s)}
+                    className={`min-h-9 rounded-full border px-3 text-xs font-medium ${s.is_active ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-muted-foreground"}`}
+                  >
+                    {s.is_active ? "Available" : "Off"}
+                  </button>
+                  {/* Default is state worth seeing without opening the kebab (where it is toggled). */}
+                  {!onDental && s.is_default && (
+                    <span className="inline-flex min-h-9 items-center rounded-full border border-primary/30 bg-primary/10 px-3 text-xs font-medium text-primary">Default</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <table className="hidden w-full text-sm md:table">
           <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
               <th className="p-3 font-medium">Code</th>
@@ -173,11 +288,7 @@ export function ServiceCatalogPage() {
                   <button
                     onClick={() => setAssigning(s)}
                     title="Assign the staff who provide this service"
-                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${
-                      n === undefined ? "border-slate-200 bg-slate-50 text-muted-foreground"
-                      : n === 0 ? "border-rose-200 bg-rose-50 text-rose-700"
-                      : "border-emerald-200 bg-emerald-50 text-emerald-700"
-                    }`}
+                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${providerPillCls(n)}`}
                   >
                     <Users className="h-3 w-3" />
                     {n === undefined ? "…" : n === 0 ? "None — assign" : `${n} staff`}
@@ -205,7 +316,7 @@ export function ServiceCatalogPage() {
                     {!mayEdit && <span className="text-xs text-muted-foreground">View only</span>}
                     {mayEdit && !onDental && <button onClick={() => setAssigning(s)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Assign staff"><Users className="h-4 w-4" /></button>}
                     {mayEdit && <button onClick={() => setEditing(s)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit"><Pencil className="h-4 w-4" /></button>}
-                    {mayEdit && <button onClick={() => { ask({ title: `Remove "${s.name}"?`, description: "It can no longer be charged. Charges already raised are unaffected.", confirmLabel: "Remove service", destructive: true }, () => del.mutateAsync(s.id)); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive" title="Delete"><Trash2 className="h-4 w-4" /></button>}
+                    {mayEdit && <button onClick={() => confirmDelete(s)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive" title="Delete"><Trash2 className="h-4 w-4" /></button>}
                   </div>
                 </td>
               </tr>

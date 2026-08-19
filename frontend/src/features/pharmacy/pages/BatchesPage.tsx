@@ -47,39 +47,42 @@ export function BatchesPage() {
       </div>
 
       <Card className="overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <tr>
-              <th className="p-3 font-medium">Drug</th>
-              <th className="font-medium">Batch</th>
-              <th className="font-medium">Expiry</th>
-              <th className="font-medium">On hand</th>
-              <th className="font-medium">Status</th>
-              <th className="p-3 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {(batches.data ?? []).map((b) => (
-              <tr key={b.id} className="border-b">
-                <td className="p-3">{b.drug_name}</td>
-                <td className="font-mono text-xs">{b.batch_no}</td>
-                <td>{b.expiry_date?.slice(0, 7) ?? "—"}</td>
-                <td>{b.qty_on_hand}</td>
-                <td>{statusBadge(b.status)}</td>
-                <td className="p-3 text-right">
-                  {manage && (
-                    <button
-                      className="text-xs text-muted-foreground hover:text-foreground"
-                      onClick={() => quarantine.mutate({ id: b.id, q: !b.quarantined })}
-                    >
-                      {b.quarantined ? "Release" : "Quarantine"}
-                    </button>
-                  )}
-                </td>
+        <div className="overflow-x-auto">
+          {/* Phones: this table is wider than the screen — scroll it sideways instead of crushing the columns. */}
+          <table className="w-full min-w-[560px] text-sm">
+            <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="p-3 font-medium">Drug</th>
+                <th className="font-medium">Batch</th>
+                <th className="font-medium">Expiry</th>
+                <th className="font-medium">On hand</th>
+                <th className="font-medium">Status</th>
+                <th className="p-3 font-medium"></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {(batches.data ?? []).map((b) => (
+                <tr key={b.id} className="border-b">
+                  <td className="p-3">{b.drug_name}</td>
+                  <td className="font-mono text-xs">{b.batch_no}</td>
+                  <td>{b.expiry_date?.slice(0, 7) ?? "—"}</td>
+                  <td>{b.qty_on_hand}</td>
+                  <td>{statusBadge(b.status)}</td>
+                  <td className="p-3 text-right">
+                    {manage && (
+                      <button
+                        className="text-xs text-muted-foreground hover:text-foreground"
+                        onClick={() => quarantine.mutate({ id: b.id, q: !b.quarantined })}
+                      >
+                        {b.quarantined ? "Release" : "Quarantine"}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {(batches.data?.length ?? 0) === 0 && <p className="p-8 text-center text-sm text-muted-foreground">No stock batches yet.</p>}
       </Card>
 

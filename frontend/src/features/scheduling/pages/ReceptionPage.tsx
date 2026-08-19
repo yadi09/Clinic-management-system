@@ -166,6 +166,19 @@ export function ReceptionPage() {
   const hasFee = chosen.length > 0;
   const destWord = isDental ? "dentist" : toTriage ? "triage" : "doctor";
 
+  // The primary action, built once and placed twice: in the card where desktop
+  // expects it, and in the sticky bottom bar phones need — on a 390px screen the
+  // card copy sits ~2.5 screens down, which is how visits end up half-registered.
+  const primaryAction = !cashierMode && hasFee ? (
+    <Button className="w-full" disabled={!routeReady || hasPending} loading={send.isPending} onClick={() => send.mutate({ action: "collect", method })}>
+      <HandCoins className="h-4 w-4" /> Collect ETB {total.toFixed(2)} &amp; send to {destWord}
+    </Button>
+  ) : (
+    <Button className="w-full" disabled={!routeReady || hasPending} loading={send.isPending} onClick={() => send.mutate({ action: "cashier" })}>
+      {hasFee ? "Send to cashier" : `Send to ${destWord}`}
+    </Button>
+  );
+
   return (
     <div className="space-y-6">
       <div>
@@ -177,9 +190,11 @@ export function ReceptionPage() {
         </p>
       </div>
 
+      {/* min-w-0 on the cards: grid children refuse to shrink below content width,
+          so one long service name pushed a card past the 390px gutters. */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Patient + services */}
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Patient & services</CardTitle>
             <CardDescription>
@@ -205,12 +220,12 @@ export function ReceptionPage() {
                   {pendingList.map((r) => (
                     <li key={r.id} className="flex items-center justify-between gap-2">
                       <span className="truncate">{r.description}</span>
-                      <span className="font-mono text-muted-foreground">{r.currency} {r.amount}</span>
+                      <span className="whitespace-nowrap font-mono text-muted-foreground">{r.currency} {r.amount}</span>
                     </li>
                   ))}
                   <li className="flex items-center justify-between gap-2 border-t pt-1 font-semibold">
                     <span>Pending total</span>
-                    <span className="font-mono">ETB {pendingTotal.toFixed(2)}</span>
+                    <span className="whitespace-nowrap font-mono">ETB {pendingTotal.toFixed(2)}</span>
                   </li>
                 </ul>
               </div>
@@ -219,15 +234,17 @@ export function ReceptionPage() {
             <div className="space-y-2">
               <Label>Services</Label>
               <div className="max-h-56 space-y-1 overflow-auto rounded-md border p-1">
+                {/* min-h-11 below md: each row is the tap target for its checkbox;
+                    py-1.5 alone is ~32px, under the touch floor. */}
                 {(services.data ?? []).map((s) => (
-                  <label key={s.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
+                  <label key={s.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted max-md:min-h-11">
                     <input
                       type="checkbox"
                       checked={!!picked[s.id]}
                       onChange={(e) => setPicked({ ...picked, [s.id]: e.target.checked })}
                     />
                     <span className="flex-1">{s.name}{s.is_default ? <span className="ml-1.5 text-xs text-primary">· default</span> : null}</span>
-                    <span className="font-mono text-xs text-muted-foreground">{s.currency} {s.price}</span>
+                    <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">{s.currency} {s.price}</span>
                   </label>
                 ))}
                 {(services.data?.length ?? 0) === 0 && (
@@ -236,7 +253,7 @@ export function ReceptionPage() {
               </div>
               <div className="flex items-center justify-between px-1 text-sm">
                 <span className="text-muted-foreground">{chosen.length} selected</span>
-                <span className="font-semibold">Total: ETB {total.toFixed(2)}</span>
+                <span className="whitespace-nowrap font-semibold tabular-nums">Total: ETB {total.toFixed(2)}</span>
               </div>
               {chosen.length === 0 && (
                 <p className="px-1 text-xs text-muted-foreground">No service selected — the patient goes straight to the queue with no charge.</p>
@@ -246,7 +263,7 @@ export function ReceptionPage() {
         </Card>
 
         {/* Routing + payment */}
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Route patient</CardTitle>
             <CardDescription>{isDental ? "Send the patient to a dentist." : "Send to triage, or straight to a doctor."}</CardDescription>
@@ -312,11 +329,12 @@ export function ReceptionPage() {
             )}
 
             {/* --- payment / send --- */}
+            {/* max-lg:hidden on each in-card copy: below lg the same button lives
+                in the sticky bottom bar instead — two live "collect money" buttons
+                on one phone screen is one too many. */}
             {cashierMode ? (
               <>
-                <Button className="w-full" disabled={!routeReady || hasPending} loading={send.isPending} onClick={() => send.mutate({ action: "cashier" })}>
-                  {hasFee ? "Send to cashier" : `Send to ${destWord}`}
-                </Button>
+                <div className="max-lg:hidden">{primaryAction}</div>
                 {hasFee && (
                   <p className="text-center text-xs text-muted-foreground">Raises a pending payment; the patient advances once the cashier settles it.</p>
                 )}
@@ -325,7 +343,7 @@ export function ReceptionPage() {
               <div className="space-y-2 rounded-md border bg-muted/30 p-3">
                 <div className="flex items-center justify-between">
                   <Label className="text-xs">Collect payment</Label>
-                  <span className="font-mono text-sm font-semibold">ETB {total.toFixed(2)}</span>
+                  <span className="whitespace-nowrap font-mono text-sm font-semibold">ETB {total.toFixed(2)}</span>
                 </div>
                 <div className="flex items-end gap-2">
                   <div className="flex-1 space-y-1">
@@ -339,17 +357,26 @@ export function ReceptionPage() {
                   </div>
                   <Button variant="outline" disabled={!routeReady || hasPending} onClick={() => setWaiveOpen(true)}>Waive…</Button>
                 </div>
-                <Button className="w-full" disabled={!routeReady || hasPending} loading={send.isPending} onClick={() => send.mutate({ action: "collect", method })}>
-                  <HandCoins className="h-4 w-4" /> Collect ETB {total.toFixed(2)} &amp; send to {destWord}
-                </Button>
+                <div className="max-lg:hidden">{primaryAction}</div>
               </div>
             ) : (
-              <Button className="w-full" disabled={!routeReady || hasPending} loading={send.isPending} onClick={() => send.mutate({ action: "cashier" })}>
-                Send to {destWord}
-              </Button>
+              <div className="max-lg:hidden">{primaryAction}</div>
             )}
           </CardContent>
         </Card>
+      </div>
+
+      {/* Below lg the cards stack and the send/collect button lands ~2.5 screens
+          down; pin the decision — total + the same primaryAction — to the bottom
+          of the screen. Sticky in the page flow (not fixed) so it settles into its
+          natural place at the end of the page; below md it sits up by the tab
+          bar's height (+ safe area) because the fixed MobileNav owns bottom-0. */}
+      <div className="sticky bottom-0 z-10 flex items-center gap-3 border-t bg-card p-3 max-md:bottom-[calc(4rem+env(safe-area-inset-bottom))] lg:hidden">
+        <div className="min-w-0">
+          <p className="text-xs text-muted-foreground">Total</p>
+          <p className="whitespace-nowrap font-mono text-sm font-semibold tabular-nums">ETB {total.toFixed(2)}</p>
+        </div>
+        <div className="min-w-0 flex-1">{primaryAction}</div>
       </div>
 
       {/* Waive dialog (reception-collect mode) */}
