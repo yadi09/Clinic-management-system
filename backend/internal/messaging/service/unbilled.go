@@ -72,6 +72,7 @@ func (s *Service) UnbilledReminders(ctx context.Context, in messaging.UnbilledRe
 			// every owed visit's number, so the message can say "visit 2 and 3"
 			seqs       []int
 			hasDeposit bool
+			extras     []extra
 			count      int // visits in the course, for "visit 3 of 4"
 			owed, paid float64
 			oldest     time.Time
@@ -83,7 +84,7 @@ func (s *Service) UnbilledReminders(ctx context.Context, in messaging.UnbilledRe
 		// settled since the page loaded simply drops out here, so the reminder can
 		// never disagree with the cashier.
 		rows, e := tx.Query(ctx, dental.SessionMoneySQL+`
-			SELECT sm.session_id, sm.patient_id, sm.seq, sm.kind, sm.owed_amount::text,
+			SELECT sm.session_id, sm.patient_id, sm.seq, sm.kind, coalesce(si.name,''), sm.owed_amount::text,
 			       p.title, p.session_count,
 			       sm.owed_since,
 			       (SELECT coalesce(sum(x.net_paid), 0) FROM session_money x
@@ -92,6 +93,7 @@ func (s *Service) UnbilledReminders(ctx context.Context, in messaging.UnbilledRe
 			  FROM session_money sm
 			  JOIN treatment_plans p ON p.id = sm.plan_id AND p.tenant_id = $1
 			  JOIN patients pt ON pt.id = sm.patient_id AND pt.tenant_id = $1 AND pt.deleted_at IS NULL
+			  LEFT JOIN service_items si ON si.id = sm.service_item_id AND si.tenant_id = $1
 			 WHERE sm.session_id = ANY($2)
 			   AND sm.session_status <> 'cancelled'
 			   AND sm.owed_now
@@ -103,10 +105,10 @@ func (s *Service) UnbilledReminders(ctx context.Context, in messaging.UnbilledRe
 		for rows.Next() {
 			var sessionID, patientID uuid.UUID
 			var seq, count int
-			var kind, owed, title, paid, first, mrn, rawPhone string
+			var kind, svcName, owed, title, paid, first, mrn, rawPhone string
 			var since time.Time
 			var optedOut bool
-			if e := rows.Scan(&sessionID, &patientID, &seq, &kind, &owed, &title, &count,
+			if e := rows.Scan(&sessionID, &patientID, &seq, &kind, &svcName, &owed, &title, &count,
 				&since, &paid, &first, &mrn, &rawPhone, &optedOut); e != nil {
 				rows.Close()
 				return e
@@ -118,11 +120,16 @@ func (s *Service) UnbilledReminders(ctx context.Context, in messaging.UnbilledRe
 				byPatient[patientID] = d
 			}
 			d.planTitles[title] = true
-			// A down payment has no visit number — it is the price of starting the
-			// course, and left to the seq column the message would call it "visit 0".
-			if kind == "deposit" {
+			// Neither of these is a visit number. A down payment is the price of
+			// starting the course; an extra borrows the seq of the visit it was performed
+			// at, so naming it after that visit tells a patient they owe for treatment
+			// they may already have paid for.
+			switch kind {
+			case "deposit":
 				d.hasDeposit = true
-			} else {
+			case "extra":
+				d.extras = append(d.extras, extra{seq: seq, name: svcName})
+			default:
 				d.count = count
 				d.seqs = append(d.seqs, seq)
 			}
@@ -196,7 +203,7 @@ func (s *Service) UnbilledReminders(ctx context.Context, in messaging.UnbilledRe
 			if len(titles) > 1 {
 				treatment = fmt.Sprintf("%d treatments", len(titles))
 			}
-			visit := whatIsOwed(d.seqs, d.count, d.hasDeposit, set.Lang)
+			visit := whatIsOwed(d.seqs, d.count, d.hasDeposit, d.extras, set.Lang)
 			vals := map[string]string{
 				"clinic":    set.SenderName,
 				"name":      d.first,
@@ -309,8 +316,9 @@ func money64(raw string) float64 {
 //	one visit        visit 3 of 4
 //	several          visits 2 and 3
 //	a down payment   down payment
+//	an extra         x-ray added at visit 3
 //	both             down payment and visit 3
-func whatIsOwed(seqs []int, count int, deposit bool, lang string) string {
+func whatIsOwed(seqs []int, count int, deposit bool, extras []extra, lang string) string {
 	am := lang == "am"
 	parts := []string{}
 	if deposit {
@@ -325,7 +333,25 @@ func whatIsOwed(seqs []int, count int, deposit bool, lang string) string {
 	case len(seqs) > 1:
 		parts = append(parts, fmt.Sprintf("%s %s", pick(am, "ጉብኝት", "visits"), seqList(seqs, am)))
 	}
+	switch {
+	case len(extras) == 1:
+		e := extras[0]
+		if e.name != "" {
+			parts = append(parts, fmt.Sprintf(pick(am, "%s (ተጨማሪ፣ ጉብኝት %d)", "%s added at visit %d"), e.name, e.seq))
+		} else {
+			parts = append(parts, fmt.Sprintf(pick(am, "ተጨማሪ ሕክምና (ጉብኝት %d)", "extra treatment at visit %d"), e.seq))
+		}
+	case len(extras) > 1:
+		parts = append(parts, fmt.Sprintf(pick(am, "%d ተጨማሪ ሕክምናዎች", "%d extra treatments"), len(extras)))
+	}
 	return strings.Join(parts, pick(am, " እና ", " and "))
+}
+
+// extra is an add-on performed during a visit — an X-ray taken at visit 3. It
+// carries that visit's seq, which is why it needs a name of its own.
+type extra struct {
+	seq  int
+	name string
 }
 
 func pick(am bool, amharic, english string) string {

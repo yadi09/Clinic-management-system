@@ -298,12 +298,17 @@ export function UnbilledPage() {
                         </div>
                         <p className="mt-0.5 text-sm">
                           {r.plan_title} ·{" "}
-                          {/* A down payment is owed for the course, not for a visit —
-                              printing it as "session 0 of 6" was the report describing
-                              a visit that does not exist. */}
-                          {r.kind === "deposit"
-                            ? <span className="font-medium">down payment</span>
-                            : <>session {r.seq} of {r.session_count}</>}
+                          {/* Only a visit is "session N of M". A down payment is owed for
+                              the course, not for a visit; an extra borrows the seq of the
+                              visit it was done at, so printing that seq claimed an unbilled
+                              x-ray was session 3 — while session 3 sat there paid. */}
+                          {r.kind === "deposit" && <span className="font-medium">down payment</span>}
+                          {r.kind === "extra" && (
+                            <span className="font-medium">
+                              {r.service_name || "extra treatment"} added at visit {r.seq}
+                            </span>
+                          )}
+                          {r.kind === "visit" && <>session {r.seq} of {r.session_count}</>}
                           {r.procedure && <span className="text-muted-foreground"> · {r.procedure}</span>}
                           {r.tooth && <span className="text-muted-foreground"> · {r.tooth}</span>}
                         </p>

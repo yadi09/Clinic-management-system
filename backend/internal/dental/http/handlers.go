@@ -983,7 +983,7 @@ func (h *Handlers) UnbilledTreatment(c *gin.Context) {
 			"mrn":        r.MRN, "patient_name": r.PatientName, "phone": r.Phone,
 			"plan_title": r.PlanTitle, "procedure": r.Procedure, "tooth": r.Tooth,
 			"seq": r.Seq, "session_count": r.SessionCount,
-			"kind": r.Kind, "treatment_date": r.TreatmentDate, "days_unbilled": r.DaysUnbilled,
+			"kind": r.Kind, "service_name": r.Service, "treatment_date": r.TreatmentDate, "days_unbilled": r.DaysUnbilled,
 			"amount": r.Amount, "lane": r.Lane,
 			"pay_later": r.PayLater, "pay_later_note": r.PayLaterNote,
 			"clinician": r.Clinician, "branch": r.Branch,

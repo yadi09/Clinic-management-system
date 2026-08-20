@@ -1164,17 +1164,20 @@ func (s *Service) collectOne(ctx context.Context, patientID, sessionID uuid.UUID
 		// visit 3) is a different procedure from the course it happened inside, and
 		// the report has to be able to count it as one.
 		var svcItem *uuid.UUID
+		var svcName string
 		e := tx.QueryRow(ctx,
 			`SELECT se.amount_due::text, se.seq, p.title, p.session_count, c.status,
 			        (SELECT sum(-r.amount)::text FROM charges r
 			          WHERE r.tenant_id = c.tenant_id AND r.reverses_charge_id = c.id AND r.deleted_at IS NULL),
-			        se.branch_id, se.kind, coalesce(se.service_item_id, p.service_item_id)
+			        se.branch_id, se.kind, coalesce(se.service_item_id, p.service_item_id),
+			        coalesce(si.name, '')
 			 FROM treatment_sessions se
 			 JOIN treatment_plans p ON p.id = se.plan_id AND p.tenant_id = se.tenant_id
+			 LEFT JOIN service_items si ON si.id = se.service_item_id AND si.tenant_id = se.tenant_id
 			 LEFT JOIN charges c ON c.id = se.charge_id AND c.tenant_id = se.tenant_id AND c.deleted_at IS NULL
 			 WHERE se.tenant_id = $1 AND se.patient_id = $2 AND se.id = $3
 			 FOR UPDATE OF se`,
-			tid, patientID, sessionID).Scan(&amount, &seq, &planTitle, &count, &chargeStatus, &refunded, &treatedAt, &kind, &svcItem)
+			tid, patientID, sessionID).Scan(&amount, &seq, &planTitle, &count, &chargeStatus, &refunded, &treatedAt, &kind, &svcItem, &svcName)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return apperr.NotFound("SESSION_NOT_FOUND", "session not found")
 		}
@@ -1213,13 +1216,8 @@ func (s *Service) collectOne(ctx context.Context, patientID, sessionID uuid.UUID
 		if treatedAt != nil {
 			bookTo = treatedAt
 		}
-		// What the receipt says. A deposit is seq 0, so the session wording would
-		// hand the patient a receipt reading "session 0/6" for the money they paid
-		// to start the work.
-		desc := fmt.Sprintf("%s — session %d/%d", planTitle, seq, count)
-		if kind == "deposit" {
-			desc = fmt.Sprintf("%s — down payment", planTitle)
-		}
+		// What the receipt says — see dental.SessionDesc for why seq alone is not it.
+		desc := dental.SessionDesc(planTitle, kind, svcName, seq, count)
 		cid, e := s.billing.RaiseChargeTx(ctx, tx, billing.ChargeInput{
 			PatientID: patientID, BranchID: bookTo, Source: "dental",
 			Description: desc, Amount: fmtMoney(amt), ServiceItemID: svcItem,
@@ -1326,17 +1324,20 @@ func (s *Service) WriteOffSession(ctx context.Context, patientID, sessionID uuid
 		var seq, count int
 		var chargeStatus *string
 		var treatedAt, existingCharge *uuid.UUID
+		var svcName string
 		var refunded *string
 		e := tx.QueryRow(ctx,
 			`SELECT se.amount_due::text, se.seq, p.title, p.session_count, c.status, se.branch_id, se.charge_id, se.kind,
 			        (SELECT sum(-r.amount)::text FROM charges r
-			          WHERE r.tenant_id = c.tenant_id AND r.reverses_charge_id = c.id AND r.deleted_at IS NULL)
+			          WHERE r.tenant_id = c.tenant_id AND r.reverses_charge_id = c.id AND r.deleted_at IS NULL),
+			        coalesce(si.name, '')
 			 FROM treatment_sessions se
 			 JOIN treatment_plans p ON p.id = se.plan_id AND p.tenant_id = se.tenant_id
+			 LEFT JOIN service_items si ON si.id = se.service_item_id AND si.tenant_id = se.tenant_id
 			 LEFT JOIN charges c ON c.id = se.charge_id AND c.tenant_id = se.tenant_id AND c.deleted_at IS NULL
 			 WHERE se.tenant_id = $1 AND se.patient_id = $2 AND se.id = $3
 			 FOR UPDATE OF se`,
-			tid, patientID, sessionID).Scan(&amount, &seq, &planTitle, &count, &chargeStatus, &treatedAt, &existingCharge, &kind, &refunded)
+			tid, patientID, sessionID).Scan(&amount, &seq, &planTitle, &count, &chargeStatus, &treatedAt, &existingCharge, &kind, &refunded, &svcName)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return apperr.NotFound("SESSION_NOT_FOUND", "session not found")
 		}
@@ -1377,7 +1378,7 @@ func (s *Service) WriteOffSession(ctx context.Context, patientID, sessionID uuid
 		}
 		cid, e := s.billing.RaiseChargeTx(ctx, tx, billing.ChargeInput{
 			PatientID: patientID, BranchID: bookTo, Source: "dental",
-			Description: writeOffDesc(planTitle, kind, seq, count),
+			Description: writeOffDesc(planTitle, kind, svcName, seq, count),
 			Amount:      fmtMoney(money(amount)),
 		})
 		if e != nil {
@@ -1666,11 +1667,8 @@ func (s *Service) DeletePrescription(ctx context.Context, patientID, prescriptio
 
 // writeOffDesc names a forgiven fee on the ledger the same way collectOne names a
 // billed one, so the two rows read as a pair.
-func writeOffDesc(planTitle, kind string, seq, count int) string {
-	if kind == "deposit" {
-		return fmt.Sprintf("%s — down payment (written off)", planTitle)
-	}
-	return fmt.Sprintf("%s — session %d/%d (written off)", planTitle, seq, count)
+func writeOffDesc(planTitle, kind, service string, seq, count int) string {
+	return dental.SessionDesc(planTitle, kind, service, seq, count) + " (written off)"
 }
 
 // drugAllergenTags returns the library allergen tags for a prescribed item.
@@ -2171,7 +2169,7 @@ func (s *Service) UnbilledTreatment(ctx context.Context, from, to string, limit,
 today AS (SELECT (now() AT TIME ZONE 'Africa/Addis_Ababa')::date AS d)
 SELECT sm.session_id, sm.patient_id, pt.mrn,
        trim(pt.first_name || ' ' || coalesce(pt.last_name,'')),
-       coalesce(pt.phone,''), pl.title, sm.procedure, sm.tooth, sm.seq, pl.session_count, sm.kind,
+       coalesce(pt.phone,''), pl.title, sm.procedure, sm.tooth, sm.seq, pl.session_count, sm.kind, coalesce(si.name,''),
        sm.owed_since::date,
        ((SELECT d FROM today) - sm.owed_since::date)::int,
        sm.owed_amount::text,
@@ -2184,6 +2182,7 @@ FROM session_money sm
 JOIN treatment_plans pl ON pl.id = sm.plan_id    AND pl.tenant_id = sm.tenant_id
 JOIN patients        pt ON pt.id = sm.patient_id AND pt.tenant_id = sm.tenant_id
 LEFT JOIN users      u  ON u.id  = sm.completed_by AND u.tenant_id = sm.tenant_id
+LEFT JOIN service_items si ON si.id = sm.service_item_id AND si.tenant_id = sm.tenant_id
 LEFT JOIN branches   b  ON b.id  = sm.branch_id    AND b.tenant_id = sm.tenant_id
 WHERE pt.deleted_at IS NULL AND pl.status <> 'cancelled'
   AND sm.session_status <> 'cancelled'
@@ -2202,7 +2201,7 @@ LIMIT $4 OFFSET $5`, tid, fromPtr, toPtr, limit+1, offset)
 			var r dental.UnbilledRow
 			var td time.Time
 			if e := rows.Scan(&r.SessionID, &r.PatientID, &r.MRN, &r.PatientName, &r.Phone,
-				&r.PlanTitle, &r.Procedure, &r.Tooth, &r.Seq, &r.SessionCount, &r.Kind,
+				&r.PlanTitle, &r.Procedure, &r.Tooth, &r.Seq, &r.SessionCount, &r.Kind, &r.Service,
 				&td, &r.DaysUnbilled, &r.Amount, &r.Lane, &r.PayLater, &r.PayLaterNote,
 				&r.Clinician, &r.Branch); e != nil {
 				return e

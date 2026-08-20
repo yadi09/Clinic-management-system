@@ -386,8 +386,14 @@ export interface UnbilledRow {
   tooth?: string;
   seq: number;
   session_count: number;
-  /** A down payment is owed from the day the course was agreed, and has no visit number. */
-  kind: "visit" | "deposit";
+  /**
+   * A down payment is owed from the day the course was agreed and has no visit
+   * number; an extra SHARES the seq of the visit it was performed at. Both must be
+   * named for what they are — see dental.SessionDesc on the server.
+   */
+  kind: "visit" | "deposit" | "extra";
+  /** The extra's own service ("x-ray"), when it has one. */
+  service_name?: string;
   treatment_date: string;
   days_unbilled: number;
   amount: string;

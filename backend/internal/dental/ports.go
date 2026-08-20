@@ -442,9 +442,13 @@ type UnbilledRow struct {
 	Tooth        string    `json:"tooth,omitempty"`
 	Seq          int       `json:"seq"`
 	SessionCount int       `json:"session_count"`
-	// visit | deposit — a down payment has no seq worth printing, and the row has to
-	// say what it is rather than claim to be "session 0".
-	Kind          string `json:"kind"`
+	// visit | deposit | extra. A down payment has no seq worth printing, and an extra
+	// SHARES the seq of the visit it was performed at — so a row must say which kind
+	// it is, or it names itself after a visit the patient may already have paid for.
+	// See dental.SessionDesc.
+	Kind string `json:"kind"`
+	// The extra's own service ("x-ray"), when it has one.
+	Service       string `json:"service_name,omitempty"`
 	TreatmentDate string `json:"treatment_date"` // owed-since: treated-on, or agreed-on for a deposit
 	DaysUnbilled  int    `json:"days_unbilled"`
 	Amount        string `json:"amount"`

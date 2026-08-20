@@ -15,7 +15,7 @@ const SessionMoneySQL = `
 WITH session_charge AS (
   SELECT se.id AS session_id,
          se.tenant_id, se.plan_id, se.patient_id, se.seq,
-         se.kind,
+         se.kind, se.service_item_id,
          se.scheduled_date, se.created_at,
          se.status AS session_status,
          se.pay_later,
