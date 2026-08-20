@@ -21,7 +21,7 @@
 // period is deliberately NOT a second identity colour; it is the same measure
 // earlier, so it is drawn as a neutral 2px line. Form (line vs bar) carries the
 // distinction as well as tone, and the legend names both.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Table2, BarChart3 } from "lucide-react";
 
 import type { FinDayPoint } from "@/features/billing/api";
@@ -31,12 +31,16 @@ const COMPARE = "#6b7280";      // muted-foreground: context, not identity
 const GRID = "#e5e7eb";         // one shade off the surface, solid hairline
 
 const num = (s?: string) => Number(s || 0);
+const fmtShort = (iso: string) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 const etb = (n: number) => `${n.toLocaleString(undefined, { maximumFractionDigits: 0 })} ETB`;
 
 type Bucket = {
   key: string; label: string; full: string; now: number; before: number;
   /** The comparison point's OWN day, which is not the day under it on the axis. */
   beforeFull: string;
+  /** The same, short enough for the axis. */
+  beforeLabel: string;
 };
 
 /**
@@ -73,6 +77,7 @@ function bucketise(series: FinDayPoint[], prev: FinDayPoint[]): { buckets: Bucke
         now: num(p.amount),
         before: num(prev[i]?.amount),
         beforeFull: prev[i] ? longDay(prev[i].date) : "",
+        beforeLabel: prev[i] ? fmtDay(prev[i].date) : "",
       })),
     };
   }
@@ -106,6 +111,7 @@ function bucketise(series: FinDayPoint[], prev: FinDayPoint[]): { buckets: Bucke
         now: 0,
         before: 0,
         beforeFull: "",
+        beforeLabel: "",
       });
     }
     const b = map.get(k)!;
@@ -116,6 +122,7 @@ function bucketise(series: FinDayPoint[], prev: FinDayPoint[]): { buckets: Bucke
     if (pd) {
       const first = b.beforeFull.split(" – ")[0] || fmtDay(pd);
       b.beforeFull = first === fmtDay(pd) ? first : `${first} – ${fmtDay(pd)}`;
+      b.beforeLabel = b.beforeFull;
     }
   });
   return { grain, buckets: order.map((k) => map.get(k)!) };
@@ -149,15 +156,35 @@ export function RevenueChart({ series, prev, comparing }: {
 }) {
   const [view, setView] = useState<"chart" | "table">("chart");
   const [hover, setHover] = useState<number | null>(null);
+  // The plot is drawn at the container's REAL width, so one viewBox unit is one CSS
+  // pixel. A fixed 720-wide viewBox looked right on a desk and fell apart on a phone:
+  // scaled to a 293px card it shrank every 10px label to 4px AND, because the box
+  // kept its 234px height while the drawing scaled uniformly, squeezed the plot into
+  // the middle 40% of a mostly-empty card. At 1:1 a bar is 24px because it says 24.
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [boxW, setBoxW] = useState(720);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([e]) => setBoxW(Math.max(280, Math.round(e.contentRect.width))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const { buckets, grain } = useMemo(() => bucketise(series, prev), [series, prev]);
 
   const max = Math.max(1, ...buckets.map((b) => Math.max(b.now, b.before)));
   const ticks = niceTicks(max);
   const top = ticks[ticks.length - 1];
+  const hasCompare = buckets.some((b) => b.before > 0);
 
   // Geometry in a fixed viewBox, scaled by CSS. The container includes the axis
   // band, so the card never grows a nested scrollbar to show its own labels.
-  const W = 720, H = 220, padL = 52, padR = 8, padT = 8, padB = 26;
+  // The axis carries a second row of dates when a comparison is drawn: the grey
+  // line's points are aligned by position, so the day under them on the axis is NOT
+  // the day they happened on. Without its own labels the line's peak reads as this
+  // period's data for a date that has none, which is exactly how it was misread.
+  const W = boxW, H = hasCompare ? 234 : 220, padL = 52, padR = 8, padT = 8;
+  const padB = hasCompare ? 40 : 26;
   const plotW = W - padL - padR, plotH = H - padT - padB;
   const band = plotW / Math.max(1, buckets.length);
   const barW = Math.min(24, Math.max(3, band - 2)); // ≤24px cap, 2px surface gap
@@ -165,8 +192,11 @@ export function RevenueChart({ series, prev, comparing }: {
   const xMid = (i: number) => padL + band * i + band / 2;
 
   const peak = buckets.reduce((a, b) => (b.now > a.now ? b : a), buckets[0] ?? { now: 0 } as Bucket);
-  const hasCompare = buckets.some((b) => b.before > 0);
   const active = hover !== null ? buckets[hover] : null;
+  // The comparison window, stated outright rather than left to be worked out.
+  const prevSpan = prev.length
+    ? `${fmtShort(prev[0].date)} – ${fmtShort(prev[prev.length - 1].date)}`
+    : "";
 
   if (buckets.length === 0) {
     return <p className="py-10 text-center text-sm text-muted-foreground">No days in this period.</p>;
@@ -188,7 +218,9 @@ export function RevenueChart({ series, prev, comparing }: {
               {/* "day for day" is the honest claim: point i against point i. Only the
                   7-day preset happens to line the weekdays up, so the exact date is
                   given wherever the value is actually read. */}
-              <span className="text-muted-foreground">{comparing}, day for day</span>
+              <span className="text-muted-foreground">
+                {comparing}{prevSpan && ` · ${prevSpan}`}
+              </span>
             </span>
           )}
           <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -229,13 +261,13 @@ export function RevenueChart({ series, prev, comparing }: {
           </table>
         </div>
       ) : (
-        <div className="relative">
+        <div className="relative" ref={wrapRef}>
           {/* One pointer handler for the whole plot rather than per-bar enter/leave.
               React's synthetic mouseenter did not fire on these SVG rects at all —
               hover worked on keyboard focus and silently not with a mouse — and
               resolving the band from the pointer's x gives a hit area the width of
               the band, which is what the reader is aiming at anyway. */}
-          <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 220 }}
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: H }}
             role="img" aria-label={`Collected per ${grain}. Peak ${etb(peak?.now ?? 0)}.`}
             onPointerMove={(e) => {
               const r = e.currentTarget.getBoundingClientRect();
@@ -313,15 +345,27 @@ export function RevenueChart({ series, prev, comparing }: {
               </text>
             )}
 
-            {/* X labels, thinned so they never collide. */}
+            {/* X labels, thinned so they never collide. Two rows when comparing: this
+                period's day, and under it in grey the day the line's point is from. */}
             {buckets.map((b, i) => {
-              const every = Math.ceil(buckets.length / 8);
+              // One label per ~52px of plot: "Aug 14" is about 36px at this size, so
+              // a fixed "every 8th" collided as soon as the card got narrow.
+              const room = Math.max(2, Math.floor(plotW / 52));
+              const every = Math.ceil(buckets.length / room);
               if (i % every !== 0 && i !== buckets.length - 1) return null;
               return (
-                <text key={b.key} x={xMid(i)} y={H - 8} textAnchor="middle"
-                  className="fill-muted-foreground" style={{ fontSize: 10 }}>
-                  {b.label}
-                </text>
+                <g key={b.key}>
+                  <text x={xMid(i)} y={H - (hasCompare ? 22 : 8)} textAnchor="middle"
+                    className="fill-muted-foreground" style={{ fontSize: 10 }}>
+                    {b.label}
+                  </text>
+                  {hasCompare && b.beforeLabel && (
+                    <text x={xMid(i)} y={H - 8} textAnchor="middle"
+                      fill={COMPARE} opacity={0.8} style={{ fontSize: 9 }}>
+                      {b.beforeLabel}
+                    </text>
+                  )}
+                </g>
               );
             })}
           </svg>
