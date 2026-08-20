@@ -186,3 +186,45 @@ func (h *Handlers) SendNow(c *gin.Context) {
 	}
 	httpx.NoContent(c)
 }
+
+// UnbilledReminders previews or sends reminders for selected unbilled-treatment
+// rows. One endpoint for both: the preview and the send must run the identical
+// derivation, or the desk approves one thing and the patient receives another.
+func (h *Handlers) UnbilledReminders(c *gin.Context) {
+	var req struct {
+		SessionIDs []string `json:"session_ids"`
+		Body       string   `json:"body"`
+		Preview    bool     `json:"preview"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("could not read that request"))
+		return
+	}
+	in := messaging.UnbilledRemindInput{Body: req.Body, Preview: req.Preview}
+	for _, raw := range req.SessionIDs {
+		sid, err := id.Decode(id.PrefixTreatmentSession, strings.TrimSpace(raw))
+		if err != nil {
+			// One bad id fails the whole batch rather than silently dropping a row
+			// somebody deliberately ticked.
+			httpx.Fail(c, apperr.Validation("one of those rows is not recognised — refresh the page"))
+			return
+		}
+		in.SessionIDs = append(in.SessionIDs, sid)
+	}
+	res, err := h.svc.UnbilledReminders(c.Request.Context(), in)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	rows := make([]gin.H, 0, len(res.Rows))
+	for _, r := range res.Rows {
+		rows = append(rows, gin.H{
+			"patient_id":   id.Encode(id.PrefixPatient, r.PatientID),
+			"patient_name": r.PatientName, "mrn": r.MRN, "body": r.Body,
+			"segments": r.Segments, "cost": r.Cost, "skip_reason": r.SkipReason,
+			"last_reminded_at": r.LastRemindedAt,
+		})
+	}
+	httpx.OK(c, gin.H{"rows": rows, "segments": res.Segments, "cost": res.Cost,
+		"queued": res.Queued, "skipped": res.Skipped})
+}

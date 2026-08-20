@@ -343,7 +343,7 @@ func (p *Planner) PlanBills(ctx context.Context) (int, error) {
 				"clinic": clinicName,
 				"name":   first,
 				"card":   mrn,
-				"amount": money(amount),
+				"amount": messaging.FormatAmount(amount),
 				"days":   fmt.Sprintf("%d", daysOwed),
 			}
 			// The key includes which reminder this is, so repeat 2 is a different
@@ -372,22 +372,4 @@ func (p *Planner) PlanBills(ctx context.Context) (int, error) {
 		return nil
 	})
 	return queued, err
-}
-
-// money formats a ledger amount the way a patient reads it: 1200.00 -> 1,200.
-func money(raw string) string {
-	var f float64
-	if _, err := fmt.Sscanf(raw, "%f", &f); err != nil {
-		return raw
-	}
-	whole := int64(f + 0.5)
-	s := fmt.Sprintf("%d", whole)
-	out := ""
-	for i, c := range s {
-		if i > 0 && (len(s)-i)%3 == 0 {
-			out += ","
-		}
-		out += string(c)
-	}
-	return out
 }

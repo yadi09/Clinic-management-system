@@ -216,6 +216,41 @@ type CampaignResult struct {
 	Cost     string    `json:"cost"`
 }
 
+// UnbilledRemindInput asks for reminders about selected unbilled-treatment rows.
+type UnbilledRemindInput struct {
+	// SessionIDs are the page's selected rows. The service regroups them by
+	// patient and re-checks each is still owed before anything is rendered.
+	SessionIDs []uuid.UUID
+	// Body is the wording with placeholders; validated against Vars.
+	Body string
+	// Preview renders and prices without queueing anything.
+	Preview bool
+}
+
+// UnbilledRemindRow is one patient's would-be (or queued) reminder.
+type UnbilledRemindRow struct {
+	PatientID   uuid.UUID `json:"-"`
+	PatientName string    `json:"patient_name"`
+	MRN         string    `json:"mrn"`
+	Body        string    `json:"body"`
+	Segments    int       `json:"segments"`
+	Cost        string    `json:"cost"`
+	// SkipReason set = this patient will not be reached, and why.
+	SkipReason string `json:"skip_reason,omitempty"`
+	// LastRemindedAt flags a patient already chased recently, so the desk can
+	// untick them instead of harassing.
+	LastRemindedAt string `json:"last_reminded_at,omitempty"`
+}
+
+// UnbilledRemindResult is the whole batch, priced.
+type UnbilledRemindResult struct {
+	Rows     []UnbilledRemindRow `json:"rows"`
+	Segments int                 `json:"segments"`
+	Cost     string              `json:"cost"`
+	Queued   int                 `json:"queued"`
+	Skipped  int                 `json:"skipped"`
+}
+
 // Service is the messaging use-case surface.
 type Service interface {
 	GetSettings(ctx context.Context) (*Settings, error)
@@ -247,6 +282,10 @@ type Service interface {
 	// out quiet hours.
 	Resend(ctx context.Context, messageID uuid.UUID) error
 	SendNow(ctx context.Context, messageID uuid.UUID) error
+
+	// UnbilledReminders messages the patients behind selected unbilled-treatment
+	// rows — one message per patient, facts re-derived from the ledger at send time.
+	UnbilledReminders(ctx context.Context, in UnbilledRemindInput) (*UnbilledRemindResult, error)
 
 	// Audience lists candidates for a hand-picked send.
 	Audience(ctx context.Context, f AudienceFilter) ([]Audience, error)

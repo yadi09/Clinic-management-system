@@ -39,3 +39,17 @@ func TestRenderTidiesEmptyValues(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// One em dash reprices a whole message from 160-char to 70-char segments. The
+// renderer swaps typographic punctuation for GSM-7 equivalents; Amharic passes
+// through untouched (it is UCS-2 regardless).
+func TestRenderGSMSafePunctuation(t *testing.T) {
+	got := Render("Your {{treatment}} — see you", map[string]string{"treatment": "Crown — UL5"})
+	if got != "Your Crown - UL5 - see you" {
+		t.Fatalf("got %q", got)
+	}
+	am := Render("ውድ {{name}}፣ ቀሪ አለ።", map[string]string{"name": "አልማዝ"})
+	if am != "ውድ አልማዝ፣ ቀሪ አለ።" {
+		t.Fatalf("amharic mangled: %q", am)
+	}
+}

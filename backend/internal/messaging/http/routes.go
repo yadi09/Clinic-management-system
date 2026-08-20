@@ -40,6 +40,9 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	// desk that knows a holiday is coming and who to tell.
 	g.GET("/audience", use, h.Audience)
 	g.POST("/campaigns", use, h.SendCampaign)
+	// Chasing unbilled treatment is desk work, same permission as writing to
+	// patients — the money facts come from the ledger, not the caller.
+	g.POST("/unbilled-reminders", use, h.UnbilledReminders)
 
 	// Trying again is the front desk's job — they are the ones who just corrected
 	// the phone number that made it fail in the first place.

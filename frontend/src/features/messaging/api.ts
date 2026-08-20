@@ -188,3 +188,35 @@ export function sendCampaign(body: {
 }) {
   return apiFetch<CampaignResult>("/messaging/campaigns", { method: "POST", body });
 }
+
+// --- unbilled-treatment reminders ------------------------------------------------
+
+export interface UnbilledRemindRow {
+  patient_id: string;
+  patient_name: string;
+  mrn: string;
+  /** The exact rendered message this patient would receive. */
+  body: string;
+  segments: number;
+  cost: string;
+  skip_reason?: string;
+  /** Set when this patient was already sent a bill reminder — untick, don't harass. */
+  last_reminded_at?: string;
+}
+
+export interface UnbilledRemindResult {
+  rows: UnbilledRemindRow[];
+  segments: number;
+  cost: string;
+  queued: number;
+  skipped: number;
+}
+
+/**
+ * Preview or send reminders for selected unbilled-treatment rows. Same endpoint
+ * for both so what the desk approves is exactly what gets sent — every money
+ * fact is re-derived from the ledger server-side at that moment.
+ */
+export function unbilledReminders(body: { session_ids: string[]; body: string; preview?: boolean }) {
+  return apiFetch<UnbilledRemindResult>("/messaging/unbilled-reminders", { method: "POST", body });
+}

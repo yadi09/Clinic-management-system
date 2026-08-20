@@ -269,7 +269,7 @@ func (p *Planner) planDentalBillsFor(ctx context.Context, tid uuid.UUID) (int, e
 				"clinic": clinicName,
 				"name":   first,
 				"card":   mrn,
-				"amount": money(owed),
+				"amount": messaging.FormatAmount(owed),
 				"days":   fmt.Sprintf("%d", daysOwed),
 			}
 			// Keyed on the dental debt specifically, so it cannot collide with a

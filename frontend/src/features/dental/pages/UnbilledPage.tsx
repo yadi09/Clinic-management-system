@@ -18,7 +18,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, HandCoins, Phone, Receipt, Undo2 } from "lucide-react";
+import { AlertTriangle, HandCoins, MessageSquare, Phone, Receipt, Undo2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
 import { AppError } from "@/lib/api-client";
 import { useAuth } from "@/app/auth-context";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { UnbilledRemindDialog } from "@/features/messaging/UnbilledRemind";
 import { DualDate } from "@/components/DualDate";
 import { birr } from "@/features/dental/money";
 import { collectSession, unbilledTreatment, writeOffSession, type UnbilledLane, type UnbilledRow } from "@/features/dental/api";
@@ -71,6 +72,19 @@ export function UnbilledPage() {
   // a course of treatment to every dentist and receptionist.
   const canWaive = can("payment.waive");
   const [lens, setLens] = useState<Lens>("all");
+  // Chasing by SMS is the desk's act of writing to a patient — same permission as
+  // every other message, checked here so the page never offers a button the
+  // server would refuse.
+  const canMessage = can("message.send") || can("message.manage");
+  // Selected ROWS (session ids). The server regroups them by patient, so ticking
+  // two visits of one patient still produces a single message.
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [reminding, setReminding] = useState<string[] | null>(null);
+  const togglePick = (id: string) => setPicked((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   const { ask, dialog } = useConfirmDialog();
   // Paging is real rather than a dead end: the server already reports has_more, and
   // without a control the oldest debt beyond the first page was simply unreachable —
@@ -85,6 +99,12 @@ export function UnbilledPage() {
   });
   const data = q.data;
   const rows = (data?.rows ?? []).filter((r) => lens === "all" || r.lane === lens);
+  // The selection describes what is on screen; when the lens or page swaps the
+  // rows out from under it, keeping invisible ticks would send messages the desk
+  // never saw in the list.
+  useEffect(() => { setPicked(new Set()); }, [lens, page]);
+  const allPicked = rows.length > 0 && rows.every((r) => picked.has(r.session_id));
+  const pickedPatients = new Set(rows.filter((r) => picked.has(r.session_id)).map((r) => r.patient_id)).size;
 
   const collect = useMutation({
     mutationFn: (r: UnbilledRow) => collectSession(r.patient_id, r.session_id),
@@ -143,6 +163,13 @@ export function UnbilledPage() {
   return (
     <div className="space-y-6">
       {dialog}
+      {reminding && (
+        <UnbilledRemindDialog
+          sessionIds={reminding}
+          onClose={() => setReminding(null)}
+          onSent={() => { setReminding(null); setPicked(new Set()); }}
+        />
+      )}
       <div>
         <h1 className="text-h1">Unbilled treatment</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
@@ -207,6 +234,33 @@ export function UnbilledPage() {
               />
             </CardHeader>
             <CardContent className="space-y-2">
+              {/* Chasing several debts is one act, not N button presses. Tick rows
+                  (or everything) and send one message — the dialog shows exactly
+                  what each patient receives before anything is spent. */}
+              {canMessage && rows.length > 0 && (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                  <label className="flex cursor-pointer items-center gap-2 max-md:min-h-9">
+                    <input
+                      type="checkbox"
+                      checked={allPicked}
+                      onChange={() => setPicked(allPicked ? new Set() : new Set(rows.map((r) => r.session_id)))}
+                    />
+                    <span>{picked.size > 0 ? `${picked.size} selected` : "Select all"}</span>
+                  </label>
+                  {pickedPatients > 0 && picked.size !== pickedPatients && (
+                    <span className="text-xs text-muted-foreground">
+                      {pickedPatients} patient{pickedPatients === 1 ? "" : "s"} — one message each
+                    </span>
+                  )}
+                  <div className="ml-auto">
+                    <Button size="sm" disabled={picked.size === 0}
+                      onClick={() => setReminding(rows.filter((r) => picked.has(r.session_id)).map((r) => r.session_id))}>
+                      <MessageSquare className="h-3.5 w-3.5" />
+                      Message {pickedPatients > 0 ? pickedPatients : ""} patient{pickedPatients === 1 ? "" : "s"}
+                    </Button>
+                  </div>
+                </div>
+              )}
               {rows.length === 0 ? (
                 <p className="py-10 text-center text-sm text-muted-foreground">
                   {lens === "all"
@@ -217,6 +271,15 @@ export function UnbilledPage() {
                 rows.map((r) => (
                   <div key={r.session_id} className={cn("rounded-lg border border-l-4 p-3", LANE[r.lane].tone)}>
                     <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
+                      {canMessage && (
+                        <label className="touch-hit mt-1 flex cursor-pointer items-center" aria-label={`Select ${r.patient_name}`}>
+                          <input
+                            type="checkbox"
+                            checked={picked.has(r.session_id)}
+                            onChange={() => togglePick(r.session_id)}
+                          />
+                        </label>
+                      )}
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <button
@@ -256,6 +319,11 @@ export function UnbilledPage() {
                             <a href={`tel:${r.phone}`} className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-accent max-sm:min-h-9 max-sm:px-3">
                               <Phone className="h-3 w-3" /> {r.phone}
                             </a>
+                          )}
+                          {canMessage && (
+                            <Button size="sm" variant="outline" onClick={() => setReminding([r.session_id])}>
+                              <MessageSquare className="h-3.5 w-3.5" /> Remind
+                            </Button>
                           )}
                           {canCollect && (
                             <>

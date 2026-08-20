@@ -26,6 +26,12 @@ var Vars = map[string]string{
 	"time":    "the time, e.g. 3:00 PM",
 	"amount":  "the amount owed, e.g. 1,200",
 	"days":    "how many days overdue",
+	// The unbilled-treatment reminder speaks about a specific course of work, so it
+	// gets the course's own facts. Harmless elsewhere: an unused placeholder is
+	// simply never typed.
+	"treatment": "the treatment plan's name, e.g. Root canal — UR6",
+	"visit":     "which visit is owed, e.g. 3 of 4",
+	"paid":      "what has been paid toward it so far, e.g. 6,000",
 }
 
 var placeholder = regexp.MustCompile(`\{\{\s*([a-z_]+)\s*\}\}`)
@@ -34,6 +40,15 @@ var placeholder = regexp.MustCompile(`\{\{\s*([a-z_]+)\s*\}\}`)
 // end of a sentence or the whole message. Deliberately a closed list — stripping
 // any trailing word would eat real content.
 var danglingWord = regexp.MustCompile(`(?i)\s+(at|on|for|to|of|by)\s*([.,;!?]|$)`)
+
+// gsmSubs maps typographic punctuation to its GSM-7 equivalent. Only characters
+// whose replacement loses nothing: dashes, curly quotes, the ellipsis.
+var gsmSubs = strings.NewReplacer(
+	"—", "-", "–", "-",
+	"\u2019", "'", "\u2018", "'",
+	"\u201c", `"`, "\u201d", `"`,
+	"…", "...",
+)
 
 // VarNames lists the placeholders in a stable order, for the UI's insert buttons.
 func VarNames() []string {
@@ -107,6 +122,12 @@ func Render(body string, vals map[string]string) string {
 	out = danglingWord.ReplaceAllString(out, "$2")
 	out = strings.ReplaceAll(out, " .", ".")
 	out = strings.ReplaceAll(out, " ,", ",")
+	// Typographic punctuation is not in the GSM-7 alphabet, and ONE such character
+	// reprices the entire message at 70 chars per segment instead of 160. Treatment
+	// titles carry em dashes ("Crown — UL5"), which silently tripled a one-segment
+	// reminder to three. A hyphen says the same thing at a third of the price.
+	// Amharic text is untouched — it is UCS-2 regardless, so nothing is saved there.
+	out = gsmSubs.Replace(out)
 	return strings.TrimSpace(out)
 }
 
@@ -117,14 +138,17 @@ func SampleVars(clinic string) map[string]string {
 	tomorrow := time.Now().AddDate(0, 0, 1)
 	_, em, ed := ethiocal.ToEthiopian(tomorrow)
 	return map[string]string{
-		"clinic":  defaultIfEmpty(clinic, "The Clinic"),
-		"name":    "Almaz",
-		"card":    "CD-0412",
-		"date":    tomorrow.Format("2 Jan"),
-		"date_ec": fmt.Sprintf("%s %d", ethiocal.Months[em-1], ed),
-		"time":    "3:00 PM",
-		"amount":  "1,200",
-		"days":    "7",
+		"clinic":    defaultIfEmpty(clinic, "The Clinic"),
+		"name":      "Almaz",
+		"card":      "CD-0412",
+		"date":      tomorrow.Format("2 Jan"),
+		"date_ec":   fmt.Sprintf("%s %d", ethiocal.Months[em-1], ed),
+		"time":      "3:00 PM",
+		"amount":    "1,200",
+		"days":      "7",
+		"treatment": "Root canal — UR6",
+		"visit":     "3 of 4",
+		"paid":      "6,000",
 	}
 }
 
@@ -133,4 +157,21 @@ func defaultIfEmpty(v, def string) string {
 		return def
 	}
 	return v
+}
+
+// FormatAmount renders a ledger amount the way a patient reads it: 1200.00 → 1,200.
+// Whole birr on purpose — an SMS quoting cents reads like a machine talking.
+func FormatAmount(raw string) string {
+	var f float64
+	_, _ = fmt.Sscanf(raw, "%f", &f)
+	whole := int64(f + 0.5)
+	s := fmt.Sprintf("%d", whole)
+	out := ""
+	for i, c := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			out += ","
+		}
+		out += string(c)
+	}
+	return out
 }
