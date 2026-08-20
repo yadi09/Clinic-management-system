@@ -28,11 +28,14 @@ import {
 } from "@/features/messaging/api";
 
 // The wording every clinic starts from — the four facts the reminder exists to
-// carry: which treatment, which visit, what was paid, what remains. The Amharic
-// version is written to the 70-character segment budget, not translated word for
-// word from the comfortable English sentence.
+// carry: which treatment, what is owed on it, what was paid, what remains. The
+// Amharic version is written to the 70-character segment budget, not translated
+// word for word from the comfortable English sentence.
+//
+// {{visit}} supplies its own noun ("visit 3 of 4", "down payment", "visits 2 and
+// 3"), so the template must not add one: a down payment is not visit zero.
 const DEFAULT_BODY: Record<string, string> = {
-  en: "Dear {{name}}, for your {{treatment}} (visit {{visit}}) you have paid {{paid}} ETB — {{amount}} ETB is still due. Please settle it at your next visit.",
+  en: "Dear {{name}}, for your {{treatment}} ({{visit}}) you have paid {{paid}} ETB — {{amount}} ETB is still due. Please settle it at your next visit.",
   am: "ውድ {{name}}፣ ለ{{treatment}} ({{visit}}) የከፈሉት {{paid}} ብር ነው፤ ቀሪ {{amount}} ብር አለ። እባክዎ ይክፈሉ።",
 };
 

@@ -200,15 +200,11 @@ func (p *Planner) planDentalBillsFor(ctx context.Context, tid uuid.UUID) (int, e
 		rows, e := tx.Query(ctx, dental.SessionMoneySQL+`
 			SELECT sm.patient_id,
 			       sum(sm.owed_amount)::text AS owed,
-			       min(coalesce(sm.completed_at, sm.scheduled_date::timestamptz)) AS since,
+			       min(sm.owed_since) AS since,
 			       coalesce(pt.first_name,''), coalesce(pt.mrn,''), coalesce(pt.phone,''), pt.sms_opt_out,
 			       c.name, c.sms_lang, c.timezone, coalesce(t.body,''),
 			       r.offset_hours, r.send_at, r.repeat_days, r.max_repeats
 			  FROM session_money sm
-			  -- The projection does not carry the session kind, and ten other queries
-			  -- depend on its exact shape, so the deposit/visit distinction is read by
-			  -- joining back rather than by widening something shared.
-			  JOIN treatment_sessions se ON se.id = sm.session_id AND se.tenant_id = $1
 			  JOIN patients pt ON pt.id = sm.patient_id AND pt.tenant_id = $1 AND pt.deleted_at IS NULL
 			  JOIN message_rules r ON r.tenant_id = $1 AND r.kind = 'bill_reminder' AND r.enabled = true
 			  JOIN LATERAL (
@@ -219,7 +215,10 @@ func (p *Planner) planDentalBillsFor(ctx context.Context, tid uuid.UUID) (int, e
 			                               AND t.kind = 'bill_reminder' AND t.lang = c.sms_lang
 			 WHERE sm.session_status <> 'cancelled'
 			   AND sm.pay_state IN ('unpaid','refunded')
-			   AND ( sm.delivered OR se.kind = 'deposit' )
+			   -- Down payments are owed too. That was a clause here, read by joining back
+			   -- for the session kind; it now lives in owed_now, which is why this
+			   -- planner and the unbilled report can no longer disagree.
+			   AND sm.owed_now
 			 GROUP BY sm.patient_id, pt.first_name, pt.mrn, pt.phone, pt.sms_opt_out,
 			          c.name, c.sms_lang, c.timezone, t.body,
 			          r.offset_hours, r.send_at, r.repeat_days, r.max_repeats

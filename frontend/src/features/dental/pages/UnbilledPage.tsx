@@ -38,7 +38,7 @@ import { collectSession, unbilledTreatment, writeOffSession, type UnbilledLane, 
 const LANE: Record<UnbilledLane, { label: string; hint: string; tone: string }> = {
   never_billed: {
     label: "Never billed",
-    hint: "Treatment was recorded and no charge was ever raised.",
+    hint: "Treatment was recorded, or a course was agreed, and no charge was ever raised.",
     tone: "border-l-destructive",
   },
   bill_withdrawn: {
@@ -173,8 +173,9 @@ export function UnbilledPage() {
       <div>
         <h1 className="text-h1">Unbilled treatment</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Treatment that was delivered and never paid for. A patient can be treated on a promise to
-          pay — this is what makes sure the promise is not forgotten.
+          Treatment that was delivered and never paid for, and down payments nobody has collected.
+          A patient can be treated on a promise to pay — this is what makes sure the promise is
+          not forgotten.
         </p>
       </div>
 
@@ -187,10 +188,10 @@ export function UnbilledPage() {
           <div className="grid gap-4 sm:grid-cols-3">
             <Card className={cn(shownTotal > 0 && "border-destructive")}>
               <CardContent className="p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Owed for treatment given</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Owed, not yet billed</p>
                 <p className="mt-1 text-3xl font-bold tabular-nums text-destructive">{birr(shownTotal)}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  across {shownCount} visit{shownCount === 1 ? "" : "s"}
+                  across {shownCount} item{shownCount === 1 ? "" : "s"}
                   {filtered && <span> · {LANE[lens as UnbilledLane].label.toLowerCase()} on this page</span>}
                 </p>
               </CardContent>
@@ -202,7 +203,7 @@ export function UnbilledPage() {
                   {oldest}
                   <span className="ml-1 text-base font-normal text-muted-foreground">days</span>
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">since the treatment was given</p>
+                <p className="mt-1 text-xs text-muted-foreground">since it became owed</p>
               </CardContent>
             </Card>
             <Card>
@@ -296,11 +297,18 @@ export function UnbilledPage() {
                           </span>
                         </div>
                         <p className="mt-0.5 text-sm">
-                          {r.plan_title} · session {r.seq} of {r.session_count}
+                          {r.plan_title} ·{" "}
+                          {/* A down payment is owed for the course, not for a visit —
+                              printing it as "session 0 of 6" was the report describing
+                              a visit that does not exist. */}
+                          {r.kind === "deposit"
+                            ? <span className="font-medium">down payment</span>
+                            : <>session {r.seq} of {r.session_count}</>}
                           {r.procedure && <span className="text-muted-foreground"> · {r.procedure}</span>}
                           {r.tooth && <span className="text-muted-foreground"> · {r.tooth}</span>}
                         </p>
                         <p className="mt-0.5 text-xs text-muted-foreground">
+                          {r.kind === "deposit" ? "agreed " : ""}
                           <DualDate iso={r.treatment_date} />
                           {r.clinician && ` · ${r.clinician}`}
                           {r.branch && ` · ${r.branch}`}
@@ -360,7 +368,7 @@ export function UnbilledPage() {
 
           <p className="flex items-start gap-2 text-xs text-muted-foreground">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            Sending a visit to the cashier raises a charge against the patient. It does not take
+            Sending a row to the cashier raises a charge against the patient. It does not take
             payment — the desk still settles it. <Receipt className="h-3.5 w-3.5" />
           </p>
         </>

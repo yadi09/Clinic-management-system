@@ -386,6 +386,8 @@ export interface UnbilledRow {
   tooth?: string;
   seq: number;
   session_count: number;
+  /** A down payment is owed from the day the course was agreed, and has no visit number. */
+  kind: "visit" | "deposit";
   treatment_date: string;
   days_unbilled: number;
   amount: string;

@@ -315,7 +315,7 @@ func (s *Service) loadPlansTx(ctx context.Context, tx pgx.Tx, tid, patientID uui
 		  coalesce(sum(sm.net_paid), 0)::text,
 		  coalesce(sum(sm.charge_amount) FILTER (WHERE sm.pay_state = 'billed'), 0)::text,
 		  coalesce(sum(sm.owed_amount)   FILTER (WHERE sm.session_status <> 'cancelled'
-		                                           AND sm.delivered
+		                                           AND sm.owed_now
 		                                           AND sm.pay_state IN ('unpaid','refunded')), 0)::text,
 		  coalesce(sum(sm.amount_due)    FILTER (WHERE sm.session_status <> 'cancelled'
 		                                           AND sm.pay_state = 'waived'), 0)::text
@@ -917,7 +917,7 @@ func (s *Service) FinishCourse(ctx context.Context, patientID, planID uuid.UUID)
 		ct, e := tx.Exec(ctx,
 			`UPDATE treatment_sessions se SET status = 'cancelled', updated_at = now()
 			 WHERE se.tenant_id = $1 AND se.plan_id = $2 AND se.patient_id = $3
-			   -- 'planned' is the whole test, matching the projection's delivered flag.
+			   -- 'planned' is the whole test, matching the projection's owed_now flag.
 			   -- pay_later was excluded here, which stranded a promised-but-never-given
 			   -- visit inside a closed course: not cancelled, never delivered, and
 			   -- invisible to a report that only looks at active plans.
@@ -1782,7 +1782,7 @@ SELECT coalesce(sum(amount_due)    FILTER (WHERE alive AND pay_state <> 'waived'
        -- Gating it made settled cash vanish from the card and pushed Remaining negative.
        coalesce(sum(net_paid), 0)::text,
        coalesce(sum(charge_amount) FILTER (WHERE alive AND pay_state = 'billed'), 0)::text,
-       coalesce(sum(owed_amount)   FILTER (WHERE alive AND delivered
+       coalesce(sum(owed_amount)   FILTER (WHERE alive AND owed_now
                                              AND pay_state IN ('unpaid','refunded')), 0)::text,
        coalesce(sum(amount_due)    FILTER (WHERE alive AND pay_state = 'waived'), 0)::text
 FROM scoped`, tid, patientID).Scan(&owed, &paid, &atCashier, &due, &waived)
@@ -2109,7 +2109,12 @@ func (s *Service) DeleteExam(ctx context.Context, patientID, examID uuid.UUID) e
 	return nil
 }
 
-// UnbilledTreatment: delivered treatment with no live charge against it.
+// UnbilledTreatment: money owed with no live charge against it.
+//
+// "Owed" is the projection's owed_now: treatment that was actually delivered, plus
+// down payments, which are owed from the day the course was agreed. A deposit that
+// nobody has sent to the desk is exactly this report's subject — a course started
+// for free — and it was the one debt the report could not see.
 //
 // Three lanes, because they need three different actions and must never be summed
 // into one number:
@@ -2143,8 +2148,8 @@ func (s *Service) UnbilledTreatment(ctx context.Context, from, to string, limit,
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		// Totals over the WHOLE set, before paging.
 		if e := tx.QueryRow(ctx, sessionMoneyCTE+`
-			SELECT coalesce(sum(sm.owed_amount) FILTER (WHERE sm.delivered), 0)::text,
-			       count(*) FILTER (WHERE sm.delivered),
+			SELECT coalesce(sum(sm.owed_amount) FILTER (WHERE sm.owed_now), 0)::text,
+			       count(*) FILTER (WHERE sm.owed_now),
 			       coalesce(sum(sm.amount_due) FILTER (WHERE sm.promised_undelivered), 0)::text,
 			       count(*) FILTER (WHERE sm.promised_undelivered)
 			FROM session_money sm
@@ -2154,8 +2159,8 @@ func (s *Service) UnbilledTreatment(ctx context.Context, from, to string, limit,
 			  AND sm.session_status <> 'cancelled'
 			  AND sm.pay_state IN ('unpaid','refunded')
 			  AND sm.owed_amount > 0.005
-			  AND ($2::date IS NULL OR coalesce(sm.completed_at::date, sm.scheduled_date) >= $2::date)
-			  AND ($3::date IS NULL OR coalesce(sm.completed_at::date, sm.scheduled_date) <= $3::date)`,
+			  AND ($2::date IS NULL OR sm.owed_since::date >= $2::date)
+			  AND ($3::date IS NULL OR sm.owed_since::date <= $3::date)`,
 			tid, fromPtr, toPtr).Scan(&out.Total, &out.Count, &out.PromisedTotal, &out.PromisedCount); e != nil {
 			return e
 		}
@@ -2166,9 +2171,9 @@ func (s *Service) UnbilledTreatment(ctx context.Context, from, to string, limit,
 today AS (SELECT (now() AT TIME ZONE 'Africa/Addis_Ababa')::date AS d)
 SELECT sm.session_id, sm.patient_id, pt.mrn,
        trim(pt.first_name || ' ' || coalesce(pt.last_name,'')),
-       coalesce(pt.phone,''), pl.title, sm.procedure, sm.tooth, sm.seq, pl.session_count,
-       coalesce(sm.completed_at::date, sm.scheduled_date),
-       ((SELECT d FROM today) - coalesce(sm.completed_at::date, sm.scheduled_date))::int,
+       coalesce(pt.phone,''), pl.title, sm.procedure, sm.tooth, sm.seq, pl.session_count, sm.kind,
+       sm.owed_since::date,
+       ((SELECT d FROM today) - sm.owed_since::date)::int,
        sm.owed_amount::text,
        CASE WHEN sm.pay_state = 'refunded' THEN 'refunded'
             WHEN sm.charge_id IS NOT NULL  THEN 'bill_withdrawn'
@@ -2182,12 +2187,12 @@ LEFT JOIN users      u  ON u.id  = sm.completed_by AND u.tenant_id = sm.tenant_i
 LEFT JOIN branches   b  ON b.id  = sm.branch_id    AND b.tenant_id = sm.tenant_id
 WHERE pt.deleted_at IS NULL AND pl.status <> 'cancelled'
   AND sm.session_status <> 'cancelled'
-  AND sm.delivered
+  AND sm.owed_now
   AND sm.pay_state IN ('unpaid','refunded')
   AND sm.owed_amount > 0.005
-  AND ($2::date IS NULL OR coalesce(sm.completed_at::date, sm.scheduled_date) >= $2::date)
-  AND ($3::date IS NULL OR coalesce(sm.completed_at::date, sm.scheduled_date) <= $3::date)
-ORDER BY coalesce(sm.completed_at::date, sm.scheduled_date) ASC
+  AND ($2::date IS NULL OR sm.owed_since::date >= $2::date)
+  AND ($3::date IS NULL OR sm.owed_since::date <= $3::date)
+ORDER BY sm.owed_since ASC
 LIMIT $4 OFFSET $5`, tid, fromPtr, toPtr, limit+1, offset)
 		if e != nil {
 			return e
@@ -2197,7 +2202,7 @@ LIMIT $4 OFFSET $5`, tid, fromPtr, toPtr, limit+1, offset)
 			var r dental.UnbilledRow
 			var td time.Time
 			if e := rows.Scan(&r.SessionID, &r.PatientID, &r.MRN, &r.PatientName, &r.Phone,
-				&r.PlanTitle, &r.Procedure, &r.Tooth, &r.Seq, &r.SessionCount,
+				&r.PlanTitle, &r.Procedure, &r.Tooth, &r.Seq, &r.SessionCount, &r.Kind,
 				&td, &r.DaysUnbilled, &r.Amount, &r.Lane, &r.PayLater, &r.PayLaterNote,
 				&r.Clinician, &r.Branch); e != nil {
 				return e
@@ -2237,7 +2242,7 @@ func (s *Service) Outstanding(ctx context.Context) ([]dental.Outstanding, error)
 			JOIN patients        p  ON p.id  = sm.patient_id AND p.tenant_id  = sm.tenant_id
 			WHERE p.deleted_at IS NULL
 			  AND pl.status <> 'cancelled' AND sm.session_status <> 'cancelled'
-			  AND sm.delivered AND sm.pay_state IN ('unpaid','refunded')
+			  AND sm.owed_now AND sm.pay_state IN ('unpaid','refunded')
 			GROUP BY p.id, p.first_name, p.last_name, p.mrn
 			HAVING sum(sm.owed_amount) > 0.005
 			ORDER BY sum(sm.owed_amount) DESC`, tid)

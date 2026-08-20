@@ -70,10 +70,11 @@ func (s *Service) UnbilledReminders(ctx context.Context, in messaging.UnbilledRe
 			planTitles   map[string]bool
 			countedPlans map[string]bool
 			// every owed visit's number, so the message can say "visit 2 and 3"
-			seqs                 []int
-			seq, count, sessions int
-			owed, paid           float64
-			oldest               time.Time
+			seqs       []int
+			hasDeposit bool
+			count      int // visits in the course, for "visit 3 of 4"
+			owed, paid float64
+			oldest     time.Time
 		}
 		byPatient := map[uuid.UUID]*debt{}
 
@@ -82,9 +83,9 @@ func (s *Service) UnbilledReminders(ctx context.Context, in messaging.UnbilledRe
 		// settled since the page loaded simply drops out here, so the reminder can
 		// never disagree with the cashier.
 		rows, e := tx.Query(ctx, dental.SessionMoneySQL+`
-			SELECT sm.session_id, sm.patient_id, sm.seq, sm.owed_amount::text,
+			SELECT sm.session_id, sm.patient_id, sm.seq, sm.kind, sm.owed_amount::text,
 			       p.title, p.session_count,
-			       coalesce(sm.completed_at, sm.scheduled_date::timestamptz),
+			       sm.owed_since,
 			       (SELECT coalesce(sum(x.net_paid), 0) FROM session_money x
 			         WHERE x.plan_id = sm.plan_id)::text,
 			       coalesce(pt.first_name,''), coalesce(pt.mrn,''), coalesce(pt.phone,''), pt.sms_opt_out
@@ -93,7 +94,7 @@ func (s *Service) UnbilledReminders(ctx context.Context, in messaging.UnbilledRe
 			  JOIN patients pt ON pt.id = sm.patient_id AND pt.tenant_id = $1 AND pt.deleted_at IS NULL
 			 WHERE sm.session_id = ANY($2)
 			   AND sm.session_status <> 'cancelled'
-			   AND sm.delivered
+			   AND sm.owed_now
 			   AND sm.pay_state IN ('unpaid','refunded')`,
 			tid, in.SessionIDs)
 		if e != nil {
@@ -102,10 +103,10 @@ func (s *Service) UnbilledReminders(ctx context.Context, in messaging.UnbilledRe
 		for rows.Next() {
 			var sessionID, patientID uuid.UUID
 			var seq, count int
-			var owed, title, paid, first, mrn, rawPhone string
+			var kind, owed, title, paid, first, mrn, rawPhone string
 			var since time.Time
 			var optedOut bool
-			if e := rows.Scan(&sessionID, &patientID, &seq, &owed, &title, &count,
+			if e := rows.Scan(&sessionID, &patientID, &seq, &kind, &owed, &title, &count,
 				&since, &paid, &first, &mrn, &rawPhone, &optedOut); e != nil {
 				rows.Close()
 				return e
@@ -117,9 +118,14 @@ func (s *Service) UnbilledReminders(ctx context.Context, in messaging.UnbilledRe
 				byPatient[patientID] = d
 			}
 			d.planTitles[title] = true
-			d.seq, d.count = seq, count
-			d.seqs = append(d.seqs, seq)
-			d.sessions++
+			// A down payment has no visit number — it is the price of starting the
+			// course, and left to the seq column the message would call it "visit 0".
+			if kind == "deposit" {
+				d.hasDeposit = true
+			} else {
+				d.count = count
+				d.seqs = append(d.seqs, seq)
+			}
 			d.owed += money64(owed)
 			// paid is a PLAN-level figure arriving on every session row — counted
 			// once per plan or two selected visits would double the "you have paid".
@@ -190,14 +196,7 @@ func (s *Service) UnbilledReminders(ctx context.Context, in messaging.UnbilledRe
 			if len(titles) > 1 {
 				treatment = fmt.Sprintf("%d treatments", len(titles))
 			}
-			// One visit reads "3 of 4". Several list their numbers — "2 and 3" —
-			// because the templates say "visit {{visit}}", and "visit 2 visits" is
-			// the kind of sentence that makes a patient distrust everything else in
-			// the message. The list also answers exactly which sessions are owed.
-			visit := fmt.Sprintf("%d of %d", d.seq, d.count)
-			if d.sessions > 1 {
-				visit = seqList(d.seqs)
-			}
+			visit := whatIsOwed(d.seqs, d.count, d.hasDeposit, set.Lang)
 			vals := map[string]string{
 				"clinic":    set.SenderName,
 				"name":      d.first,
@@ -301,9 +300,43 @@ func money64(raw string) float64 {
 	return f
 }
 
-// seqList joins visit numbers the way a sentence needs them: "2 and 3",
-// "2, 3 and 4".
-func seqList(seqs []int) string {
+// whatIsOwed names the thing being chased, in the clinic's own language.
+//
+// The message says "for your {{treatment}} ({{visit}})", so this value has to carry
+// its own noun: a down payment is not visit number zero, and "visit 2 visits" is the
+// kind of sentence that makes a patient distrust every other number in the text.
+//
+//	one visit        visit 3 of 4
+//	several          visits 2 and 3
+//	a down payment   down payment
+//	both             down payment and visit 3
+func whatIsOwed(seqs []int, count int, deposit bool, lang string) string {
+	am := lang == "am"
+	parts := []string{}
+	if deposit {
+		parts = append(parts, pick(am, "የቅድሚያ ክፍያ", "down payment"))
+	}
+	switch {
+	case len(seqs) == 1 && count > 0:
+		parts = append(parts, fmt.Sprintf("%s %d %s %d",
+			pick(am, "ጉብኝት", "visit"), seqs[0], pick(am, "ከ", "of"), count))
+	case len(seqs) == 1:
+		parts = append(parts, fmt.Sprintf("%s %d", pick(am, "ጉብኝት", "visit"), seqs[0]))
+	case len(seqs) > 1:
+		parts = append(parts, fmt.Sprintf("%s %s", pick(am, "ጉብኝት", "visits"), seqList(seqs, am)))
+	}
+	return strings.Join(parts, pick(am, " እና ", " and "))
+}
+
+func pick(am bool, amharic, english string) string {
+	if am {
+		return amharic
+	}
+	return english
+}
+
+// seqList joins visit numbers the way a sentence needs them: "2 and 3", "2, 3 and 4".
+func seqList(seqs []int, am bool) string {
 	sort.Ints(seqs)
 	parts := make([]string, len(seqs))
 	for i, n := range seqs {
@@ -312,5 +345,5 @@ func seqList(seqs []int) string {
 	if len(parts) == 1 {
 		return parts[0]
 	}
-	return strings.Join(parts[:len(parts)-1], ", ") + " and " + parts[len(parts)-1]
+	return strings.Join(parts[:len(parts)-1], ", ") + pick(am, " እና ", " and ") + parts[len(parts)-1]
 }

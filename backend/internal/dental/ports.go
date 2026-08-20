@@ -432,19 +432,22 @@ type Service interface {
 // forgotten. Nothing did: Cure Dental was carrying 11,500 ETB of delivered treatment
 // that no screen in the product would ever have raised its hand about.
 type UnbilledRow struct {
-	SessionID     uuid.UUID `json:"-"`
-	PatientID     uuid.UUID `json:"-"`
-	MRN           string    `json:"mrn"`
-	PatientName   string    `json:"patient_name"`
-	Phone         string    `json:"phone,omitempty"` // so the desk can actually chase it
-	PlanTitle     string    `json:"plan_title"`
-	Procedure     string    `json:"procedure,omitempty"`
-	Tooth         string    `json:"tooth,omitempty"`
-	Seq           int       `json:"seq"`
-	SessionCount  int       `json:"session_count"`
-	TreatmentDate string    `json:"treatment_date"` // delivered-on, falling back to scheduled
-	DaysUnbilled  int       `json:"days_unbilled"`
-	Amount        string    `json:"amount"`
+	SessionID    uuid.UUID `json:"-"`
+	PatientID    uuid.UUID `json:"-"`
+	MRN          string    `json:"mrn"`
+	PatientName  string    `json:"patient_name"`
+	Phone        string    `json:"phone,omitempty"` // so the desk can actually chase it
+	PlanTitle    string    `json:"plan_title"`
+	Procedure    string    `json:"procedure,omitempty"`
+	Tooth        string    `json:"tooth,omitempty"`
+	Seq          int       `json:"seq"`
+	SessionCount int       `json:"session_count"`
+	// visit | deposit — a down payment has no seq worth printing, and the row has to
+	// say what it is rather than claim to be "session 0".
+	Kind          string `json:"kind"`
+	TreatmentDate string `json:"treatment_date"` // owed-since: treated-on, or agreed-on for a deposit
+	DaysUnbilled  int    `json:"days_unbilled"`
+	Amount        string `json:"amount"`
 	// never_billed | bill_withdrawn | refunded — three different actions, never summed
 	// into one headline.
 	Lane         string `json:"lane"`

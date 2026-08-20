@@ -30,7 +30,7 @@ var Vars = map[string]string{
 	// gets the course's own facts. Harmless elsewhere: an unused placeholder is
 	// simply never typed.
 	"treatment": "the treatment plan's name, e.g. Root canal — UR6",
-	"visit":     "which visit is owed, e.g. 3 of 4",
+	"visit":     "what is owed, e.g. visit 3 of 4, or the down payment",
 	"paid":      "what has been paid toward it so far, e.g. 6,000",
 }
 
