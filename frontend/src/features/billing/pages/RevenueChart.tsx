@@ -33,13 +33,24 @@ const GRID = "#e5e7eb";         // one shade off the surface, solid hairline
 const num = (s?: string) => Number(s || 0);
 const etb = (n: number) => `${n.toLocaleString(undefined, { maximumFractionDigits: 0 })} ETB`;
 
-type Bucket = { key: string; label: string; full: string; now: number; before: number };
+type Bucket = {
+  key: string; label: string; full: string; now: number; before: number;
+  /** The comparison point's OWN day, which is not the day under it on the axis. */
+  beforeFull: string;
+};
 
 /**
  * Group the daily series so the marks stay legible.
  *
  * A bar has to be wide enough to hit and to see: past about a fortnight, one bar
  * per day stops being a chart and starts being a texture.
+ *
+ * The comparison series is aligned BY POSITION, not by date: point i of the previous
+ * window sits above point i of this one. For every preset that is the same weekday a
+ * period earlier, which is the comparison an owner wants — but it means the line's
+ * peak sits above a date it did not happen on. That confused a reader into thinking
+ * the chart was inventing data, so each point now carries its own day and states it
+ * wherever the value is read.
  */
 function bucketise(series: FinDayPoint[], prev: FinDayPoint[]): { buckets: Bucket[]; grain: string } {
   const n = series.length;
@@ -49,6 +60,8 @@ function bucketise(series: FinDayPoint[], prev: FinDayPoint[]): { buckets: Bucke
   const grain = n <= 31 ? "day" : n <= 120 ? "week" : "month";
   const fmtDay = (iso: string) =>
     new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const longDay = (iso: string) =>
+    new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 
   if (grain === "day") {
     return {
@@ -56,9 +69,10 @@ function bucketise(series: FinDayPoint[], prev: FinDayPoint[]): { buckets: Bucke
       buckets: series.map((p, i) => ({
         key: p.date,
         label: fmtDay(p.date),
-        full: new Date(`${p.date}T00:00:00`).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }),
+        full: longDay(p.date),
         now: num(p.amount),
         before: num(prev[i]?.amount),
+        beforeFull: prev[i] ? longDay(prev[i].date) : "",
       })),
     };
   }
@@ -91,23 +105,39 @@ function bucketise(series: FinDayPoint[], prev: FinDayPoint[]): { buckets: Bucke
           : `week of ${fmtDay(k)}`,
         now: 0,
         before: 0,
+        beforeFull: "",
       });
     }
     const b = map.get(k)!;
     b.now += num(p.amount);
     b.before += num(prev[i]?.amount);
+    // The comparison bucket spans whichever previous-window days landed in it.
+    const pd = prev[i]?.date;
+    if (pd) {
+      const first = b.beforeFull.split(" – ")[0] || fmtDay(pd);
+      b.beforeFull = first === fmtDay(pd) ? first : `${first} – ${fmtDay(pd)}`;
+    }
   });
   return { grain, buckets: order.map((k) => map.get(k)!) };
 }
 
-/** Axis ticks on clean numbers — 0 / 5,000 / 10,000, never 0 / 4,317 / 8,634. */
+/**
+ * Axis ticks on clean numbers — 0 / 5,000 / 10,000, never 0 / 4,317 / 8,634.
+ *
+ * The top tick must be at or ABOVE the biggest value, because the plot is scaled to
+ * it: this stopped at the last tick below the max, so 26,000 against a 20,000 top
+ * put the bar 30% above the plot and the SVG simply cut it off. A day of 28,333 ETB
+ * was drawn the same height as the 20,000 gridline it had passed — the one reading
+ * on the chart that has to be trustworthy is the height of the bars.
+ */
 function niceTicks(max: number, count = 4): number[] {
   if (max <= 0) return [0];
   const raw = max / count;
   const mag = Math.pow(10, Math.floor(Math.log10(raw)));
   const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? 10 * mag;
+  const top = Math.ceil(max / step) * step;
   const out: number[] = [];
-  for (let v = 0; v <= max + step * 0.001; v += step) out.push(v);
+  for (let v = 0; v <= top + step * 0.001; v += step) out.push(v);
   return out;
 }
 
@@ -155,7 +185,10 @@ export function RevenueChart({ series, prev, comparing }: {
           {hasCompare && (
             <span className="inline-flex items-center gap-1.5">
               <svg width="14" height="6" aria-hidden><line x1="0" y1="3" x2="14" y2="3" stroke={COMPARE} strokeWidth="2" strokeLinecap="round" /></svg>
-              <span className="text-muted-foreground">{comparing}</span>
+              {/* "day for day" is the honest claim: point i against point i. Only the
+                  7-day preset happens to line the weekdays up, so the exact date is
+                  given wherever the value is actually read. */}
+              <span className="text-muted-foreground">{comparing}, day for day</span>
             </span>
           )}
           <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -184,7 +217,12 @@ export function RevenueChart({ series, prev, comparing }: {
                 <tr key={b.key}>
                   <td className="px-3 py-1.5">{b.full}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums">{b.now > 0 ? etb(b.now) : "—"}</td>
-                  {hasCompare && <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">{b.before > 0 ? etb(b.before) : "—"}</td>}
+                  {hasCompare && (
+                    <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">
+                      {b.before > 0 ? etb(b.before) : "—"}
+                      {b.beforeFull && <span className="ml-1.5 text-[11px]">{b.beforeFull}</span>}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -247,13 +285,24 @@ export function RevenueChart({ series, prev, comparing }: {
               );
             })}
 
-            {/* The comparison, as a 2px round-capped line above the bars. */}
+            {/* The comparison, as a 2px round-capped line above the bars — with a dot
+                on every point it was actually measured at.
+                Without the dots the line is read as a continuous quantity, and a
+                single day's takings between two empty days becomes a mountain whose
+                slopes look like data for the days under them. The dots say "seven
+                daily figures, joined", which is what it is. */}
             {hasCompare && (
-              <polyline
-                points={buckets.map((b, i) => `${xMid(i)},${y(b.before)}`).join(" ")}
-                fill="none" stroke={COMPARE} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                opacity={0.75}
-              />
+              <>
+                <polyline
+                  points={buckets.map((b, i) => `${xMid(i)},${y(b.before)}`).join(" ")}
+                  fill="none" stroke={COMPARE} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                  opacity={0.75}
+                />
+                {buckets.length <= 31 && buckets.map((b, i) => (
+                  <circle key={b.key} cx={xMid(i)} cy={y(b.before)} r={2.5}
+                    fill={COMPARE} opacity={hover === i ? 1 : 0.75} />
+                ))}
+              </>
             )}
 
             {/* Selective direct label: the peak only. A number on every bar is noise. */}
@@ -295,7 +344,12 @@ export function RevenueChart({ series, prev, comparing }: {
               {hasCompare && (
                 <div className="mt-0.5 flex items-baseline gap-1.5">
                   <svg width="10" height="4" aria-hidden><line x1="0" y1="2" x2="10" y2="2" stroke={COMPARE} strokeWidth="2" strokeLinecap="round" /></svg>
-                  <span className="text-xs tabular-nums text-muted-foreground">{etb(active.before)} {comparing}</span>
+                  {/* The comparison value is NOT this day's — say whose it is, or the
+                      line reads as a second measurement of the date under it. */}
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {etb(active.before)}
+                    {active.beforeFull && <span className="ml-1">· {active.beforeFull}</span>}
+                  </span>
                 </div>
               )}
             </div>

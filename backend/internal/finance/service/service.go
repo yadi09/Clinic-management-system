@@ -106,7 +106,8 @@ func (s *Service) Overview(ctx context.Context, f finance.Filter) (*finance.Over
 		if e := tx.QueryRow(ctx,
 			`SELECT coalesce(sum(amount),0)::text,
 			        count(DISTINCT patient_id),
-			        coalesce(max((now()::date - created_at::date)), 0)
+			        coalesce(max((now() AT TIME ZONE 'Africa/Addis_Ababa')::date
+			                      - (created_at AT TIME ZONE 'Africa/Addis_Ababa')::date), 0)
 			   FROM charges
 			  WHERE tenant_id = $1 AND status = 'pending' AND deleted_at IS NULL
 			    AND ($2::uuid IS NULL OR branch_id = $2)`,
@@ -115,13 +116,23 @@ func (s *Service) Overview(ctx context.Context, f finance.Filter) (*finance.Over
 		}
 
 		// --- the daily shape of the period, and the same length before it ---
+		//
+		// Every bucket is a day in ADDIS, not a UTC day. `d` is a bare timestamp, and
+		// comparing it against settled_at cast it at the session timezone — UTC on this
+		// server — so each bar actually covered 03:00 to 03:00 Addis. Cure Dental takes
+		// money just after midnight often enough that it showed on the chart constantly:
+		// 6,000 ETB settled at 00:16 on the 17th was drawn on the 16th, and a 4,000 and
+		// an 11,500 taken on two different days merged into one 15,500 spike. The
+		// headline total was right the whole time, which is what makes it nasty — only
+		// the split between days was wrong, so nothing looked broken enough to doubt.
 		load := func(from, to time.Time) ([]finance.DayPoint, error) {
 			rows, e := tx.Query(ctx,
 				`SELECT d::date::text, coalesce(sum(c.amount),0)::text
 				   FROM generate_series($2::date, ($3::date - interval '1 day'), interval '1 day') d
 				   LEFT JOIN charges c
 				     ON c.tenant_id = $1 AND c.status = 'paid' AND c.deleted_at IS NULL
-				    AND c.settled_at >= d AND c.settled_at < d + interval '1 day'
+				    AND c.settled_at >= (d AT TIME ZONE 'Africa/Addis_Ababa')
+				    AND c.settled_at <  ((d + interval '1 day') AT TIME ZONE 'Africa/Addis_Ababa')
 				    AND ($4::uuid IS NULL OR c.branch_id = $4)
 				  GROUP BY d ORDER BY d`,
 				tid, from, to, branchArg(f.Branch))
@@ -278,8 +289,9 @@ func (s *Service) Receivables(ctx context.Context, f finance.Filter) (*finance.R
 			        trim(p.first_name || ' ' || coalesce(p.last_name,'')),
 			        coalesce(p.phone,''),
 			        sum(c.amount)::float8,
-			        max((now()::date - c.created_at::date))::int,
-			        coalesce(max(lp.settled_at)::date::text, '')
+			        max((now() AT TIME ZONE 'Africa/Addis_Ababa')::date
+			            - (c.created_at AT TIME ZONE 'Africa/Addis_Ababa')::date)::int,
+			        coalesce((max(lp.settled_at) AT TIME ZONE 'Africa/Addis_Ababa')::date::text, '')
 			   FROM charges c
 			   JOIN patients p ON p.id = c.patient_id AND p.tenant_id = c.tenant_id
 			   LEFT JOIN charges lp ON lp.patient_id = c.patient_id AND lp.tenant_id = c.tenant_id
