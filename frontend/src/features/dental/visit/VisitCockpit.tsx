@@ -27,12 +27,13 @@ import { cn } from "@/lib/utils";
 import { DualDate } from "@/components/DualDate";
 import { MoveSessionDialog } from "@/features/dental/shared/MoveSessionDialog";
 import { ExtrasSection } from "@/features/dental/shared/Extras";
-import { MONEY, birr, sessionMoneyState } from "@/features/dental/money";
+import { MONEY, birr, num, sessionMoneyState } from "@/features/dental/money";
 import { addSession, finishCourse, type Plan } from "@/features/dental/api";
 import { visitTiming, type FocusResult, type FocusVisit, type Rung } from "@/features/dental/visit/useFocusVisit";
 import { RecordVisitForm } from "@/features/dental/visit/RecordVisitForm";
 import { feeResolved, feeStage, FeeStrip, VisitPaymentStep } from "@/features/dental/visit/VisitPaymentStep";
 import { DepositCallout } from "@/features/dental/shared/Deposit";
+import { UnbilledCallout, coveredByCockpit, owedForPatient } from "@/features/dental/shared/UnbilledWork";
 import { VisitActions } from "@/features/dental/visit/VisitActions";
 
 /** How the resolution reads at the top of the cockpit. */
@@ -46,10 +47,12 @@ const RUNG_META: Record<Rung, { label: string; tone: string }> = {
 };
 
 export function VisitCockpit({
-  patientId, resolved, teeth, editable, canCollect, canReschedule, imageLimit, onNewPlan, onRecordingChange, onPick, onChanged,
+  patientId, resolved, plans, teeth, editable, canCollect, canReschedule, imageLimit, onNewPlan, onRecordingChange, onPick, onChanged,
 }: {
   patientId: string;
   resolved: FocusResult;
+  /** Every course, so debt on a course this cockpit is not showing is still visible. */
+  plans: Plan[];
   teeth: Record<string, string>;
   editable: boolean;
   canCollect: boolean;
@@ -195,6 +198,18 @@ export function VisitCockpit({
             compact={state === "recording"} />
         )}
 
+        {/* EVERYTHING ELSE THIS PATIENT OWES. The callout above is this course's own
+            down payment; this is every other debt — treatment already given and never
+            charged for, an extra that lives inside a visit and is invisible until that
+            visit is opened, a second course's untaken deposit. Whatever the cockpit
+            already shows (this visit's fee, its extras, its course's deposit) is
+            excluded, so nothing is asked for twice. */}
+        {editable && (
+          <UnbilledCallout patientId={patientId} canCollect={canCollect}
+            items={owedForPatient(plans, { exclude: coveredByCockpit(session, plan), withDeposit: true })}
+            compact={state === "recording"} />
+        )}
+
         {/* WHERE IN THE COURSE. Hidden while recording: switching the focused visit
             under an open form would retarget the save to another session. */}
         {state !== "recording" && (
@@ -246,6 +261,14 @@ export function VisitCockpit({
 
         {state === "upcoming" && (
           <>
+            {/* Something can already have been done at a visit that has not been
+                written up — an X-ray taken while the patient was in the chair. It was
+                only rendered once the visit was recorded, so the fee for it was
+                invisible on exactly the screen where it could be collected. */}
+            {(session.extras?.length ?? 0) > 0 && (
+              <ExtrasSection patientId={patientId} session={session} editable={editable}
+                canCollect={canCollect} />
+            )}
             {/* WHAT HAPPENED LAST — the question this panel exists to answer. */}
             <VisitReader plan={plan} before={session} onPick={onPick} />
             {editable && (
@@ -269,7 +292,8 @@ export function VisitCockpit({
             <RecordedSummary session={session} />
             {/* Anything added at the chair stays visible after the visit is written
                 up — it is money the patient still owes, not a detail of the note. */}
-            <ExtrasSection patientId={patientId} session={session} editable={editable} />
+            <ExtrasSection patientId={patientId} session={session} editable={editable}
+              canCollect={canCollect} />
             {/* WHAT IT COSTS. The same pipeline as the recording step rather than a
                 second, differently-worded amber panel — a fee looks the same here as
                 it did five seconds ago. */}
@@ -353,7 +377,12 @@ function CourseRail({ plan, currentId, onPick, onAdd, onNewPlan, canEdit }: {
   const live = [...plan.sessions]
     .filter((s) => s.status !== "cancelled")
     .sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date) || a.seq - b.seq);
-  const paid = live.filter((s) => s.payment === "paid").reduce((n, s) => n + Number(s.amount_due || 0), 0);
+  // From the server's ledger figures, not by summing amount_due — that sums the
+  // plan's INTENT and calls it money, misses the deposit and the extras entirely, and
+  // does not move when a payment is refunded. It is also why this bar and the money
+  // panel quoted two different course totals on the same patient.
+  const paid = num(plan.money.collected);
+  const billable = num(plan.money.planned);
   const unbilled = live.filter((s) => (s.status === "done" || s.pay_later) && s.payment !== "paid").length;
 
   return (
@@ -403,11 +432,15 @@ function CourseRail({ plan, currentId, onPick, onAdd, onNewPlan, canEdit }: {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <div className="h-1.5 w-full max-w-[14rem] overflow-hidden rounded-full bg-muted">
           <div className="h-full rounded-full bg-emerald-500 transition-all"
-            style={{ width: `${Math.min(100, Math.round((paid / (Number(plan.total_amount) || 1)) * 100))}%` }} />
+            style={{ width: `${Math.min(100, Math.round((paid / (billable || 1)) * 100))}%` }} />
         </div>
         <span className="text-xs tabular-nums">
           <b className="text-emerald-700">{birr(paid)}</b>
-          <span className="text-muted-foreground"> paid of {birr(plan.total_amount)}</span>
+          {/* Counted against everything billable on this course, not the price agreed
+              at the start: an X-ray taken at visit 3 is money this patient owes, and
+              against total_amount alone a course could read "18,000 of 18,000, 100%"
+              with 2,000 of extras still unpaid. Matches the money panel exactly. */}
+          <span className="text-muted-foreground"> paid of {birr(billable)}</span>
         </span>
         {unbilled > 0 && (
           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">

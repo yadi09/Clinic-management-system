@@ -42,6 +42,7 @@ import { PatientMessages } from "@/features/messaging/PatientMessages";
 import { messageLog } from "@/features/messaging/api";
 import { splitRounded } from "@/features/dental/money";
 import { DepositCallout, depositOutstanding } from "@/features/dental/shared/Deposit";
+import { UnbilledRows, owedOnPlan } from "@/features/dental/shared/UnbilledWork";
 import { ImageGallery } from "@/features/dental/shared/visitRecord";
 
 import {
@@ -391,7 +392,7 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
 
       {/* The visit this page is about — resolved, never filtered. */}
       <VisitCockpit
-        patientId={patientId} resolved={resolved} teeth={teeth} editable={editable}
+        patientId={patientId} resolved={resolved} plans={summary.data.plans} teeth={teeth} editable={editable}
         canCollect={canCollect} canReschedule={canReschedule} imageLimit={summary.data.image_limit}
         onNewPlan={editable ? () => setNewPlan(true) : undefined}
         onRecordingChange={setRecording}
@@ -563,7 +564,7 @@ function BalanceSummary({ patientId, bal, plans, canCollect }: { patientId: stri
             {live.map((pl) => {
               const planned = num(pl.money.planned);
               const paid = num(pl.money.collected);
-              const owedOnPlan = num(pl.money.due);
+              const owedNow = num(pl.money.due);
               const p = planned > 0 ? Math.min(100, Math.round((paid / planned) * 100)) : 0;
               const left = Math.max(0, planned - paid - num(pl.money.at_cashier));
               return (
@@ -583,7 +584,7 @@ function BalanceSummary({ patientId, bal, plans, canCollect }: { patientId: stri
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                     {left > 0.005 && <span className="text-muted-foreground">{birr(String(left))} still to pay</span>}
-                    {owedOnPlan > 0.005 && (
+                    {owedNow > 0.005 && (
                       <span className="font-semibold text-destructive">{birr(pl.money.due)} owed now</span>
                     )}
                     {num(pl.money.at_cashier) > 0.005 && (
@@ -597,6 +598,10 @@ function BalanceSummary({ patientId, bal, plans, canCollect }: { patientId: stri
                       <DepositCallout patientId={patientId} plan={pl} canCollect={canCollect} compact />
                     </div>
                   )}
+                  {/* "2,000 owed now" is a number nobody can act on. These are the rows
+                      behind it — a delivered visit, or an extra taken during one — so
+                      the reader can see what it is and send it to the desk. */}
+                  <UnbilledRows patientId={patientId} canCollect={canCollect} items={owedOnPlan(pl)} />
                 </div>
               );
             })}

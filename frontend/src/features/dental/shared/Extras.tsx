@@ -12,7 +12,7 @@
 // says so, because a blank and a decision must not look the same.
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Sparkles, X } from "lucide-react";
+import { HandCoins, Plus, Sparkles, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,16 +20,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
-import { addExtra, removeExtra, type Session } from "@/features/dental/api";
+import { addExtra, collectSession, removeExtra, type Session } from "@/features/dental/api";
 import { invalidateDental } from "@/features/dental/invalidate";
 import { birr, num } from "@/features/dental/money";
 import { RecordSection } from "@/features/dental/shared/RecordSection";
 import { ServicePicker } from "@/features/dental/shared/ServicePicker";
 
-const PAY_LABEL: Record<string, { text: string; variant: "success" | "warning" | "outline" }> = {
+const PAY_LABEL: Record<string, { text: string; variant: "success" | "warning" | "outline" | "destructive" }> = {
   paid: { text: "Paid", variant: "success" },
   billed: { text: "At cashier", variant: "warning" },
   waived: { text: "Written off", variant: "outline" },
+  // An unbilled extra used to render with NO badge at all, which made the one thing
+  // on this list that needs doing look like the one thing already handled. An X-ray
+  // sat unbilled at 2,000 ETB next to a visit marked paid, and nothing on the screen
+  // disagreed.
+  unpaid: { text: "Owed now", variant: "destructive" },
+  refunded: { text: "Refunded — owed again", variant: "destructive" },
 };
 
 /** Total of a visit's extras. Exported because the fee strip has to add them in. */
@@ -37,11 +43,13 @@ export function extrasTotal(session: Session) {
   return (session.extras ?? []).reduce((a, e) => a + num(e.amount_due), 0);
 }
 
-export function ExtrasSection({ patientId, session, editable }: {
+export function ExtrasSection({ patientId, session, editable, canCollect }: {
   patientId: string;
   session: Session;
   /** Read-only on a finished visit that is being reviewed rather than recorded. */
   editable?: boolean;
+  /** Billing an extra is the same permission as billing anything else. */
+  canCollect?: boolean;
 }) {
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
@@ -63,6 +71,15 @@ export function ExtrasSection({ patientId, session, editable }: {
       invalidateDental(qc, patientId);
     },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not add it"),
+  });
+
+  // An extra is a session row on the server, so it bills through exactly the same
+  // endpoint as a visit — and lands on the cashier's queue named for what it is
+  // ("Root canal — x-ray at visit 3") rather than as the visit it happened during.
+  const collect = useMutation({
+    mutationFn: (id: string) => collectSession(patientId, id),
+    onSuccess: () => { toast.success("Sent to the cashier"); invalidateDental(qc, patientId); },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not send it to the cashier"),
   });
 
   const drop = useMutation({
@@ -94,7 +111,14 @@ export function ExtrasSection({ patientId, session, editable }: {
               {free
                 ? <span className="text-xs text-muted-foreground">Included in the course</span>
                 : <span className="tabular-nums font-semibold">{birr(ex.amount_due)}</span>}
-              {pay && <Badge variant={pay.variant}>{pay.text}</Badge>}
+              {pay && !free && <Badge variant={pay.variant}>{pay.text}</Badge>}
+              {canCollect && !free && (ex.payment === "unpaid" || ex.payment === "refunded") && (
+                <Button size="sm" variant="outline" className="h-7 px-2 text-xs"
+                  loading={collect.isPending && collect.variables === ex.id}
+                  onClick={() => collect.mutate(ex.id)}>
+                  <HandCoins className="h-3.5 w-3.5" /> Send to cashier
+                </Button>
+              )}
               {editable && ex.payment === "unpaid" && (
                 <button
                   onClick={() => drop.mutate(ex.id)}
