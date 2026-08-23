@@ -228,6 +228,10 @@ export interface PaidVisit {
   total: string;
   currency: string;
   method?: string;
+  /** What the desk chose ("Telebirr"); `method` is the stored key older rows have. */
+  method_label?: string;
+  /** The transaction reference recorded for a transfer or wallet payment. */
+  reference?: string;
   settled_at?: string;
   refunded: boolean;
   /** The cashier who took it. Empty on charges settled before this was recorded. */

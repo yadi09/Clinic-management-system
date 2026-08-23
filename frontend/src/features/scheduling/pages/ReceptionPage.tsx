@@ -13,7 +13,7 @@ import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
 import { useAuth } from "@/app/auth-context";
 import { listBranches, listDepartments, getSettings, listProviders } from "@/features/admin/api";
-import { listServices, providersForServices, raiseChargeBatch, settleCharge, waiveCharge, waiverReasons, patientCharges } from "@/features/billing/api";
+import { listServices, providersForServices, raiseChargeBatch, settleVisit, waiveCharge, waiverReasons, patientCharges } from "@/features/billing/api";
 import { walkIn } from "@/features/scheduling/api";
 import { PatientCombobox } from "@/features/scheduling/components/BookingDialog";
 
@@ -145,18 +145,18 @@ export function ReceptionPage() {
         items: chosen.map((s) => ({ service_item_id: s.id, source: "consultation", description: s.name, amount: parseFloat(s.price) || 0 })),
       });
       if (opts.action === "collect") {
-        // Every charge of this registration is one payment, so they share one
-        // reference — the server records that payment event once.
+        // ONE payment, one receipt. Settling each line separately gave a two-service
+        // registration two receipt numbers for a single handover of money, and only
+        // one of them could carry the reference. The visit checkout settles them
+        // together — which is what actually happened at the desk. Safe here because
+        // the button is disabled while the patient has any other pending charge, so
+        // the only ones outstanding are the lines just raised.
         const p = opts.pay ?? EMPTY_PAYMENT;
-        for (const [i, cid] of ids.entries()) {
-          await settleCharge(cid, {
-            rail_id: p.railId || undefined,
-            method: p.method,
-            // Only the first line carries the reference: the rest are the same payment,
-            // and claiming it twice is exactly what the uniqueness guard stops.
-            reference: i === 0 ? p.reference : "",
-          });
-        }
+        await settleVisit(patient!.id, {
+          rail_id: p.railId || undefined,
+          method: p.method,
+          reference: p.reference,
+        });
       } else if (opts.action === "waive") {
         for (const cid of ids) await waiveCharge(cid, opts.reason!);
       }

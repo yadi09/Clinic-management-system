@@ -163,13 +163,17 @@ type PaidLine struct {
 
 // PaidVisit is a completed checkout (one receipt) on the cashier's "Paid today" list.
 type PaidVisit struct {
-	ReceiptNo   int64      `json:"receipt_no"`
-	PatientID   uuid.UUID  `json:"-"`
-	PatientName string     `json:"patient_name"`
-	MRN         string     `json:"mrn"`
-	Total       string     `json:"total"`
-	Currency    string     `json:"currency"`
-	Method      string     `json:"method,omitempty"`
+	ReceiptNo   int64     `json:"receipt_no"`
+	PatientID   uuid.UUID `json:"-"`
+	PatientName string    `json:"patient_name"`
+	MRN         string    `json:"mrn"`
+	Total       string    `json:"total"`
+	Currency    string    `json:"currency"`
+	Method      string    `json:"method,omitempty"`
+	// What the desk actually chose ("Telebirr"), and the transaction reference it
+	// recorded. Method is the stored key, kept because older receipts have only that.
+	MethodLabel string     `json:"method_label,omitempty"`
+	Reference   string     `json:"reference,omitempty"`
 	SettledAt   *time.Time `json:"settled_at,omitempty"`
 	Refunded    bool       `json:"refunded"` // every line reversed
 	// The cashier who took the payment. A reprint must name them, not whoever

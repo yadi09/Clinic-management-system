@@ -21,7 +21,7 @@ import { printVisitReceipt, printZReport } from "@/features/billing/print";
 import { Input } from "@/components/ui/input";
 import { formatEthiopian } from "@/lib/ethiopian";
 import { cn } from "@/lib/utils";
-import { Printer, RotateCcw } from "lucide-react";
+import { Printer, Receipt, RotateCcw } from "lucide-react";
 
 const VOID_REASONS = ["Keying error", "Duplicate charge", "Patient left without service", "Wrong patient"];
 
@@ -153,7 +153,8 @@ function PaidList({ payments, loading, canRefund, clinicName, cashierName, onRef
       clinic: clinicName, receiptNo: v.receipt_no, patient: v.patient_name, mrn: v.mrn,
       // The cashier recorded on the payment, not whoever is at the terminal now:
       // one receipt number must always print one name.
-      lines: v.lines, total: v.total, currency: v.currency, method: v.method, cashier: v.settled_by || cashierName,
+      lines: v.lines, total: v.total, currency: v.currency,
+      method: v.method_label || v.method, reference: v.reference, cashier: v.settled_by || cashierName,
       when: v.settled_at || new Date().toISOString(),
     });
   if (loading) return <Card className="p-8 text-center text-sm text-muted-foreground">Loading…</Card>;
@@ -170,9 +171,18 @@ function PaidList({ payments, loading, canRefund, clinicName, cashierName, onRef
               {v.refunded && <Badge variant="destructive">refunded</Badge>}
             </div>
             <div className="mt-0.5 text-xs text-muted-foreground">
-              {v.lines.map((l) => l.description).join(" · ")} · {v.method || "—"}
+              {v.lines.map((l) => l.description).join(" · ")} · {v.method_label || v.method || "—"}
               {v.settled_at ? ` · ${new Date(v.settled_at).toLocaleTimeString()}` : ""}
             </div>
+            {/* The reference is the whole point of having asked for it: it is what a
+                patient disputing this payment, or a clerk reconciling the day, needs
+                to find the transfer. It was recorded and then shown nowhere. */}
+            {v.reference && (
+              <div className="mt-0.5 flex items-center gap-1 text-xs">
+                <Receipt className="h-3 w-3 text-muted-foreground" />
+                <span className="font-mono">{v.reference}</span>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <span className={`font-mono text-sm font-semibold ${v.refunded ? "text-muted-foreground line-through" : ""}`}>{v.currency} {v.total}</span>

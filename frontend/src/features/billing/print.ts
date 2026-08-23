@@ -31,6 +31,8 @@ export function printReceipt(o: {
   amount: string;
   currency: string;
   method?: string;
+  /** The transaction reference, for a transfer or wallet payment. */
+  reference?: string;
   cashier?: string;
   when: string;
   refund?: boolean;
@@ -57,6 +59,7 @@ function printReceiptRaw(no: string, o: Parameters<typeof printReceipt>[0]) {
     <table>
       <tr><td class="b lg">TOTAL</td><td class="r b lg">${esc(o.currency)} ${esc(o.amount)}</td></tr>
       <tr><td class="muted">Method</td><td class="r">${esc(o.method || "—")}</td></tr>
+      ${o.reference ? `<tr><td class="muted">Reference</td><td class="r">${esc(o.reference)}</td></tr>` : ""}
       <tr><td class="muted">Cashier</td><td class="r">${esc(o.cashier || "—")}</td></tr>
     </table>
     <hr/>
@@ -73,6 +76,8 @@ export function printVisitReceipt(o: {
   total: string;
   currency: string;
   method?: string;
+  /** The transaction reference, for a transfer or wallet payment. */
+  reference?: string;
   cashier?: string;
   when: string;
 }) {
@@ -95,6 +100,7 @@ export function printVisitReceipt(o: {
     <table>
       <tr><td class="b lg">TOTAL</td><td class="r b lg">${esc(o.currency)} ${esc(o.total)}</td></tr>
       <tr><td class="muted">Method</td><td class="r">${esc(o.method || "—")}</td></tr>
+      ${o.reference ? `<tr><td class="muted">Reference</td><td class="r">${esc(o.reference)}</td></tr>` : ""}
       <tr><td class="muted">Cashier</td><td class="r">${esc(o.cashier || "—")}</td></tr>
     </table>
     <hr/>

@@ -868,10 +868,12 @@ func (s *Service) PaymentsSince(ctx context.Context, since time.Time, until *tim
 			`SELECT c.receipt_no, c.patient_id, p.first_name, p.last_name, p.mrn,
 			        c.description, c.amount, c.currency, c.payment_method, c.settled_at,
 			        EXISTS (SELECT 1 FROM charges r WHERE r.reverses_charge_id = c.id AND r.deleted_at IS NULL) AS refunded,
-			        coalesce(u.full_name, '')
+			        coalesce(u.full_name, ''),
+			        coalesce(pr.label, ''), coalesce(c.payment_reference, '')
 			 FROM charges c
 			 JOIN patients p ON p.id = c.patient_id AND p.tenant_id = c.tenant_id
 			 LEFT JOIN users u ON u.id = c.settled_by AND u.tenant_id = c.tenant_id
+			 LEFT JOIN payment_rails pr ON pr.id = c.payment_rail_id AND pr.tenant_id = c.tenant_id
 			 WHERE c.tenant_id = $1 AND c.status = 'paid' AND c.source <> 'refund'
 			   AND c.receipt_no IS NOT NULL AND c.settled_at >= $2 AND ($3::timestamptz IS NULL OR c.settled_at < $3)
 			 ORDER BY c.settled_at DESC, c.receipt_no DESC
@@ -884,12 +886,12 @@ func (s *Service) PaymentsSince(ctx context.Context, since time.Time, until *tim
 		for rows.Next() {
 			var receiptNo *int64
 			var patientID uuid.UUID
-			var first, last, mrn, description, amount, currency, settledBy string
+			var first, last, mrn, description, amount, currency, settledBy, railLabel, reference string
 			var method *string
 			var settledAt *time.Time
 			var refunded bool
 			if e := rows.Scan(&receiptNo, &patientID, &first, &last, &mrn, &description, &amount,
-				&currency, &method, &settledAt, &refunded, &settledBy); e != nil {
+				&currency, &method, &settledAt, &refunded, &settledBy, &railLabel, &reference); e != nil {
 				return e
 			}
 			if receiptNo == nil {
@@ -900,7 +902,8 @@ func (s *Service) PaymentsSince(ctx context.Context, since time.Time, until *tim
 			if !ok {
 				out = append(out, billing.PaidVisit{
 					ReceiptNo: no, PatientID: patientID, PatientName: first + " " + last, MRN: mrn,
-					Currency: currency, Method: deref(method), SettledAt: settledAt, SettledBy: settledBy, Refunded: true,
+					Currency: currency, Method: deref(method), MethodLabel: railLabel, Reference: reference,
+					SettledAt: settledAt, SettledBy: settledBy, Refunded: true,
 				})
 				pos = len(out) - 1
 				idx[no] = pos
