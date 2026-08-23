@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2, ShieldCheck, Building2, MapPin, Workflow, Wallet, Stethoscope, ClipboardList, Pill, type LucideIcon } from "lucide-react";
 
@@ -101,7 +102,12 @@ const BRANCHES_ENABLED = false;
 export function SettingsPage() {
   const { can } = useAuth();
   const manage = can("clinic.manage");
-  const [active, setActive] = useState<SectionKey>("account");
+  // ?section= so a prompt elsewhere in the app can send someone straight here —
+  // "configure your payment methods" is useless as advice if it does not arrive
+  // at the screen that does it.
+  const [params, setParams] = useSearchParams();
+  const active = (params.get("section") as SectionKey) || "account";
+  const setActive = (k: SectionKey) => setParams(k === "account" ? {} : { section: k }, { replace: true });
 
   return (
     <div className="space-y-6">
@@ -1340,6 +1346,12 @@ function PaymentRailsCard({ manage }: { manage: boolean }) {
             <span className="font-medium">{r.label}</span>
             <Badge variant="outline" className="capitalize">{RAIL_KINDS.find((k) => k.value === r.kind)?.label ?? r.kind}</Badge>
             {r.account_number && <span className="font-mono text-xs text-muted-foreground">{r.account_number}</span>}
+            {/* A wallet or bank with no provider is one of the four generic methods
+                this clinic started with. It still takes money; it just cannot say
+                which account, so nothing about it can be checked later. */}
+            {(r.kind === "wallet" || r.kind === "bank") && !r.bank_key && (
+              <Badge variant="warning">no account named</Badge>
+            )}
             {r.needs_reference && <Badge variant="outline">reference required</Badge>}
             {!r.active && <Badge variant="outline">off</Badge>}
             {manage && (
@@ -1360,6 +1372,14 @@ function PaymentRailsCard({ manage }: { manage: boolean }) {
         ))}
         {!q.isLoading && rails.length === 0 && (
           <p className="py-6 text-center text-sm text-muted-foreground">No payment methods yet.</p>
+        )}
+        {rails.some((r) => (r.kind === "wallet" || r.kind === "bank") && !r.bank_key && r.active) && (
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <b>Name your accounts.</b> "Mobile money" and "Bank transfer" are the generic methods this
+            clinic started with — they take money, but a payment recorded against them cannot be
+            traced to an account or checked against a statement. Add your real ones (Telebirr, CBE…)
+            and switch the generic ones off.
+          </p>
         )}
       </CardContent>
       {editing && <RailDialog rail={editing === "new" ? null : editing} onClose={() => setEditing(null)}
