@@ -177,3 +177,26 @@ export function listPartnerLeads() {
 export function setLeadStatus(id: string, status: string) {
   return pfetch<void>(`/partner-leads/${id}/status`, { method: "POST", body: { status } });
 }
+
+// --- vendor integrations (the platform's own third-party keys) ---
+
+/** Whether a credential is loaded. Never the credential itself. */
+export interface Integration {
+  key: string;
+  configured: boolean;
+  /** Last four characters, enough to tell two keys apart and useless to a thief. */
+  hint?: string;
+  updated_at?: string;
+  /** saved (typed here) or env (set on the server). */
+  source?: string;
+}
+
+export function getVerifyETKey() {
+  return pfetch<Integration>("/integrations/verifyet");
+}
+export function setVerifyETKey(key: string) {
+  return pfetch<Integration>("/integrations/verifyet", { method: "PUT", body: { key } });
+}
+export function clearVerifyETKey() {
+  return pfetch<void>("/integrations/verifyet", { method: "DELETE" });
+}

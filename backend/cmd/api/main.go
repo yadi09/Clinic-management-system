@@ -28,6 +28,7 @@ import (
 	"github.com/reicb/clinicsaas/internal/kernel/storage"
 	"github.com/reicb/clinicsaas/internal/kernel/transcribe"
 	"github.com/reicb/clinicsaas/internal/kernel/verifyet"
+	"github.com/reicb/clinicsaas/internal/platform"
 
 	billinghttp "github.com/reicb/clinicsaas/internal/billing/http"
 	billingservice "github.com/reicb/clinicsaas/internal/billing/service"
@@ -110,15 +111,6 @@ func main() {
 	patientSvc := patientservice.NewService(db, store, publisher)
 	patientHandlers := patienthttp.NewHandlers(patientSvc)
 	billingSvc := billingservice.NewService(db, publisher)
-	// Receipt verification, config-gated. With no VERIFYET_API_KEY the desk is never
-	// offered a bank check and every payment path behaves exactly as before.
-	if cfg.VerifyET.Configured() {
-		billingSvc = billingSvc.WithVerifier(
-			verifyet.New(cfg.VerifyET.APIKey, cfg.VerifyET.BaseURL, log), cfg.VerifyET.WaitMs)
-		log.Info("receipt verification enabled", "base_url", cfg.VerifyET.BaseURL)
-	} else {
-		log.Info("receipt verification disabled — VERIFYET_API_KEY unset")
-	}
 	billingHandlers := billinghttp.NewHandlers(billingSvc)
 	// Scheduling bills the default intake charge through billing so walk-in / check-in
 	// are gated on payment (no free bypass of the cashier).
@@ -158,8 +150,21 @@ func main() {
 			log.Error("platform db connect failed; platform surface disabled", "err", perr)
 		} else {
 			defer platformDB.Close()
-			platformHandlers = platformhttp.NewHandlers(platformservice.NewService(platformDB, tokens))
+			platformSvc := platformservice.NewService(platformDB, tokens, cfg.MFAEncKey)
+			platformHandlers = platformhttp.NewHandlers(platformSvc)
 			log.Info("platform (super-admin) surface enabled")
+
+			// Receipt verification. The key is entered in the super-admin console and
+			// stored encrypted, so it is resolved per call rather than read once here:
+			// adding, rotating or clearing it takes effect without a deploy. The env
+			// var stays as a fallback for a deployment that prefers it.
+			billingSvc.WithVerifier(verifyet.NewResolving(
+				func(c context.Context) (string, error) {
+					return platformSvc.LookupSecret(c, platform.SettingVerifyETKey)
+				},
+				cfg.VerifyET.APIKey, cfg.VerifyET.BaseURL, log), cfg.VerifyET.WaitMs)
+			log.Info("receipt verification wired", "base_url", cfg.VerifyET.BaseURL,
+				"env_key_present", cfg.VerifyET.Configured())
 		}
 	}
 

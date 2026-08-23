@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Copy, LogOut, Plus, ShieldCheck, Handshake, CreditCard, Pencil } from "lucide-react";
+import { Building2, Copy, KeyRound, LogOut, Plus, ShieldCheck, Handshake, CreditCard, Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
@@ -17,6 +17,9 @@ import {
   impersonateOwner, listClinics, listPartnerLeads, listPlans, platformToken,
   provisionClinic, reactivateClinic, setClinicModules, setClinicPlan, setLeadStatus, suspendClinic, updatePlan,
   type Clinic, type PartnerLead, type Plan, type UsageLine, type ProvisionResult,
+  getVerifyETKey,
+  setVerifyETKey,
+  clearVerifyETKey,
 } from "@/features/platform/api";
 
 const MODULES = [
@@ -62,7 +65,7 @@ export function PlatformConsolePage() {
   const [result, setResult] = useState<ProvisionResult | null>(null);
   const [modulesFor, setModulesFor] = useState<Clinic | null>(null);
   const [planFor, setPlanFor] = useState<Clinic | null>(null);
-  const [tab, setTab] = useState<"clinics" | "plans" | "leads">("clinics");
+  const [tab, setTab] = useState<"clinics" | "plans" | "leads" | "integrations">("clinics");
 
   const setStatus = useMutation({
     mutationFn: ({ id, action }: { id: string; action: "suspend" | "reactivate" }) =>
@@ -126,9 +129,11 @@ export function PlatformConsolePage() {
           <button onClick={() => setTab("clinics")} className={"flex items-center gap-2 rounded-md px-3 py-1.5 text-sm " + (tab === "clinics" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200")}><Building2 className="h-4 w-4" /> Clinics</button>
           <button onClick={() => setTab("plans")} className={"flex items-center gap-2 rounded-md px-3 py-1.5 text-sm " + (tab === "plans" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200")}><CreditCard className="h-4 w-4" /> Plans</button>
           <button onClick={() => setTab("leads")} className={"flex items-center gap-2 rounded-md px-3 py-1.5 text-sm " + (tab === "leads" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200")}><Handshake className="h-4 w-4" /> Partner leads</button>
+          <button onClick={() => setTab("integrations")} className={"flex items-center gap-2 rounded-md px-3 py-1.5 text-sm " + (tab === "integrations" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200")}><KeyRound className="h-4 w-4" /> Integrations</button>
         </div>
 
         {tab === "plans" && <PlansView />}
+        {tab === "integrations" && <IntegrationsView />}
         {tab === "leads" && <PartnerLeadsView />}
         {tab === "clinics" && (<>
         <h1 className="mb-1 text-xl font-semibold">Clinics</h1>
@@ -623,5 +628,89 @@ function Field({ label, value, onCopy, mono }: { label: string; value: string; o
       <div><div className="text-xs text-muted-foreground">{label}</div><div className={mono ? "font-mono" : "font-medium"}>{value}</div></div>
       <Button size="icon" variant="ghost" onClick={() => onCopy(value)}><Copy className="h-4 w-4" /></Button>
     </div>
+  );
+}
+
+
+// --- the platform's own third-party keys ------------------------------------------
+//
+// The Verify.ET key used to exist only as an environment variable, so supplying or
+// rotating it meant an SSH session and a restart — a deployment step pretending to be
+// a product. It is typed here, encrypted at rest with the same helper that protects a
+// clinic's MFA secret, and resolved per call, so a rotation takes effect while you are
+// still looking at the screen.
+//
+// The value is never readable again. The console shows the last four characters,
+// which is enough to tell two keys apart and useless to anyone who steals the screen.
+function IntegrationsView() {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["platform-verifyet"], queryFn: getVerifyETKey });
+  const [key, setKey] = useState("");
+  const save = useMutation({
+    mutationFn: () => setVerifyETKey(key.trim()),
+    onSuccess: () => { setKey(""); qc.invalidateQueries({ queryKey: ["platform-verifyet"] }); },
+  });
+  const clear = useMutation({
+    mutationFn: clearVerifyETKey,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["platform-verifyet"] }),
+  });
+  const it = q.data;
+
+  return (
+    <>
+      <h1 className="mb-1 text-xl font-semibold">Integrations</h1>
+      <p className="mb-5 text-sm text-zinc-400">Third-party keys the platform owns. Clinics never see these.</p>
+
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-semibold">Verify.ET — receipt verification</h2>
+            <p className="mt-1 max-w-xl text-sm text-zinc-400">
+              Checks a claimed bank or wallet transfer against the bank before a clinic accepts it.
+              With no key, every clinic's cashier simply records the reference as before.
+            </p>
+          </div>
+          <span className={"rounded-full px-2.5 py-1 text-xs font-medium " +
+            (it?.configured ? "bg-emerald-500/15 text-emerald-300" : "bg-zinc-700 text-zinc-300")}>
+            {q.isLoading ? "…" : it?.configured ? "Live" : "Not configured"}
+          </span>
+        </div>
+
+        {it?.configured && (
+          <p className="mt-3 text-sm text-zinc-300">
+            Key ending <span className="font-mono">{it.hint}</span>
+            {it.updated_at && <span className="text-zinc-500"> · saved {new Date(it.updated_at).toLocaleDateString()}</span>}
+          </p>
+        )}
+
+        <div className="mt-4 flex flex-wrap items-end gap-2">
+          <div className="min-w-[18rem] flex-1">
+            <label htmlFor="vkey" className="mb-1 block text-xs text-zinc-400">
+              {it?.configured ? "Replace the key" : "Paste the key"}
+            </label>
+            <input
+              id="vkey" type="password" value={key} onChange={(e) => setKey(e.target.value)}
+              placeholder="VERIFY_BANK_ET_…" autoComplete="off" spellCheck={false}
+              className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-100 placeholder:text-zinc-600"
+            />
+          </div>
+          <Button disabled={!key.trim() || save.isPending} onClick={() => save.mutate()}>
+            {save.isPending ? "Saving…" : "Save key"}
+          </Button>
+          {it?.configured && (
+            <Button variant="outline" disabled={clear.isPending} onClick={() => clear.mutate()}>Remove</Button>
+          )}
+        </div>
+        {save.isError && <p className="mt-2 text-sm text-red-400">Could not save that key.</p>}
+
+        {/* Said here because it is the thing most likely to waste an afternoon. */}
+        <p className="mt-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          A key alone is not enough: each clinic must name its own accounts under
+          Settings → Payment methods, and those accounts must also be registered at verify.et.
+          Without that, the settlement check returns "no registered accounts" and the strongest
+          control does nothing.
+        </p>
+      </div>
+    </>
   );
 }

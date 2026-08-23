@@ -205,4 +205,11 @@ type Service interface {
 	CaptureLead(ctx context.Context, in PartnerLeadInput) error
 	ListPartnerLeads(ctx context.Context) ([]PartnerLead, error)
 	SetLeadStatus(ctx context.Context, id uuid.UUID, status string) error
+
+	// Vendor-owned credentials, entered in the console and encrypted at rest. The
+	// plaintext is never returned — GetIntegration reports only that a key is loaded
+	// and enough of it to recognise.
+	GetIntegration(ctx context.Context, key string) (*Integration, error)
+	SetIntegrationKey(ctx context.Context, key, secret string, actor *uuid.UUID) (*Integration, error)
+	ClearIntegrationKey(ctx context.Context, key string) error
 }

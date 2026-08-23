@@ -28,12 +28,15 @@ import (
 type Service struct {
 	db     *kerneldb.DB
 	tokens *auth.TokenService
+	// Encrypts the vendor's own credentials at rest — the same key and the same
+	// helper that protect a clinic's MFA secret and its DHIS2 token.
+	encKey []byte
 }
 
 var _ platform.Service = (*Service)(nil)
 
-func NewService(db *kerneldb.DB, tokens *auth.TokenService) *Service {
-	return &Service{db: db, tokens: tokens}
+func NewService(db *kerneldb.DB, tokens *auth.TokenService, encKey []byte) *Service {
+	return &Service{db: db, tokens: tokens, encKey: encKey}
 }
 
 var slugRe = regexp.MustCompile(`[^a-z0-9-]+`)

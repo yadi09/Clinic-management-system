@@ -31,6 +31,11 @@ func (h *Handlers) Register(v1 *gin.RouterGroup, tokens *auth.TokenService) {
 	admin.GET("/plans", h.ListPlans)
 	admin.POST("/plans", h.CreatePlan)
 	admin.PUT("/plans/:id", h.UpdatePlan)
+	// The vendor's own third-party credentials (currently the Verify.ET key).
+	admin.GET("/integrations/verifyet", h.GetIntegration)
+	admin.PUT("/integrations/verifyet", h.SetIntegration)
+	admin.DELETE("/integrations/verifyet", h.ClearIntegration)
+
 	admin.GET("/partner-leads", h.ListLeads)
 	admin.POST("/partner-leads/:id/status", h.SetLeadStatus)
 }
