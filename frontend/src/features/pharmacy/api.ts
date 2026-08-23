@@ -115,7 +115,7 @@ export function createDrug(body: { name: string; form?: string; drug_class?: str
 export function updateDrug(id: string, body: { name: string; form?: string; drug_class?: string; is_controlled?: boolean; unit_price: number; reorder_level: number; is_active?: boolean }) {
   return apiFetch<void>(`/pharmacy/drugs/${id}`, { method: "PUT", body });
 }
-export function sellOtc(body: { patient_id?: string; discount?: number; tax?: number; payment_method?: string; lines: { drug_id: string; qty: number }[] }) {
+export function sellOtc(body: { patient_id?: string; discount?: number; tax?: number; payment_method?: string; rail_id?: string; reference?: string; lines: { drug_id: string; qty: number }[] }) {
   return apiFetch<{ id: string; total: string; status: string }>("/pharmacy/otc", { method: "POST", body });
 }
 export function pharmacyDashboard() {

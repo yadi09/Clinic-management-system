@@ -151,6 +151,10 @@ type OtcInput struct {
 	Discount      float64
 	Tax           float64
 	PaymentMethod string
+	// The clinic's configured payment method and the transaction reference, so an
+	// OTC sale paid by transfer is as traceable as one taken at the cashier.
+	RailID    *uuid.UUID
+	Reference string
 }
 
 // VolumePoint is one day on the dispensing chart.

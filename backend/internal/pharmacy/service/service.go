@@ -18,6 +18,7 @@ import (
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
 	"github.com/reicb/clinicsaas/internal/kernel/events"
+	"github.com/reicb/clinicsaas/internal/kernel/payments"
 	"github.com/reicb/clinicsaas/internal/kernel/tenancy"
 	"github.com/reicb/clinicsaas/internal/pharmacy"
 	pharmacydb "github.com/reicb/clinicsaas/internal/pharmacy/repo/gen"
@@ -610,11 +611,29 @@ func (s *Service) SellOTC(ctx context.Context, in pharmacy.OtcInput) (*pharmacy.
 		if total < 0 {
 			total = 0
 		}
+		// Same rule as the cashier and reception — one implementation, in the kernel,
+		// so the counter cannot end up with its own idea of what a payment method is.
+		railID, method, ref, e := payments.Resolve(ctx, tx, tenantID, in.RailID, in.PaymentMethod, in.Reference)
+		if e != nil {
+			return e
+		}
 		sale, e := q.CreateOtcSale(ctx, pharmacydb.CreateOtcSaleParams{
 			TenantID: tenantID, PatientID: in.PatientID, Subtotal: money(subtotal), Discount: money(in.Discount),
-			Tax: money(in.Tax), Total: money(total), Currency: "ETB", PaymentMethod: strPtr(in.PaymentMethod), CreatedBy: actor,
+			Tax: money(in.Tax), Total: money(total), Currency: "ETB", PaymentMethod: strPtr(method), CreatedBy: actor,
 		})
 		if e != nil {
+			return e
+		}
+		if railID != nil || ref != "" {
+			if _, e := tx.Exec(ctx,
+				`UPDATE pharmacy_sales SET payment_rail_id = $3, payment_reference = nullif($4,'')
+				  WHERE tenant_id = $1 AND id = $2`, tenantID, sale.ID, railID, ref); e != nil {
+				return e
+			}
+		}
+		// An OTC sale has no receipt number and may have no patient; the reference is
+		// still claimed, so the same transfer cannot pay for medicines twice.
+		if e := payments.ClaimReference(ctx, tx, tenantID, railID, ref, nil, in.PatientID, money(total), actor); e != nil {
 			return e
 		}
 		for _, l := range lines {

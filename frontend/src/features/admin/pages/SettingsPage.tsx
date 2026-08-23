@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, ShieldCheck, Building2, MapPin, Workflow, Stethoscope, ClipboardList, Pill, type LucideIcon } from "lucide-react";
+import { Plus, Pencil, Trash2, ShieldCheck, Building2, MapPin, Workflow, Wallet, Stethoscope, ClipboardList, Pill, type LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,24 +15,29 @@ import {
   branchUsage,
   createBranch,
   createDepartment,
+  createPaymentRail,
   deleteBranch,
   deleteDepartment,
+  deletePaymentRail,
   getBranchModules,
   getClinic,
   getSettings,
   getWorkspace,
   listBranches,
   listDepartments,
+  listPaymentRails,
   saveClinic,
   saveSettings,
   setBranchModules,
   planUsage,
   updateBranch,
   updateDepartment,
+  updatePaymentRail,
   updateWorkspace,
   type Branch,
   type ClinicSettings,
   type Department,
+  type PaymentRail,
 } from "@/features/admin/api";
 import {
   createCatalogEntry,
@@ -58,8 +63,11 @@ import {
 } from "@/features/clinical/api";
 import { NewAllergenForm, severityClass } from "@/features/clinical/AllergenFields";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { AppError } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
 
-type SectionKey = "account" | "profile" | "locations" | "flow" | "vitals" | "diagnoses" | "drugs";
+type SectionKey = "account" | "profile" | "locations" | "flow" | "payments" | "vitals" | "diagnoses" | "drugs";
 const SECTIONS: { group: string; items: { key: SectionKey; label: string; icon: LucideIcon }[] }[] = [
   {
     group: "General",
@@ -69,7 +77,13 @@ const SECTIONS: { group: string; items: { key: SectionKey; label: string; icon: 
       { key: "locations", label: "Branches & departments", icon: MapPin },
     ],
   },
-  { group: "Patient flow", items: [{ key: "flow", label: "Visit flow", icon: Workflow }] },
+  {
+    group: "Patient flow",
+    items: [
+      { key: "flow", label: "Visit flow", icon: Workflow },
+      { key: "payments", label: "Payment methods", icon: Wallet },
+    ],
+  },
   {
     group: "Clinical library",
     items: [
@@ -125,6 +139,7 @@ export function SettingsPage() {
           )}
           {active === "locations" && <LocationsCard manage={manage} />}
           {active === "flow" && <FlowSettingsCard manage={manage} />}
+          {active === "payments" && <PaymentRailsCard manage={manage} />}
           {active === "vitals" && <VitalsFormCard manage={manage} />}
           {active === "diagnoses" && <DiagnosisCatalogCard manage={manage} />}
           {active === "drugs" && <DrugLibraryCard manage={manage} />}
@@ -1247,5 +1262,204 @@ function FlowSettingsCard({ manage }: { manage: boolean }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// --- how this clinic gets paid ---------------------------------------------------
+//
+// Until now the answer was four words hard-coded in three different files: cash,
+// card, mobile, transfer. Two of them are categories, not methods — "Mobile" could be
+// Telebirr or M-Pesa, and no bank issues a statement called Mobile, so a day's
+// takings could never be checked against one.
+//
+// Here the clinic names its own: "Telebirr — 0911…", "CBE — …7441". Naming the
+// account is the useful part twice over: the desk can see which account to point a
+// patient at, and it is the fact a receipt-verification service will need later to
+// confirm a transfer reached THIS clinic rather than someone else's.
+const RAIL_KINDS = [
+  { value: "cash", label: "Cash", hint: "Notes and coins. Nothing to reference." },
+  { value: "card", label: "Card machine", hint: "A POS terminal. No transaction to look up." },
+  { value: "wallet", label: "Mobile wallet", hint: "Telebirr, M-Pesa, CBE Birr — paid to a phone number." },
+  { value: "bank", label: "Bank transfer", hint: "CBE, Awash, Dashen — paid to an account." },
+];
+
+/** The providers a rail can name — the receipt-verification vocabulary, so the
+ *  clinic's configuration is already the right shape when verification arrives. */
+const PROVIDERS: Record<string, { value: string; label: string }[]> = {
+  wallet: [
+    { value: "telebirr", label: "Telebirr" },
+    { value: "mpesa", label: "M-Pesa" },
+    { value: "cbebirr", label: "CBE Birr" },
+    { value: "kaafiebirr", label: "Kaafi eBirr" },
+  ],
+  bank: [
+    { value: "cbe", label: "Commercial Bank of Ethiopia" },
+    { value: "boa", label: "Bank of Abyssinia" },
+    { value: "dashen", label: "Dashen Bank" },
+    { value: "awash", label: "Awash Bank" },
+    { value: "siinqee", label: "Siinqee Bank" },
+    { value: "zemen", label: "Zemen Bank" },
+  ],
+};
+
+function PaymentRailsCard({ manage }: { manage: boolean }) {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["payment-rails", "all"], queryFn: () => listPaymentRails(true) });
+  const [editing, setEditing] = useState<PaymentRail | "new" | null>(null);
+  const { ask, dialog } = useConfirmDialog();
+
+  const del = useMutation({
+    mutationFn: (id: string) => deletePaymentRail(id),
+    onSuccess: () => { toast.success("Removed"); qc.invalidateQueries({ queryKey: ["payment-rails"] }); },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not remove it"),
+  });
+  const toggle = useMutation({
+    mutationFn: (r: PaymentRail) => updatePaymentRail(r.id, { ...r, active: !r.active }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["payment-rails"] }),
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not change it"),
+  });
+
+  const rails = q.data ?? [];
+  return (
+    <Card>
+      {dialog}
+      <CardHeader className="flex-row items-start justify-between gap-2 space-y-0">
+        <div>
+          <CardTitle>Payment methods</CardTitle>
+          <CardDescription>
+            How this clinic takes money. Name your real accounts and the desk records which
+            transfer paid which bill — so a day's takings can be checked against the statement.
+          </CardDescription>
+        </div>
+        {manage && <Button size="sm" onClick={() => setEditing("new")}><Plus className="h-4 w-4" /> Add</Button>}
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {q.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+        {rails.map((r) => (
+          <div key={r.id} className={cn("flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-3 py-2", !r.active && "bg-muted/40")}>
+            <span className="font-medium">{r.label}</span>
+            <Badge variant="outline" className="capitalize">{RAIL_KINDS.find((k) => k.value === r.kind)?.label ?? r.kind}</Badge>
+            {r.account_number && <span className="font-mono text-xs text-muted-foreground">{r.account_number}</span>}
+            {r.needs_reference && <Badge variant="outline">reference required</Badge>}
+            {!r.active && <Badge variant="outline">off</Badge>}
+            {manage && (
+              <div className="ml-auto flex items-center gap-1">
+                <Button size="sm" variant="ghost" onClick={() => toggle.mutate(r)}>{r.active ? "Switch off" : "Switch on"}</Button>
+                <Button size="icon" variant="ghost" aria-label="Edit" onClick={() => setEditing(r)}><Pencil className="h-4 w-4" /></Button>
+                <Button size="icon" variant="ghost" aria-label="Remove"
+                  onClick={() => ask({
+                    title: `Remove ${r.label}?`,
+                    description: <>It disappears from the payment picker. A method that has already taken money cannot be removed — switch it off instead.</>,
+                    confirmLabel: "Remove", destructive: true,
+                  }, async () => { await del.mutateAsync(r.id); })}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </div>
+        ))}
+        {!q.isLoading && rails.length === 0 && (
+          <p className="py-6 text-center text-sm text-muted-foreground">No payment methods yet.</p>
+        )}
+      </CardContent>
+      {editing && <RailDialog rail={editing === "new" ? null : editing} onClose={() => setEditing(null)}
+        onSaved={() => { setEditing(null); qc.invalidateQueries({ queryKey: ["payment-rails"] }); }} />}
+    </Card>
+  );
+}
+
+function RailDialog({ rail, onClose, onSaved }: { rail: PaymentRail | null; onClose: () => void; onSaved: () => void }) {
+  const [label, setLabel] = useState(rail?.label ?? "");
+  const [kind, setKind] = useState(rail?.kind ?? "wallet");
+  const [bankKey, setBankKey] = useState(rail?.bank_key ?? "");
+  const [accountNumber, setAccountNumber] = useState(rail?.account_number ?? "");
+  const [accountName, setAccountName] = useState(rail?.account_name ?? "");
+  const [needsRef, setNeedsRef] = useState(rail?.needs_reference ?? true);
+  const takesAccount = kind === "wallet" || kind === "bank";
+
+  const save = useMutation({
+    mutationFn: () => {
+      const body = {
+        label, kind, bank_key: takesAccount ? bankKey : "",
+        account_name: takesAccount ? accountName : "",
+        account_number: takesAccount ? accountNumber : "",
+        needs_reference: takesAccount && needsRef,
+        active: rail?.active ?? true, sort_order: rail?.sort_order ?? 10,
+      };
+      return rail ? updatePaymentRail(rail.id, body) : createPaymentRail(body);
+    },
+    onSuccess: () => { toast.success(rail ? "Saved" : "Payment method added"); onSaved(); },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not save it"),
+  });
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>{rail ? "Edit payment method" : "Add a payment method"}</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="rail-kind">Kind</Label>
+            <Select value={kind} onValueChange={(v) => { setKind(v as PaymentRail["kind"]); setBankKey(""); }}>
+              <SelectTrigger id="rail-kind"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {RAIL_KINDS.map((k) => <SelectItem key={k.value} value={k.value}>{k.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">{RAIL_KINDS.find((k) => k.value === kind)?.hint}</p>
+          </div>
+
+          {takesAccount && (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="rail-provider">Provider</Label>
+                <Select value={bankKey} onValueChange={setBankKey}>
+                  <SelectTrigger id="rail-provider"><SelectValue placeholder="Which bank or wallet?" /></SelectTrigger>
+                  <SelectContent>
+                    {(PROVIDERS[kind] ?? []).map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="rail-account">{kind === "wallet" ? "Phone number" : "Account number"}</Label>
+                <Input id="rail-account" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)}
+                  placeholder={kind === "wallet" ? "0911 22 33 44" : "1000 1234 5678"} />
+                <p className="text-xs text-muted-foreground">
+                  The account patients pay into. Shown to whoever is taking the payment.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="rail-holder">Account name <span className="text-muted-foreground">(optional)</span></Label>
+                <Input id="rail-holder" value={accountName} onChange={(e) => setAccountName(e.target.value)} />
+              </div>
+            </>
+          )}
+
+          <div className="space-y-1.5">
+            <Label htmlFor="rail-label">Name it</Label>
+            <Input id="rail-label" value={label} onChange={(e) => setLabel(e.target.value)}
+              placeholder={kind === "wallet" ? "Telebirr" : kind === "bank" ? "CBE" : "Cash"} />
+            <p className="text-xs text-muted-foreground">What the desk sees in the payment list.</p>
+          </div>
+
+          {takesAccount && (
+            <label className="flex items-start gap-2 rounded-md border p-3 text-sm">
+              <input type="checkbox" className="mt-0.5" checked={needsRef} onChange={(e) => setNeedsRef(e.target.checked)} />
+              <span>
+                <span className="font-medium">Require the transaction reference</span>
+                <span className="block text-xs text-muted-foreground">
+                  The desk cannot take the payment without it. Leave this off while staff are
+                  getting used to entering one — the field is still there, just optional.
+                </span>
+              </span>
+            </label>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={!label.trim() || (takesAccount && !bankKey)} loading={save.isPending}
+            onClick={() => save.mutate()}>Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

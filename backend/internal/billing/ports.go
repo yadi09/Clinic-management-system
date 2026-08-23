@@ -199,6 +199,18 @@ type CashLine struct {
 	Count  int    `json:"count"`
 }
 
+// SettleInput is how the money arrived.
+//
+// RailID is the clinic's configured payment method; Method is the older free-text
+// value, kept so an unconfigured clinic and any client that has not been updated
+// still work exactly as before. Reference is the transaction reference for a
+// transfer or wallet payment — the evidence that used to be thrown away.
+type SettleInput struct {
+	RailID    *uuid.UUID
+	Method    string
+	Reference string
+}
+
 // CashGroup is a generic labelled total (by method, by cashier).
 type CashGroup struct {
 	Label string `json:"label"`
@@ -287,8 +299,8 @@ type Service interface {
 	RaiseChargeBatch(ctx context.Context, in ChargeBatchInput) ([]uuid.UUID, error)
 	PendingCharges(ctx context.Context) ([]PendingCharge, error)
 	PatientCharges(ctx context.Context, patientID uuid.UUID) (*PatientLedger, error)
-	SettleCharge(ctx context.Context, id uuid.UUID, method string) error
-	SettleVisit(ctx context.Context, patientID uuid.UUID, method string) (*VisitSettlement, error)
+	SettleCharge(ctx context.Context, id uuid.UUID, in SettleInput) error
+	SettleVisit(ctx context.Context, patientID uuid.UUID, in SettleInput) (*VisitSettlement, error)
 	WaiveCharge(ctx context.Context, id uuid.UUID, reason string) error
 	VoidCharge(ctx context.Context, id uuid.UUID, reason string) error
 	RefundCharge(ctx context.Context, id uuid.UUID, reason string) error

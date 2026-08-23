@@ -69,6 +69,7 @@ const (
 	PrefixCertificate      = "mcf" // medical certificate (sick leave / fitness / attendance)
 	PrefixMessage          = "msg" // patient SMS (queued, sent, skipped or failed)
 	PrefixCampaign         = "cmp" // a one-off message to a chosen set of patients
+	PrefixPaymentRail      = "pmt" // a way this clinic is paid (cash, a card machine, a named account)
 )
 
 // base32 lower-case, no padding. Decoding is case-insensitive.

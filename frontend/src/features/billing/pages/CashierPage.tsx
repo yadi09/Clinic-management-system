@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, BadgeDollarSign, CalendarCheck, Check, ChevronDown, HandCoins, Inbox, Lock, MoreVertical } from "lucide-react";
 
@@ -16,6 +16,7 @@ import { useAuth } from "@/app/auth-context";
 import { getClinic } from "@/features/admin/api";
 import { closeDay, dayClose, dayCloses, paymentsToday, pendingCharges, refundVisit, settleVisit, voidCharge, waiveCharge, waiverReasons, type DaySummary, type PaidVisit, type PendingCharge } from "@/features/billing/api";
 import { DateRangeFilter, windowFor, type DateWindow } from "@/components/ui/date-range-filter";
+import { EMPTY_PAYMENT, PaymentRailPicker, paymentIncomplete, usePaymentRails, type PaymentChoice } from "@/features/billing/PaymentRail";
 import { printVisitReceipt, printZReport } from "@/features/billing/print";
 import { Input } from "@/components/ui/input";
 import { formatEthiopian } from "@/lib/ethiopian";
@@ -23,7 +24,6 @@ import { cn } from "@/lib/utils";
 import { Printer, RotateCcw } from "lucide-react";
 
 const VOID_REASONS = ["Keying error", "Duplicate charge", "Patient left without service", "Wrong patient"];
-const METHODS = ["cash", "card", "mobile", "transfer"];
 
 interface Group {
   patientId: string;
@@ -223,9 +223,18 @@ function PatientCheckout({ group, onWaive, onVoid, onPaid }: {
   onVoid: (c: PendingCharge) => void;
   onPaid: () => void;
 }) {
-  const [method, setMethod] = useState("cash");
+  const rails = usePaymentRails();
+  const [pay, setPay] = useState<PaymentChoice>(EMPTY_PAYMENT);
+  // Default to the clinic's first configured method rather than assuming cash — for a
+  // clinic paid mostly by Telebirr, "cash" is the wrong thing to leave pre-selected
+  // under a big green button.
+  useEffect(() => {
+    const first = rails.data?.[0];
+    if (first && !pay.railId) setPay({ railId: first.id, method: first.key, reference: "" });
+  }, [rails.data, pay.railId]);
+  const incomplete = paymentIncomplete(rails.data, pay);
   const checkout = useMutation({
-    mutationFn: () => settleVisit(group.patientId, method),
+    mutationFn: () => settleVisit(group.patientId, { rail_id: pay.railId || undefined, method: pay.method, reference: pay.reference }),
     onSuccess: (r) => {
       toast.success(`Paid ${group.currency} ${r.total} · receipt RCP-${String(r.receipt_no).padStart(6, "0")} — print it from "Paid today".`);
       onPaid();
@@ -282,14 +291,12 @@ function PatientCheckout({ group, onWaive, onVoid, onPaid }: {
       {/* Side by side the method select + pay button overflow a 360px screen and the
           amount truncates at the viewport edge — money is the one thing this button
           must show. Stack them below sm; desktop keeps the single row. */}
-      <div className="flex flex-col gap-2 border-t bg-muted/10 px-4 py-3 sm:flex-row sm:items-center">
-        <Select value={method} onValueChange={setMethod}>
-          <SelectTrigger className="w-full capitalize sm:w-32"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {METHODS.map((m) => <SelectItem key={m} value={m} className="capitalize">{m}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Button className="w-full sm:w-auto sm:flex-1" loading={checkout.isPending} onClick={() => checkout.mutate()}>
+      {/* Method and reference stack above the button: a reference field beside a
+          full-width amount button fits no phone, and it is the one thing here that
+          must not be squeezed into a corner. */}
+      <div className="space-y-2 border-t bg-muted/10 px-4 py-3">
+        <PaymentRailPicker rails={rails.data} value={pay} onChange={setPay} />
+        <Button className="w-full" loading={checkout.isPending} disabled={incomplete} onClick={() => checkout.mutate()}>
           <HandCoins className="h-4 w-4" /> Take payment · <span className="whitespace-nowrap tabular-nums">{group.currency} {group.total.toFixed(2)}</span>
         </Button>
       </div>

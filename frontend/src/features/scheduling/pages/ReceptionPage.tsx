@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { HandCoins, Stethoscope, UserCheck, AlertTriangle } from "lucide-react";
 
+import { EMPTY_PAYMENT, PaymentRailPicker, usePaymentRails, type PaymentChoice, type PaymentRail } from "@/features/billing/PaymentRail";
+
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,9 +17,8 @@ import { listServices, providersForServices, raiseChargeBatch, settleCharge, wai
 import { walkIn } from "@/features/scheduling/api";
 import { PatientCombobox } from "@/features/scheduling/components/BookingDialog";
 
-const METHODS = ["cash", "card", "mobile", "transfer"];
 
-type SendOpts = { action: "cashier" | "collect" | "waive"; method?: string; reason?: string };
+type SendOpts = { action: "cashier" | "collect" | "waive"; pay?: PaymentChoice; reason?: string };
 
 export function ReceptionPage() {
   const qc = useQueryClient();
@@ -48,7 +49,12 @@ export function ReceptionPage() {
   const [toTriage, setToTriage] = useState(false);
   const [provider, setProvider] = useState("");
   const [picked, setPicked] = useState<Record<string, boolean>>({});
-  const [method, setMethod] = useState("cash");
+  const rails = usePaymentRails();
+  const [pay, setPay] = useState<PaymentChoice>(EMPTY_PAYMENT);
+  useEffect(() => {
+    const first = rails.data?.[0];
+    if (first && !pay.railId) setPay({ railId: first.id, method: first.key, reference: "" });
+  }, [rails.data, pay.railId]);
   const [waiveOpen, setWaiveOpen] = useState(false);
   const [waiveReason, setWaiveReason] = useState("");
 
@@ -139,7 +145,18 @@ export function ReceptionPage() {
         items: chosen.map((s) => ({ service_item_id: s.id, source: "consultation", description: s.name, amount: parseFloat(s.price) || 0 })),
       });
       if (opts.action === "collect") {
-        for (const cid of ids) await settleCharge(cid, opts.method || "cash");
+        // Every charge of this registration is one payment, so they share one
+        // reference — the server records that payment event once.
+        const p = opts.pay ?? EMPTY_PAYMENT;
+        for (const [i, cid] of ids.entries()) {
+          await settleCharge(cid, {
+            rail_id: p.railId || undefined,
+            method: p.method,
+            // Only the first line carries the reference: the rest are the same payment,
+            // and claiming it twice is exactly what the uniqueness guard stops.
+            reference: i === 0 ? p.reference : "",
+          });
+        }
       } else if (opts.action === "waive") {
         for (const cid of ids) await waiveCharge(cid, opts.reason!);
       }
@@ -151,7 +168,7 @@ export function ReceptionPage() {
       if (chosen.length === 0) msg = `${patient!.name} sent to ${dest}`;
       else if (opts.action === "cashier") msg = `${patient!.name} → cashier (ETB ${total.toFixed(2)} to collect)`;
       else if (opts.action === "waive") msg = `${patient!.name}: fee waived · sent to ${dest}`;
-      else msg = `${patient!.name}: ETB ${total.toFixed(2)} collected (${opts.method}) · sent to ${dest}`;
+      else msg = `${patient!.name}: ETB ${total.toFixed(2)} collected (${railLabel(rails.data, opts.pay)}) · sent to ${dest}`;
       toast.success(msg);
       setWaiveOpen(false);
       resetForm();
@@ -174,7 +191,7 @@ export function ReceptionPage() {
   // long "Collect ETB 300.00 & …" label painted past the pill edge on phones.
   // The truncate span is a guard, not the plan — labels are sized to fit.
   const sendAction = (withAmount: boolean) => !cashierMode && hasFee ? (
-    <Button className="min-w-0 w-full" disabled={!routeReady || hasPending} loading={send.isPending} onClick={() => send.mutate({ action: "collect", method })}>
+    <Button className="min-w-0 w-full" disabled={!routeReady || hasPending} loading={send.isPending} onClick={() => send.mutate({ action: "collect", pay })}>
       <HandCoins className="h-4 w-4" /> <span className="min-w-0 truncate">{withAmount ? `Collect ETB ${total.toFixed(2)} & send to ${destWord}` : `Collect & send to ${destWord}`}</span>
     </Button>
   ) : (
@@ -349,15 +366,9 @@ export function ReceptionPage() {
                   <Label className="text-xs">Collect payment</Label>
                   <span className="whitespace-nowrap font-mono text-sm font-semibold">ETB {total.toFixed(2)}</span>
                 </div>
-                <div className="flex items-end gap-2">
-                  <div className="flex-1 space-y-1">
-                    <Label className="text-xs text-muted-foreground">Method</Label>
-                    <Select value={method} onValueChange={setMethod}>
-                      <SelectTrigger className="capitalize"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {METHODS.map((m) => <SelectItem key={m} value={m} className="capitalize">{m}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <PaymentRailPicker rails={rails.data} value={pay} onChange={setPay} compact />
                   </div>
                   <Button variant="outline" disabled={!routeReady || hasPending} onClick={() => setWaiveOpen(true)}>Waive…</Button>
                 </div>
@@ -407,4 +418,9 @@ export function ReceptionPage() {
       </Dialog>
     </div>
   );
+}
+
+/** What to call the method in the confirmation toast. */
+function railLabel(rails: PaymentRail[] | undefined, pay?: PaymentChoice) {
+  return rails?.find((r) => r.id === pay?.railId)?.label ?? pay?.method ?? "cash";
 }

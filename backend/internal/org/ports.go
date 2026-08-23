@@ -150,4 +150,49 @@ type Service interface {
 	ListResources(ctx context.Context) ([]Resource, error)
 	CreateResource(ctx context.Context, in ResourceInput) (*Resource, error)
 	DeleteResource(ctx context.Context, id uuid.UUID) error
+
+	// activeOnly is what the desk asks for; settings asks for everything so a
+	// switched-off rail can be switched back on.
+	ListPaymentRails(ctx context.Context, activeOnly bool) ([]PaymentRail, error)
+	CreatePaymentRail(ctx context.Context, in PaymentRailInput) (*PaymentRail, error)
+	UpdatePaymentRail(ctx context.Context, id uuid.UUID, in PaymentRailInput) (*PaymentRail, error)
+	DeletePaymentRail(ctx context.Context, id uuid.UUID) error
+}
+
+// PaymentRail is one real way this clinic takes money.
+//
+// It replaces four hard-coded words (cash, card, mobile, transfer) that were
+// duplicated across reception, the cashier and the pharmacy counter. Two of them
+// were not payment methods but categories — "mobile" is Telebirr or M-Pesa or CBE
+// Birr, and the clinic cannot reconcile a day's takings against a statement called
+// "mobile".
+//
+// BankKey and AccountNumber are the clinic describing how it gets paid. They are
+// also, not by accident, exactly what a receipt-verification service needs to check
+// that a transfer reached THIS clinic's account.
+type PaymentRail struct {
+	ID             uuid.UUID `json:"-"`
+	Key            string    `json:"key"`   // stable; written to charges.payment_method
+	Label          string    `json:"label"` // what the desk reads
+	Kind           string    `json:"kind"`  // cash | card | wallet | bank
+	BankKey        string    `json:"bank_key,omitempty"`
+	AccountName    string    `json:"account_name,omitempty"`
+	AccountNumber  string    `json:"account_number,omitempty"`
+	NeedsReference bool      `json:"needs_reference"`
+	Active         bool      `json:"active"`
+	SortOrder      int       `json:"sort_order"`
+}
+
+// PaymentRailInput creates or updates a rail. Key is immutable after creation —
+// every settled charge and every report groups on it.
+type PaymentRailInput struct {
+	Key            string
+	Label          string
+	Kind           string
+	BankKey        string
+	AccountName    string
+	AccountNumber  string
+	NeedsReference bool
+	Active         bool
+	SortOrder      int
 }

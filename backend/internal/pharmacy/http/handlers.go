@@ -274,6 +274,8 @@ type otcRequest struct {
 	Discount      float64 `json:"discount"`
 	Tax           float64 `json:"tax"`
 	PaymentMethod string  `json:"payment_method"`
+	RailID        string  `json:"rail_id"`
+	Reference     string  `json:"reference"`
 	Lines         []struct {
 		DrugID string `json:"drug_id"`
 		Qty    int    `json:"qty"`
@@ -332,7 +334,15 @@ func (h *Handlers) SellOTC(c *gin.Context) {
 		httpx.Fail(c, apperr.Validation("lines are required"))
 		return
 	}
-	in := pharmacy.OtcInput{Discount: req.Discount, Tax: req.Tax, PaymentMethod: req.PaymentMethod}
+	in := pharmacy.OtcInput{Discount: req.Discount, Tax: req.Tax, PaymentMethod: req.PaymentMethod, Reference: req.Reference}
+	if req.RailID != "" {
+		rid, err := id.Decode(id.PrefixPaymentRail, req.RailID)
+		if err != nil {
+			httpx.Fail(c, apperr.Validation("invalid payment method"))
+			return
+		}
+		in.RailID = &rid
+	}
 	if req.PatientID != "" {
 		pid, err := id.Decode(id.PrefixPatient, req.PatientID)
 		if err != nil {

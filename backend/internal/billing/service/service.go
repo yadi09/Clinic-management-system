@@ -21,6 +21,7 @@ import (
 	"github.com/reicb/clinicsaas/internal/kernel/catalog"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
 	"github.com/reicb/clinicsaas/internal/kernel/events"
+	"github.com/reicb/clinicsaas/internal/kernel/payments"
 	"github.com/reicb/clinicsaas/internal/kernel/tenancy"
 )
 
@@ -556,15 +557,32 @@ func fmtMoney2(f float64) string { return money2(f) }
 
 // SettleCharge marks a pending charge paid and, for a routed consultation charge,
 // enqueues the patient (auto-advance after payment).
-func (s *Service) SettleCharge(ctx context.Context, id uuid.UUID, method string) error {
+func (s *Service) SettleCharge(ctx context.Context, id uuid.UUID, in billing.SettleInput) error {
 	tenantID, actor := actorOf(ctx)
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := billingdb.New(tx)
+		railID, method, ref, e := payments.Resolve(ctx, tx, tenantID, in.RailID, in.Method, in.Reference)
+		if e != nil {
+			return e
+		}
 		row, e := q.SettleCharge(ctx, billingdb.SettleChargeParams{PaymentMethod: strPtr(method), SettledBy: actor, TenantID: tenantID, ID: id})
 		if e != nil {
 			return e
 		}
 		if e := stampReceipt(ctx, q, tenantID, row.ID); e != nil {
+			return e
+		}
+		if e := payments.StampCharges(ctx, tx, tenantID, []uuid.UUID{row.ID}, railID, ref); e != nil {
+			return e
+		}
+		// After the receipt is stamped, so the "already used" message can name it.
+		var receiptNo *int64
+		var amount string
+		if e := tx.QueryRow(ctx, `SELECT receipt_no, amount::text FROM charges WHERE tenant_id=$1 AND id=$2`,
+			tenantID, row.ID).Scan(&receiptNo, &amount); e != nil {
+			return e
+		}
+		if e := payments.ClaimReference(ctx, tx, tenantID, railID, ref, receiptNo, &row.PatientID, amount, actor); e != nil {
 			return e
 		}
 		if e := advanceIfPaid(ctx, q, tenantID, actor, row.BranchID, row.DepartmentID, row.ToTriage, row.ProviderID, row.PatientID); e != nil {
@@ -575,6 +593,13 @@ func (s *Service) SettleCharge(ctx context.Context, id uuid.UUID, method string)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return apperr.Conflict("ALREADY_SETTLED", "this charge is no longer pending")
 	}
+	// Everything the settle refuses for a reason the desk can act on — an unusable
+	// payment method, a missing reference, a reference already used — arrives here as
+	// an apperr. Without this it was flattened into "an unexpected error occurred",
+	// which is the one message that tells a cashier nothing.
+	if ae, ok := apperr.As(err); ok {
+		return ae
+	}
 	if err != nil {
 		return apperr.Internal(err)
 	}
@@ -584,11 +609,15 @@ func (s *Service) SettleCharge(ctx context.Context, id uuid.UUID, method string)
 // SettleVisit collects ALL of a patient's pending charges in one go under a single
 // receipt number, then advances the patient once. This is the cashier's one-click
 // visit checkout (vs. SettleCharge for a single line).
-func (s *Service) SettleVisit(ctx context.Context, patientID uuid.UUID, method string) (*billing.VisitSettlement, error) {
+func (s *Service) SettleVisit(ctx context.Context, patientID uuid.UUID, in billing.SettleInput) (*billing.VisitSettlement, error) {
 	tenantID, actor := actorOf(ctx)
 	var out billing.VisitSettlement
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := billingdb.New(tx)
+		railID, method, ref, e := payments.Resolve(ctx, tx, tenantID, in.RailID, in.Method, in.Reference)
+		if e != nil {
+			return e
+		}
 		no, e := q.NextReceiptNo(ctx, tenantID)
 		if e != nil {
 			return e
@@ -602,7 +631,9 @@ func (s *Service) SettleVisit(ctx context.Context, patientID uuid.UUID, method s
 		}
 		var total float64
 		var routed *billingdb.SettleVisitRow
+		ids := make([]uuid.UUID, 0, len(rows))
 		for i := range rows {
+			ids = append(ids, rows[i].ID)
 			total += parseMoneyB(rows[i].Amount)
 			if routed == nil && rows[i].BranchID != nil && rows[i].DepartmentID != nil {
 				routed = &rows[i]
@@ -612,6 +643,13 @@ func (s *Service) SettleVisit(ctx context.Context, patientID uuid.UUID, method s
 			if e := advanceIfPaid(ctx, q, tenantID, actor, routed.BranchID, routed.DepartmentID, routed.ToTriage, routed.ProviderID, patientID); e != nil {
 				return e
 			}
+		}
+		if e := payments.StampCharges(ctx, tx, tenantID, ids, railID, ref); e != nil {
+			return e
+		}
+		// One payment event for the whole checkout, whether it settled one charge or six.
+		if e := payments.ClaimReference(ctx, tx, tenantID, railID, ref, &no, &patientID, money2(total), actor); e != nil {
+			return e
 		}
 		out = billing.VisitSettlement{ReceiptNo: no, Total: money2(total), Count: len(rows)}
 		return s.publisher.Publish(ctx, tx, &tenantID, "charge", patientID, "billing.visit.paid",

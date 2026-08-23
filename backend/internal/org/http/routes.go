@@ -35,6 +35,13 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	g.PUT("/departments/:id", manage, h.UpdateDepartment)
 	g.DELETE("/departments/:id", manage, h.DeleteDepartment)
 
+	// Every staff member who can take money needs to read these; only clinic.manage
+	// can change how the clinic is paid.
+	g.GET("/payment-rails", h.ListPaymentRails)
+	g.POST("/payment-rails", manage, h.CreatePaymentRail)
+	g.PUT("/payment-rails/:id", manage, h.UpdatePaymentRail)
+	g.DELETE("/payment-rails/:id", manage, h.DeletePaymentRail)
+
 	g.GET("/resources", h.ListResources)
 	g.POST("/resources", manage, h.CreateResource)
 	g.DELETE("/resources/:id", manage, h.DeleteResource)

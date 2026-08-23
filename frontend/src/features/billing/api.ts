@@ -212,11 +212,14 @@ export interface PatientLedger {
 export function patientCharges(patientId: string) {
   return apiFetch<PatientLedger>(`/billing/charges?patient=${patientId}`);
 }
-export function settleCharge(id: string, method: string) {
-  return apiFetch<void>(`/billing/charges/${id}/settle`, { method: "POST", body: { method } });
+/** How the desk says the money arrived. `method` stays for callers that have no rail. */
+export interface SettlePayment { rail_id?: string; method: string; reference?: string }
+
+export function settleCharge(id: string, pay: SettlePayment) {
+  return apiFetch<void>(`/billing/charges/${id}/settle`, { method: "POST", body: pay });
 }
-export function settleVisit(patientId: string, method: string) {
-  return apiFetch<{ receipt_no: number; total: string; count: number }>("/billing/checkout", { method: "POST", body: { patient_id: patientId, method } });
+export function settleVisit(patientId: string, pay: SettlePayment) {
+  return apiFetch<{ receipt_no: number; total: string; count: number }>("/billing/checkout", { method: "POST", body: { patient_id: patientId, ...pay } });
 }
 export interface PaidVisit {
   receipt_no: number;

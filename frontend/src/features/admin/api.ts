@@ -176,3 +176,45 @@ export function assignRoles(id: string, roles: string[], branch_ids?: string[]) 
   return apiFetch<void>(`/users/${id}/roles`, { method: "PUT", body: { roles, branch_ids } });
 }
 
+
+// --- payment methods (rails) ---
+
+/** One real way this clinic is paid. `key` is what gets stored on the charge. */
+export interface PaymentRail {
+  id: string;
+  key: string;
+  label: string;
+  kind: "cash" | "card" | "wallet" | "bank";
+  bank_key?: string;
+  account_name?: string;
+  account_number?: string;
+  needs_reference: boolean;
+  active: boolean;
+  sort_order: number;
+}
+
+export interface PaymentRailBody {
+  key?: string;
+  label: string;
+  kind: string;
+  bank_key?: string;
+  account_name?: string;
+  account_number?: string;
+  needs_reference: boolean;
+  active?: boolean;
+  sort_order?: number;
+}
+
+/** The desk gets active rails only; settings asks for all so one can be switched back on. */
+export function listPaymentRails(all?: boolean) {
+  return apiFetch<PaymentRail[]>(`/org/payment-rails${all ? "?all=1" : ""}`);
+}
+export function createPaymentRail(body: PaymentRailBody) {
+  return apiFetch<PaymentRail>("/org/payment-rails", { method: "POST", body });
+}
+export function updatePaymentRail(id: string, body: PaymentRailBody) {
+  return apiFetch<PaymentRail>(`/org/payment-rails/${id}`, { method: "PUT", body });
+}
+export function deletePaymentRail(id: string) {
+  return apiFetch<void>(`/org/payment-rails/${id}`, { method: "DELETE" });
+}

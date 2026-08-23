@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
 
@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
 import { searchDrugs, sellOtc, type Drug } from "@/features/pharmacy/api";
+import { EMPTY_PAYMENT, PaymentRailPicker, usePaymentRails, type PaymentChoice } from "@/features/billing/PaymentRail";
 
 interface CartLine {
   drug: Drug;
@@ -20,7 +21,12 @@ export function OtcSalePage() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [discount, setDiscount] = useState(0);
   const [tax, setTax] = useState(0);
-  const [method, setMethod] = useState("cash");
+  const rails = usePaymentRails();
+  const [pay, setPay] = useState<PaymentChoice>(EMPTY_PAYMENT);
+  useEffect(() => {
+    const first = rails.data?.[0];
+    if (first && !pay.railId) setPay({ railId: first.id, method: first.key, reference: "" });
+  }, [rails.data, pay.railId]);
 
   const results = useQuery({ queryKey: ["otc-search", term], queryFn: () => searchDrugs(term), enabled: term.trim().length > 0 });
 
@@ -36,7 +42,7 @@ export function OtcSalePage() {
   const total = Math.max(0, subtotal - discount + tax);
 
   const sell = useMutation({
-    mutationFn: () => sellOtc({ discount, tax, payment_method: method, lines: cart.map((l) => ({ drug_id: l.drug.id, qty: l.qty })) }),
+    mutationFn: () => sellOtc({ discount, tax, payment_method: pay.method, rail_id: pay.railId || undefined, reference: pay.reference, lines: cart.map((l) => ({ drug_id: l.drug.id, qty: l.qty })) }),
     onSuccess: () => {
       toast.success("Sale completed — stock decremented");
       setCart([]);
@@ -117,13 +123,12 @@ export function OtcSalePage() {
             <span>Total</span>
             <span>{total.toFixed(2)} ETB</span>
           </div>
+          {/* The same picker the cashier and reception use. This counter had its own
+              hand-rolled list whose third option was "Gateway", which is not a thing
+              the clinic has. */}
           <div className="mt-4 space-y-1.5">
             <Label>Payment</Label>
-            <select className="block w-full rounded-md border bg-background px-2 py-2 text-sm" value={method} onChange={(e) => setMethod(e.target.value)}>
-              <option value="cash">Cash</option>
-              <option value="card">Card</option>
-              <option value="gateway">Gateway</option>
-            </select>
+            <PaymentRailPicker rails={rails.data} value={pay} onChange={setPay} compact />
           </div>
           <p className="mt-3 text-xs text-muted-foreground">Linked to: Walk-in</p>
         </Card>

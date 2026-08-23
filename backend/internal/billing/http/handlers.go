@@ -499,16 +499,41 @@ func (h *Handlers) PatientCharges(c *gin.Context) {
 	})
 }
 
+// settleReq is how the desk says the money arrived: the clinic's configured payment
+// method, plus the transaction reference for a transfer or wallet payment. `method`
+// is the older free-text field, still accepted so a client that has not been updated
+// keeps working.
+type settleReq struct {
+	RailID    string `json:"rail_id"`
+	Method    string `json:"method"`
+	Reference string `json:"reference"`
+}
+
+func settleInput(c *gin.Context, r settleReq) (billing.SettleInput, bool) {
+	in := billing.SettleInput{Method: r.Method, Reference: r.Reference}
+	if r.RailID != "" {
+		rid, err := id.Decode(id.PrefixPaymentRail, r.RailID)
+		if err != nil {
+			httpx.Fail(c, apperr.Validation("invalid payment method"))
+			return in, false
+		}
+		in.RailID = &rid
+	}
+	return in, true
+}
+
 func (h *Handlers) SettleCharge(c *gin.Context) {
 	cid, ok := decodeBilling(c, id.PrefixCharge, "id")
 	if !ok {
 		return
 	}
-	var req struct {
-		Method string `json:"method"`
-	}
+	var req settleReq
 	_ = c.ShouldBindJSON(&req)
-	if err := h.svc.SettleCharge(c.Request.Context(), cid, req.Method); err != nil {
+	in, ok := settleInput(c, req)
+	if !ok {
+		return
+	}
+	if err := h.svc.SettleCharge(c.Request.Context(), cid, in); err != nil {
 		httpx.Fail(c, err)
 		return
 	}
@@ -519,7 +544,7 @@ func (h *Handlers) SettleCharge(c *gin.Context) {
 func (h *Handlers) SettleVisit(c *gin.Context) {
 	var req struct {
 		PatientID string `json:"patient_id"`
-		Method    string `json:"method"`
+		settleReq
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.Fail(c, apperr.Validation("patient_id is required"))
@@ -530,7 +555,11 @@ func (h *Handlers) SettleVisit(c *gin.Context) {
 		httpx.Fail(c, apperr.Validation("invalid patient_id"))
 		return
 	}
-	out, err := h.svc.SettleVisit(c.Request.Context(), pid, req.Method)
+	in, ok := settleInput(c, req.settleReq)
+	if !ok {
+		return
+	}
+	out, err := h.svc.SettleVisit(c.Request.Context(), pid, in)
 	if err != nil {
 		httpx.Fail(c, err)
 		return
