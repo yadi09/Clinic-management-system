@@ -34,6 +34,8 @@ import (
 	billingservice "github.com/reicb/clinicsaas/internal/billing/service"
 	clinicalhttp "github.com/reicb/clinicsaas/internal/clinical/http"
 	clinicalservice "github.com/reicb/clinicsaas/internal/clinical/service"
+	dashboardhttp "github.com/reicb/clinicsaas/internal/dashboard/http"
+	dashboardservice "github.com/reicb/clinicsaas/internal/dashboard/service"
 	dentalhttp "github.com/reicb/clinicsaas/internal/dental/http"
 	dentalservice "github.com/reicb/clinicsaas/internal/dental/service"
 	financehttp "github.com/reicb/clinicsaas/internal/finance/http"
@@ -126,8 +128,8 @@ func main() {
 	dentalHandlers := dentalhttp.NewHandlers(dentalservice.NewService(db, publisher, billingSvc, store))
 	// Finance reads the charge ledger, plus the two figures only dental can answer
 	// (treatment delivered and never billed, and the forward book).
-	financeHandlers := financehttp.NewHandlers(
-		financeservice.NewService(db, financeservice.NewDentalAdapter(db)))
+	financeSvc := financeservice.NewService(db, financeservice.NewDentalAdapter(db))
+	financeHandlers := financehttp.NewHandlers(financeSvc)
 	// Patient messaging. One platform SMS account serves every clinic, so the
 	// gateway is built once here; with no key configured it is the log adapter and
 	// every surface says "not connected" rather than implying patients were reached.
@@ -140,6 +142,9 @@ func main() {
 	// Lab & pharmacy bill through billing (Charger) so revenue reaches the cashier.
 	pharmacyHandlers := pharmacyhttp.NewHandlers(pharmacyservice.NewService(db, publisher, billingSvc))
 	labHandlers := labhttp.NewHandlers(labservice.NewService(db, publisher, billingSvc))
+	// The home screen. Reads money from the finance service rather than querying for
+	// it, so the dashboard and the Finance page cannot drift apart.
+	dashboardHandlers := dashboardhttp.NewHandlers(dashboardservice.NewService(db, financeSvc))
 
 	// Platform (super-admin) layer: provisions tenants across the RLS boundary via a
 	// dedicated privileged connection. Disabled when PLATFORM_DATABASE_URL is unset.
@@ -168,7 +173,7 @@ func main() {
 		}
 	}
 
-	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, reportingHandlers, maternityHandlers, inpatientHandlers, dentalHandlers, messagingHandlers, pharmacyHandlers, labHandlers, financeHandlers, platformHandlers)
+	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, reportingHandlers, dashboardHandlers, maternityHandlers, inpatientHandlers, dentalHandlers, messagingHandlers, pharmacyHandlers, labHandlers, financeHandlers, platformHandlers)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -206,6 +211,7 @@ func newRouter(
 	billingHandlers *billinghttp.Handlers,
 	clinicalHandlers *clinicalhttp.Handlers,
 	reportingHandlers *reportinghttp.Handlers,
+	dashboardHandlers *dashboardhttp.Handlers,
 	maternityHandlers *maternityhttp.Handlers,
 	inpatientHandlers *inpatienthttp.Handlers,
 	dentalHandlers *dentalhttp.Handlers,
@@ -261,6 +267,7 @@ func newRouter(
 	messagingHandlers.RegisterProtected(protected)           // /messaging/{settings,usage,preview,log,test}
 	pharmacyHandlers.RegisterProtected(protected)            // /pharmacy/...
 	labHandlers.RegisterProtected(protected)                 // /lab/...
+	dashboardHandlers.RegisterProtected(protected)           // /dashboard/today
 	financehttp.Register(protected, financeHandlers, tokens) // /finance/overview, /finance/receivables
 
 	// SSE queue stream authenticates via ?token= (EventSource can't set headers).
