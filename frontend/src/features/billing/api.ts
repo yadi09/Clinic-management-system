@@ -213,7 +213,13 @@ export function patientCharges(patientId: string) {
   return apiFetch<PatientLedger>(`/billing/charges?patient=${patientId}`);
 }
 /** How the desk says the money arrived. `method` stays for callers that have no rail. */
-export interface SettlePayment { rail_id?: string; method: string; reference?: string }
+export interface SettlePayment {
+  rail_id?: string;
+  method: string;
+  reference?: string;
+  /** Take a payment the bank contradicted. Requires payment.waive; recorded. */
+  force?: boolean;
+}
 
 export function settleCharge(id: string, pay: SettlePayment) {
   return apiFetch<void>(`/billing/charges/${id}/settle`, { method: "POST", body: pay });
@@ -346,4 +352,27 @@ export function financeServices(p: { from?: string; to?: string; branch?: string
 }
 export function financeBook(p: { branch?: string }) {
   return apiFetch<FinBook>(`/finance/book${finQuery(p)}`);
+}
+
+// --- receipt verification ---
+
+/** What the bank says about a claimed transfer. */
+export interface PaymentCheck {
+  /** verified | rejected | review | pending | unchecked */
+  state: "verified" | "rejected" | "review" | "pending" | "unchecked";
+  reason: string;
+  amount?: string;
+  sender?: string;
+  account?: string;
+  when?: string;
+  already_used?: boolean;
+}
+
+export function verifyPayment(body: { rail_id: string; reference: string; expected?: string; patient_id?: string }) {
+  return apiFetch<PaymentCheck>("/billing/verify-payment", { method: "POST", body });
+}
+
+/** Whether this deployment can check receipts at all. */
+export function verificationAvailable() {
+  return apiFetch<{ available: boolean }>("/billing/verify-payment/status");
 }

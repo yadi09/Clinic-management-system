@@ -27,6 +27,7 @@ import (
 	"github.com/reicb/clinicsaas/internal/kernel/sms"
 	"github.com/reicb/clinicsaas/internal/kernel/storage"
 	"github.com/reicb/clinicsaas/internal/kernel/transcribe"
+	"github.com/reicb/clinicsaas/internal/kernel/verifyet"
 
 	billinghttp "github.com/reicb/clinicsaas/internal/billing/http"
 	billingservice "github.com/reicb/clinicsaas/internal/billing/service"
@@ -109,6 +110,15 @@ func main() {
 	patientSvc := patientservice.NewService(db, store, publisher)
 	patientHandlers := patienthttp.NewHandlers(patientSvc)
 	billingSvc := billingservice.NewService(db, publisher)
+	// Receipt verification, config-gated. With no VERIFYET_API_KEY the desk is never
+	// offered a bank check and every payment path behaves exactly as before.
+	if cfg.VerifyET.Configured() {
+		billingSvc = billingSvc.WithVerifier(
+			verifyet.New(cfg.VerifyET.APIKey, cfg.VerifyET.BaseURL, log), cfg.VerifyET.WaitMs)
+		log.Info("receipt verification enabled", "base_url", cfg.VerifyET.BaseURL)
+	} else {
+		log.Info("receipt verification disabled — VERIFYET_API_KEY unset")
+	}
 	billingHandlers := billinghttp.NewHandlers(billingSvc)
 	// Scheduling bills the default intake charge through billing so walk-in / check-in
 	// are gated on payment (no free bypass of the cashier).

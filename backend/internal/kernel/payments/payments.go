@@ -31,7 +31,7 @@ import (
 // Returns the rail id (nil for an unconfigured legacy method), the key to store in
 // payment_method — which every existing report groups on, so it must keep being
 // written — and the trimmed reference.
-func Resolve(ctx context.Context, tx pgx.Tx, tid uuid.UUID, railID *uuid.UUID, method, reference string) (*uuid.UUID, string, string, error) {
+func Resolve(ctx context.Context, tx pgx.Tx, tid uuid.UUID, railID *uuid.UUID, method, reference string, force bool) (*uuid.UUID, string, string, error) {
 	ref := strings.TrimSpace(reference)
 	if railID == nil {
 		// No rail chosen: an older client, or a clinic that has not configured any.
@@ -59,6 +59,18 @@ func Resolve(ctx context.Context, tx pgx.Tx, tid uuid.UUID, railID *uuid.UUID, m
 	if needsRef && ref == "" {
 		return nil, "", "", apperr.Validation("enter the transaction reference for this payment")
 	}
+	// A reference the bank has contradicted must not quietly become a paid bill. This
+	// is the one verdict that blocks: "review" and "could not check" still settle,
+	// flagged, because a clinic cannot stop taking money when a third party is down.
+	if ref != "" {
+		state, reason, e := VerifyStateOf(ctx, tx, tid, railID, ref)
+		if e != nil {
+			return nil, "", "", e
+		}
+		if state == "rejected" && !force {
+			return nil, "", "", apperr.Conflict("VERIFY_REJECTED", reason)
+		}
+	}
 	// Cash has nothing to reference. Storing one would put a value in the uniqueness
 	// table that means nothing and could block a later, real reference.
 	if kind == "cash" {
@@ -78,6 +90,29 @@ func ClaimReference(ctx context.Context, tx pgx.Tx, tid uuid.UUID, railID *uuid.
 	ref string, receiptNo *int64, patientID *uuid.UUID, amount string, actor *uuid.UUID) error {
 	if railID == nil || ref == "" {
 		return nil
+	}
+	// A row may already exist because the desk checked this reference before taking
+	// the money. That is the same payment arriving, not a second use — claim it.
+	// Only a row that already carries a receipt is a real double-spend.
+	var existing *int64
+	var checked bool
+	switch e := tx.QueryRow(ctx,
+		`SELECT receipt_no, true FROM payment_references
+		  WHERE tenant_id=$1 AND payment_rail_id=$2 AND reference_norm=upper(btrim($3))`,
+		tid, *railID, ref).Scan(&existing, &checked); {
+	case e == pgx.ErrNoRows:
+	case e != nil:
+		return e
+	case existing == nil:
+		_, e = tx.Exec(ctx,
+			`UPDATE payment_references
+			    SET receipt_no=$4, patient_id=coalesce($5, patient_id), amount=$6, settled_by=$7, settled_at=now()
+			  WHERE tenant_id=$1 AND payment_rail_id=$2 AND reference_norm=upper(btrim($3))`,
+			tid, *railID, ref, receiptNo, patientID, amount, actor)
+		return e
+	default:
+		return apperr.Conflict("REFERENCE_USED",
+			"that reference has already been used — it paid receipt #"+itoa(*existing))
 	}
 	var existingReceipt *int64
 	e := tx.QueryRow(ctx,

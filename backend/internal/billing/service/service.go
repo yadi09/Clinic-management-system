@@ -29,6 +29,10 @@ import (
 type Service struct {
 	db        *kerneldb.DB
 	publisher events.Publisher
+	// Receipt verification. nil, or a client with no key, simply means the desk is
+	// never offered a bank check — every other path behaves as it always has.
+	verifier payments.Verifier
+	waitMs   int
 }
 
 var _ billing.Service = (*Service)(nil)
@@ -37,6 +41,13 @@ var _ billing.Charger = (*Service)(nil)
 // NewService constructs a billing Service.
 func NewService(db *kerneldb.DB, publisher events.Publisher) *Service {
 	return &Service{db: db, publisher: publisher}
+}
+
+// WithVerifier attaches receipt verification. Config-gated at the composition root,
+// so a deployment without a key never grows the surface at all.
+func (s *Service) WithVerifier(v payments.Verifier, waitMs int) *Service {
+	s.verifier, s.waitMs = v, waitMs
+	return s
 }
 
 // Assess decides whether a visit must pay the card fee.
@@ -561,7 +572,7 @@ func (s *Service) SettleCharge(ctx context.Context, id uuid.UUID, in billing.Set
 	tenantID, actor := actorOf(ctx)
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := billingdb.New(tx)
-		railID, method, ref, e := payments.Resolve(ctx, tx, tenantID, in.RailID, in.Method, in.Reference)
+		railID, method, ref, e := payments.Resolve(ctx, tx, tenantID, in.RailID, in.Method, in.Reference, in.Force)
 		if e != nil {
 			return e
 		}
@@ -614,7 +625,7 @@ func (s *Service) SettleVisit(ctx context.Context, patientID uuid.UUID, in billi
 	var out billing.VisitSettlement
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := billingdb.New(tx)
-		railID, method, ref, e := payments.Resolve(ctx, tx, tenantID, in.RailID, in.Method, in.Reference)
+		railID, method, ref, e := payments.Resolve(ctx, tx, tenantID, in.RailID, in.Method, in.Reference, in.Force)
 		if e != nil {
 			return e
 		}

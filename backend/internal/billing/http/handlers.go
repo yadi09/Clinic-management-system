@@ -507,10 +507,23 @@ type settleReq struct {
 	RailID    string `json:"rail_id"`
 	Method    string `json:"method"`
 	Reference string `json:"reference"`
+	// Take a payment the bank contradicted. Gated on payment.waive at the route.
+	Force       bool   `json:"force"`
+	ForceReason string `json:"force_reason"`
 }
 
 func settleInput(c *gin.Context, r settleReq) (billing.SettleInput, bool) {
-	in := billing.SettleInput{Method: r.Method, Reference: r.Reference}
+	in := billing.SettleInput{Method: r.Method, Reference: r.Reference,
+		Force: r.Force, ForceReason: r.ForceReason}
+	// Overriding a bank contradiction is a manager's call, not the desk's.
+	if in.Force {
+		p, ok := httpx.PrincipalFrom(c)
+		if !ok || !p.HasPermission("payment.waive") {
+			httpx.Fail(c, apperr.Forbidden("FORBIDDEN_PERMISSION",
+				"only a manager can accept a payment the bank could not confirm"))
+			return in, false
+		}
+	}
 	if r.RailID != "" {
 		rid, err := id.Decode(id.PrefixPaymentRail, r.RailID)
 		if err != nil {
@@ -520,6 +533,47 @@ func settleInput(c *gin.Context, r settleReq) (billing.SettleInput, bool) {
 		in.RailID = &rid
 	}
 	return in, true
+}
+
+// VerifyPayment handles POST /billing/verify-payment — ask the bank about a claimed
+// transfer before taking it. Nothing is settled here.
+func (h *Handlers) VerifyPayment(c *gin.Context) {
+	var req struct {
+		RailID    string `json:"rail_id"`
+		Reference string `json:"reference"`
+		Expected  string `json:"expected"`
+		PatientID string `json:"patient_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("a payment method and a reference are required"))
+		return
+	}
+	in := billing.VerifyInput{Reference: req.Reference, Expected: req.Expected}
+	if req.RailID != "" {
+		rid, err := id.Decode(id.PrefixPaymentRail, req.RailID)
+		if err != nil {
+			httpx.Fail(c, apperr.Validation("invalid payment method"))
+			return
+		}
+		in.RailID = &rid
+	}
+	if req.PatientID != "" {
+		pid, err := id.Decode(id.PrefixPatient, req.PatientID)
+		if err == nil {
+			in.PatientID = pid
+		}
+	}
+	out, err := h.svc.VerifyPayment(c.Request.Context(), in)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// PaymentVerificationStatus tells the client whether to offer a bank check at all.
+func (h *Handlers) PaymentVerificationStatus(c *gin.Context) {
+	httpx.OK(c, gin.H{"available": h.svc.VerificationAvailable()})
 }
 
 func (h *Handlers) SettleCharge(c *gin.Context) {

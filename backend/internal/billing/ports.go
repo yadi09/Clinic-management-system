@@ -213,6 +213,31 @@ type SettleInput struct {
 	RailID    *uuid.UUID
 	Method    string
 	Reference string
+	// Force takes a payment the bank has contradicted. Requires payment.waive and is
+	// recorded on the payment event — it is a decision somebody made, not a default.
+	Force       bool
+	ForceReason string
+}
+
+// VerifyInput is a claimed payment to check with the bank.
+type VerifyInput struct {
+	RailID    *uuid.UUID
+	Reference string
+	// Expected is what the clinic is owed. Empty skips the amount comparison.
+	Expected  string
+	PatientID uuid.UUID
+}
+
+// VerifyResult is what the desk is told.
+type VerifyResult struct {
+	State  string `json:"state"` // verified | rejected | review | pending | unchecked
+	Reason string `json:"reason"`
+	// What the bank says, so the desk can compare it with the patient's phone.
+	Amount      string `json:"amount,omitempty"`
+	Sender      string `json:"sender,omitempty"`
+	Account     string `json:"account,omitempty"`
+	When        string `json:"when,omitempty"`
+	AlreadyUsed bool   `json:"already_used,omitempty"`
 }
 
 // CashGroup is a generic labelled total (by method, by cashier).
@@ -303,6 +328,11 @@ type Service interface {
 	RaiseChargeBatch(ctx context.Context, in ChargeBatchInput) ([]uuid.UUID, error)
 	PendingCharges(ctx context.Context) ([]PendingCharge, error)
 	PatientCharges(ctx context.Context, patientID uuid.UUID) (*PatientLedger, error)
+	// VerifyPayment asks the bank whether a claimed transfer is real, for this
+	// amount, and into this clinic's account. It settles nothing.
+	VerifyPayment(ctx context.Context, in VerifyInput) (*VerifyResult, error)
+	VerificationAvailable() bool
+
 	SettleCharge(ctx context.Context, id uuid.UUID, in SettleInput) error
 	SettleVisit(ctx context.Context, patientID uuid.UUID, in SettleInput) (*VisitSettlement, error)
 	WaiveCharge(ctx context.Context, id uuid.UUID, reason string) error

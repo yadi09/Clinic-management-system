@@ -54,8 +54,9 @@ type Config struct {
 
 	AI AIConfig
 
-	DHIS2 DHIS2Config
-	SMS   SMSConfig
+	DHIS2    DHIS2Config
+	VerifyET VerifyETConfig
+	SMS      SMSConfig
 
 	RateLimitRPS   float64
 	RateLimitBurst int
@@ -83,6 +84,25 @@ type AIConfig struct {
 
 // Configured reports whether an AI co-pilot key is present.
 func (a AIConfig) Configured() bool { return a.APIKey != "" }
+
+// VerifyETConfig holds the credentials for Verify.ET, the Ethiopian bank/wallet
+// receipt-verification service. Config-gated exactly like DHIS2 and the SMS gateway:
+// with no key the whole feature is dormant and the desk behaves as it always has.
+//
+// There is no sandbox — the vendor documents one base URL and points integrations at
+// production — so every call made with a real key spends a real credit from a shared,
+// non-rolling balance.
+type VerifyETConfig struct {
+	APIKey  string
+	BaseURL string
+	// How long the vendor may hold the request open before answering "queued". The
+	// desk is waiting with a patient in front of it, so this is a latency choice, not
+	// a correctness one: a queued answer is still handled.
+	WaitMs int
+}
+
+// Configured reports whether verification can run at all.
+func (v VerifyETConfig) Configured() bool { return strings.TrimSpace(v.APIKey) != "" }
 
 // DHIS2Config holds the credentials for the DHIS2 (Ministry of Health) reporting
 // showcase. Token is a Personal Access Token the clinic owner creates in DHIS2;
@@ -188,6 +208,11 @@ func Load() (Config, error) {
 			APIKey:         os.Getenv("SMS_API_KEY"),
 			BaseURL:        getenv("SMS_BASE_URL", "https://smsethiopia.com"),
 			CostPerSegment: getenvFloat("SMS_COST_PER_SEGMENT", 0.25),
+		},
+		VerifyET: VerifyETConfig{
+			APIKey:  os.Getenv("VERIFYET_API_KEY"),
+			BaseURL: getenv("VERIFYET_BASE_URL", "https://verify.et"),
+			WaitMs:  getenvInt("VERIFYET_WAIT_MS", 6000),
 		},
 	}
 
@@ -311,4 +336,13 @@ func mustFloat(key string, def float64, fail func(string, ...any)) float64 {
 		return def
 	}
 	return f
+}
+
+func getenvInt(key string, def int) int {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return def
 }

@@ -16,7 +16,7 @@ import { useAuth } from "@/app/auth-context";
 import { getClinic } from "@/features/admin/api";
 import { closeDay, dayClose, dayCloses, paymentsToday, pendingCharges, refundVisit, settleVisit, voidCharge, waiveCharge, waiverReasons, type DaySummary, type PaidVisit, type PendingCharge } from "@/features/billing/api";
 import { DateRangeFilter, windowFor, type DateWindow } from "@/components/ui/date-range-filter";
-import { EMPTY_PAYMENT, PaymentRailPicker, paymentIncomplete, usePaymentRails, type PaymentChoice } from "@/features/billing/PaymentRail";
+import { EMPTY_PAYMENT, PaymentRailPicker, paymentBlocked, paymentIncomplete, usePaymentRails, type PaymentChoice } from "@/features/billing/PaymentRail";
 import { printVisitReceipt, printZReport } from "@/features/billing/print";
 import { Input } from "@/components/ui/input";
 import { formatEthiopian } from "@/lib/ethiopian";
@@ -233,6 +233,7 @@ function PatientCheckout({ group, onWaive, onVoid, onPaid }: {
   onVoid: (c: PendingCharge) => void;
   onPaid: () => void;
 }) {
+  const { can } = useAuth();
   const rails = usePaymentRails();
   const [pay, setPay] = useState<PaymentChoice>(EMPTY_PAYMENT);
   // Default to the clinic's first configured method rather than assuming cash — for a
@@ -243,8 +244,14 @@ function PatientCheckout({ group, onWaive, onVoid, onPaid }: {
     if (first && !pay.railId) setPay({ railId: first.id, method: first.key, reference: "" });
   }, [rails.data, pay.railId]);
   const incomplete = paymentIncomplete(rails.data, pay);
+  // The bank says this transfer is not what the patient claims. Taking it anyway is a
+  // manager's decision (payment.waive), not something the desk does by pressing on.
+  const blocked = paymentBlocked(pay);
+  const canOverride = can("payment.waive");
   const checkout = useMutation({
-    mutationFn: () => settleVisit(group.patientId, { rail_id: pay.railId || undefined, method: pay.method, reference: pay.reference }),
+    mutationFn: (force?: boolean) => settleVisit(group.patientId, {
+      rail_id: pay.railId || undefined, method: pay.method, reference: pay.reference, force,
+    }),
     onSuccess: (r) => {
       toast.success(`Paid ${group.currency} ${r.total} · receipt RCP-${String(r.receipt_no).padStart(6, "0")} — print it from "Paid today".`);
       onPaid();
@@ -305,10 +312,29 @@ function PatientCheckout({ group, onWaive, onVoid, onPaid }: {
           full-width amount button fits no phone, and it is the one thing here that
           must not be squeezed into a corner. */}
       <div className="space-y-2 border-t bg-muted/10 px-4 py-3">
-        <PaymentRailPicker rails={rails.data} value={pay} onChange={setPay} />
-        <Button className="w-full" loading={checkout.isPending} disabled={incomplete} onClick={() => checkout.mutate()}>
-          <HandCoins className="h-4 w-4" /> Take payment · <span className="whitespace-nowrap tabular-nums">{group.currency} {group.total.toFixed(2)}</span>
-        </Button>
+        <PaymentRailPicker rails={rails.data} value={pay} onChange={setPay}
+          expected={group.total.toFixed(2)} patientId={group.patientId} />
+        {blocked ? (
+          <div className="space-y-1.5">
+            <Button className="w-full" disabled variant="outline">
+              <HandCoins className="h-4 w-4" /> The bank did not confirm this payment
+            </Button>
+            {canOverride ? (
+              // Never a hidden path: the override is offered, named, and recorded.
+              <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground"
+                loading={checkout.isPending} onClick={() => checkout.mutate(true)}>
+                Take it anyway — recorded against my name
+              </Button>
+            ) : (
+              <p className="text-center text-xs text-muted-foreground">A manager can override this.</p>
+            )}
+          </div>
+        ) : (
+          <Button className="w-full" loading={checkout.isPending} disabled={incomplete}
+            onClick={() => checkout.mutate(false)}>
+            <HandCoins className="h-4 w-4" /> Take payment · <span className="whitespace-nowrap tabular-nums">{group.currency} {group.total.toFixed(2)}</span>
+          </Button>
+        )}
       </div>
     </Card>
   );

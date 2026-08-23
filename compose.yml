@@ -48,6 +48,15 @@ x-backend-env: &backend-env
   SMS_BASE_URL: ${SMS_BASE_URL:-https://smsethiopia.com}
   # Display-only: what one segment costs us, used to price a send before it happens.
   SMS_COST_PER_SEGMENT: ${SMS_COST_PER_SEGMENT:-0.25}
+  # Receipt verification (Verify.ET). Checks a claimed bank or wallet transfer against
+  # the bank before the clinic accepts it. Empty key = the desk is never offered a
+  # check and every payment path behaves exactly as it did before. There is no
+  # sandbox, so a real key here spends real credits from a shared balance.
+  VERIFYET_API_KEY: ${VERIFYET_API_KEY:-}
+  VERIFYET_BASE_URL: ${VERIFYET_BASE_URL:-https://verify.et}
+  # How long the vendor may hold a check open before answering "queued". The desk is
+  # waiting with a patient in front of it; a queued answer is still handled.
+  VERIFYET_WAIT_MS: ${VERIFYET_WAIT_MS:-6000}
   RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-20}
   RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-40}
 

@@ -613,7 +613,7 @@ func (s *Service) SellOTC(ctx context.Context, in pharmacy.OtcInput) (*pharmacy.
 		}
 		// Same rule as the cashier and reception — one implementation, in the kernel,
 		// so the counter cannot end up with its own idea of what a payment method is.
-		railID, method, ref, e := payments.Resolve(ctx, tx, tenantID, in.RailID, in.PaymentMethod, in.Reference)
+		railID, method, ref, e := payments.Resolve(ctx, tx, tenantID, in.RailID, in.PaymentMethod, in.Reference, false)
 		if e != nil {
 			return e
 		}
