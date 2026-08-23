@@ -26,15 +26,13 @@ func TestDecideAcceptsOnlyWhenEverythingHolds(t *testing.T) {
 }
 
 func TestDecideRejectsWhatTheBankDenies(t *testing.T) {
+	// not_found is the bank saying no — the only status that denies outright.
+	// (verified=false while status still says "success" is a contradiction, not a
+	// denial, and is covered in the review cases below.)
 	r := good()
-	r.Verified = false
+	r.Verified, r.Status = false, "not_found"
 	if v := Decide(r, "1000"); v.State != Reject {
-		t.Fatalf("unverified must reject, got %s", v.State)
-	}
-	r = good()
-	r.Status = "pending"
-	if v := Decide(r, "1000"); v.State != Reject {
-		t.Fatalf("non-success must reject, got %s", v.State)
+		t.Fatalf("not_found must reject, got %s", v.State)
 	}
 	// Genuine receipt, wrong receiver: the case the whole settlement check exists for.
 	r = good()
@@ -58,6 +56,12 @@ func TestDecideSendsEveryDoubtToAHuman(t *testing.T) {
 		"unknown reason":  func(r *Result) { r.Settlement = &Settlement{Matched: false, Reason: "some_new_code_2027"} },
 		"unknown no code": func(r *Result) { r.Settlement = &Settlement{Matched: false} },
 		"failed":          func(r *Result) { r.ProcessingStatus = "failed" },
+		// An absence of information is not a denial: refusing a patient who genuinely
+		// paid because the lookup broke is the wrong way to be wrong.
+		"status failed":            func(r *Result) { r.Status = "failed" },
+		"unknown status":           func(r *Result) { r.Status = "some_status_2027" },
+		"verified but not success": func(r *Result) { r.Status = "pending"; r.ProcessingStatus = "completed" },
+		"success but not verified": func(r *Result) { r.Verified = false },
 	}
 	for name, mutate := range cases {
 		r := good()

@@ -48,8 +48,26 @@ func Decide(r *Result, expected string) Verdict {
 		return Verdict{Review, "The bank could not complete the check — verify it by hand.", "processing_failed"}
 	}
 	// 1. The bank has to actually confirm the transaction.
-	if !r.Verified || !strings.EqualFold(r.Status, "success") {
+	//
+	// Their own agent-skill reference lists two status values the API docs do not:
+	// `not_found` and `failed`. They mean different things and must not share an
+	// answer. "No such transaction" is a denial the desk can act on; "the check
+	// failed" is an absence of information, and refusing a patient who genuinely
+	// paid because a lookup broke is the wrong way to be wrong.
+	switch {
+	case strings.EqualFold(r.Status, "not_found"):
+		return Verdict{Reject, "The bank has no record of this transaction.", "not_found"}
+	case r.Verified && strings.EqualFold(r.Status, "success"):
+		// Confirmed. The remaining gates decide whether it is confirmed for US.
+	case strings.EqualFold(r.Status, "failed"):
+		return Verdict{Review, "The bank check failed — confirm this one by hand.", "status_failed"}
+	case !r.Verified && r.Status == "":
 		return Verdict{Reject, "The bank has no record of this transaction.", "not_verified"}
+	default:
+		// Verified without success, success without verified, or a status nobody has
+		// seen before. All contradictions, none of them an approval.
+		return Verdict{Review, "The bank's answer was unclear — confirm this one by hand.",
+			"unclear_" + nonEmpty(r.Status, "blank")}
 	}
 
 	// 2. It has to be the right money. Compared as fixed-point text: a float here is
