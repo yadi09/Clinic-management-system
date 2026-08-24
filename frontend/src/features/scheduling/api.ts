@@ -108,6 +108,8 @@ export interface CheckInOpts {
   priority?: number;
   to_triage?: boolean;
   provider_id?: string;
+  /** Only used when the appointment has no department of its own (legacy bookings). */
+  department_id?: string;
 }
 export function checkInAppointment(id: string, opts: CheckInOpts = {}) {
   return apiFetch<{

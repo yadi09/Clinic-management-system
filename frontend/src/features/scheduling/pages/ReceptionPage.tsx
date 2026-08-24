@@ -264,6 +264,10 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
       const routing = {
         to_triage: triageRequired,
         provider_id: !triageRequired && provider ? provider : undefined,
+        // Carried for appointments booked before a department was required: the
+        // server uses it only when the appointment has none, so it can never
+        // reroute a patient away from where they were actually booked.
+        department_id: dept || undefined,
       };
       // Only what THIS arrival raised gets collected. A patient who also owes 1,200
       // from last month must not have it swept into a receipt for a 300 ETB visit.
@@ -274,13 +278,13 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
         const res = await checkInAppointment(p.appointment_id!, routing);
         mine.push(...res.charge_ids);
       } else if (chosenExtras.length === 0 && !mustPay) {
-        await walkIn({ patient_id: p.patient_id, branch_id: "", department_id: dept, ...routing });
+        await walkIn({ patient_id: p.patient_id, branch_id: "", ...routing, department_id: dept });
       }
       for (const s of chosenExtras) {
         const { id: cid } = await raiseCharge({
           patient_id: p.patient_id, service_item_id: s.id, source: "consultation",
           description: s.name, amount: parseFloat(s.price) || 0,
-          department_id: dept || undefined, ...routing,
+          ...routing, department_id: dept || undefined,
         });
         mine.push(cid);
       }

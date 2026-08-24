@@ -41,6 +41,9 @@ type checkInRequest struct {
 	Priority   int    `json:"priority"`
 	ToTriage   bool   `json:"to_triage"`
 	ProviderID string `json:"provider_id"`
+	// Rescues an appointment booked before a department was required. Ignored when
+	// the appointment already has one.
+	DepartmentID string `json:"department_id"`
 }
 
 type walkInRequest struct {

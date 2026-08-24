@@ -33,7 +33,7 @@ func NewHandlers(svc scheduling.Service, db *kerneldb.DB) *Handlers {
 func (h *Handlers) Book(c *gin.Context) {
 	var req bookRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		httpx.Fail(c, apperr.Validation("branch_id, patient_id, provider_id and starts_at are required"))
+		httpx.Fail(c, apperr.Validation("branch_id, patient_id, provider_id, department_id and starts_at are required"))
 		return
 	}
 	in := scheduling.BookInput{DurationMin: req.DurationMin, Reason: req.Reason, IsFollowup: req.IsFollowup}
@@ -193,6 +193,15 @@ func (h *Handlers) CheckIn(c *gin.Context) {
 			return
 		}
 		in.ProviderID = p
+	}
+	// Only ever used to rescue an appointment booked before a department was
+	// required — the service ignores it when the appointment already has one.
+	if req.DepartmentID != "" {
+		d, ok := decodeOpt(c, id.PrefixDepartment, req.DepartmentID)
+		if !ok {
+			return
+		}
+		in.DepartmentID = d
 	}
 	res, err := h.svc.CheckIn(c.Request.Context(), aid, in)
 	if err != nil {

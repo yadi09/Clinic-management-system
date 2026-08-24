@@ -58,6 +58,14 @@ func (s *Service) Book(ctx context.Context, in scheduling.BookInput) (*schedulin
 	if in.StartsAt.IsZero() {
 		return nil, apperr.Validation("a start time is required")
 	}
+	// A department is what makes an appointment receivable. Check-in refuses an
+	// appointment without one ("assign a department before check-in"), so booking
+	// without it produced a record the front desk could not process — two of them
+	// were sitting in a live clinic's diary. It is required here, at the only gate
+	// every caller passes through.
+	if in.DepartmentID == nil {
+		return nil, apperr.Validation("choose a department — the front desk cannot receive an appointment without one")
+	}
 	ends := in.StartsAt.Add(time.Duration(dur) * time.Minute)
 	// A follow-up is owned by the doctor who ordered it; default that to the actor.
 	orderedBy := in.OrderedBy
@@ -220,6 +228,11 @@ func (s *Service) Reschedule(ctx context.Context, id uuid.UUID, in scheduling.Re
 	if dur <= 0 {
 		dur = defaultDuration
 	}
+	// Same rule as booking: a reschedule must not be able to strip the department out
+	// and leave a booking the desk cannot receive.
+	if in.DepartmentID == nil {
+		return nil, apperr.Validation("choose a department — the front desk cannot receive an appointment without one")
+	}
 	ends := in.StartsAt.Add(time.Duration(dur) * time.Minute)
 	var appt schedulingdb.GetAppointmentRow
 	if err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
@@ -323,8 +336,27 @@ func (s *Service) CheckIn(ctx context.Context, id uuid.UUID, in scheduling.Check
 		if e != nil {
 			return e
 		}
-		if appt.DepartmentID == nil {
-			return apperr.Validation("assign a department to the appointment before check-in")
+		// Booking now requires a department, but appointments made before that rule
+		// exist and are otherwise unreceivable — a dead row in a live diary. The desk
+		// can supply one at the door. It never overrides a department the appointment
+		// already has: that would quietly send a patient somewhere they were not booked.
+		dept := appt.DepartmentID
+		rescued := false
+		if dept == nil {
+			dept = in.DepartmentID
+			rescued = dept != nil
+		}
+		if dept == nil {
+			return apperr.Validation("this appointment has no department — choose one to receive the patient")
+		}
+		// Write it back, so the diary agrees with the queue. Otherwise the department
+		// lives only on the charge and the appointment keeps reading as department-less
+		// on every other surface that shows it. Raw SQL: sqlc is not available here.
+		if rescued {
+			if _, e := tx.Exec(ctx, `UPDATE appointments SET department_id = $1, updated_at = now()
+				WHERE tenant_id = $2 AND id = $3 AND department_id IS NULL`, *dept, tenantID, id); e != nil {
+				return e
+			}
 		}
 		// Clinic policy: when triage is required, no door sends straight to a doctor.
 		if req, _ := q.ClinicRequiresTriage(ctx, tenantID); req {
@@ -345,7 +377,7 @@ func (s *Service) CheckIn(ctx context.Context, id uuid.UUID, in scheduling.Check
 		// patient waits for payment — settlement enqueues them (advanceIfPaid). Otherwise
 		// (no default fee) enqueue immediately.
 		ids, e := s.billing.RaiseIntakeChargeIDsTx(ctx, tx, billing.IntakeInput{
-			PatientID: appt.PatientID, BranchID: appt.BranchID, DepartmentID: *appt.DepartmentID, ToTriage: in.ToTriage, ProviderID: prov,
+			PatientID: appt.PatientID, BranchID: appt.BranchID, DepartmentID: *dept, ToTriage: in.ToTriage, ProviderID: prov,
 			AppointmentID: &id,
 		})
 		if e != nil {
@@ -357,7 +389,7 @@ func (s *Service) CheckIn(ctx context.Context, id uuid.UUID, in scheduling.Check
 		out.Gated = len(ids) > 0
 		if !out.Gated {
 			qe, e := q.CreateQueueEntry(ctx, schedulingdb.CreateQueueEntryParams{
-				TenantID: tenantID, BranchID: appt.BranchID, DepartmentID: *appt.DepartmentID, PatientID: appt.PatientID,
+				TenantID: tenantID, BranchID: appt.BranchID, DepartmentID: *dept, PatientID: appt.PatientID,
 				AppointmentID: &id, Stage: stage, AssignedProviderID: prov, Priority: int32(in.Priority), CreatedBy: actor,
 			})
 			if e != nil {

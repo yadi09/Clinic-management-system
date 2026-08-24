@@ -111,7 +111,9 @@ export function BookingDialog({ open, onOpenChange, branchId, defaultDate, exist
     onError: (e) => setError(e instanceof AppError ? e.message : "Could not save the appointment."),
   });
 
-  const ready = (editing || patient) && provider && date && time;
+  // Department included: without it the booking cannot be received, and a dialog
+  // that lets you create one is a dialog that creates dead appointments.
+  const ready = (editing || patient) && provider && department && date && time;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -154,10 +156,13 @@ export function BookingDialog({ open, onOpenChange, branchId, defaultDate, exist
               </Select>
             </div>
             <div className="space-y-1.5">
+              {/* Not optional. Check-in refuses an appointment with no department, so
+                  booking without one produced a record the front desk could not
+                  receive at all. */}
               <Label>Department</Label>
               <Select value={department} onValueChange={setDepartment}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Optional" />
+                  <SelectValue placeholder="Which department?" />
                 </SelectTrigger>
                 <SelectContent>
                   {(departments.data ?? []).map((d) => (

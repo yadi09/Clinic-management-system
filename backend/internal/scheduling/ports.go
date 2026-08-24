@@ -121,6 +121,10 @@ type CheckInInput struct {
 	Priority   int
 	ToTriage   bool
 	ProviderID *uuid.UUID
+	// DepartmentID rescues an appointment booked before a department was required.
+	// Used ONLY when the appointment has none — it can never reroute a patient away
+	// from the department they were actually booked into.
+	DepartmentID *uuid.UUID
 }
 
 // Service is the scheduling module API.
