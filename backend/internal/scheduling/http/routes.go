@@ -31,4 +31,8 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	// pick-up pool (patients past triage not yet claimed by any doctor).
 	rg.GET("/worklist", httpx.RequirePermission("encounter.manage"), h.Worklist)
 	rg.GET("/worklist/unassigned", httpx.RequirePermission("encounter.manage"), h.Unassigned)
+
+	// The front desk. Reads appointments and the queue together, which is how the
+	// desk sees them.
+	rg.GET("/reception/today", httpx.RequirePermission("queue.manage"), h.ReceptionToday)
 }

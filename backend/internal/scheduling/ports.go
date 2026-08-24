@@ -108,6 +108,14 @@ type WalkInInput struct {
 	ProviderID   *uuid.UUID
 }
 
+// CheckInResult says what check-in did. ChargeIDs are the intake charges it raised —
+// none for a covered follow-up — so the desk can collect exactly this visit and
+// nothing else the patient happens to owe.
+type CheckInResult struct {
+	Gated     bool
+	ChargeIDs []uuid.UUID
+}
+
 // CheckInInput controls how an appointment patient is routed on check-in.
 type CheckInInput struct {
 	Priority   int
@@ -133,7 +141,7 @@ type Service interface {
 	ReassignProvider(ctx context.Context, id, providerID uuid.UUID, note string) error
 	// CheckIn / EnqueueWalkIn return gated=true when an intake charge was raised and
 	// the patient must pay before entering the queue (vs. enqueued immediately when free).
-	CheckIn(ctx context.Context, id uuid.UUID, in CheckInInput) (gated bool, err error)
+	CheckIn(ctx context.Context, id uuid.UUID, in CheckInInput) (*CheckInResult, error)
 	EnqueueWalkIn(ctx context.Context, in WalkInInput) (gated bool, err error)
 
 	ListQueue(ctx context.Context, departmentID uuid.UUID, stage string, from time.Time, until *time.Time) ([]QueueEntry, error)
@@ -144,4 +152,58 @@ type Service interface {
 	AssignProvider(ctx context.Context, id, providerID uuid.UUID) error
 	TransitionQueue(ctx context.Context, id uuid.UUID, state string) error
 	SetQueuePriority(ctx context.Context, id uuid.UUID, priority int) error
+
+	// ReceptionToday is the front desk's whole screen in one request.
+	ReceptionToday(ctx context.Context) (*ReceptionToday, error)
+}
+
+// --- reception: the clinic's front door ---------------------------------------
+//
+// Reception's question is not "which appointment record exists" but "who is in front
+// of me, and what do I need to know before I send them in". These rows carry the
+// three facts the desk could not previously see: how late someone is, what they owe,
+// and whether this particular visit is already paid for by a covered follow-up.
+
+// ReceptionPatient is one person on the reception list.
+type ReceptionPatient struct {
+	PatientID string `json:"patient_id"`
+	Name      string `json:"name"`
+	MRN       string `json:"mrn"`
+	Age       int    `json:"age"`
+	Sex       string `json:"sex,omitempty"`
+	Phone     string `json:"phone,omitempty"`
+
+	// The booking, when there is one. A walk-in already in the queue has none.
+	AppointmentID  string `json:"appointment_id,omitempty"`
+	StartsAt       string `json:"starts_at,omitempty"`
+	ProviderID     string `json:"provider_id,omitempty"`
+	ProviderName   string `json:"provider_name,omitempty"`
+	DepartmentID   string `json:"department_id,omitempty"`
+	DepartmentName string `json:"department_name,omitempty"`
+	Reason         string `json:"reason,omitempty"`
+	IsFollowup     bool   `json:"is_followup"`
+	// FreeUntil is the coverage window on a doctor-booked follow-up. Past it, the
+	// visit is chargeable again — which is why the date is shown, not just the fact.
+	FreeUntil string `json:"free_until,omitempty"`
+	// LateMinutes is how far past the slot we are. Negative means not due yet.
+	LateMinutes int `json:"late_minutes"`
+
+	// Money already raised and unpaid, whatever visit it came from. The same
+	// definition Finance uses for "Owed to you": charges sitting at status 'pending'.
+	Owed           string `json:"owed,omitempty"`
+	OwedOldestDays int    `json:"owed_oldest_days,omitempty"`
+
+	// Where they are once received.
+	Stage        string `json:"stage,omitempty"` // triage | with_doctor
+	WaitingSince string `json:"waiting_since,omitempty"`
+}
+
+// ReceptionToday is the whole front desk in one request.
+type ReceptionToday struct {
+	// Expected: booked today and not yet arrived, earliest slot first.
+	Expected []ReceptionPatient `json:"expected"`
+	// Waiting: received and in the queue, longest wait first.
+	Waiting []ReceptionPatient `json:"waiting"`
+	// Seen: finished today.
+	Seen []ReceptionPatient `json:"seen"`
 }

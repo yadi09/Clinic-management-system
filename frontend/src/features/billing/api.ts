@@ -219,6 +219,8 @@ export interface SettlePayment {
   reference?: string;
   /** Take a payment the bank contradicted. Requires payment.waive; recorded. */
   force?: boolean;
+  /** Settle only these charges. Omit to settle everything the patient owes. */
+  charge_ids?: string[];
 }
 
 export function settleCharge(id: string, pay: SettlePayment) {

@@ -194,12 +194,19 @@ func (h *Handlers) CheckIn(c *gin.Context) {
 		}
 		in.ProviderID = p
 	}
-	gated, err := h.svc.CheckIn(c.Request.Context(), aid, in)
+	res, err := h.svc.CheckIn(c.Request.Context(), aid, in)
 	if err != nil {
 		httpx.Fail(c, err)
 		return
 	}
-	httpx.OK(c, gin.H{"gated": gated})
+	ids := make([]string, 0, len(res.ChargeIDs))
+	for _, cid := range res.ChargeIDs {
+		ids = append(ids, id.Encode(id.PrefixCharge, cid))
+	}
+	// charge_ids lets the desk collect exactly this visit. Without them reception can
+	// only settle "everything this patient owes", which is how a button that says 300
+	// takes 1,500 of last month's debt with it.
+	httpx.OK(c, gin.H{"gated": res.Gated, "charge_ids": ids})
 }
 
 // MarkFollowup handles POST /appointments/:id/followup — flags the appointment
@@ -575,4 +582,19 @@ func dayRange(fromStr, toStr string) (time.Time, time.Time) {
 		to = from.Add(24 * time.Hour)
 	}
 	return from, to
+}
+
+// ReceptionToday handles GET /reception/today — the front desk's whole screen.
+//
+// One request rather than four, because a desk with a patient standing at it cannot
+// wait for tiles to arrive one at a time. Permission is queue.manage: receiving a
+// patient is the act this page exists for, and money controls are gated separately
+// inside it.
+func (h *Handlers) ReceptionToday(c *gin.Context) {
+	out, err := h.svc.ReceptionToday(c.Request.Context())
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
 }

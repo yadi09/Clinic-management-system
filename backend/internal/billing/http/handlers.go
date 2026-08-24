@@ -510,11 +510,22 @@ type settleReq struct {
 	// Take a payment the bank contradicted. Gated on payment.waive at the route.
 	Force       bool   `json:"force"`
 	ForceReason string `json:"force_reason"`
+	// Settle only these charges. Reception sends the ones this visit raised, so a
+	// button that says 300 cannot take 1,500 of older debt with it.
+	ChargeIDs []string `json:"charge_ids"`
 }
 
 func settleInput(c *gin.Context, r settleReq) (billing.SettleInput, bool) {
 	in := billing.SettleInput{Method: r.Method, Reference: r.Reference,
 		Force: r.Force, ForceReason: r.ForceReason}
+	for _, raw := range r.ChargeIDs {
+		cid, err := id.Decode(id.PrefixCharge, raw)
+		if err != nil {
+			httpx.Fail(c, apperr.Validation("invalid charge"))
+			return in, false
+		}
+		in.ChargeIDs = append(in.ChargeIDs, cid)
+	}
 	// Overriding a bank contradiction is a manager's call, not the desk's.
 	if in.Force {
 		p, ok := httpx.PrincipalFrom(c)

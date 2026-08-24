@@ -217,6 +217,15 @@ type SettleInput struct {
 	// recorded on the payment event — it is a decision somebody made, not a default.
 	Force       bool
 	ForceReason string
+	// ChargeIDs limits the checkout to these charges. Empty means every pending
+	// charge the patient has, which is what the cashier wants — it is looking at all
+	// of them and its button names the true total.
+	//
+	// Reception needs the opposite. A patient arriving with a 42-day-old 1,200 ETB
+	// debt and a 300 ETB visit fee must not have 1,500 taken by a button that says
+	// 300. Old debt is surfaced there and settled deliberately, never swept into
+	// today's receipt.
+	ChargeIDs []uuid.UUID
 }
 
 // VerifyInput is a claimed payment to check with the bank.
@@ -377,6 +386,9 @@ type Charger interface {
 	// patient entering via walk-in / appointment check-in, so settlement gates the
 	// queue entry. Returns how many charges were raised (0 = no default fee → enqueue free).
 	RaiseIntakeChargesTx(ctx context.Context, tx pgx.Tx, in IntakeInput) (int, error)
+	// RaiseIntakeChargeIDsTx is the same act, reporting WHICH charges it raised, so a
+	// caller can collect exactly this visit and not everything the patient owes.
+	RaiseIntakeChargeIDsTx(ctx context.Context, tx pgx.Tx, in IntakeInput) ([]uuid.UUID, error)
 }
 
 // IntakeInput routes the default intake charges so advanceIfPaid enqueues on payment.

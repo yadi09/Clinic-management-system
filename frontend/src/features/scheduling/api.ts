@@ -110,7 +110,11 @@ export interface CheckInOpts {
   provider_id?: string;
 }
 export function checkInAppointment(id: string, opts: CheckInOpts = {}) {
-  return apiFetch<{ gated: boolean }>(`/appointments/${id}/check-in`, { method: "POST", body: { priority: 0, ...opts } });
+  return apiFetch<{
+    gated: boolean;
+    /** The intake charges this arrival raised — none for a covered follow-up. */
+    charge_ids: string[];
+  }>(`/appointments/${id}/check-in`, { method: "POST", body: { priority: 0, ...opts } });
 }
 /** Mark an appointment as a covered (doctor-booked) follow-up, free of the card fee within its window. */
 export function markFollowup(id: string, freeUntilISO?: string) {
@@ -161,4 +165,43 @@ export function walkIn(body: {
 export function queueStreamUrl(departmentId: string) {
   const token = tokenStore.get() ?? "";
   return `${BASE}/queue/stream?department=${encodeURIComponent(departmentId)}&token=${encodeURIComponent(token)}`;
+}
+
+// --- reception: the front desk in one request ---
+
+/** One person on the reception list. */
+export interface ReceptionPatient {
+  patient_id: string;
+  name: string;
+  mrn: string;
+  age: number;
+  sex?: string;
+  phone?: string;
+  appointment_id?: string;
+  starts_at?: string;
+  provider_id?: string;
+  provider_name?: string;
+  department_id?: string;
+  department_name?: string;
+  reason?: string;
+  is_followup: boolean;
+  /** Coverage window on a doctor-booked follow-up. Past it, chargeable again. */
+  free_until?: string;
+  /** Minutes past the slot. Negative means not due yet. */
+  late_minutes: number;
+  /** Raised and unpaid — the same definition Finance uses for "Owed to you". */
+  owed?: string;
+  owed_oldest_days?: number;
+  stage?: string;
+  waiting_since?: string;
+}
+
+export interface ReceptionToday {
+  expected: ReceptionPatient[];
+  waiting: ReceptionPatient[];
+  seen: ReceptionPatient[];
+}
+
+export function receptionToday() {
+  return apiFetch<ReceptionToday>("/reception/today");
 }

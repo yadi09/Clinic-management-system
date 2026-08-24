@@ -314,9 +314,9 @@ func (s *Service) ReassignProvider(ctx context.Context, id, providerID uuid.UUID
 // CheckIn marks an appointment checked-in and enqueues the patient (FR-QUE-01).
 // Routing: to triage (nurse assigns later) or straight to a doctor (the chosen
 // provider, defaulting to the appointment's booked provider).
-func (s *Service) CheckIn(ctx context.Context, id uuid.UUID, in scheduling.CheckInInput) (bool, error) {
+func (s *Service) CheckIn(ctx context.Context, id uuid.UUID, in scheduling.CheckInInput) (*scheduling.CheckInResult, error) {
 	tenantID, actor := actorOf(ctx)
-	var gated bool
+	out := &scheduling.CheckInResult{}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := schedulingdb.New(tx)
 		appt, e := q.GetAppointment(ctx, schedulingdb.GetAppointmentParams{TenantID: tenantID, ID: id})
@@ -344,15 +344,18 @@ func (s *Service) CheckIn(ctx context.Context, id uuid.UUID, in scheduling.Check
 		// Billing gate: raise the default intake charge (routed). If any was raised the
 		// patient waits for payment — settlement enqueues them (advanceIfPaid). Otherwise
 		// (no default fee) enqueue immediately.
-		raised, e := s.billing.RaiseIntakeChargesTx(ctx, tx, billing.IntakeInput{
+		ids, e := s.billing.RaiseIntakeChargeIDsTx(ctx, tx, billing.IntakeInput{
 			PatientID: appt.PatientID, BranchID: appt.BranchID, DepartmentID: *appt.DepartmentID, ToTriage: in.ToTriage, ProviderID: prov,
 			AppointmentID: &id,
 		})
 		if e != nil {
 			return e
 		}
-		gated = raised > 0
-		if !gated {
+		// The desk needs to know WHICH charges this arrival created, so it can collect
+		// exactly this visit and not whatever else the patient owes.
+		out.ChargeIDs = ids
+		out.Gated = len(ids) > 0
+		if !out.Gated {
 			qe, e := q.CreateQueueEntry(ctx, schedulingdb.CreateQueueEntryParams{
 				TenantID: tenantID, BranchID: appt.BranchID, DepartmentID: *appt.DepartmentID, PatientID: appt.PatientID,
 				AppointmentID: &id, Stage: stage, AssignedProviderID: prov, Priority: int32(in.Priority), CreatedBy: actor,
@@ -363,18 +366,18 @@ func (s *Service) CheckIn(ctx context.Context, id uuid.UUID, in scheduling.Check
 			notifyQueue(ctx, q, tenantID, qe.BranchID, qe.DepartmentID)
 		}
 		return s.publisher.Publish(ctx, tx, &tenantID, "appointment", id, "scheduling.patient.checked_in",
-			map[string]any{"appointment_id": id, "patient_id": appt.PatientID, "gated": gated})
+			map[string]any{"appointment_id": id, "patient_id": appt.PatientID, "gated": out.Gated})
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return false, apperr.NotFound("APPOINTMENT_NOT_FOUND", "appointment not found")
+		return nil, apperr.NotFound("APPOINTMENT_NOT_FOUND", "appointment not found")
 	}
 	if ae, ok := apperr.As(err); ok {
-		return false, ae
+		return nil, ae
 	}
 	if err != nil {
-		return false, apperr.Internal(err)
+		return nil, apperr.Internal(err)
 	}
-	return gated, nil
+	return out, nil
 }
 
 // EnqueueWalkIn adds a patient to a department queue without an appointment.

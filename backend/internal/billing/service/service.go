@@ -438,6 +438,12 @@ func (s *Service) RaiseChargeTx(ctx context.Context, tx pgx.Tx, in billing.Charg
 // RaiseIntakeChargesTx raises the default-service charges (routed) for a patient
 // entering the clinic, so settlement gates the queue entry. Returns the count raised.
 func (s *Service) RaiseIntakeChargesTx(ctx context.Context, tx pgx.Tx, in billing.IntakeInput) (int, error) {
+	ids, err := s.RaiseIntakeChargeIDsTx(ctx, tx, in)
+	return len(ids), err
+}
+
+// RaiseIntakeChargeIDsTx does the raising and says which charges it created.
+func (s *Service) RaiseIntakeChargeIDsTx(ctx context.Context, tx pgx.Tx, in billing.IntakeInput) ([]uuid.UUID, error) {
 	tenantID, actor := actorOf(ctx)
 	q := billingdb.New(tx)
 	// A doctor-booked follow-up attended within its window is free: raise no intake
@@ -445,16 +451,17 @@ func (s *Service) RaiseIntakeChargesTx(ctx context.Context, tx pgx.Tx, in billin
 	if in.AppointmentID != nil {
 		cov, e := q.GetAppointmentCoverage(ctx, billingdb.GetAppointmentCoverageParams{TenantID: tenantID, ID: *in.AppointmentID})
 		if e != nil && !errors.Is(e, pgx.ErrNoRows) {
-			return 0, e
+			return nil, e
 		}
 		if e == nil && cov.IsFollowup && cov.FreeUntil != nil && !time.Now().After(*cov.FreeUntil) &&
 			cov.Status != "cancelled" && cov.Status != "no_show" {
-			return 0, nil
+			return nil, nil
 		}
 	}
+	out := []uuid.UUID{}
 	defaults, e := q.ListDefaultServices(ctx, tenantID)
 	if e != nil {
-		return 0, e
+		return nil, e
 	}
 	branch, dept := in.BranchID, in.DepartmentID
 	for _, d := range defaults {
@@ -463,13 +470,14 @@ func (s *Service) RaiseIntakeChargesTx(ctx context.Context, tx pgx.Tx, in billin
 			ServiceItemID: &d.ID, BranchID: &branch, DepartmentID: &dept, ToTriage: in.ToTriage, ProviderID: in.ProviderID, CreatedBy: actor,
 		})
 		if e != nil {
-			return 0, e
+			return nil, e
 		}
 		if e := s.publisher.Publish(ctx, tx, &tenantID, "charge", r.ID, "billing.charge.raised", map[string]any{"charge_id": r.ID, "patient_id": in.PatientID, "amount": r.Amount}); e != nil {
-			return 0, e
+			return nil, e
 		}
+		out = append(out, r.ID)
 	}
-	return len(defaults), nil
+	return out, nil
 }
 
 // ChargeStatusTx reports a charge's status for a pre-pay gate.
@@ -596,7 +604,7 @@ func (s *Service) SettleCharge(ctx context.Context, id uuid.UUID, in billing.Set
 		if e := payments.ClaimReference(ctx, tx, tenantID, railID, ref, receiptNo, &row.PatientID, amount, actor); e != nil {
 			return e
 		}
-		if e := advanceIfPaid(ctx, q, tenantID, actor, row.BranchID, row.DepartmentID, row.ToTriage, row.ProviderID, row.PatientID); e != nil {
+		if e := advanceIfPaid(ctx, tx, q, tenantID, actor, row.BranchID, row.DepartmentID, row.ToTriage, row.ProviderID, row.PatientID); e != nil {
 			return e
 		}
 		return s.publisher.Publish(ctx, tx, &tenantID, "charge", row.ID, "billing.charge.paid", map[string]any{"charge_id": row.ID})
@@ -633,7 +641,10 @@ func (s *Service) SettleVisit(ctx context.Context, patientID uuid.UUID, in billi
 		if e != nil {
 			return e
 		}
-		rows, e := q.SettleVisit(ctx, billingdb.SettleVisitParams{PaymentMethod: strPtr(method), SettledBy: actor, ReceiptNo: &no, TenantID: tenantID, PatientID: patientID})
+		rows, e := settleScoped(ctx, tx, q, settleScope{
+			tenantID: tenantID, patientID: patientID, method: method, actor: actor,
+			receiptNo: no, only: in.ChargeIDs,
+		})
 		if e != nil {
 			return e
 		}
@@ -651,7 +662,7 @@ func (s *Service) SettleVisit(ctx context.Context, patientID uuid.UUID, in billi
 			}
 		}
 		if routed != nil {
-			if e := advanceIfPaid(ctx, q, tenantID, actor, routed.BranchID, routed.DepartmentID, routed.ToTriage, routed.ProviderID, patientID); e != nil {
+			if e := advanceIfPaid(ctx, tx, q, tenantID, actor, routed.BranchID, routed.DepartmentID, routed.ToTriage, routed.ProviderID, patientID); e != nil {
 				return e
 			}
 		}
@@ -688,7 +699,7 @@ func (s *Service) WaiveCharge(ctx context.Context, id uuid.UUID, reason string) 
 		if e != nil {
 			return e
 		}
-		if e := advanceIfPaid(ctx, q, tenantID, actor, row.BranchID, row.DepartmentID, row.ToTriage, row.ProviderID, row.PatientID); e != nil {
+		if e := advanceIfPaid(ctx, tx, q, tenantID, actor, row.BranchID, row.DepartmentID, row.ToTriage, row.ProviderID, row.PatientID); e != nil {
 			return e
 		}
 		return s.publisher.Publish(ctx, tx, &tenantID, "charge", row.ID, "billing.charge.waived", map[string]any{"charge_id": row.ID, "reason": reason})
@@ -1266,16 +1277,29 @@ func money2(f float64) string { return strconv.FormatFloat(f, 'f', 2, 64) }
 // (e.g. registration + consultation) advance the patient exactly once, after the
 // last payment. Routing is only set on reception's visit charges, so non-visit
 // charges (a standalone procedure with no routing) never enqueue.
-func advanceIfPaid(ctx context.Context, q *billingdb.Queries, tenantID uuid.UUID, actor *uuid.UUID, branchID, departmentID *uuid.UUID, toTriage bool, providerID *uuid.UUID, patientID uuid.UUID) error {
+func advanceIfPaid(ctx context.Context, tx pgx.Tx, q *billingdb.Queries, tenantID uuid.UUID, actor *uuid.UUID, branchID, departmentID *uuid.UUID, toTriage bool, providerID *uuid.UUID, patientID uuid.UUID) error {
 	if branchID == nil || departmentID == nil {
 		return nil // not a routed visit charge
 	}
-	pending, e := q.CountPendingChargesByPatient(ctx, billingdb.CountPendingChargesByPatientParams{TenantID: tenantID, PatientID: patientID})
-	if e != nil {
+	// The gate is about THIS VISIT's fee, not about everything the patient has ever
+	// owed. Counting every pending charge meant an unrelated debt — a dental
+	// instalment from last month, say — kept a patient who had just paid today's
+	// consultation out of the queue, with nothing on any screen saying why. A clinic
+	// deciding not to see someone over an old balance is a care decision for a human,
+	// not a side effect of a COUNT.
+	//
+	// Routed charges (department set) are the ones raised to let a patient in; those
+	// are what must be clear. Raw pgx because sqlc cannot be regenerated here.
+	var pending int
+	if e := tx.QueryRow(ctx,
+		`SELECT count(*)::int FROM charges
+		  WHERE tenant_id = $1 AND patient_id = $2 AND status = 'pending'
+		    AND deleted_at IS NULL AND department_id IS NOT NULL`,
+		tenantID, patientID).Scan(&pending); e != nil {
 		return e
 	}
 	if pending > 0 {
-		return nil // patient still owes — don't advance yet
+		return nil // this visit is not paid for yet
 	}
 	active, e := q.CountActiveQueueByPatient(ctx, billingdb.CountActiveQueueByPatientParams{TenantID: tenantID, PatientID: patientID})
 	if e != nil {

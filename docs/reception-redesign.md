@@ -258,7 +258,22 @@ Each step is shippable; after step 2 the free-follow-up bug is already gone.
 
 ---
 
-## 7. Questions I need answered before building
+## 7. Decisions (taken 23 Aug, approved to proceed)
+
+1. **Old debt is surfaced, never folded in.** The strip shows what is owed and links
+   to it; today's payment stays one payment for today's visit. A receipt that quietly
+   mixes an old debt into a registration fee is a receipt nobody can reconcile, and it
+   would break the one-reference-one-payment rule the cashier now depends on.
+2. **Extra services on a covered follow-up: allowed.** Coverage waives the intake fee,
+   not everything. Add an X-ray and the payment block appears for the X-ray alone.
+3. **Checking in a covered follow-up needs `queue.manage` only.** No money changes
+   hands, so requiring `payment.collect` would stop a receptionist doing the one thing
+   that visit needs. Payment controls stay gated on `payment.collect`.
+4. **Seen lens: built.** Same query, one more filter, and it answers "has this person
+   already been today?" — which is asked constantly and currently cannot be.
+5. **Scoped to the active branch**, like every other operational screen.
+
+## 8. Questions that were open before those decisions
 
 1. **Old debt at reception.** Surface it with a link to the cashier (my default), or
    let the desk add it to today's payment in one receipt?

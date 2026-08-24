@@ -1,426 +1,533 @@
-import { useEffect, useState } from "react";
+// The front desk.
+//
+// This page used to be a form you filled from nothing: to receive a patient you had
+// to know their name and type it, choose a department from memory, choose a clinician
+// from memory, and tick a fee. It never mentioned the appointment the clinic had
+// booked weeks earlier — so an expected patient was processed as a walk-in, their
+// booking stayed "booked" and counted as a no-show that evening, and the clinic's own
+// rule that a doctor-booked follow-up is free inside its window could not fire,
+// because that rule needs the appointment and this page never had one.
+//
+// So the page is inverted. The day is the surface: who is expected, who is waiting,
+// who has been seen. Search is the fallback for everyone not on it. Each row carries
+// the three things the desk could not previously see — how late, what they owe, and
+// whether this visit is already covered — because each of those changes what happens
+// next, and all three were invisible at the exact moment they mattered.
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { HandCoins, Stethoscope, UserCheck, AlertTriangle } from "lucide-react";
-
-import { EMPTY_PAYMENT, PaymentRailPicker, usePaymentRails, type PaymentChoice, type PaymentRail } from "@/features/billing/PaymentRail";
+import { Link } from "react-router-dom";
+import { CheckCircle2, HandCoins, Search, UserPlus, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Segmented } from "@/components/ui/segmented";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
 import { useAuth } from "@/app/auth-context";
-import { listBranches, listDepartments, getSettings, listProviders } from "@/features/admin/api";
-import { listServices, providersForServices, raiseChargeBatch, settleVisit, waiveCharge, waiverReasons, patientCharges } from "@/features/billing/api";
-import { walkIn } from "@/features/scheduling/api";
-import { PatientCombobox } from "@/features/scheduling/components/BookingDialog";
+import { useDebounce } from "@/hooks/useDebounce";
+import { useIsLargeScreen } from "@/hooks/useMediaQuery";
+import { searchPatients, type PatientSummary } from "@/features/patients/api";
+import { listDepartments, listProviders, getSettings } from "@/features/admin/api";
+import {
+  listServices, patientCharges, raiseCharge, settleVisit, waiveCharge, waiverReasons,
+  type ServiceItem,
+} from "@/features/billing/api";
+import {
+  EMPTY_PAYMENT, PaymentRailPicker, paymentIncomplete, usePaymentRails, type PaymentChoice,
+} from "@/features/billing/PaymentRail";
+import {
+  checkInAppointment, receptionToday, walkIn, type ReceptionPatient,
+} from "@/features/scheduling/api";
+import { ArrivalRow, clock, coveredNow, day } from "@/features/scheduling/reception/ArrivalList";
 
-
-type SendOpts = { action: "cashier" | "collect" | "waive"; pay?: PaymentChoice; reason?: string };
+type Lens = "expected" | "waiting" | "seen";
+const etb = (n: number | string) => `ETB ${Number(n || 0).toFixed(2)}`;
 
 export function ReceptionPage() {
   const qc = useQueryClient();
-  const { can, activeBranchId, flagOn } = useAuth();
-  // A dental clinic doesn't triage or bill a per-visit consultation: reception just
-  // identifies the patient and sends them to a dentist (no charge, or an optional
-  // registration/visit fee). Billing happens later via the treatment plan.
-  const isDental = flagOn("dental");
-  // Whether this user can collect cash themselves (Cashier capability). If they
-  // can, reception collects inline; if not, charges hand off to the cashier.
+  const { can } = useAuth();
   const canCollect = can("payment.collect");
+  const [lens, setLens] = useState<Lens>("expected");
+  const [search, setSearch] = useState("");
+  const [picked, setPicked] = useState<ReceptionPatient | null>(null);
+  // One of the two, never both: a Dialog portals its overlay to the body, so a sheet
+  // hidden with `lg:hidden` still dimmed the desktop page behind the panel that was
+  // already open beside the list.
+  const wide = useIsLargeScreen();
 
-  const branches = useQuery({ queryKey: ["branches"], queryFn: listBranches });
-  const departments = useQuery({ queryKey: ["departments"], queryFn: listDepartments });
-  const settings = useQuery({ queryKey: ["settings"], queryFn: getSettings, retry: false });
-  // Clinician-only services are left out rather than shown and refused. The rule is
-  // enforced on the server either way; offering a button that always fails is just
-  // a slower way of saying no.
-  const services = useQuery({
-    queryKey: ["services-active"],
-    queryFn: () => listServices(true),
-    select: (rows) => rows.filter((s) => s.assignable_by !== "clinician"),
-  });
-  const reasons = useQuery({ queryKey: ["waiver-reasons"], queryFn: waiverReasons, enabled: canCollect });
+  // The day, refetched while the desk watches it: a booking made on another screen,
+  // or a patient the nurse just finished with, should appear without a reload.
+  const today = useQuery({ queryKey: ["reception-today"], queryFn: receptionToday, refetchInterval: 30_000 });
 
-  const [patient, setPatient] = useState<{ id: string; name: string } | null>(null);
-  const [dept, setDept] = useState("");
-  const [toTriage, setToTriage] = useState(false);
-  const [provider, setProvider] = useState("");
-  const [picked, setPicked] = useState<Record<string, boolean>>({});
-  const rails = usePaymentRails();
-  const [pay, setPay] = useState<PaymentChoice>(EMPTY_PAYMENT);
-  useEffect(() => {
-    const first = rails.data?.[0];
-    if (first && !pay.railId) setPay({ railId: first.id, method: first.key, reference: "" });
-  }, [rails.data, pay.railId]);
-  const [waiveOpen, setWaiveOpen] = useState(false);
-  const [waiveReason, setWaiveReason] = useState("");
-
-  const branchId = activeBranchId ?? branches.data?.[0]?.id;
-  // Hand off to a separate cashier when this user can't collect cash themselves.
-  const cashierMode = !canCollect;
-  // When the clinic requires triage (Settings → Patient flow), reception cannot send
-  // a patient straight to a doctor — every visit goes through triage first.
-  const triageRequired = !!settings.data?.triage_required;
-
-  useEffect(() => {
-    if (services.data && Object.keys(picked).length === 0) {
-      const init: Record<string, boolean> = {};
-      services.data.forEach((s) => { if (s.is_default) init[s.id] = true; });
-      if (Object.keys(init).length) setPicked(init);
-    }
-  }, [services.data, picked]);
-
-  useEffect(() => {
-    // Dental never triages — always straight to the dentist.
-    setToTriage(isDental ? false : !!settings.data?.triage_required);
-  }, [settings.data?.triage_required, isDental]);
-
-  const chosen = (services.data ?? []).filter((s) => picked[s.id]);
-  const total = chosen.reduce((sum, s) => sum + (parseFloat(s.price) || 0), 0);
-  const chosenIds = chosen.map((s) => s.id);
-
-  // The assign dropdown lists only staff who provide the selected service(s). For a
-  // dental clinic there may be no service at all, so list the assignable clinicians
-  // (dentists) instead — via /providers, which reception can read (queue.manage),
-  // unlike the full staff directory (user.read, which a receptionist/cashier lacks).
-  const dentists = useQuery({ queryKey: ["providers"], queryFn: listProviders, enabled: isDental });
-  const provQ = useQuery({
-    queryKey: ["service-providers", [...chosenIds].sort().join(",")],
-    queryFn: () => providersForServices(chosenIds),
-    enabled: !isDental && !toTriage && chosenIds.length > 0,
-  });
-  const providerList = isDental ? (dentists.data ?? []) : (provQ.data ?? []);
-
-  // Drop a stale provider selection when it's no longer offered for the chosen services.
-  useEffect(() => {
-    if (provider && !providerList.some((p) => p.id === provider)) setProvider("");
-  }, [providerList, provider]);
-
-  // Duplicate-registration guard: surface what the selected patient is already
-  // waiting to pay at the cashier, so reception doesn't send them through twice.
-  const patientPending = useQuery({
-    queryKey: ["patient-pending", patient?.id],
-    queryFn: () => patientCharges(patient!.id),
-    enabled: !!patient,
-    select: (led) => led.rows.filter((r) => r.status === "pending"),
-  });
-  const pendingList = patientPending.data ?? [];
-  const hasPending = pendingList.length > 0;
-  const pendingTotal = pendingList.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
-
-  const resetForm = () => {
-    setPatient(null);
-    setDept("");
-    setProvider("");
-    setPicked({});
-    setWaiveReason("");
-  };
-
-  const send = useMutation({
-    mutationFn: async (opts: SendOpts) => {
-      const routing = {
-        branch_id: branchId!,
-        department_id: dept,
-        to_triage: toTriage,
-        provider_id: !toTriage && provider ? provider : undefined,
-      };
-      // No services chosen → straight into the queue, nothing to pay.
-      if (chosen.length === 0) {
-        await walkIn({ patient_id: patient!.id, ...routing });
-        return;
-      }
-      // Raise ALL charges in one atomic batch: the server rejects a duplicate
-      // registration (pending charges / active visit) before writing any line,
-      // so the same patient can't be sent to the cashier twice. The patient
-      // auto-advances server-side once nothing is owed.
-      const { ids } = await raiseChargeBatch({
-        patient_id: patient!.id,
-        branch_id: routing.branch_id,
-        department_id: routing.department_id,
-        to_triage: routing.to_triage,
-        provider_id: routing.provider_id,
-        items: chosen.map((s) => ({ service_item_id: s.id, source: "consultation", description: s.name, amount: parseFloat(s.price) || 0 })),
-      });
-      if (opts.action === "collect") {
-        // ONE payment, one receipt. Settling each line separately gave a two-service
-        // registration two receipt numbers for a single handover of money, and only
-        // one of them could carry the reference. The visit checkout settles them
-        // together — which is what actually happened at the desk. Safe here because
-        // the button is disabled while the patient has any other pending charge, so
-        // the only ones outstanding are the lines just raised.
-        const p = opts.pay ?? EMPTY_PAYMENT;
-        await settleVisit(patient!.id, {
-          rail_id: p.railId || undefined,
-          method: p.method,
-          reference: p.reference,
-        });
-      } else if (opts.action === "waive") {
-        for (const cid of ids) await waiveCharge(cid, opts.reason!);
-      }
-      // action === "cashier" → leave the charges pending for the cashier.
-    },
-    onSuccess: (_d, opts) => {
-      const dest = isDental ? "the dentist" : toTriage ? "triage" : "the doctor's queue";
-      let msg: string;
-      if (chosen.length === 0) msg = `${patient!.name} sent to ${dest}`;
-      else if (opts.action === "cashier") msg = `${patient!.name} → cashier (ETB ${total.toFixed(2)} to collect)`;
-      else if (opts.action === "waive") msg = `${patient!.name}: fee waived · sent to ${dest}`;
-      else msg = `${patient!.name}: ETB ${total.toFixed(2)} collected (${railLabel(rails.data, opts.pay)}) · sent to ${dest}`;
-      toast.success(msg);
-      setWaiveOpen(false);
-      resetForm();
-      qc.invalidateQueries({ queryKey: ["queue"] });
-      qc.invalidateQueries({ queryKey: ["pending-charges"] });
-      qc.invalidateQueries({ queryKey: ["patient-pending"] });
-    },
-    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not register the visit"),
+  const debounced = useDebounce(search, 300);
+  const found = useQuery({
+    queryKey: ["reception-search", debounced],
+    queryFn: () => searchPatients(debounced, 1, 12),
+    enabled: debounced.trim().length >= 2,
   });
 
-  const routeReady = !!patient && !!dept && !!branchId && (toTriage || !!provider);
-  const hasFee = chosen.length > 0;
-  const destWord = isDental ? "dentist" : toTriage ? "triage" : "doctor";
+  const lists = today.data;
+  const rows = (lists?.[lens] ?? []) as ReceptionPatient[];
+  const searching = debounced.trim().length >= 2;
 
-  // The primary action, built once and placed twice: in the card where desktop
-  // expects it, and in the sticky bottom bar phones need — on a 390px screen the
-  // card copy sits ~2.5 screens down, which is how visits end up half-registered.
-  // `withAmount` puts the total in the label only where nothing else states it
-  // (the desktop card); the sticky bar already shows the total as text, and the
-  // long "Collect ETB 300.00 & …" label painted past the pill edge on phones.
-  // The truncate span is a guard, not the plan — labels are sized to fit.
-  const sendAction = (withAmount: boolean) => !cashierMode && hasFee ? (
-    <Button className="min-w-0 w-full" disabled={!routeReady || hasPending} loading={send.isPending} onClick={() => send.mutate({ action: "collect", pay })}>
-      <HandCoins className="h-4 w-4" /> <span className="min-w-0 truncate">{withAmount ? `Collect ETB ${total.toFixed(2)} & send to ${destWord}` : `Collect & send to ${destWord}`}</span>
-    </Button>
-  ) : (
-    <Button className="min-w-0 w-full" disabled={!routeReady || hasPending} loading={send.isPending} onClick={() => send.mutate({ action: "cashier" })}>
-      <span className="min-w-0 truncate">{hasFee ? "Send to cashier" : `Send to ${destWord}`}</span>
-    </Button>
-  );
+  // Keep the selected person in step with fresh data (their owed figure may change,
+  // and once received they move from Expected to Waiting).
+  useEffect(() => {
+    if (!picked || !lists) return;
+    const all = [...lists.expected, ...lists.waiting, ...lists.seen];
+    const still = all.find((r) =>
+      (picked.appointment_id && r.appointment_id === picked.appointment_id) ||
+      (!picked.appointment_id && r.patient_id === picked.patient_id && !r.appointment_id));
+    if (still) setPicked(still);
+  }, [lists]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
-        <h1>Reception</h1>
-        <p className="text-sm text-muted-foreground">
-          {isDental
-            ? "Find the patient and send them to a dentist. The registration/visit fee is collected up front — treatment is billed later from the plan."
-            : "Register the visit, choose the service(s) the patient is here for, and route them."}
+        <h1 className="text-h1">Reception</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Everyone booked today, everyone waiting. Search for anyone who is not on the list.
         </p>
       </div>
 
-      {/* min-w-0 on the cards: grid children refuse to shrink below content width,
-          so one long service name pushed a card past the 390px gutters. */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Patient + services */}
-        <Card className="min-w-0">
-          <CardHeader>
-            <CardTitle>Patient & services</CardTitle>
-            <CardDescription>
-              Find the patient, then pick what they're here for. {cashierMode ? "Payment is taken at the cashier." : "You collect the payment here."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-1.5">
-              <Label>Patient</Label>
-              <PatientCombobox value={patient} onSelect={setPatient} />
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] xl:grid-cols-[minmax(0,1fr)_minmax(0,30rem)]">
+        {/* ---------------- the day ---------------- */}
+        <Card>
+          <CardContent className="space-y-3 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <Segmented
+                ariaLabel="Which patients"
+                value={lens}
+                onChange={(v) => setLens(v as Lens)}
+                options={[
+                  { value: "expected", label: "Expected", badge: lists?.expected.length ?? 0 },
+                  { value: "waiting", label: "Waiting", badge: lists?.waiting.length ?? 0 },
+                  { value: "seen", label: "Seen", badge: lists?.seen.length ?? 0 },
+                ]}
+              />
             </div>
 
-            {hasPending && (
-              <div className="space-y-2 rounded-md border border-warning/40 bg-warning/10 p-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-warning">
-                  <AlertTriangle className="h-4 w-4" />
-                  Already at the cashier
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {patient?.name} already has {pendingList.length} unpaid charge{pendingList.length > 1 ? "s" : ""} waiting to be paid. Don't register the visit again — settle or void {pendingList.length > 1 ? "them" : "it"} at the cashier first.
-                </p>
-                <ul className="space-y-1 rounded border bg-background/60 p-2 text-xs">
-                  {pendingList.map((r) => (
-                    <li key={r.id} className="flex items-center justify-between gap-2">
-                      <span className="truncate">{r.description}</span>
-                      <span className="whitespace-nowrap font-mono text-muted-foreground">{r.currency} {r.amount}</span>
-                    </li>
-                  ))}
-                  <li className="flex items-center justify-between gap-2 border-t pt-1 font-semibold">
-                    <span>Pending total</span>
-                    <span className="whitespace-nowrap font-mono">ETB {pendingTotal.toFixed(2)}</span>
-                  </li>
-                </ul>
+            <div className="flex gap-2">
+              <div className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  className="pl-8"
+                  placeholder="Search any patient — name, card number…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
               </div>
-            )}
-
-            <div className="space-y-2">
-              <Label>Services</Label>
-              <div className="max-h-56 space-y-1 overflow-auto rounded-md border p-1">
-                {/* min-h-11 below md: each row is the tap target for its checkbox;
-                    py-1.5 alone is ~32px, under the touch floor. */}
-                {(services.data ?? []).map((s) => (
-                  <label key={s.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted max-md:min-h-11">
-                    <input
-                      type="checkbox"
-                      checked={!!picked[s.id]}
-                      onChange={(e) => setPicked({ ...picked, [s.id]: e.target.checked })}
-                    />
-                    <span className="flex-1">{s.name}{s.is_default ? <span className="ml-1.5 text-xs text-primary">· default</span> : null}</span>
-                    <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">{s.currency} {s.price}</span>
-                  </label>
-                ))}
-                {(services.data?.length ?? 0) === 0 && (
-                  <p className="px-2 py-3 text-xs text-muted-foreground">No services in the catalog — add them in Billing → Service catalog.</p>
-                )}
-              </div>
-              <div className="flex items-center justify-between px-1 text-sm">
-                <span className="text-muted-foreground">{chosen.length} selected</span>
-                <span className="whitespace-nowrap font-semibold tabular-nums">Total: ETB {total.toFixed(2)}</span>
-              </div>
-              {chosen.length === 0 && (
-                <p className="px-1 text-xs text-muted-foreground">No service selected — the patient goes straight to the queue with no charge.</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Routing + payment */}
-        <Card className="min-w-0">
-          <CardHeader>
-            <CardTitle>Route patient</CardTitle>
-            <CardDescription>{isDental ? "Send the patient to a dentist." : "Send to triage, or straight to a doctor."}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-1.5">
-              <Label>Department</Label>
-              <Select value={dept} onValueChange={setDept}>
-                {/* @branch-scoped: only the active branch's departments */}
-                <SelectTrigger>
-                  <SelectValue placeholder="Select department" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(departments.data ?? []).filter((d) => !activeBranchId || d.branch_id === activeBranchId).map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Button asChild variant="outline"><Link to="/patients?new=1"><UserPlus className="h-4 w-4" /> New</Link></Button>
             </div>
 
-            {!isDental && (
+            {/* Search takes over the list while it has a term: the desk is looking for
+                someone specific and the day is not the answer. */}
+            {searching ? (
               <div className="space-y-2">
-                <Label>Next step</Label>
-                {triageRequired ? (
-                  <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
-                    <Stethoscope className="h-4 w-4 text-brand" />
-                    <span>Triage first <span className="text-muted-foreground">— required by clinic settings</span></span>
-                  </div>
-                ) : (
-                  <div className="flex gap-2">
-                    <Button type="button" variant={toTriage ? "default" : "outline"} className="flex-1" onClick={() => setToTriage(true)}>
-                      <Stethoscope /> Triage first
-                    </Button>
-                    <Button type="button" variant={!toTriage ? "default" : "outline"} className="flex-1" onClick={() => setToTriage(false)}>
-                      <UserCheck /> Straight to doctor
-                    </Button>
-                  </div>
+                <p className="text-xs text-muted-foreground">
+                  {found.isFetching ? "Searching…" : `${found.data?.items.length ?? 0} matching`}
+                </p>
+                {(found.data?.items ?? []).map((p) => (
+                  <button key={p.id} type="button"
+                    onClick={() => { setPicked(asWalkIn(p)); setSearch(""); }}
+                    className="w-full rounded-lg border p-3 text-left transition-colors hover:border-brand/40 hover:bg-accent/40 max-md:min-h-14">
+                    <div className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="min-w-0 flex-1 truncate font-medium">{fullName(p)}</span>
+                      <span className="font-mono text-xs text-muted-foreground">{p.mrn}</span>
+                    </div>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {p.gender}{p.dob ? ` · ${p.dob}` : ""}{p.phone ? ` · ${p.phone}` : ""}
+                    </p>
+                  </button>
+                ))}
+                {!found.isFetching && (found.data?.items.length ?? 0) === 0 && (
+                  <p className="py-6 text-center text-sm text-muted-foreground">
+                    Nobody matches. <Link to="/patients?new=1" className="font-medium text-brand underline">Register them</Link>.
+                  </p>
                 )}
               </div>
-            )}
-
-            {!toTriage && (
-              <div className="space-y-1.5">
-                <Label>{isDental ? "Dentist" : "Provider"}</Label>
-                <Select value={provider} onValueChange={setProvider} disabled={providerList.length === 0}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={isDental ? "Assign a dentist" : chosenIds.length === 0 ? "Pick a service first" : "Assign a provider"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {providerList.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.full_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {!isDental && !toTriage && chosenIds.length > 0 && providerList.length === 0 && !provQ.isFetching && (
-                  <p className="text-xs text-warning">No staff are assigned to the selected service(s). Assign providers in Billing → Service catalog, or send to triage.</p>
-                )}
-              </div>
-            )}
-
-            {/* --- payment / send --- */}
-            {/* max-lg:hidden on each in-card copy: below lg the same button lives
-                in the sticky bottom bar instead — two live "collect money" buttons
-                on one phone screen is one too many. */}
-            {cashierMode ? (
-              <>
-                <div className="max-lg:hidden">{sendAction(true)}</div>
-                {hasFee && (
-                  <p className="text-center text-xs text-muted-foreground">Raises a pending payment; the patient advances once the cashier settles it.</p>
-                )}
-              </>
-            ) : hasFee ? (
-              <div className="space-y-2 rounded-md border bg-muted/30 p-3">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs">Collect payment</Label>
-                  <span className="whitespace-nowrap font-mono text-sm font-semibold">ETB {total.toFixed(2)}</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="min-w-0 flex-1">
-                    <PaymentRailPicker rails={rails.data} value={pay} onChange={setPay} compact />
-                  </div>
-                  <Button variant="outline" disabled={!routeReady || hasPending} onClick={() => setWaiveOpen(true)}>Waive…</Button>
-                </div>
-                <div className="max-lg:hidden">{sendAction(true)}</div>
-              </div>
+            ) : today.isLoading ? (
+              <div className="space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-20 w-full" />)}</div>
+            ) : rows.length === 0 ? (
+              <p className="py-10 text-center text-sm text-muted-foreground">
+                {lens === "expected" ? "Nobody booked today — search for a walk-in."
+                  : lens === "waiting" ? "Nobody is waiting."
+                    : "Nobody has been seen yet today."}
+              </p>
             ) : (
-              <div className="max-lg:hidden">{sendAction(true)}</div>
+              <div className="space-y-2">
+                {rows.map((p) => (
+                  <ArrivalRow key={p.appointment_id || p.patient_id} p={p} lens={lens}
+                    selected={picked?.patient_id === p.patient_id && picked?.appointment_id === p.appointment_id}
+                    onPick={() => setPicked(p)} />
+                ))}
+              </div>
             )}
           </CardContent>
         </Card>
-      </div>
 
-      {/* Below lg the cards stack and the send/collect button lands ~2.5 screens
-          down; pin the decision — the total (shown once, here) + the action — to the bottom
-          of the screen. Sticky in the page flow (not fixed) so it settles into its
-          natural place at the end of the page; below md it sits up by the tab
-          bar's height (+ safe area) because the fixed MobileNav owns bottom-0. */}
-      <div className="sticky bottom-0 z-10 flex items-center gap-3 border-t bg-card p-3 max-md:bottom-[calc(4rem+env(safe-area-inset-bottom))] lg:hidden">
-        <div className="shrink-0">
-          <p className="text-xs text-muted-foreground">Total</p>
-          <p className="whitespace-nowrap font-mono text-sm font-semibold tabular-nums">ETB {total.toFixed(2)}</p>
+        {/* ---------------- the one person ---------------- */}
+        {/* Desktop keeps the panel beside the list; below lg it becomes a sheet, so a
+            phone is never scrolling a form to find the list it came from. */}
+        <div className="max-lg:hidden">
+          {wide && picked ? (
+            <ReceivePanel key={panelKey(picked)} p={picked} canCollect={canCollect}
+              onDone={() => { setPicked(null); qc.invalidateQueries({ queryKey: ["reception-today"] }); }} />
+          ) : (
+            <Card className="h-full border-dashed">
+              <CardContent className="flex h-full min-h-[18rem] flex-col items-center justify-center gap-2 p-6 text-center">
+                <Users className="h-8 w-8 text-muted-foreground/50" />
+                <p className="text-sm font-medium">Pick someone from today's list</p>
+                <p className="max-w-xs text-xs text-muted-foreground">
+                  Or search for a walk-in. Everything you need to receive them appears here.
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </div>
-        <div className="min-w-0 flex-1">{sendAction(false)}</div>
       </div>
 
-      {/* Waive dialog (reception-collect mode) */}
-      <Dialog open={waiveOpen} onOpenChange={setWaiveOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Waive the fee</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">Sending {patient?.name} through without charging ETB {total.toFixed(2)} — record why.</p>
-          <div className="space-y-1.5">
-            <Label>Reason (required)</Label>
-            <Select value={waiveReason} onValueChange={setWaiveReason}>
-              <SelectTrigger><SelectValue placeholder="Why is this waived?" /></SelectTrigger>
-              <SelectContent>
-                {(reasons.data ?? []).map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setWaiveOpen(false)}>Cancel</Button>
-            <Button disabled={!waiveReason || hasPending} loading={send.isPending} onClick={() => send.mutate({ action: "waive", reason: waiveReason })}>
-              Waive &amp; send
-            </Button>
-          </DialogFooter>
+      <Dialog open={!wide && !!picked} onOpenChange={(o) => !o && setPicked(null)}>
+        <DialogContent fullOnMobile>
+          <DialogHeader><DialogTitle>Receive patient</DialogTitle></DialogHeader>
+          {!wide && picked && (
+            <ReceivePanel key={panelKey(picked)} p={picked} canCollect={canCollect} bare
+              onDone={() => { setPicked(null); qc.invalidateQueries({ queryKey: ["reception-today"] }); }} />
+          )}
         </DialogContent>
       </Dialog>
     </div>
   );
 }
 
-/** What to call the method in the confirmation toast. */
-function railLabel(rails: PaymentRail[] | undefined, pay?: PaymentChoice) {
-  return rails?.find((r) => r.id === pay?.railId)?.label ?? pay?.method ?? "cash";
+/**
+ * Receiving one patient: what it costs, where they go, and the one button that does it.
+ *
+ * A booked patient goes through the appointment's own check-in, which is what marks
+ * the booking arrived, links the visit to it, and lets the covered-follow-up rule
+ * fire. A walk-in keeps the path it always had.
+ */
+function ReceivePanel({ p, canCollect, onDone, bare }: {
+  p: ReceptionPatient; canCollect: boolean; onDone: () => void; bare?: boolean;
+}) {
+  const qc = useQueryClient();
+  const booked = !!p.appointment_id;
+  const received = !!p.waiting_since;
+  const covered = coveredNow(p);
+
+  const settings = useQuery({ queryKey: ["settings"], queryFn: getSettings, retry: false });
+  const departments = useQuery({ queryKey: ["departments"], queryFn: listDepartments });
+  const providers = useQuery({ queryKey: ["providers"], queryFn: listProviders });
+  const services = useQuery({ queryKey: ["services"], queryFn: () => listServices() });
+  const reasons = useQuery({ queryKey: ["waiver-reasons"], queryFn: waiverReasons, enabled: canCollect });
+  const rails = usePaymentRails();
+
+  const triageRequired = !!settings.data?.triage_required;
+  const [dept, setDept] = useState(p.department_id ?? "");
+  const [provider, setProvider] = useState(p.provider_id ?? "");
+  const [extras, setExtras] = useState<Record<string, boolean>>({});
+  const [pay, setPay] = useState<PaymentChoice>(EMPTY_PAYMENT);
+  const [waiveOpen, setWaiveOpen] = useState(false);
+  const [waiveReason, setWaiveReason] = useState("");
+
+  useEffect(() => {
+    const first = rails.data?.[0];
+    if (first && !pay.railId) setPay({ railId: first.id, method: first.key, reference: "" });
+  }, [rails.data, pay.railId]);
+
+  // What this visit costs is what the server will actually raise: the clinic's
+  // DEFAULT services. (The card fee is a separate, older concept — reading it here
+  // showed "ETB 0.00" for a patient who owes the 100 ETB registration fee.) Coverage
+  // waives exactly those, which is the rule RaiseIntakeChargesTx applies.
+  const defaults = useMemo(
+    () => (services.data ?? []).filter((s: ServiceItem) => s.is_default),
+    [services.data],
+  );
+  const chosenExtras = useMemo(
+    () => (services.data ?? []).filter((s: ServiceItem) => extras[s.id] && !s.is_default),
+    [services.data, extras],
+  );
+  const extrasTotal = chosenExtras.reduce((a, s) => a + (parseFloat(s.price) || 0), 0);
+  const feeDue = covered ? 0 : defaults.reduce((a, s) => a + (parseFloat(s.price) || 0), 0);
+  const total = feeDue + extrasTotal;
+  const routeReady = !!dept && (triageRequired || !!provider || booked);
+  const mustPay = total > 0.005;
+  const blocked = mustPay && canCollect && paymentIncomplete(rails.data, pay);
+
+  const receive = useMutation({
+    mutationFn: async (mode: "collect" | "cashier") => {
+      const routing = {
+        to_triage: triageRequired,
+        provider_id: !triageRequired && provider ? provider : undefined,
+      };
+      // Only what THIS arrival raised gets collected. A patient who also owes 1,200
+      // from last month must not have it swept into a receipt for a 300 ETB visit.
+      const mine: string[] = [];
+      if (booked) {
+        // The appointment's own door: marks it arrived and applies the
+        // covered-follow-up rule that reception could never reach.
+        const res = await checkInAppointment(p.appointment_id!, routing);
+        mine.push(...res.charge_ids);
+      } else if (chosenExtras.length === 0 && !mustPay) {
+        await walkIn({ patient_id: p.patient_id, branch_id: "", department_id: dept, ...routing });
+      }
+      for (const s of chosenExtras) {
+        const { id: cid } = await raiseCharge({
+          patient_id: p.patient_id, service_item_id: s.id, source: "consultation",
+          description: s.name, amount: parseFloat(s.price) || 0,
+          department_id: dept || undefined, ...routing,
+        });
+        mine.push(cid);
+      }
+      if (mode === "collect" && mine.length > 0) {
+        await settleVisit(p.patient_id, {
+          rail_id: pay.railId || undefined, method: pay.method, reference: pay.reference,
+          charge_ids: mine,
+        });
+      }
+    },
+    onSuccess: (_d, mode) => {
+      toast.success(mode === "collect" && mustPay
+        ? `${p.name}: ${etb(total)} collected · sent through`
+        : mustPay ? `${p.name} sent to the cashier` : `${p.name} checked in`);
+      qc.invalidateQueries({ queryKey: ["reception-today"] });
+      qc.invalidateQueries({ queryKey: ["pending-charges"] });
+      qc.invalidateQueries({ queryKey: ["queue"] });
+      onDone();
+    },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not receive this patient"),
+  });
+
+  const body = (
+    <div className="space-y-4">
+      {/* who */}
+      <div>
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          <h2 className="text-lg font-semibold">{p.name}</h2>
+          <span className="font-mono text-xs text-muted-foreground">{p.mrn}</span>
+        </div>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          {p.age > 0 && `${p.age}y`}{p.sex ? ` · ${p.sex}` : ""}
+          {p.phone && <> · <a href={`tel:${p.phone}`} className="hover:underline">{p.phone}</a></>}
+        </p>
+        {booked && p.starts_at && (
+          <p className="mt-1 text-sm">
+            Booked <b>{clock(p.starts_at)}</b>
+            {p.provider_name && <> with <b>{p.provider_name}</b></>}
+            {p.reason && <span className="text-muted-foreground"> · {p.reason}</span>}
+          </p>
+        )}
+      </div>
+
+      {received ? (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+          Already received — waiting since {clock(p.waiting_since!)}
+          {p.department_name && ` for ${p.department_name}`}.
+        </div>
+      ) : (
+        <>
+          {/* what it costs */}
+          {covered ? (
+            <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+              <p className="flex items-center gap-1.5 text-sm font-semibold text-emerald-900">
+                <CheckCircle2 className="h-4 w-4" /> No fee — covered follow-up
+              </p>
+              <p className="mt-0.5 text-xs text-emerald-800">
+                The doctor booked this follow-up; it is free until {day(p.free_until!)}. Nothing to take.
+              </p>
+            </div>
+          ) : canCollect ? (
+            <FeeBlock defaults={defaults} extrasTotal={extrasTotal} total={total} />
+          ) : null}
+
+          {/* anything extra done at the desk */}
+          {canCollect && (services.data?.length ?? 0) > 0 && (
+            <details className="rounded-md border px-3 py-2">
+              <summary className="cursor-pointer text-sm font-medium">
+                Add a service{chosenExtras.length > 0 && ` · ${chosenExtras.length} added`}
+              </summary>
+              <div className="mt-2 space-y-1">
+                {(services.data ?? []).map((s: ServiceItem) => (
+                  <label key={s.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 text-sm hover:bg-muted/50 max-md:min-h-10">
+                    <input type="checkbox" checked={!!extras[s.id]}
+                      onChange={(e) => setExtras((x) => ({ ...x, [s.id]: e.target.checked }))} />
+                    <span className="min-w-0 flex-1 truncate">{s.name}</span>
+                    <span className="shrink-0 font-mono text-xs">{etb(s.price)}</span>
+                  </label>
+                ))}
+              </div>
+            </details>
+          )}
+
+          {/* old debt: surfaced, never folded into today's payment */}
+          {Number(p.owed || 0) > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <span className="min-w-0 flex-1">
+                Owes <b>{etb(p.owed!)}</b> from earlier visits
+                {p.owed_oldest_days ? ` · oldest ${p.owed_oldest_days} days` : ""}
+              </span>
+              <Button asChild size="sm" variant="outline"><Link to="/cashier">See it</Link></Button>
+            </div>
+          )}
+
+          {/* where they go */}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Department</Label>
+              <Select value={dept} onValueChange={setDept}>
+                <SelectTrigger><SelectValue placeholder="Choose" /></SelectTrigger>
+                <SelectContent>
+                  {(departments.data ?? []).map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            {!triageRequired && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Clinician</Label>
+                <Select value={provider} onValueChange={setProvider}>
+                  <SelectTrigger><SelectValue placeholder={booked ? p.provider_name || "Choose" : "Choose"} /></SelectTrigger>
+                  <SelectContent>
+                    {(providers.data ?? []).map((u) => <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          {triageRequired && (
+            <p className="text-xs text-muted-foreground">This clinic sends every patient through triage first.</p>
+          )}
+
+          {/* how they pay */}
+          {mustPay && canCollect && (
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Payment</Label>
+              <PaymentRailPicker rails={rails.data} value={pay} onChange={setPay}
+                expected={total.toFixed(2)} patientId={p.patient_id} compact />
+            </div>
+          )}
+
+          {/* the exits, named for what they do */}
+          <div className="space-y-2">
+            <Button className="w-full" disabled={!routeReady || blocked} loading={receive.isPending}
+              onClick={() => receive.mutate("collect")}>
+              {mustPay ? <><HandCoins className="h-4 w-4" /> Collect {etb(total)} & send through</>
+                : <><CheckCircle2 className="h-4 w-4" /> Check in</>}
+            </Button>
+            {mustPay && (
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" disabled={!routeReady} loading={receive.isPending}
+                  onClick={() => receive.mutate("cashier")}>Send to cashier</Button>
+                {canCollect && (
+                  <Button variant="ghost" onClick={() => setWaiveOpen(true)}>Waive…</Button>
+                )}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      <WaiveDialog open={waiveOpen} onClose={() => setWaiveOpen(false)} reasons={reasons.data ?? []}
+        value={waiveReason} onChange={setWaiveReason} patient={p} onDone={onDone} />
+    </div>
+  );
+
+  if (bare) return body;
+  return <Card><CardContent className="p-4">{body}</CardContent></Card>;
 }
+
+/** What this visit costs, line by line — the same services the server will raise. */
+function FeeBlock({ defaults, extrasTotal, total }: { defaults: ServiceItem[]; extrasTotal: number; total: number }) {
+  if (defaults.length === 0 && extrasTotal <= 0) {
+    return (
+      <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+        <p className="font-medium">No fee for this visit</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">This clinic charges nothing to be seen.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-md border px-3 py-2">
+      {defaults.map((s) => (
+        <div key={s.id} className="flex items-baseline justify-between gap-2 text-sm">
+          <span className="min-w-0 truncate text-muted-foreground">{s.name}</span>
+          <span className="shrink-0 font-mono">{etb(s.price)}</span>
+        </div>
+      ))}
+      {extrasTotal > 0 && (
+        <div className="mt-1 flex items-baseline justify-between gap-2 text-sm">
+          <span className="text-muted-foreground">Added services</span>
+          <span className="font-mono">{etb(extrasTotal)}</span>
+        </div>
+      )}
+      <div className="mt-1.5 flex items-baseline justify-between gap-2 border-t pt-1.5 text-sm font-semibold">
+        <span>Total</span><span className="font-mono">{etb(total)}</span>
+      </div>
+    </div>
+  );
+}
+
+/** Free, on purpose, with a reason — the only way a visit costs nothing without payment. */
+function WaiveDialog({ open, onClose, reasons, value, onChange, patient, onDone }: {
+  open: boolean; onClose: () => void; reasons: string[]; value: string;
+  onChange: (s: string) => void; patient: ReceptionPatient; onDone: () => void;
+}) {
+  const qc = useQueryClient();
+  const waive = useMutation({
+    mutationFn: async () => {
+      const ledger = await patientCharges(patient.patient_id);
+      const open = ledger.rows.filter((c) => c.status === "pending");
+      for (const c of open) await waiveCharge(c.id, value);
+    },
+    onSuccess: () => {
+      toast.success(`${patient.name}: fee waived`);
+      qc.invalidateQueries({ queryKey: ["reception-today"] });
+      onClose(); onDone();
+    },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not waive it"),
+  });
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Waive the fee for {patient.name}?</DialogTitle></DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          Recorded as a decision, with your name and the reason — not as a bill nobody raised.
+        </p>
+        <div className="space-y-1.5">
+          <Label htmlFor="waive-why">Reason</Label>
+          <Select value={value} onValueChange={onChange}>
+            <SelectTrigger id="waive-why"><SelectValue placeholder="Why is this free?" /></SelectTrigger>
+            <SelectContent>
+              {reasons.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={!value} loading={waive.isPending} onClick={() => waive.mutate()}>Waive the fee</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** A patient found by search has no booking — they are a walk-in until told otherwise. */
+function asWalkIn(p: PatientSummary): ReceptionPatient {
+  return {
+    patient_id: p.id, name: fullName(p), mrn: p.mrn, age: ageOf(p.dob), sex: p.gender, phone: p.phone,
+    is_followup: false, late_minutes: 0,
+  };
+}
+
+const fullName = (p: PatientSummary) => [p.first_name, p.last_name].filter(Boolean).join(" ");
+function ageOf(dob?: string) {
+  if (!dob) return 0;
+  const d = new Date(dob);
+  return Math.max(0, Math.floor((Date.now() - d.getTime()) / (365.25 * 864e5)));
+}
+
+const panelKey = (p: ReceptionPatient) => `${p.patient_id}:${p.appointment_id ?? "walkin"}`;
