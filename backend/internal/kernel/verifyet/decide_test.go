@@ -1,6 +1,9 @@
 package verifyet
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func good() *Result {
 	return &Result{
@@ -94,5 +97,64 @@ func TestDecideSkipsAmountOnlyWhenAsked(t *testing.T) {
 	}
 	if v := Decide(r, "1000"); v.State != Review {
 		t.Fatalf("an expectation must be enforced, got %s", v.State)
+	}
+}
+
+// The live failure this ordering exists for: reference DHO84O8X9U, 25 Aug 2026. The
+// bank confirmed a real 150.00 payment into 2519****4531 — not the clinic's account —
+// against a 100.00 bill. Both gates failed. The desk was shown only the amount, as a
+// "needs a second look", with Collect still enabled, because the amount gate was
+// evaluated first. Money to a stranger's account must stop the desk.
+func TestDecideRejectsAStrangersAccountEvenWhenTheAmountIsAlsoWrong(t *testing.T) {
+	r := good()
+	r.Amount = "150"
+	r.ReceiverAccount = "2519****4531"
+	r.Settlement = &Settlement{
+		Matched: false, MatchType: "unmatched", MatchConfidence: "none",
+		ReceiverAccount: "2519****4531", CandidateCount: 1, Reason: "candidate_account_mismatch",
+	}
+	v := Decide(r, "100")
+	if v.State != Reject {
+		t.Fatalf("a payment into another account must reject, got %s (%s)", v.State, v.Reason)
+	}
+	// The account is the reason the desk is stopped, so it has to lead.
+	if !strings.HasPrefix(v.Reason, "That payment went to a different account") {
+		t.Errorf("the account must lead the reason, got %q", v.Reason)
+	}
+	// ...and the desk still needs to know which account, and about the amount.
+	for _, want := range []string{"2519****4531", "150.00", "100.00"} {
+		if !strings.Contains(v.Reason, want) {
+			t.Errorf("reason must mention %q, got %q", want, v.Reason)
+		}
+	}
+	// Both reason codes survive onto the record, for a dispute.
+	for _, want := range []string{"candidate_account_mismatch", "amount_mismatch"} {
+		if !strings.Contains(v.Detail, want) {
+			t.Errorf("detail must carry %q, got %q", want, v.Detail)
+		}
+	}
+}
+
+// The contrast, from the same afternoon: reference DHP557Z30Z was also 200.00 against
+// a 100.00 bill, but it reached the clinic's own account. An overpayment to the right
+// account is a question for a human, not a refusal — the patient really did pay.
+func TestDecideStillOnlyReviewsAnOverpaymentToTheRightAccount(t *testing.T) {
+	r := good()
+	r.Amount = "200"
+	if v := Decide(r, "100"); v.State != Review {
+		t.Fatalf("an overpayment to our own account must review, not %s", v.State)
+	}
+}
+
+// A rejection must win from whichever gate finds it, so a later reordering of the
+// gates cannot quietly reintroduce the bug above.
+func TestDecideRejectionOutranksEveryReview(t *testing.T) {
+	r := good()
+	r.Amount = "900"                                                                  // review
+	r.Currency = "USD"                                                                // review
+	r.Confirmation = &Confirmation{ConfirmedBefore: true, IsFirstConfirmation: false} // review
+	r.Settlement = &Settlement{Matched: false, Reason: "candidate_account_mismatch"}  // reject
+	if v := Decide(r, "1000"); v.State != Reject {
+		t.Fatalf("one rejection must outrank three reviews, got %s (%s)", v.State, v.Reason)
 	}
 }

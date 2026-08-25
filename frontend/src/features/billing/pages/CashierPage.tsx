@@ -16,7 +16,7 @@ import { useAuth } from "@/app/auth-context";
 import { getClinic } from "@/features/admin/api";
 import { closeDay, dayClose, dayCloses, paymentsToday, pendingCharges, refundVisit, settleVisit, voidCharge, waiveCharge, waiverReasons, type DaySummary, type PaidVisit, type PendingCharge } from "@/features/billing/api";
 import { DateRangeFilter, windowFor, type DateWindow } from "@/components/ui/date-range-filter";
-import { EMPTY_PAYMENT, PaymentRailPicker, paymentBlocked, paymentIncomplete, usePaymentRails, type PaymentChoice } from "@/features/billing/PaymentRail";
+import { EMPTY_PAYMENT, PaymentRailPicker, PaymentRefused, paymentBlocked, paymentIncomplete, usePaymentRails, type PaymentChoice } from "@/features/billing/PaymentRail";
 import { printVisitReceipt, printZReport } from "@/features/billing/print";
 import { Input } from "@/components/ui/input";
 import { formatEthiopian } from "@/lib/ethiopian";
@@ -315,20 +315,8 @@ function PatientCheckout({ group, onWaive, onVoid, onPaid }: {
         <PaymentRailPicker rails={rails.data} value={pay} onChange={setPay}
           expected={group.total.toFixed(2)} patientId={group.patientId} />
         {blocked ? (
-          <div className="space-y-1.5">
-            <Button className="w-full" disabled variant="outline">
-              <HandCoins className="h-4 w-4" /> The bank did not confirm this payment
-            </Button>
-            {canOverride ? (
-              // Never a hidden path: the override is offered, named, and recorded.
-              <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground"
-                loading={checkout.isPending} onClick={() => checkout.mutate(true)}>
-                Take it anyway — recorded against my name
-              </Button>
-            ) : (
-              <p className="text-center text-xs text-muted-foreground">A manager can override this.</p>
-            )}
-          </div>
+          <PaymentRefused canOverride={canOverride} pending={checkout.isPending}
+            onForce={() => checkout.mutate(true)} />
         ) : (
           <Button className="w-full" loading={checkout.isPending} disabled={incomplete}
             onClick={() => checkout.mutate(false)}>

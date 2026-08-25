@@ -9,7 +9,10 @@ import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
 import { searchDrugs, sellOtc, type Drug } from "@/features/pharmacy/api";
-import { EMPTY_PAYMENT, PaymentRailPicker, usePaymentRails, type PaymentChoice } from "@/features/billing/PaymentRail";
+import {
+  EMPTY_PAYMENT, PaymentRailPicker, PaymentRefused, paymentBlocked, paymentIncomplete,
+  usePaymentRails, type PaymentChoice,
+} from "@/features/billing/PaymentRail";
 
 interface CartLine {
   drug: Drug;
@@ -41,6 +44,10 @@ export function OtcSalePage() {
   const subtotal = cart.reduce((s, l) => s + Number(l.drug.unit_price) * l.qty, 0);
   const total = Math.max(0, subtotal - discount + tax);
 
+  // A counter sale is refused by the server when the bank contradicts the reference,
+  // and there is no override on that path at all — so the button goes, and the counter
+  // is told what to do instead rather than pressing a button that cannot work.
+  const refused = paymentBlocked(pay);
   const sell = useMutation({
     mutationFn: () => sellOtc({ discount, tax, payment_method: pay.method, rail_id: pay.railId || undefined, reference: pay.reference, lines: cart.map((l) => ({ drug_id: l.drug.id, qty: l.qty })) }),
     onSuccess: () => {
@@ -59,9 +66,14 @@ export function OtcSalePage() {
           <h1>OTC sale</h1>
           <p className="text-sm text-muted-foreground">Counter sale</p>
         </div>
-        <Button className="bg-primary" disabled={cart.length === 0} loading={sell.isPending} onClick={() => sell.mutate()}>
-          Take payment
-        </Button>
+        {refused ? (
+          <div className="w-64"><PaymentRefused /></div>
+        ) : (
+          <Button className="bg-primary" loading={sell.isPending} onClick={() => sell.mutate()}
+            disabled={cart.length === 0 || paymentIncomplete(rails.data, pay)}>
+            Take payment
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
@@ -128,7 +140,8 @@ export function OtcSalePage() {
               the clinic has. */}
           <div className="mt-4 space-y-1.5">
             <Label>Payment</Label>
-            <PaymentRailPicker rails={rails.data} value={pay} onChange={setPay} compact />
+            <PaymentRailPicker rails={rails.data} value={pay} onChange={setPay} compact
+              expected={total.toFixed(2)} />
           </div>
           <p className="mt-3 text-xs text-muted-foreground">Linked to: Walk-in</p>
         </Card>

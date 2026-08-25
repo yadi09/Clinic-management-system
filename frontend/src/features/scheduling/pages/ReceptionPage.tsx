@@ -38,7 +38,8 @@ import {
   type ServiceItem,
 } from "@/features/billing/api";
 import {
-  EMPTY_PAYMENT, PaymentRailPicker, paymentIncomplete, usePaymentRails, type PaymentChoice,
+  EMPTY_PAYMENT, PaymentRailPicker, PaymentRefused, paymentBlocked, paymentIncomplete,
+  usePaymentRails, type PaymentChoice,
 } from "@/features/billing/PaymentRail";
 import {
   checkInAppointment, receptionToday, walkIn, type ReceptionPatient,
@@ -216,6 +217,7 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
   p: ReceptionPatient; canCollect: boolean; onDone: () => void; bare?: boolean;
 }) {
   const qc = useQueryClient();
+  const { can } = useAuth();
   const booked = !!p.appointment_id;
   const received = !!p.waiting_since;
   const covered = coveredNow(p);
@@ -258,9 +260,15 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
   const routeReady = !!dept && (triageRequired || !!provider || booked);
   const mustPay = total > 0.005;
   const blocked = mustPay && canCollect && paymentIncomplete(rails.data, pay);
+  // The bank contradicts this transfer — most often because it reached somebody
+  // else's account. The desk must not be able to press on: the server refuses it, and
+  // finding that out after telling the patient they are done is worse than not
+  // offering it. Overriding is a manager's decision, recorded against their name.
+  const refused = mustPay && canCollect && paymentBlocked(pay);
+  const canOverride = can("payment.waive");
 
   const receive = useMutation({
-    mutationFn: async (mode: "collect" | "cashier") => {
+    mutationFn: async ({ mode, force }: { mode: "collect" | "cashier"; force?: boolean }) => {
       const routing = {
         to_triage: triageRequired,
         provider_id: !triageRequired && provider ? provider : undefined,
@@ -291,11 +299,11 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
       if (mode === "collect" && mine.length > 0) {
         await settleVisit(p.patient_id, {
           rail_id: pay.railId || undefined, method: pay.method, reference: pay.reference,
-          charge_ids: mine,
+          charge_ids: mine, force,
         });
       }
     },
-    onSuccess: (_d, mode) => {
+    onSuccess: (_d, { mode }) => {
       toast.success(mode === "collect" && mustPay
         ? `${p.name}: ${etb(total)} collected · sent through`
         : mustPay ? `${p.name} sent to the cashier` : `${p.name} checked in`);
@@ -417,15 +425,23 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
 
           {/* the exits, named for what they do */}
           <div className="space-y-2">
-            <Button className="w-full" disabled={!routeReady || blocked} loading={receive.isPending}
-              onClick={() => receive.mutate("collect")}>
-              {mustPay ? <><HandCoins className="h-4 w-4" /> Collect {etb(total)} & send through</>
-                : <><CheckCircle2 className="h-4 w-4" /> Check in</>}
-            </Button>
+            {refused ? (
+              <PaymentRefused canOverride={canOverride} pending={receive.isPending}
+                onForce={() => receive.mutate({ mode: "collect", force: true })} />
+            ) : (
+              <Button className="w-full" disabled={!routeReady || blocked} loading={receive.isPending}
+                onClick={() => receive.mutate({ mode: "collect" })}>
+                {mustPay ? <><HandCoins className="h-4 w-4" /> Collect {etb(total)} & send through</>
+                  : <><CheckCircle2 className="h-4 w-4" /> Check in</>}
+              </Button>
+            )}
             {mustPay && (
               <div className="flex gap-2">
+                {/* Always available: a contradicted transfer is a reason to send the
+                    patient to the cashier with the charge standing, not to turn them
+                    away. Nothing is marked paid on this path. */}
                 <Button variant="outline" className="flex-1" disabled={!routeReady} loading={receive.isPending}
-                  onClick={() => receive.mutate("cashier")}>Send to cashier</Button>
+                  onClick={() => receive.mutate({ mode: "cashier" })}>Send to cashier</Button>
                 {canCollect && (
                   <Button variant="ghost" onClick={() => setWaiveOpen(true)}>Waive…</Button>
                 )}

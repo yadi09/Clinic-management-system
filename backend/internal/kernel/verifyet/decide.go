@@ -32,6 +32,15 @@ type Verdict struct {
 // check exists — and it can be genuine, to the right account, and for the wrong
 // amount. Every gate below has to pass.
 //
+// More than one gate can fail on the same payment, so the gates are all evaluated
+// and the MOST SERIOUS answer wins — never the first one written. Returning on the
+// first failure let a mild answer hide a grave one: on a live payment the bank said
+// `candidate_account_mismatch` (the money went to a stranger's account) and the desk
+// was shown "the bank shows 150.00 but this bill is 100.00" with Collect still
+// enabled, because the amount gate happened to be written first. A wrong amount paid
+// into somebody else's account is not a wrong amount. Everything that is wrong is
+// reported, worst first.
+//
 // expected is what the clinic is owed, as a decimal string; "" skips the amount gate
 // (a deliberate choice by the caller, not a default).
 //
@@ -70,49 +79,50 @@ func Decide(r *Result, expected string) Verdict {
 			"unclear_" + nonEmpty(r.Status, "blank")}
 	}
 
-	// 2. It has to be the right money. Compared as fixed-point text: a float here is
-	//    how 1,000.00 and 999.99999 become the same number.
-	if expected != "" && r.Amount != "" && Fmt(r.Amount) != Fmt(expected) {
-		return Verdict{Review,
-			"The bank shows " + Fmt(r.Amount) + " but this bill is " + Fmt(expected) + ".",
-			"amount_mismatch"}
-	}
-	if r.Currency != "" && !strings.EqualFold(r.Currency, "ETB") {
-		return Verdict{Review, "That payment is in " + r.Currency + ", not ETB.", "currency_mismatch"}
-	}
+	// Gates 2-4 are collected, not returned. See the note above: the worst answer
+	// decides, so the order they appear in here carries no authority.
+	var bad []Verdict
+	fail := func(state, reason, detail string) { bad = append(bad, Verdict{state, reason, detail}) }
 
-	// 3. It has to have reached OUR account. This is the gate that catches a genuine
-	//    receipt for a payment made to somebody else.
+	// 2. It has to have reached OUR account. This is the gate that catches a genuine
+	//    receipt for a payment made to somebody else — the one case where the desk
+	//    must be stopped rather than warned. Written first because it is the question
+	//    that decides whether this is our money at all.
 	s := r.Settlement
-	if s == nil {
-		return Verdict{Review, "The bank did not say which account received it.", "no_settlement_data"}
-	}
-	if s.Ambiguous {
+	switch {
+	case s == nil:
+		fail(Review, "The bank did not say which account received it.", "no_settlement_data")
+	case s.Ambiguous:
 		// The vendor refused to guess between several registered accounts and told us
 		// so instead of picking one. Guessing here would be worse than their guess.
-		return Verdict{Review, "The receiving account is ambiguous — confirm it by hand.", "ambiguous"}
-	}
-	if !s.Matched {
+		fail(Review, "The receiving account is ambiguous — confirm it by hand.", "ambiguous")
+	case !s.Matched:
 		switch s.Reason {
 		case "no_registered_accounts", "missing_receiver_account":
 			// Our misconfiguration, not the patient's fault. Never a rejection.
-			return Verdict{Review,
-				"We have not told the verification service which account this clinic uses.",
-				s.Reason}
+			fail(Review, "We have not told the verification service which account this clinic uses.", s.Reason)
 		case "candidate_account_mismatch":
-			return Verdict{Reject, "That payment went to a different account.", s.Reason}
+			fail(Reject, "That payment went to a different account"+into(s, r)+", not this clinic's.", s.Reason)
 		case "verification_not_successful":
-			return Verdict{Reject, "The bank has no record of this transaction.", s.Reason}
+			fail(Reject, "The bank has no record of this transaction.", s.Reason)
 		default:
 			// An unrecognised reason — including one the vendor adds next year — is a
 			// question, never an approval.
-			return Verdict{Review, "The receiving account could not be confirmed.", nonEmpty(s.Reason, "unmatched")}
+			fail(Review, "The receiving account could not be confirmed.", nonEmpty(s.Reason, "unmatched"))
 		}
+	case s.MatchConfidence != "" && !strings.EqualFold(s.MatchConfidence, "high"):
+		// Matched, but only a high-confidence match may pass unattended.
+		fail(Review, "The receiving account matched only weakly — confirm it by hand.",
+			"low_confidence_"+s.MatchConfidence)
 	}
-	// Matched, but only a high-confidence match may pass unattended.
-	if s.MatchConfidence != "" && !strings.EqualFold(s.MatchConfidence, "high") {
-		return Verdict{Review, "The receiving account matched only weakly — confirm it by hand.",
-			"low_confidence_" + s.MatchConfidence}
+
+	// 3. It has to be the right money. Compared as fixed-point text: a float here is
+	//    how 1,000.00 and 999.99999 become the same number.
+	if expected != "" && r.Amount != "" && Fmt(r.Amount) != Fmt(expected) {
+		fail(Review, "The bank shows "+Fmt(r.Amount)+" but this bill is "+Fmt(expected)+".", "amount_mismatch")
+	}
+	if r.Currency != "" && !strings.EqualFold(r.Currency, "ETB") {
+		fail(Review, "That payment is in "+r.Currency+", not ETB.", "currency_mismatch")
 	}
 
 	// 4. Replay. scope is "platform", so a prior confirmation may be another business
@@ -120,10 +130,50 @@ func Decide(r *Result, expected string) Verdict {
 	//    fraud on its own — our own reference uniqueness does that — so it raises the
 	//    bar to a human rather than rejecting a patient who has genuinely paid.
 	if c := r.Confirmation; c != nil && c.ConfirmedBefore && !c.IsFirstConfirmation {
-		return Verdict{Review, "This receipt has been confirmed before — check it is not a second use.", "confirmed_before"}
+		fail(Review, "This receipt has been confirmed before — check it is not a second use.", "confirmed_before")
 	}
 
-	return Verdict{Accept, "Confirmed by the bank, to this clinic's account.", nonEmpty(s.Reason, "matched")}
+	if len(bad) == 0 {
+		return Verdict{Accept, "Confirmed by the bank, to this clinic's account.", nonEmpty(s.Reason, "matched")}
+	}
+	return worst(bad)
+}
+
+// worst reduces the failed gates to one verdict: a rejection outranks a review, and
+// every other problem is still reported after it. The desk gets stopped for the right
+// reason AND told the rest, instead of learning one thing and guessing the others.
+func worst(bad []Verdict) Verdict {
+	lead := 0
+	for i, v := range bad {
+		if v.State == Reject && bad[lead].State != Reject {
+			lead = i
+			break
+		}
+	}
+	out := bad[lead]
+	details := []string{out.Detail}
+	for i, v := range bad {
+		if i == lead {
+			continue
+		}
+		out.Reason += " " + v.Reason
+		details = append(details, v.Detail)
+	}
+	// Every reason code, so a dispute is argued from the whole answer the bank gave
+	// and not just the headline.
+	out.Detail = strings.Join(details, "+")
+	return out
+}
+
+// into names the account the money actually reached, when the provider tells us. The
+// masked form ("2519****4531") is what the desk needs to see: it is enough to compare
+// against the account on the payment method and to ask the patient where they sent it.
+func into(s *Settlement, r *Result) string {
+	acct := nonEmpty(s.ReceiverAccount, r.ReceiverAccount)
+	if strings.TrimSpace(acct) == "" {
+		return ""
+	}
+	return " (" + acct + ")"
 }
 
 func nonEmpty(s, def string) string {

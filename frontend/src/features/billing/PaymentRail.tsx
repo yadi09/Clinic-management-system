@@ -66,6 +66,44 @@ export function paymentBlocked(choice: PaymentChoice): boolean {
   return choice.check?.state === "rejected";
 }
 
+/**
+ * What the desk gets instead of a Collect button when the bank contradicts the
+ * payment: no way to press on, and one named, recorded override for a manager.
+ *
+ * Shared because three surfaces take money, and the two that never asked this
+ * question — reception and the pharmacy counter — are where a genuine receipt for a
+ * payment into somebody ELSE's account was offered for collection with the button
+ * still live. The server refuses it either way; a desk that only finds out after
+ * pressing has already told the patient they were done.
+ */
+export function PaymentRefused({ canOverride, pending, onForce }: {
+  canOverride?: boolean;
+  pending?: boolean;
+  /** Omitted where the server accepts no override at all — the pharmacy counter. The
+   *  UI must not offer a way through that does not exist. */
+  onForce?: () => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Button className="w-full" disabled variant="outline">
+        <XCircle className="h-4 w-4" /> The bank did not confirm this payment
+      </Button>
+      {onForce && canOverride ? (
+        // Never a hidden path: the override is offered, named, and recorded.
+        <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground"
+          loading={pending} onClick={onForce}>
+          Take it anyway — recorded against my name
+        </Button>
+      ) : (
+        <p className="text-center text-xs text-muted-foreground">
+          {onForce ? "A manager can override this."
+            : "Ask for another reference, or a different payment method."}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** Does this choice still need something before it can be submitted? */
 export function paymentIncomplete(rails: PaymentRail[] | undefined, choice: PaymentChoice): boolean {
   const rail = rails?.find((r) => r.id === choice.railId);
