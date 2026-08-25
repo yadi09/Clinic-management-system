@@ -11,7 +11,7 @@
 // tell whether it is worth opening. The choice is remembered per patient, because a
 // dentist who works from the chart wants the chart, every time.
 import { useEffect, useState, type ReactNode } from "react";
-import { CalendarRange, ClipboardList, FileCheck2, Images, Receipt, Grid3x3, MessageSquare } from "lucide-react";
+import { CalendarRange, ClipboardList, FileCheck2, Images, Receipt, Grid3x3, MessageSquare, Stethoscope } from "lucide-react";
 
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -25,7 +25,7 @@ export interface ShelfPanel {
   render: () => ReactNode;
 }
 
-export const SHELF_ICONS = { CalendarRange, ClipboardList, FileCheck2, Images, Receipt, Grid3x3, MessageSquare };
+export const SHELF_ICONS = { CalendarRange, ClipboardList, FileCheck2, Images, Receipt, Grid3x3, MessageSquare, Stethoscope };
 
 export function RecordShelf({ patientId, panels }: { patientId: string; panels: ShelfPanel[] }) {
   const storeKey = `dental-shelf:${patientId}`;

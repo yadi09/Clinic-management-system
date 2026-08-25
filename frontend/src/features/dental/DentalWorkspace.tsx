@@ -28,6 +28,7 @@ import { PanelBody, PanelCard, PanelHeader, RecordShelf, SHELF_ICONS } from "@/f
 import { DeskActions } from "@/features/dental/desk/DeskActions";
 import { CertificateCard } from "@/features/clinical/CertificateCard";
 import { TimelinePanel, timelineCount } from "@/features/dental/shelf/TimelinePanel";
+import { TreatmentsPanel } from "@/features/dental/shelf/TreatmentsPanel";
 import { useScrolledPast } from "@/features/patients/components/StickyAlertBar";
 import { SafetyStrip, PatientAllergyLine } from "@/features/dental/SafetyStrip";
 import { VisitCockpit } from "@/features/dental/visit/VisitCockpit";
@@ -417,6 +418,18 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
             key: "timeline", label: "Timeline", icon: SHELF_ICONS.CalendarRange,
             badge: timelineCount(plans) || undefined,
             render: () => <TimelinePanel patientId={patientId} plans={plans} todayISO={todayISO} onOpenVisit={pickVisit} />,
+          },
+          {
+            // Course-first, next to the Timeline's time-first. The Timeline dissolves
+            // courses on purpose and therefore cannot answer "how is this one going" —
+            // its terms, its own visit order, its money, all in one place.
+            key: "treatments", label: "Treatments", icon: SHELF_ICONS.Stethoscope,
+            badge: plans.filter((pl) => pl.status === "active").length || undefined,
+            render: () => (
+              <TreatmentsPanel patientId={patientId} plans={plans} todayISO={todayISO}
+                canCollect={canCollect} onOpenVisit={pickVisit}
+                onNewPlan={editable ? () => setNewPlan(true) : undefined} />
+            ),
           },
           ...(editable ? [{
             key: "chart", label: "Tooth chart", icon: SHELF_ICONS.Grid3x3,
