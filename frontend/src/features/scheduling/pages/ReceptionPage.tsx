@@ -285,8 +285,14 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
         // covered-follow-up rule that reception could never reach.
         const res = await checkInAppointment(p.appointment_id!, routing);
         mine.push(...res.charge_ids);
-      } else if (chosenExtras.length === 0 && !mustPay) {
-        await walkIn({ patient_id: p.patient_id, branch_id: "", ...routing, department_id: dept });
+      } else {
+        // The other door, and it is taken UNCONDITIONALLY. It used to be skipped
+        // whenever a fee was due, because it reported no charge ids to collect
+        // against — so a patient found by search who owed the registration fee was
+        // neither charged nor queued. The desk pressed Collect, nothing happened, and
+        // they never appeared at the cashier.
+        const res = await walkIn({ patient_id: p.patient_id, ...routing, department_id: dept });
+        mine.push(...res.charge_ids);
       }
       for (const s of chosenExtras) {
         const { id: cid } = await raiseCharge({

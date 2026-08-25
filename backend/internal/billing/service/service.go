@@ -463,6 +463,52 @@ func (s *Service) RaiseIntakeChargeIDsTx(ctx context.Context, tx pgx.Tx, in bill
 	if e != nil {
 		return nil, e
 	}
+	// Today's intake fee, if it is already standing, IS the answer — raise nothing and
+	// hand back the charges that exist.
+	//
+	// Neither door checked this. A fee-gated arrival is not queued until it is paid, so
+	// the patient stays in Expected with the buttons live: pressing "Send to cashier"
+	// twice, or Collect after it, charged the registration fee twice. Idempotent rather
+	// than a conflict, because the desk pressing again means "deal with this arrival",
+	// and the standing charge is what dealing with it means.
+	//
+	// Scoped to TODAY and to the default services, both deliberately: an unpaid debt
+	// from last month must not make today's visit free, and a lab test the patient owes
+	// for is not a registration fee. Today is Addis, not the session's UTC — see the
+	// day-boundary rule that has bitten the Z-report, deposit ageing and the finance
+	// chart.
+	if len(defaults) > 0 {
+		ids := make([]uuid.UUID, 0, len(defaults))
+		svc := make([]uuid.UUID, 0, len(defaults))
+		for _, d := range defaults {
+			svc = append(svc, d.ID)
+		}
+		rows, e := tx.Query(ctx,
+			`SELECT id FROM charges
+			  WHERE tenant_id = $1 AND patient_id = $2 AND status = 'pending' AND deleted_at IS NULL
+			    AND service_item_id = ANY($3::uuid[])
+			    AND created_at >= (((now() AT TIME ZONE 'Africa/Addis_Ababa')::date) AT TIME ZONE 'Africa/Addis_Ababa')
+			  ORDER BY created_at`,
+			tenantID, in.PatientID, svc)
+		if e != nil {
+			return nil, e
+		}
+		for rows.Next() {
+			var cid uuid.UUID
+			if e := rows.Scan(&cid); e != nil {
+				rows.Close()
+				return nil, e
+			}
+			ids = append(ids, cid)
+		}
+		rows.Close()
+		if e := rows.Err(); e != nil {
+			return nil, e
+		}
+		if len(ids) > 0 {
+			return ids, nil
+		}
+	}
 	branch, dept := in.BranchID, in.DepartmentID
 	for _, d := range defaults {
 		r, e := q.CreateCharge(ctx, billingdb.CreateChargeParams{

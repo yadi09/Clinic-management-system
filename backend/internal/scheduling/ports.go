@@ -108,10 +108,17 @@ type WalkInInput struct {
 	ProviderID   *uuid.UUID
 }
 
-// CheckInResult says what check-in did. ChargeIDs are the intake charges it raised —
+// ArrivalResult says what receiving a patient did, at either door: an appointment
+// checked in, or a walk-in enqueued. ChargeIDs are the intake charges it raised —
 // none for a covered follow-up — so the desk can collect exactly this visit and
 // nothing else the patient happens to owe.
-type CheckInResult struct {
+//
+// The walk-in door reported only Gated for a while, so reception had no ids to scope
+// a collect to and simply skipped the walk-in whenever there was a fee. A searched
+// patient who owed the registration fee was then neither charged nor queued: the desk
+// pressed Collect, the mutation did nothing, and the patient never reached the
+// cashier. Both doors report the same thing now.
+type ArrivalResult struct {
 	Gated     bool
 	ChargeIDs []uuid.UUID
 }
@@ -145,8 +152,8 @@ type Service interface {
 	ReassignProvider(ctx context.Context, id, providerID uuid.UUID, note string) error
 	// CheckIn / EnqueueWalkIn return gated=true when an intake charge was raised and
 	// the patient must pay before entering the queue (vs. enqueued immediately when free).
-	CheckIn(ctx context.Context, id uuid.UUID, in CheckInInput) (*CheckInResult, error)
-	EnqueueWalkIn(ctx context.Context, in WalkInInput) (gated bool, err error)
+	CheckIn(ctx context.Context, id uuid.UUID, in CheckInInput) (*ArrivalResult, error)
+	EnqueueWalkIn(ctx context.Context, in WalkInInput) (*ArrivalResult, error)
 
 	ListQueue(ctx context.Context, departmentID uuid.UUID, stage string, from time.Time, until *time.Time) ([]QueueEntry, error)
 	ListWorklist(ctx context.Context, providerID uuid.UUID, from time.Time, until *time.Time) ([]WorklistEntry, error)

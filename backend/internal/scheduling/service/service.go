@@ -327,9 +327,9 @@ func (s *Service) ReassignProvider(ctx context.Context, id, providerID uuid.UUID
 // CheckIn marks an appointment checked-in and enqueues the patient (FR-QUE-01).
 // Routing: to triage (nurse assigns later) or straight to a doctor (the chosen
 // provider, defaulting to the appointment's booked provider).
-func (s *Service) CheckIn(ctx context.Context, id uuid.UUID, in scheduling.CheckInInput) (*scheduling.CheckInResult, error) {
+func (s *Service) CheckIn(ctx context.Context, id uuid.UUID, in scheduling.CheckInInput) (*scheduling.ArrivalResult, error) {
 	tenantID, actor := actorOf(ctx)
-	out := &scheduling.CheckInResult{}
+	out := &scheduling.ArrivalResult{}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := schedulingdb.New(tx)
 		appt, e := q.GetAppointment(ctx, schedulingdb.GetAppointmentParams{TenantID: tenantID, ID: id})
@@ -413,9 +413,22 @@ func (s *Service) CheckIn(ctx context.Context, id uuid.UUID, in scheduling.Check
 }
 
 // EnqueueWalkIn adds a patient to a department queue without an appointment.
-func (s *Service) EnqueueWalkIn(ctx context.Context, in scheduling.WalkInInput) (bool, error) {
+//
+// Reports WHICH charges it raised, exactly as CheckIn does. Reception needs the ids to
+// collect this arrival and not the patient's older debts, and without them it was
+// skipping this call entirely whenever a fee was due — see ArrivalResult.
+func (s *Service) EnqueueWalkIn(ctx context.Context, in scheduling.WalkInInput) (*scheduling.ArrivalResult, error) {
 	tenantID, actor := actorOf(ctx)
-	var gated bool
+	out := &scheduling.ArrivalResult{}
+	// The front desk does not choose a branch, it stands in one. Fall back to the
+	// session's active branch rather than making every caller repeat it.
+	if in.BranchID == uuid.Nil {
+		if b := activeBranchOf(ctx); b != nil {
+			in.BranchID = *b
+		} else {
+			return nil, apperr.Validation("switch to a branch before receiving a walk-in")
+		}
+	}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := schedulingdb.New(tx)
 		// Clinic policy: when triage is required, no door sends straight to a doctor.
@@ -428,14 +441,15 @@ func (s *Service) EnqueueWalkIn(ctx context.Context, in scheduling.WalkInInput) 
 		}
 		// Billing gate: raise the default intake charge (routed). If any was raised the
 		// patient waits for payment (settlement enqueues them); otherwise enqueue now.
-		raised, e := s.billing.RaiseIntakeChargesTx(ctx, tx, billing.IntakeInput{
+		ids, e := s.billing.RaiseIntakeChargeIDsTx(ctx, tx, billing.IntakeInput{
 			PatientID: in.PatientID, BranchID: in.BranchID, DepartmentID: in.DepartmentID, ToTriage: in.ToTriage, ProviderID: in.ProviderID,
 		})
 		if e != nil {
 			return e
 		}
-		gated = raised > 0
-		if gated {
+		out.ChargeIDs = ids
+		out.Gated = len(ids) > 0
+		if out.Gated {
 			return nil
 		}
 		qe, e := q.CreateQueueEntry(ctx, schedulingdb.CreateQueueEntryParams{
@@ -449,12 +463,12 @@ func (s *Service) EnqueueWalkIn(ctx context.Context, in scheduling.WalkInInput) 
 		return nil
 	})
 	if ae, ok := apperr.As(err); ok {
-		return false, ae
+		return nil, ae
 	}
 	if err != nil {
-		return false, apperr.Internal(err)
+		return nil, apperr.Internal(err)
 	}
-	return gated, nil
+	return out, nil
 }
 
 // ListQueue returns a department's queue entries within [from, until) — used by

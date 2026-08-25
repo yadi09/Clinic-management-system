@@ -153,14 +153,16 @@ export function listUnassigned(fromISO?: string, toISO?: string) {
   return apiFetch<WorklistEntry[]>(`/worklist/unassigned${qs ? `?${qs}` : ""}`);
 }
 export function walkIn(body: {
-  branch_id: string;
+  /** Omit it: the server uses the branch this session is working in. */
+  branch_id?: string;
   department_id: string;
   patient_id: string;
   priority?: number;
   to_triage?: boolean;
   provider_id?: string;
 }) {
-  return apiFetch<{ status: string; gated: boolean }>("/queue/walk-in", { method: "POST", body });
+  // charge_ids: what THIS arrival raised, so the desk can collect exactly it.
+  return apiFetch<{ status: string; gated: boolean; charge_ids: string[] }>("/queue/walk-in", { method: "POST", body });
 }
 
 /** SSE URL for the live queue stream (token in query — EventSource can't set headers). */

@@ -304,8 +304,11 @@ func (h *Handlers) WalkIn(c *gin.Context) {
 	}
 	in := scheduling.WalkInInput{Priority: req.Priority, ToTriage: req.ToTriage}
 	var ok bool
-	if in.BranchID, ok = decodeID(c, id.PrefixBranch, req.BranchID); !ok {
-		return
+	// Absent means "the branch I am working in" — the service resolves it.
+	if req.BranchID != "" {
+		if in.BranchID, ok = decodeID(c, id.PrefixBranch, req.BranchID); !ok {
+			return
+		}
 	}
 	if in.DepartmentID, ok = decodeID(c, id.PrefixDepartment, req.DepartmentID); !ok {
 		return
@@ -318,12 +321,18 @@ func (h *Handlers) WalkIn(c *gin.Context) {
 			return
 		}
 	}
-	gated, err := h.svc.EnqueueWalkIn(c.Request.Context(), in)
+	res, err := h.svc.EnqueueWalkIn(c.Request.Context(), in)
 	if err != nil {
 		httpx.Fail(c, err)
 		return
 	}
-	httpx.Created(c, gin.H{"status": "queued", "gated": gated})
+	// charge_ids, same as check-in: the desk collects this arrival, not everything the
+	// patient owes.
+	ids := make([]string, 0, len(res.ChargeIDs))
+	for _, cid := range res.ChargeIDs {
+		ids = append(ids, id.Encode(id.PrefixCharge, cid))
+	}
+	httpx.Created(c, gin.H{"status": "queued", "gated": res.Gated, "charge_ids": ids})
 }
 
 // ListQueue handles GET /queue?department=&stage=&from=&to=. The optional

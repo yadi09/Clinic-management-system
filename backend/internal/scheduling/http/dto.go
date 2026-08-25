@@ -47,7 +47,10 @@ type checkInRequest struct {
 }
 
 type walkInRequest struct {
-	BranchID     string `json:"branch_id" binding:"required"`
+	// Optional: defaults to the branch this session is working in. Reception sends no
+	// branch (it has one active branch, not a choice to make), and requiring it here
+	// meant every walk-in from the front desk was refused with a 400.
+	BranchID     string `json:"branch_id"`
 	DepartmentID string `json:"department_id" binding:"required"`
 	PatientID    string `json:"patient_id" binding:"required"`
 	Priority     int    `json:"priority"`
