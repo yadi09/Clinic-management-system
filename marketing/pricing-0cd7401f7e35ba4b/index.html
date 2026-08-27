@@ -73,6 +73,9 @@ a{color:var(--brand)}
 .plan ul.caps li{justify-content:space-between;gap:12px;padding:3.5px 0;font-size:13px}
 .plan ul.caps .k{color:var(--muted)}
 .plan ul.caps .v{font-family:var(--disp);font-weight:600;white-space:nowrap}
+/* a "+" means a package can lift this without changing plan */
+.plan ul.caps .plus{display:inline-grid;place-items:center;width:15px;height:15px;border-radius:4px;
+  background:var(--line-2);color:var(--muted);font-size:11px;font-weight:700;vertical-align:1px}
 .plan ul.caps + ul{border-top:1px solid var(--line-2);margin-top:12px}
 
 /* ---- everything included ---- */
@@ -84,8 +87,10 @@ a{color:var(--brand)}
 .incl b{color:#fff;font-weight:600}
 
 /* ---- addons + terms ---- */
-.cols{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:16px;align-items:start}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:22px;box-shadow:var(--shadow)}
+.cols{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:16px;align-items:start}
+/* min-width:0 or the grid item refuses to shrink below its table and the whole page
+   scrolls sideways on a phone instead of the table scrolling inside its own box */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:22px;box-shadow:var(--shadow);min-width:0}
 .card h2{font-size:19px}
 .card .hint{color:var(--muted);font-size:13px;margin-top:5px}
 table{width:100%;border-collapse:collapse;margin-top:14px}
@@ -112,7 +117,14 @@ tr:last-child td{border-bottom:0}
 .cmp .yes{color:var(--teal)}
 .cmp .no{color:#C3CFDA}
 .cmp .star-col{background:#F4FBF9}
+table.pk{min-width:640px}
+table.pk td,table.pk th{padding:10px 14px 10px 0}
+table.pk td:last-child,table.pk th:last-child{color:var(--muted);font-size:12.5px;white-space:nowrap}
+table.pk td.r{font-family:var(--disp);font-weight:700;white-space:nowrap}
 
+.plusnote{grid-column:1 / -1;margin-top:14px;text-align:center;color:var(--muted);font-size:13px}
+.plusnote .plus{display:inline-grid;place-items:center;width:15px;height:15px;border-radius:4px;
+  background:var(--line-2);color:var(--muted);font-size:11px;font-weight:700;vertical-align:1px;margin-right:4px}
 .foot{color:var(--muted);font-size:12.5px;text-align:center;padding:34px 0 46px}
 .foot .sep{color:var(--line)}
 
@@ -175,8 +187,8 @@ tr:last-child td{border-bottom:0}
       <p class="who">One dentist, getting off paper for good.</p>
       <div class="price"><span class="n">4,000</span><span class="u">ETB / month</span></div>
       <ul class="caps">
-        <li><span class="k">Patients</span><span class="v">1,000</span></li>
-        <li><span class="k">Storage</span><span class="v">5 GB</span></li>
+        <li><span class="k">Patients</span><span class="v">1,000 <span class="plus">+</span></span></li>
+        <li><span class="k">Storage</span><span class="v">5 GB <span class="plus">+</span></span></li>
         <li><span class="k">X-rays per patient</span><span class="v">Unlimited</span></li>
         <li><span class="k">Branches</span><span class="v">1</span></li>
         <li><span class="k">Staff logins</span><span class="v">5</span></li>
@@ -195,8 +207,8 @@ tr:last-child td{border-bottom:0}
       <p class="who">Everything in Chair, plus what gets the money in.</p>
       <div class="price"><span class="n">7,000</span><span class="u">ETB / month</span></div>
       <ul class="caps">
-        <li><span class="k">Patients</span><span class="v">3,000</span></li>
-        <li><span class="k">Storage</span><span class="v">20 GB</span></li>
+        <li><span class="k">Patients</span><span class="v">3,000 <span class="plus">+</span></span></li>
+        <li><span class="k">Storage</span><span class="v">20 GB <span class="plus">+</span></span></li>
         <li><span class="k">X-rays per patient</span><span class="v">Unlimited</span></li>
         <li><span class="k">Branches</span><span class="v">1</span></li>
         <li><span class="k">Staff logins</span><span class="v">15</span></li>
@@ -250,6 +262,7 @@ tr:last-child td{border-bottom:0}
       </ul>
     </div>
 
+    <p class="plusnote"><span class="plus">+</span> can be raised with a monthly package — see below, no change of plan needed.</p>
   </section>
 
   <section class="band">
@@ -311,19 +324,71 @@ tr:last-child td{border-bottom:0}
   </section>
 
   <div class="cols">
-    <div class="card">
-      <h2>Add what you need</h2>
-      <p class="hint">Top up without changing plan. Add-ons stop and start with your monthly bill.</p>
-      <table>
-        <tr><th>Add-on</th><th class="r">ETB</th></tr>
-        <tr><td>500 more patients</td><td class="r">800 / month</td></tr>
-        <tr><td>5 GB more storage</td><td class="r">500 / month</td></tr>
-        <tr><td>An extra branch<br><span class="hint">beyond what your plan includes</span></td><td class="r">2,500 / month</td></tr>
-        <tr><td>Setting up &amp; importing your register<br><span class="hint">one-off — free if you pay yearly</span></td><td class="r">5,000 once</td></tr>
-      </table>
+    <div class="card" style="grid-column:1 / -1">
+      <h2>Packages you can add</h2>
+      <p class="hint">
+        Outgrown one number but not ready to change plan? Add just that. Packages are
+        monthly — start them and stop them whenever you like.
+      </p>
+      <div class="cmpscroll">
+        <table class="pk">
+          <thead><tr><th>Package</th><th>What it adds</th><th class="r">ETB / month</th><th>Stack up to</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><b>+500 patients</b></td>
+              <td>500 more patients on record</td>
+              <td class="r">500</td>
+              <td>2 on Chair · 4 on Practice</td>
+            </tr>
+            <tr>
+              <td><b>+5 GB storage</b></td>
+              <td>5 GB more for X-rays and documents</td>
+              <td class="r">500</td>
+              <td>No limit</td>
+            </tr>
+            <tr>
+              <td><b>+5 staff logins</b></td>
+              <td>Five more people who can sign in</td>
+              <td class="r">600</td>
+              <td>2 on Chair · no limit above</td>
+            </tr>
+            <tr>
+              <td><b>+1 branch</b></td>
+              <td>A second location, with its own reports</td>
+              <td class="r">2,500</td>
+              <td>Practice and above</td>
+            </tr>
+            <tr>
+              <td><b>AI clinical assist</b></td>
+              <td>A second opinion on the visit you just recorded</td>
+              <td class="r">1,500</td>
+              <td>Practice · included on Group</td>
+            </tr>
+            <tr>
+              <td><b>Patient SMS</b></td>
+              <td>Reminders, recalls and payment chase — see below</td>
+              <td class="r">From 0.60 each</td>
+              <td>Practice and above</td>
+            </tr>
+            <tr>
+              <td><b>Setting up &amp; importing your register</b><br><span class="hint">one-off</span></td>
+              <td>We take your paper or Excel register and load it for you</td>
+              <td class="r">5,000 once</td>
+              <td>Free if you pay yearly</td>
+            </tr>
+            <tr>
+              <td><b>Training on site</b><br><span class="hint">one-off</span></td>
+              <td>Half a day with your staff, at the clinic</td>
+              <td class="r">2,500 once</td>
+              <td>Any plan</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
       <p class="hint" style="margin-top:12px">
-        Past two or three top-ups the next plan up is better value, and it brings its
-        features with it.
+        Two packs of patients on Chair takes you to 2,000 for 5,000 ETB a month. Past
+        that, Practice is the better buy — it comes with 3,000 patients and everything
+        under “Getting paid” above.
       </p>
     </div>
 

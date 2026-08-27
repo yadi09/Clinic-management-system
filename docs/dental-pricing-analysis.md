@@ -39,8 +39,37 @@ is what bounds it, and storage can be topped up.
 | Support | Business hours | Priority | Named contact | Named contact |
 | **ETB / month** | **4,000** | **7,000** | **13,000** | Talk to us |
 
-**Add-ons:** 500 patients 800 · 5 GB 500 · extra branch 2,500 — per month. Onboarding
-and register import 5,000 once, free on annual. **Annual: pay for 10 months, get 12.**
+### Packages
+
+A clinic that has outgrown one number but is not ready to change plan buys just that
+number. Monthly, start and stop at will.
+
+| Package | Adds | ETB / month | Stack up to |
+|---|---|---|---|
+| +500 patients | 500 more on record | **500** | 2 on Chair · 4 on Practice |
+| +5 GB storage | 5 GB for X-rays and documents | **500** | No limit |
+| +5 staff logins | five more people who can sign in | **600** | 2 on Chair · no limit above |
+| +1 branch | a second location with its own reports | **2,500** | Practice and above |
+| AI clinical assist | a second opinion on the recorded visit | **1,500** | Practice · included on Group |
+| Patient SMS | reminders, recalls, payment chase | from **0.60** each | Practice and above |
+| Setting up & importing your register | one-off | **5,000** once | free on annual |
+| Training on site | half a day, one-off | **2,500** once | any plan |
+
+**Annual: pay for 10 months, get 12.**
+
+**Why the patient pack is capped rather than priced high.** At 500 ETB a pack is
+1.00 ETB per patient, while the Chair → Practice upgrade is 1.50 — so on price alone a
+clinic would stack packs forever, stay on Chair, and never see the features that make
+Practice worth having. Raising the pack to 800 fixes the arithmetic but makes the
+cheapest thing on the price list look mean. Capping the stack fixes it structurally
+instead: two packs takes Chair to 2,000 patients for 5,000 ETB, and the third patient
+pack does not exist — the only way past 2,000 is Practice, which brings 3,000 patients
+and everything under *Getting paid* with it. The customer keeps a round, friendly 500;
+the ladder keeps its pull.
+
+The storage pack is uncapped on purpose: a clinic that genuinely only needs gigabytes
+should be able to buy gigabytes without paying for features it will not use. Storage is
+not a proxy for anything — it is the one resource here that really is just a resource.
 
 **Patient SMS is sold on usage, not capped** — Practice and above only:
 
@@ -193,6 +222,12 @@ is the one thing that makes this product worthless.
 
 The caps are real. Most of the feature gates are not, yet — this matters, because
 selling a plan the code does not enforce means the gate is fiction.
+
+**Packages are all enforced today** — `patient_limit`, `storage_gb`, `user_limit` and
+`branch_limit` are per-tenant overrides (`tenants.*_override`) that already beat the
+plan value in `kernel/limits`, so selling a pack is one number in the super-admin
+console. The stack caps are a sales rule, not code; if a clinic should never exceed
+them, that is worth a small guard later.
 
 **Enforced today, config only:**
 
