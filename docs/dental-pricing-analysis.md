@@ -23,21 +23,87 @@ is what bounds it, and storage can be topped up.
 | X-rays per patient | Unlimited | Unlimited | Unlimited | Unlimited |
 | Branches | 1 | 1 | 3 | Unlimited |
 | Staff logins | 5 | 15 | Unlimited | Unlimited |
-| SMS / month | 300 | 2,000 | 6,000 | Agreed |
-| Tooth chart, plans, instalments | ✓ | ✓ | ✓ | ✓ |
-| Appointments, reception, cashier | ✓ | ✓ | ✓ | ✓ |
-| Daily close & Z-report | ✓ | ✓ | ✓ | ✓ |
-| SMS reminders, recalls, payment chase | — | ✓ | ✓ | ✓ |
-| Bank & wallet payment verification | — | ✓ | ✓ | ✓ |
-| Unbilled-treatment recovery | — | ✓ | ✓ | ✓ |
-| Lab & pharmacy / inventory | — | ✓ | ✓ | ✓ |
-| Full finance dashboard & ageing | — | ✓ | ✓ | ✓ |
-| Ministry (DHIS2), AI assist | — | — | ✓ | ✓ |
+| Records, tooth chart, plans, instalments | ✓ | ✓ | ✓ | ✓ |
+| Appointments, reception, queue | ✓ | ✓ | ✓ | ✓ |
+| Cashier, receipts, daily close, Z-report | ✓ | ✓ | ✓ | ✓ |
+| Certificates & prescriptions | ✓ | ✓ | ✓ | ✓ |
+| **Unbilled-treatment report** | — | ✓ | ✓ | ✓ |
+| **Payment verification** | — | ✓ | ✓ | ✓ |
+| **Finance dashboard, ageing, per-dentist** | — | ✓ | ✓ | ✓ |
+| **Patient SMS — reminders, recalls, chase** | — | ✓ | ✓ | ✓ |
+| **Recall lists** | — | ✓ | ✓ | ✓ |
+| Laboratory | — | ✓ | ✓ | ✓ |
+| Pharmacy & inventory | — | ✓ | ✓ | ✓ |
+| Ministry (DHIS2) reporting | — | — | ✓ | ✓ |
+| AI clinical assist | — | — | ✓ | ✓ |
+| Support | Business hours | Priority | Named contact | Named contact |
 | **ETB / month** | **4,000** | **7,000** | **13,000** | Talk to us |
 
-**Add-ons:** 500 patients 800 · 5 GB 500 · extra branch 2,500 · 1,000 SMS 350 — all per
-month. Onboarding and register import 5,000 once, free on annual.
-**Annual: pay for 10 months, get 12.**
+**Add-ons:** 500 patients 800 · 5 GB 500 · extra branch 2,500 — per month. Onboarding
+and register import 5,000 once, free on annual. **Annual: pay for 10 months, get 12.**
+
+**Patient SMS is sold on usage, not capped** — Practice and above only:
+
+| Credit | ETB | Each |
+|---|---|---|
+| 500 messages | 450 | 0.90 |
+| 2,000 messages | 1,500 | 0.75 |
+| 10,000 messages | 6,000 | 0.60 |
+
+Prepaid credit rather than metered post-paid billing, deliberately. Billing usage after
+the fact means bill shock and a collection argument every month, in a market where
+collecting at all is the hard part; every Ethiopian SMS gateway already works on prepaid
+credit, so it is the familiar shape. It still meets the requirement — no cap, they send
+as much as they want, they pay for what they send — and it removes our credit risk.
+Credit does not expire while subscribed, and the unit price falls with volume so buying
+bigger is rational.
+
+One recall that brings back a patient for an average 14,361 ETB course pays for roughly
+18,000 messages. That is the line to use when a clinic hesitates.
+
+## What Chair deliberately does not have
+
+Chair has to run a single-dentist practice end to end, and honestly — see the patient,
+chart the teeth, plan the treatment, book it, receive them, take the money, close the
+till. If it cannot do that it is a trial, not a plan, and a frustrated clinic churns
+instead of upgrading. So every gate sits past "run today", and each one maps to money
+the clinic is losing right now:
+
+| Held back from Chair | Why it pulls |
+|---|---|
+| **Unbilled-treatment report** | The strongest gate in the product. It shows work already delivered and never charged for — 5,400 ETB on the test patient alone. Money they are losing today. |
+| **Patient SMS, reminders & recalls** | Empty chairs are felt daily, and a recall list is the cheapest revenue in dentistry. |
+| **Payment verification** | Felt the first time a patient claims to have transferred and has not. |
+| **Finance dashboard, ageing, per-dentist** | Chair keeps the cashier and the daily close — it must be able to close the till. What it does not get is "was this month good", which is the owner's question. |
+| **Laboratory, pharmacy & inventory** | Whole modules a solo practice genuinely may not need. |
+| **Ministry (DHIS2) reporting** | Group — the compliance surface a multi-site group needs. |
+| **AI clinical assist** | Group. It costs us per use, so it belongs where the margin is. |
+| **Support: business hours** | Free to give, real perceived value. |
+
+### What I would NOT gate, and why
+
+- **Treatment plans and instalments** — this *is* the dental product. Gating it makes
+  Chair pointless and the ladder look mean.
+- **The tooth chart and X-ray upload** — core clinical work.
+- **The register import** — it is the retention lever, and it is already monetised as a
+  5,000 ETB one-off. Charging twice discourages the one thing that makes a clinic hard
+  to leave.
+- **Access to their own records, or exporting them** — indefensible in healthcare, and
+  the kind of term that loses a deal in the room.
+- **The audit trail itself** — only how long it is kept.
+
+### The mechanism matters more than the list
+
+A greyed-out menu item persuades nobody. Each locked feature should be visible **with
+the number attached, computed from that clinic's own data**:
+
+- "You have **5,400 ETB** of treatment delivered and never billed. See the list on Practice."
+- "**23 patients** have not been in for over six months. Practice can text them all today."
+- "**4 transfers** this month were never checked against the bank."
+
+That turns a restriction into a quote. It is the highest-leverage thing to build once
+the plans are set, and it needs no new data — all three numbers already exist in the
+product.
 
 ## Why these numbers, and not the draft's
 
@@ -123,14 +189,50 @@ without ever making deleting history profitable. Small feature; say the word.
 with value, but it makes under-recording profitable for the customer, and under-recording
 is the one thing that makes this product worthless.
 
-## One config change needed to match the page
+## Before this can be sold: what the software does not yet enforce
 
-`images_per_patient` is currently **100** on Dental Basic, **8** on Dental Pro and
-**10** on dental business. The code treats it as unlimited only when it is empty
-(`ImagesPerPatient == nil` in `kernel/limits`). To deliver "unlimited X-rays per
-patient" as the page now promises, clear that field on all three plans in the
-super-admin Plans tab. Nothing else on the page needs code — patient and storage caps
-are already enforced.
+The caps are real. Most of the feature gates are not, yet — this matters, because
+selling a plan the code does not enforce means the gate is fiction.
+
+**Enforced today, config only:**
+
+| | |
+|---|---|
+| Patients, storage, branches, staff logins | `kernel/limits` enforces all four. Set the numbers in the Plans tab. |
+| X-rays per patient | Clear `images_per_patient` — it is **100** on Dental Basic, **8** on Dental Pro, **10** on dental business, and the code treats it as unlimited only when empty. |
+| SMS on/off and volume | `sms_monthly` is a per-calendar-month cap. Set Chair's to 0 and it is off. |
+| Laboratory | Already flag-gated in the UI (`flagOn("laboratory")`). |
+
+**Needs building — one to two days:**
+
+| Gate | What is missing |
+|---|---|
+| Payment verification | Config-gated globally by `VERIFYET_API_KEY`, not per plan. |
+| Unbilled-treatment report | Permission-gated only (`payment.charge` / `dental.manage`). |
+| Finance dashboard | Permission-gated only (`billing.manage`). |
+| Patient SMS as a feature | Only the monthly count is capped; the surface itself is not gated. |
+| Ministry (DHIS2) reporting | Config-gated by `DHIS2_TOKEN`, not per plan. |
+| AI clinical assist | Config-gated by `NVIDIA_API_KEY`, not per plan. |
+| Pharmacy & inventory | The flag exists but nothing reads it — permission-gated in practice. |
+
+The work is the same shape each time: widen the `feature_flags` CHECK constraint to add
+the new flags (same migration pattern as 00031 and 00034), map them in the plan preset
+in `provision.go` — which already inserts flags with `source='plan'` — hide the surface
+with `flagOn(...)` in the frontend, and add a `RequireFeature` middleware on the
+server. That middleware does not exist: **feature flags are currently written and read
+but never enforced server-side**, so today they are UI hints, not boundaries.
+
+**Dropped from the ladder: audit-history retention.** `audit_retention_days` is written
+at provisioning and never read again — there is no pruning job, so every plan keeps
+everything forever and the 6-month / 2-year / 5-year difference would have been
+fiction. It is also the wrong lever: deleting a clinic's audit history to enforce a
+price tier is indefensible in healthcare, and probably against Ethiopian record-keeping
+rules. The page now just says every change is recorded, on every plan, which is true.
+
+**SMS credit needs a wallet.** Today the code enforces a monthly count. Prepaid credit
+that carries over needs a balance plus top-ups. Until then, sell the credit as a monthly
+bundle using the existing cap — it works with zero code and the customer experience is
+nearly identical.
 
 ## Not decided
 

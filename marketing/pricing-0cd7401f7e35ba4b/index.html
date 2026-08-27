@@ -84,7 +84,7 @@ a{color:var(--brand)}
 .incl b{color:#fff;font-weight:600}
 
 /* ---- addons + terms ---- */
-.cols{display:grid;grid-template-columns:1.15fr .85fr;gap:16px;margin-top:16px}
+.cols{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:16px;align-items:start}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:22px;box-shadow:var(--shadow)}
 .card h2{font-size:19px}
 .card .hint{color:var(--muted);font-size:13px;margin-top:5px}
@@ -96,6 +96,22 @@ td.r{font-family:var(--disp);font-weight:600}
 tr:last-child td{border-bottom:0}
 .annual{margin-top:14px;border:1px dashed var(--teal);background:#F2FBF8;border-radius:var(--r-sm);padding:14px 16px}
 .annual b{font-family:var(--disp);color:var(--teal)}
+
+/* ---- comparison ---- */
+.cmp{margin-top:16px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+.cmp .hd{padding:20px 22px 16px;border-bottom:1px solid var(--line)}
+.cmp h2{font-size:19px}
+.cmpscroll{overflow-x:auto}
+.cmp table{margin:0;min-width:640px}
+.cmp th,.cmp td{padding:10px 14px;border-bottom:1px solid var(--line-2)}
+.cmp thead th{background:#F6F9FB;font-size:11px;position:sticky;top:0}
+.cmp thead th:not(:first-child){text-align:center;width:130px}
+.cmp tbody td:not(:first-child){text-align:center;font-family:var(--disp);font-weight:600;font-size:13px}
+.cmp tbody td:first-child{font-size:13.5px}
+.cmp tr.grp td{background:#FAFCFD;font-family:var(--disp);font-weight:600;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.cmp .yes{color:var(--teal)}
+.cmp .no{color:#C3CFDA}
+.cmp .star-col{background:#F4FBF9}
 
 .foot{color:var(--muted);font-size:12.5px;text-align:center;padding:34px 0 46px}
 .foot .sep{color:var(--line)}
@@ -164,12 +180,12 @@ tr:last-child td{border-bottom:0}
         <li><span class="k">X-rays per patient</span><span class="v">Unlimited</span></li>
         <li><span class="k">Branches</span><span class="v">1</span></li>
         <li><span class="k">Staff logins</span><span class="v">5</span></li>
-        <li><span class="k">SMS / month</span><span class="v">300</span></li>
+        <li><span class="k">Patient SMS</span><span class="v">Not included</span></li>
       </ul>
       <ul>
         <li>✓ <span>Tooth chart, treatment plans &amp; instalments</span></li>
-        <li>✓ <span>Appointments, reception, cashier &amp; receipts</span></li>
-        <li>✓ <span>Daily close &amp; Z-report</span></li>
+        <li>✓ <span>Appointments, reception, queue</span></li>
+        <li>✓ <span>Cashier, receipts, daily close &amp; Z-report</span></li>
       </ul>
     </div>
 
@@ -184,14 +200,14 @@ tr:last-child td{border-bottom:0}
         <li><span class="k">X-rays per patient</span><span class="v">Unlimited</span></li>
         <li><span class="k">Branches</span><span class="v">1</span></li>
         <li><span class="k">Staff logins</span><span class="v">15</span></li>
-        <li><span class="k">SMS / month</span><span class="v">2,000</span></li>
+        <li><span class="k">Patient SMS</span><span class="v">Pay per message</span></li>
       </ul>
       <ul>
         <li>✓ <span><b>SMS reminders, recalls</b> &amp; payment chase</span></li>
         <li>✓ <span><b>Bank &amp; wallet payment verification</b> — confirm a transfer before you release the work</span></li>
         <li>✓ <span><b>Unbilled-treatment report</b> — work you did and never charged for</span></li>
         <li>✓ <span>Lab &amp; pharmacy / inventory</span></li>
-        <li>✓ <span>Full finance dashboard &amp; debt ageing</span></li>
+        <li>✓ <span><b>Finance dashboard</b> — revenue, debt ageing, per-dentist</span></li>
       </ul>
     </div>
 
@@ -205,7 +221,7 @@ tr:last-child td{border-bottom:0}
         <li><span class="k">X-rays per patient</span><span class="v">Unlimited</span></li>
         <li><span class="k">Branches</span><span class="v">3</span></li>
         <li><span class="k">Staff logins</span><span class="v">Unlimited</span></li>
-        <li><span class="k">SMS / month</span><span class="v">6,000</span></li>
+        <li><span class="k">Patient SMS</span><span class="v">Pay per message</span></li>
       </ul>
       <ul>
         <li>✓ <span>Per-branch reports, modules on or off per branch</span></li>
@@ -225,7 +241,7 @@ tr:last-child td{border-bottom:0}
         <li><span class="k">X-rays per patient</span><span class="v">Unlimited</span></li>
         <li><span class="k">Branches</span><span class="v">Unlimited</span></li>
         <li><span class="k">Staff logins</span><span class="v">Unlimited</span></li>
-        <li><span class="k">SMS / month</span><span class="v">Agreed</span></li>
+        <li><span class="k">Patient SMS</span><span class="v">Pay per message</span></li>
       </ul>
       <ul>
         <li>✓ <span>Data migration from your current system</span></li>
@@ -255,6 +271,45 @@ tr:last-child td{border-bottom:0}
     </div>
   </section>
 
+  <section class="cmp">
+    <div class="hd">
+      <h2>What is in each plan</h2>
+      <p class="hint">Chair runs a single-dentist practice end to end. Practice adds everything that gets money in and keeps chairs full.</p>
+    </div>
+    <div class="cmpscroll">
+      <table>
+        <thead><tr><th></th><th>Chair</th><th class="star-col">Practice</th><th>Group</th><th>Custom</th></tr></thead>
+        <tbody>
+        <tr class="grp"><td colspan="5">Running the day</td></tr>
+        <tr><td>Patient records &amp; history</td><td><span class="yes">✓</span></td><td class="star-col"><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+        <tr><td>Tooth chart, treatment plans &amp; instalments</td><td><span class="yes">✓</span></td><td class="star-col"><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+        <tr><td>X-rays &amp; images<br><span class="hint">no per-patient limit on any plan</span></td><td><span class="yes">✓</span></td><td class="star-col"><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+        <tr><td>Appointments, reception &amp; queue</td><td><span class="yes">✓</span></td><td class="star-col"><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+        <tr><td>Cashier, receipts, waive &amp; refund</td><td><span class="yes">✓</span></td><td class="star-col"><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+        <tr><td>Daily close &amp; Z-report</td><td><span class="yes">✓</span></td><td class="star-col"><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+        <tr><td>Certificates &amp; prescriptions</td><td><span class="yes">✓</span></td><td class="star-col"><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+        <tr class="grp"><td colspan="5">Getting paid</td></tr>
+        <tr><td>Unbilled-treatment report<br><span class="hint">work you did and never charged for</span></td><td><span class="no">—</span></td><td class="star-col"><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+        <tr><td>Bank &amp; wallet payment verification<br><span class="hint">confirm a transfer before you release the work</span></td><td><span class="no">—</span></td><td class="star-col"><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+        <tr><td>Finance dashboard, debt ageing, per-dentist</td><td><span class="no">—</span></td><td class="star-col"><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+        <tr class="grp"><td colspan="5">Keeping chairs full</td></tr>
+        <tr><td>Patient SMS — reminders, recalls, payment chase<br><span class="hint">pay per message, no monthly cap</span></td><td><span class="no">—</span></td><td class="star-col"><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+        <tr><td>Recall lists — who has not been in</td><td><span class="no">—</span></td><td class="star-col"><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+        <tr class="grp"><td colspan="5">More of the clinic</td></tr>
+        <tr><td>Laboratory</td><td><span class="no">—</span></td><td class="star-col"><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+        <tr><td>Pharmacy &amp; inventory</td><td><span class="no">—</span></td><td class="star-col"><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+        <tr><td>Multiple branches</td><td><span class="no">—</span></td><td class="star-col"><span class="no">—</span></td><td>3</td><td>Unlimited</td></tr>
+        <tr><td>Ministry (DHIS2) reporting</td><td><span class="no">—</span></td><td class="star-col"><span class="no">—</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+        <tr><td>AI clinical assist</td><td><span class="no">—</span></td><td class="star-col"><span class="no">—</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+        <tr class="grp"><td colspan="5">The small print that matters</td></tr>
+        <tr><td>Every change recorded, by name<br><span class="hint">who changed a price, and when</span></td><td><span class="yes">✓</span></td><td class="star-col"><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+        <tr><td>Support</td><td>Business hours</td><td class="star-col">Priority</td><td>Named contact</td><td>Named contact</td></tr>
+        <tr><td>Your register imported for you<br><span class="hint">one-off fee, free on annual</span></td><td><span class="yes">✓</span></td><td class="star-col"><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
   <div class="cols">
     <div class="card">
       <h2>Add what you need</h2>
@@ -264,12 +319,29 @@ tr:last-child td{border-bottom:0}
         <tr><td>500 more patients</td><td class="r">800 / month</td></tr>
         <tr><td>5 GB more storage</td><td class="r">500 / month</td></tr>
         <tr><td>An extra branch<br><span class="hint">beyond what your plan includes</span></td><td class="r">2,500 / month</td></tr>
-        <tr><td>1,000 more SMS</td><td class="r">350 / month</td></tr>
         <tr><td>Setting up &amp; importing your register<br><span class="hint">one-off — free if you pay yearly</span></td><td class="r">5,000 once</td></tr>
       </table>
       <p class="hint" style="margin-top:12px">
         Past two or three top-ups the next plan up is better value, and it brings its
         features with it.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>Patient SMS</h2>
+      <p class="hint">
+        On Practice and above. You are never capped — you buy credit and send as much as
+        the clinic needs. Credit does not expire while you are subscribed.
+      </p>
+      <table>
+        <tr><th>Credit</th><th class="r">ETB</th><th class="r">Each</th></tr>
+        <tr><td>500 messages</td><td class="r">450</td><td class="r">0.90</td></tr>
+        <tr><td>2,000 messages</td><td class="r">1,500</td><td class="r">0.75</td></tr>
+        <tr><td>10,000 messages</td><td class="r">6,000</td><td class="r">0.60</td></tr>
+      </table>
+      <p class="hint" style="margin-top:12px">
+        One recall that brings a patient back for a 14,000 ETB course pays for about
+        18,000 messages.
       </p>
     </div>
 
