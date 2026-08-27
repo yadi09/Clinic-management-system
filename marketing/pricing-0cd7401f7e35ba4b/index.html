@@ -68,6 +68,12 @@ a{color:var(--brand)}
 .plan li svg{flex-shrink:0;margin-top:3px}
 .plan li.off{color:#95A5B4}
 .plan li b{font-weight:600}
+/* the plan's limits, read as a spec sheet rather than a bullet list */
+.plan ul.caps{border-top:1px solid var(--line-2);padding-top:12px;margin-top:14px;flex:0}
+.plan ul.caps li{justify-content:space-between;gap:12px;padding:3.5px 0;font-size:13px}
+.plan ul.caps .k{color:var(--muted)}
+.plan ul.caps .v{font-family:var(--disp);font-weight:600;white-space:nowrap}
+.plan ul.caps + ul{border-top:1px solid var(--line-2);margin-top:12px}
 
 /* ---- everything included ---- */
 .band{margin-top:44px;background:linear-gradient(160deg,#0E2233,#14344C);border-radius:var(--r);padding:30px 30px 26px;color:#DCE8F1}
@@ -141,6 +147,8 @@ tr:last-child td{border-bottom:0}
     <div class="roi">
       <span class="dot"></span>
       <span>One recovered treatment plan pays for <b>two months</b>.</span>
+      <span class="dot"></span>
+      <span>You pay for the size of your patient book — not per seat.</span>
     </div>
   </section>
 
@@ -150,14 +158,18 @@ tr:last-child td{border-bottom:0}
       <h3>Chair</h3>
       <p class="who">One dentist, getting off paper for good.</p>
       <div class="price"><span class="n">4,000</span><span class="u">ETB / month</span></div>
+      <ul class="caps">
+        <li><span class="k">Patients</span><span class="v">1,000</span></li>
+        <li><span class="k">Storage</span><span class="v">5 GB</span></li>
+        <li><span class="k">X-rays per patient</span><span class="v">Unlimited</span></li>
+        <li><span class="k">Branches</span><span class="v">1</span></li>
+        <li><span class="k">Staff logins</span><span class="v">5</span></li>
+        <li><span class="k">SMS / month</span><span class="v">300</span></li>
+      </ul>
       <ul>
-        <li>✓ <span><b>Unlimited</b> patients &amp; records</span></li>
-        <li>✓ <span><b>Unlimited</b> X-rays &amp; images</span></li>
         <li>✓ <span>Tooth chart, treatment plans &amp; instalments</span></li>
         <li>✓ <span>Appointments, reception, cashier &amp; receipts</span></li>
         <li>✓ <span>Daily close &amp; Z-report</span></li>
-        <li>✓ <span>1 branch · 5 staff logins</span></li>
-        <li>✓ <span>300 SMS a month</span></li>
       </ul>
     </div>
 
@@ -166,14 +178,20 @@ tr:last-child td{border-bottom:0}
       <h3>Practice</h3>
       <p class="who">Everything in Chair, plus what gets the money in.</p>
       <div class="price"><span class="n">7,000</span><span class="u">ETB / month</span></div>
+      <ul class="caps">
+        <li><span class="k">Patients</span><span class="v">3,000</span></li>
+        <li><span class="k">Storage</span><span class="v">20 GB</span></li>
+        <li><span class="k">X-rays per patient</span><span class="v">Unlimited</span></li>
+        <li><span class="k">Branches</span><span class="v">1</span></li>
+        <li><span class="k">Staff logins</span><span class="v">15</span></li>
+        <li><span class="k">SMS / month</span><span class="v">2,000</span></li>
+      </ul>
       <ul>
         <li>✓ <span><b>SMS reminders, recalls</b> &amp; payment chase</span></li>
         <li>✓ <span><b>Bank &amp; wallet payment verification</b> — confirm a transfer before you release the work</span></li>
         <li>✓ <span><b>Unbilled-treatment report</b> — work you did and never charged for</span></li>
         <li>✓ <span>Lab &amp; pharmacy / inventory</span></li>
         <li>✓ <span>Full finance dashboard &amp; debt ageing</span></li>
-        <li>✓ <span>1 branch · 15 staff logins</span></li>
-        <li>✓ <span>2,000 SMS a month</span></li>
       </ul>
     </div>
 
@@ -181,24 +199,35 @@ tr:last-child td{border-bottom:0}
       <h3>Group</h3>
       <p class="who">Everything in Practice, across two or three locations.</p>
       <div class="price"><span class="n">13,000</span><span class="u">ETB / month</span></div>
+      <ul class="caps">
+        <li><span class="k">Patients</span><span class="v">10,000</span></li>
+        <li><span class="k">Storage</span><span class="v">50 GB</span></li>
+        <li><span class="k">X-rays per patient</span><span class="v">Unlimited</span></li>
+        <li><span class="k">Branches</span><span class="v">3</span></li>
+        <li><span class="k">Staff logins</span><span class="v">Unlimited</span></li>
+        <li><span class="k">SMS / month</span><span class="v">6,000</span></li>
+      </ul>
       <ul>
-        <li>✓ <span><b>Up to 3 branches</b>, each with its own reports</span></li>
-        <li>✓ <span>Turn modules on per branch</span></li>
-        <li>✓ <span><b>Unlimited</b> staff logins</span></li>
+        <li>✓ <span>Per-branch reports, modules on or off per branch</span></li>
         <li>✓ <span>Ministry (DHIS2) reporting</span></li>
         <li>✓ <span>AI clinical assist</span></li>
         <li>✓ <span>Priority support</span></li>
-        <li>✓ <span>6,000 SMS a month</span></li>
       </ul>
     </div>
 
     <div class="plan">
       <h3>Custom</h3>
-      <p class="who">Hospitals, chains and more than three branches.</p>
+      <p class="who">Hospitals, chains, and anyone past 10,000 patients.</p>
       <div class="price"><span class="talk">Let’s talk</span></div>
+      <ul class="caps">
+        <li><span class="k">Patients</span><span class="v">Unlimited</span></li>
+        <li><span class="k">Storage</span><span class="v">As needed</span></li>
+        <li><span class="k">X-rays per patient</span><span class="v">Unlimited</span></li>
+        <li><span class="k">Branches</span><span class="v">Unlimited</span></li>
+        <li><span class="k">Staff logins</span><span class="v">Unlimited</span></li>
+        <li><span class="k">SMS / month</span><span class="v">Agreed</span></li>
+      </ul>
       <ul>
-        <li>✓ <span>Built around how you already work</span></li>
-        <li>✓ <span>Unlimited branches</span></li>
         <li>✓ <span>Data migration from your current system</span></li>
         <li>✓ <span>Training on site</span></li>
         <li>✓ <span>Named support contact</span></li>
@@ -208,14 +237,13 @@ tr:last-child td{border-bottom:0}
   </section>
 
   <section class="band">
-    <h2>On every plan, with no limit</h2>
+    <h2>On every plan</h2>
     <p class="lead">
-      Your records are your history. We do not charge you for keeping them, and we never
-      will — bring twenty years of paper with you.
+      Take as many X-rays as the treatment needs — there is no per-patient limit on
+      images, only the storage your plan comes with, and you can add more at any time.
     </p>
     <div class="incl">
-      <div>✓ <span><b>Every patient</b> you have ever seen</span></div>
-      <div>✓ <span><b>Every X-ray</b> and photo, kept safely</span></div>
+      <div>✓ <span><b>Unlimited X-rays</b> per patient</span></div>
       <div>✓ <span><b>Your old register imported</b> for you</span></div>
       <div>✓ <span>Ethiopian and Gregorian dates side by side</span></div>
       <div>✓ <span>Works on the phone at the chair</span></div>
@@ -223,19 +251,26 @@ tr:last-child td{border-bottom:0}
       <div>✓ <span>A role for every job: dentist, desk, cashier</span></div>
       <div>✓ <span>Every change recorded, by name</span></div>
       <div>✓ <span>Free updates, always</span></div>
+      <div>✓ <span>Move up or down a plan any month</span></div>
     </div>
   </section>
 
   <div class="cols">
     <div class="card">
       <h2>Add what you need</h2>
-      <p class="hint">Only these three ever cost extra. Patients and storage never do.</p>
+      <p class="hint">Top up without changing plan. Add-ons stop and start with your monthly bill.</p>
       <table>
         <tr><th>Add-on</th><th class="r">ETB</th></tr>
+        <tr><td>500 more patients</td><td class="r">800 / month</td></tr>
+        <tr><td>5 GB more storage</td><td class="r">500 / month</td></tr>
         <tr><td>An extra branch<br><span class="hint">beyond what your plan includes</span></td><td class="r">2,500 / month</td></tr>
-        <tr><td>1,000 more SMS<br><span class="hint">rolls with your monthly bill</span></td><td class="r">350 / month</td></tr>
+        <tr><td>1,000 more SMS</td><td class="r">350 / month</td></tr>
         <tr><td>Setting up &amp; importing your register<br><span class="hint">one-off — free if you pay yearly</span></td><td class="r">5,000 once</td></tr>
       </table>
+      <p class="hint" style="margin-top:12px">
+        Past two or three top-ups the next plan up is better value, and it brings its
+        features with it.
+      </p>
     </div>
 
     <div class="card">
@@ -251,6 +286,16 @@ tr:last-child td{border-bottom:0}
         <tr><td>Group, yearly</td><td class="r">130,000</td></tr>
       </table>
     </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h2>What happens when you reach a limit</h2>
+    <p class="hint">
+      We tell you before you get there. If you do reach the patient or storage limit,
+      new registrations and uploads pause until you top up or move plan —
+      <b>nothing you have already recorded is ever locked, hidden or deleted.</b>
+      Your patients, X-rays and payment history stay open and searchable.
+    </p>
   </div>
 
   <p class="foot">
