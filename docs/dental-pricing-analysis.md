@@ -89,6 +89,47 @@ bigger is rational.
 One recall that brings back a patient for an average 14,361 ETB course pays for roughly
 18,000 messages. That is the line to use when a clinic hesitates.
 
+## Refer a clinic, get three months free
+
+Stated on the page as: tell another clinic about ClinicOS, and when they join **and pay
+their first month**, three months go onto your account. Four clinics is a year.
+
+**The rate is the same at both tiers** — 4 × 3 months *is* 12 months — so "four clinics
+is a year" is not a bonus, it is the same offer said in a way a clinic can picture. That
+is fine, and probably better than a real bonus tier, because it is one number to
+remember. If you ever want the fourth to feel like an event, add something that is not
+more months (their next year at half price, or a branch thrown in).
+
+**The economics work.** A Practice clinic referring one clinic costs us 21,000 ETB of
+service for a customer worth 84,000 a year — about 25% of first-year revenue, against a
+30–100% norm for acquiring a SaaS customer any other way. It is the cheapest channel
+available, and the referral arrives pre-trusted, which is worth more here than anywhere.
+No cap needed: a clinic that sends us twenty is a clinic we should be thanking.
+
+**Three rules it needs, or it will be gamed:**
+
+1. **Pay the credit when the referred clinic pays their first month**, never on signup.
+   Paying on signup buys us a list of clinics that never onboard.
+2. **Credit applies to their own subscription only.** No cash value, no transfers.
+3. **One payout per referred clinic.** This matters more than it looks — the partner
+   program already pays 40–70% commission for introductions, so without this rule a
+   clinic owner could register as a partner, refer a clinic, and collect both the
+   commission and the free months for the same introduction.
+
+**What it needs built.** Nothing for the page, but to actually run it: a referral code
+per tenant, the referred clinic's record pointing back at it, and a credit balance
+against the subscription. `partner_leads` already captures a `source` slug and knows
+about `clinic_owner` as an audience, so the capture half exists — what is missing is the
+tenant-to-tenant link and the credit ledger. Until that is built it can be run by hand
+on a spreadsheet, which for the first ten referrals is the right call anyway.
+
+**One suggestion I have not put on the page**, because it changes your offer and that is
+your call: make it two-sided. *"You get three months, the clinic you refer gets their
+first month free."* It roughly doubles referral conversion in every market this has been
+measured in, because it turns an awkward favour into a gift — the referrer is not asking
+a colleague to help them earn credit, they are handing them something. It costs one
+month per referral, which at Practice is 7,000 against 21,000 you are already spending.
+
 ## What Chair deliberately does not have
 
 Chair has to run a single-dentist practice end to end, and honestly — see the patient,
