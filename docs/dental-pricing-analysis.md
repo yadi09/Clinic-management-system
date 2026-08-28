@@ -94,6 +94,14 @@ One recall that brings back a patient for an average 14,361 ETB course pays for 
 Stated on the page as: tell another clinic about ClinicOS, and when they join **and pay
 their first month**, three months go onto your account. Four clinics is a year.
 
+**Where it sits, and why.** A teaser line in the hero, visible before anything is
+scrolled, and the full strip directly under the plan cards. It was at the bottom, which
+is dead space — most readers stop around the middle. But it does not belong *above* the
+prices either: "refer a clinic and get three months free" means nothing to someone who
+does not yet know what a month costs. Directly after the price cards is the moment it
+does the most work, because that is when a reader is weighing 7,000 a month, and the
+offer is really a price objection being answered.
+
 **The rate is the same at both tiers** — 4 × 3 months *is* 12 months — so "four clinics
 is a year" is not a bonus, it is the same offer said in a way a clinic can picture. That
 is fine, and probably better than a real bonus tier, because it is one number to

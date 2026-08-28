@@ -125,6 +125,16 @@ table.pk td.r{font-family:var(--disp);font-weight:700;white-space:nowrap}
 .plusnote{grid-column:1 / -1;margin-top:14px;text-align:center;color:var(--muted);font-size:13px}
 .plusnote .plus{display:inline-grid;place-items:center;width:15px;height:15px;border-radius:4px;
   background:var(--line-2);color:var(--muted);font-size:11px;font-weight:700;vertical-align:1px;margin-right:4px}
+/* the teaser sits in the hero because the strip itself is a scroll away, and a
+   reader who stops half way should still have seen the offer */
+.rteaser{display:inline-flex;align-items:center;gap:10px;margin-top:12px;text-decoration:none;
+  background:#EAF7F3;border:1px solid #B7E3D7;color:#0F6B5A;border-radius:999px;
+  padding:8px 16px 8px 12px;font-size:14px;transition:background .15s,border-color .15s}
+.rteaser:hover{background:#DDF2EB;border-color:#8FD4C2}
+.rteaser b{font-family:var(--disp)}
+.rgift-ico{font-size:15px;line-height:1}
+.rarrow{font-family:var(--disp);font-weight:700}
+
 /* ---- referral ---- */
 .refer{margin-top:16px;display:grid;grid-template-columns:1.1fr .9fr;gap:26px;align-items:center;
   background:linear-gradient(150deg,#0F6B5A,#148F77 55%,#1BB394);border-radius:var(--r);
@@ -206,6 +216,11 @@ table.pk td.r{font-family:var(--disp);font-weight:700;white-space:nowrap}
            words a dentist uses. -->
       <span>Bill <b>one</b> treatment you would have forgotten, and it has paid for two months.</span>
     </div>
+    <a class="rteaser" href="#refer">
+      <span class="rgift-ico">🎁</span>
+      <span>Refer another clinic and get <b>three months free</b> — four clinics is a year</span>
+      <span class="rarrow">→</span>
+    </a>
   </section>
 
   <section class="plans">
@@ -293,6 +308,27 @@ table.pk td.r{font-family:var(--disp);font-weight:700;white-space:nowrap}
     </div>
 
     <p class="plusnote"><span class="plus">+</span> can be raised with a monthly package — see below, no change of plan needed.</p>
+  </section>
+
+  <section class="refer" id="refer">
+    <div class="rtext">
+      <span class="reyebrow">Bring a colleague</span>
+      <h2>Refer a clinic, get <span class="hl">three months free</span></h2>
+      <p>
+        Tell another clinic about ClinicOS. When they join and pay their first month,
+        three months go onto your account — whatever plan you are on. Four clinics is a
+        year.
+      </p>
+      <p class="rfine">
+        Credit goes to your own subscription and stacks with itself. There is no limit
+        on how many clinics you can send us.
+      </p>
+    </div>
+    <div class="rsteps">
+      <div class="rstep"><span class="rn">1</span><span class="rclinic">1 clinic</span><span class="rgift">3 months free</span></div>
+      <div class="rstep"><span class="rn">2</span><span class="rclinic">2 clinics</span><span class="rgift">6 months free</span></div>
+      <div class="rstep big"><span class="rn">4</span><span class="rclinic">4 clinics</span><span class="rgift">a full year free</span></div>
+    </div>
   </section>
 
   <section class="band">
@@ -446,27 +482,6 @@ table.pk td.r{font-family:var(--disp);font-weight:700;white-space:nowrap}
       </table>
     </div>
   </div>
-
-  <section class="refer">
-    <div class="rtext">
-      <span class="reyebrow">Bring a colleague</span>
-      <h2>Refer a clinic, get <span class="hl">three months free</span></h2>
-      <p>
-        Tell another clinic about ClinicOS. When they join and pay their first month,
-        three months go onto your account — whatever plan you are on. Four clinics is a
-        year.
-      </p>
-      <p class="rfine">
-        Credit goes to your own subscription and stacks with itself. There is no limit
-        on how many clinics you can send us.
-      </p>
-    </div>
-    <div class="rsteps">
-      <div class="rstep"><span class="rn">1</span><span class="rclinic">1 clinic</span><span class="rgift">3 months free</span></div>
-      <div class="rstep"><span class="rn">2</span><span class="rclinic">2 clinics</span><span class="rgift">6 months free</span></div>
-      <div class="rstep big"><span class="rn">4</span><span class="rclinic">4 clinics</span><span class="rgift">a full year free</span></div>
-    </div>
-  </section>
 
   <div class="card" style="margin-top:16px">
     <h2>What happens when you reach a limit</h2>
