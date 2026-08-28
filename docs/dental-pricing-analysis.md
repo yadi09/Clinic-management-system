@@ -20,22 +20,23 @@ is what bounds it, and storage can be topped up.
 |---|---|---|---|---|
 | Patients on record | 1,000 | 3,000 | 10,000 | Unlimited |
 | Storage | 5 GB | 20 GB | 50 GB | As needed |
-| X-rays per patient | Unlimited | Unlimited | Unlimited | Unlimited |
+| Images per patient | Unlimited | Unlimited | Unlimited | Unlimited |
 | Branches | 1 | 1 | 3 | Unlimited |
 | Staff logins | 5 | 15 | Unlimited | Unlimited |
 | Records, tooth chart, plans, instalments | ✓ | ✓ | ✓ | ✓ |
 | Appointments, reception, queue | ✓ | ✓ | ✓ | ✓ |
 | Cashier, receipts, daily close, Z-report | ✓ | ✓ | ✓ | ✓ |
 | Certificates & prescriptions | ✓ | ✓ | ✓ | ✓ |
-| **Unbilled-treatment report** | — | ✓ | ✓ | ✓ |
+| **Treat now, pay later** + instalments | ✓ | ✓ | ✓ | ✓ |
+| **Unbilled-treatment report** | ✓ | ✓ | ✓ | ✓ |
 | **Payment verification** | — | ✓ | ✓ | ✓ |
-| **Finance dashboard, ageing, per-dentist** | — | ✓ | ✓ | ✓ |
+| **Whole-clinic debt, aged 30/60/90** | — | ✓ | ✓ | ✓ |
+| **Finance dashboard, revenue, per-dentist** | — | ✓ | ✓ | ✓ |
 | **Patient SMS — reminders, recalls, chase** | — | ✓ | ✓ | ✓ |
 | **Recall lists** | — | ✓ | ✓ | ✓ |
-| Laboratory | — | ✓ | ✓ | ✓ |
-| Pharmacy & inventory | — | ✓ | ✓ | ✓ |
 | Ministry (DHIS2) reporting | — | — | ✓ | ✓ |
 | AI clinical assist | — | — | ✓ | ✓ |
+| Setup, data migration & training | ✓ | ✓ | ✓ | ✓ |
 | Support | Business hours | Priority | Named contact | Named contact |
 | **ETB / month** | **4,000** | **7,000** | **13,000** | Talk to us |
 
@@ -47,13 +48,11 @@ number. Monthly, start and stop at will.
 | Package | Adds | ETB / month | Stack up to |
 |---|---|---|---|
 | +500 patients | 500 more on record | **500** | 2 on Chair · 4 on Practice |
-| +5 GB storage | 5 GB for X-rays and documents | **500** | No limit |
+| +5 GB storage | 5 GB for images and documents | **500** | No limit |
 | +5 staff logins | five more people who can sign in | **600** | 2 on Chair · no limit above |
 | +1 branch | a second location with its own reports | **2,500** | Practice and above |
 | AI clinical assist | a second opinion on the recorded visit | **1,500** | Practice · included on Group |
 | Patient SMS | reminders, recalls, payment chase | from **0.60** each | Practice and above |
-| Setting up & importing your register | one-off | **5,000** once | free on annual |
-| Training on site | half a day, one-off | **2,500** once | any plan |
 
 **Annual: pay for 10 months, get 12.**
 
@@ -100,14 +99,31 @@ the clinic is losing right now:
 
 | Held back from Chair | Why it pulls |
 |---|---|
-| **Unbilled-treatment report** | The strongest gate in the product. It shows work already delivered and never charged for — 5,400 ETB on the test patient alone. Money they are losing today. |
-| **Patient SMS, reminders & recalls** | Empty chairs are felt daily, and a recall list is the cheapest revenue in dentistry. |
 | **Payment verification** | Felt the first time a patient claims to have transferred and has not. |
-| **Finance dashboard, ageing, per-dentist** | Chair keeps the cashier and the daily close — it must be able to close the till. What it does not get is "was this month good", which is the owner's question. |
-| **Laboratory, pharmacy & inventory** | Whole modules a solo practice genuinely may not need. |
+| **Whole-clinic debt, aged 30/60/90** | Chair records that a patient was treated on a promise. Practice is where you can see every promise at once, how old each one is, and chase them. That is the cleanest line on the page: *Chair records what you are owed; Practice collects it.* |
+| **Patient SMS, reminders & recalls** | Empty chairs are felt daily, and it is what makes chasing the debt one click instead of a hundred phone calls. |
+| **Recall lists** | Who has not been in. The cheapest revenue in dentistry. |
+| **Finance dashboard, revenue, per-dentist** | Chair keeps the cashier and the daily close — it must be able to close the till. What it does not get is "was this month good", which is the owner's question. |
 | **Ministry (DHIS2) reporting** | Group — the compliance surface a multi-site group needs. |
-| **AI clinical assist** | Group. It costs us per use, so it belongs where the margin is. |
+| **AI clinical assist** | Group, or 1,500 as a package on Practice. It costs us per use. |
 | **Support: business hours** | Free to give, real perceived value. |
+
+**Moved onto every plan, by your call:**
+
+- **Treat now, pay later, and instalments.** This is the feature a dental clinic in
+  Addis actually runs on — the treatment happens against a recorded promise, with the
+  reason kept, and the debt stays visible. It is real in the code (`pay_later` plus the
+  note, and the instalment split with a deposit), and it now leads the page.
+- **The unbilled-treatment report.** It costs us the strongest gate we had, but the
+  argument for giving it away is good: withholding "you are losing money" from a paying
+  customer is a hard thing to defend, and the report is what proves the product works.
+  Practice keeps the follow-through — ageing and chasing — which is where the effort
+  actually is.
+- **Setup, data migration and training.** No longer a 5,000 + 2,500 one-off.
+
+**Removed entirely: laboratory and pharmacy/inventory.** They are not a dental clinic's
+problem, and selling a dental plan on modules the buyer will never open makes the whole
+list less credible.
 
 ### What I would NOT gate, and why
 
@@ -234,21 +250,18 @@ them, that is worth a small guard later.
 | | |
 |---|---|
 | Patients, storage, branches, staff logins | `kernel/limits` enforces all four. Set the numbers in the Plans tab. |
-| X-rays per patient | Clear `images_per_patient` — it is **100** on Dental Basic, **8** on Dental Pro, **10** on dental business, and the code treats it as unlimited only when empty. |
+| Images per patient | Clear `images_per_patient` — it is **100** on Dental Basic, **8** on Dental Pro, **10** on dental business, and the code treats it as unlimited only when empty. |
 | SMS on/off and volume | `sms_monthly` is a per-calendar-month cap. Set Chair's to 0 and it is off. |
-| Laboratory | Already flag-gated in the UI (`flagOn("laboratory")`). |
 
 **Needs building — one to two days:**
 
 | Gate | What is missing |
 |---|---|
 | Payment verification | Config-gated globally by `VERIFYET_API_KEY`, not per plan. |
-| Unbilled-treatment report | Permission-gated only (`payment.charge` / `dental.manage`). |
-| Finance dashboard | Permission-gated only (`billing.manage`). |
+| Finance dashboard & debt ageing | Permission-gated only (`billing.manage`). Chair must keep the cashier and the daily close, so this gate is on the `/finance` page, not on `payment.collect`. |
 | Patient SMS as a feature | Only the monthly count is capped; the surface itself is not gated. |
 | Ministry (DHIS2) reporting | Config-gated by `DHIS2_TOKEN`, not per plan. |
 | AI clinical assist | Config-gated by `NVIDIA_API_KEY`, not per plan. |
-| Pharmacy & inventory | The flag exists but nothing reads it — permission-gated in practice. |
 
 The work is the same shape each time: widen the `feature_flags` CHECK constraint to add
 the new flags (same migration pattern as 00031 and 00034), map them in the plan preset
@@ -256,6 +269,14 @@ in `provision.go` — which already inserts flags with `source='plan'` — hide 
 with `flagOn(...)` in the frontend, and add a `RequireFeature` middleware on the
 server. That middleware does not exist: **feature flags are currently written and read
 but never enforced server-side**, so today they are UI hints, not boundaries.
+
+**Treat now, pay later needs no work.** `pay_later` and `pay_later_note` are already
+on the session, the money projection already separates a promise from a delivered
+debt (`promised_undelivered`), and instalments are the treatment plan itself. It is on
+every plan, so there is nothing to gate.
+
+**The unbilled report needs no work either, now that it is on every plan** — it is
+permission-gated today and that is exactly right.
 
 **Dropped from the ladder: audit-history retention.** `audit_retention_days` is written
 at provisioning and never read again — there is no pruning job, so every plan keeps
