@@ -6,7 +6,6 @@ CREATE TEMP TABLE ctx AS
 SELECT :tid::uuid AS tid,
        (SELECT id FROM branches WHERE tenant_id=:tid::uuid LIMIT 1) AS branch,
        (SELECT id FROM departments WHERE tenant_id=:tid::uuid AND name='General Practice') AS dept,
-       (SELECT id FROM departments WHERE tenant_id=:tid::uuid AND name='Internal Medicine') AS dept2,
        (SELECT id FROM users WHERE tenant_id=:tid::uuid AND email='doctor@joy.com') AS doc,
        (SELECT id FROM users WHERE tenant_id=:tid::uuid AND email='triage@joy.com') AS nurse,
        (SELECT id FROM users WHERE tenant_id=:tid::uuid AND email='reception@joy.com') AS recep;
@@ -22,7 +21,7 @@ WHERE extract(dow FROM current_date + d.off) NOT IN (0);            -- the clini
 INSERT INTO appointments (id, tenant_id, branch_id, department_id, patient_id, provider_id,
                           starts_at, ends_at, status, reason, source, created_by, created_at)
 SELECT md5('apt'||s.n::text)::uuid, c.tid, c.branch,
-       CASE WHEN s.n % 4 = 0 THEN c.dept2 ELSE c.dept END,
+       c.dept,
        p.id, c.doc, s.starts, s.starts + interval '30 minutes',
        CASE WHEN s.off < 0 THEN (ARRAY['completed','completed','completed','completed','no_show','cancelled'])[1 + (s.n % 6)]
             WHEN s.off = 0 THEN (ARRAY['booked','checked_in','completed','booked'])[1 + (s.n % 4)]

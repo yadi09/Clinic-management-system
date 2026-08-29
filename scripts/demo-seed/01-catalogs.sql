@@ -15,14 +15,11 @@ SELECT :tid::uuid AS tid,
        (SELECT id FROM users WHERE tenant_id=:tid::uuid AND email='reception@joy.com') AS recep,
        (SELECT id FROM users WHERE tenant_id=:tid::uuid AND email='laboratory@joy.com') AS lab;
 
--- ---------- departments ----------
-INSERT INTO departments (tenant_id, branch_id, name, specialty)
-SELECT c.tid, c.branch, d.name, d.spec FROM ctx c,
-  (VALUES ('Internal Medicine','internal_medicine'),
-          ('Pediatrics','pediatrics'),
-          ('Obstetrics & Gynaecology','obgyn'),
-          ('Emergency','emergency')) AS d(name,spec)
-WHERE NOT EXISTS (SELECT 1 FROM departments x WHERE x.tenant_id=c.tid AND x.name=d.name);
+-- No departments are created here. Joy Speciality runs a single department
+-- ("General Practice") and an earlier version of this seed invented four more, which
+-- then had to be unpicked from the queue, the appointments and the charges. A clinic's
+-- department list is a real configuration decision, not demo furniture — seed the data
+-- into whatever departments the clinic already has.
 
 -- ---------- service catalog ----------
 INSERT INTO service_items (tenant_id, code, name, category, price, currency, is_active, is_default)

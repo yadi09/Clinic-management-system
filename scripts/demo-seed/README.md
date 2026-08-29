@@ -11,7 +11,7 @@ Each file is idempotent — every insert is guarded by `NOT EXISTS`, so re-runni
 up rather than duplicating.
 
 ```sh
-for f in 01-catalogs 02-patients 03-encounters 04-laboratory 05-charges 06-scheduling-and-beds; do
+for f in 01-catalogs 02-patients 03-encounters 04-laboratory 05-charges 06-scheduling-and-beds 08-triage; do
   docker exec -i clinicos-postgres-1 psql -U clinic -d clinic < $f.sql
 done
 bash 07-admissions.sh     # goes through the API, so admissions are billed for real
@@ -26,15 +26,22 @@ by hand would produce rows the product itself would never have written.
 
 | | |
 |---|---|
-| **01-catalogs** | 4 more departments, 16 priced services (2 of them defaults, so reception raises a real fee), 15 diagnoses in 8 categories, 6 allergens, 10 lab tests with reference ranges, 12 drugs and the prescribing formulary |
+| **01-catalogs** | 16 priced services (2 of them defaults, so reception raises a real fee), 15 diagnoses in 8 categories, 6 allergens, 10 lab tests with reference ranges, 12 drugs and the prescribing formulary |
 | **02-patients** | 48 patients with Ethiopian names, ages 3–72, phones, addresses, blood groups and first-visit dates spread over a year; allergies on 7 of them |
 | **03-encounters** | 285 closed visits over the last 90 days, each with vitals, a signed SOAP note and a primary diagnosis; a prescription on two visits in three |
 | **04-laboratory** | 89 orders on one visit in three, a few still in process, the rest validated with results flagged against their own reference ranges |
 | **05-charges** | 750 charges — the card fee and consultation on every visit, the investigations that were ordered, the occasional procedure. Most paid on the day with a receipt number, ~20 still at the cashier, a couple waived, and a few old ones never collected so debt ageing has something to age |
 | **06-scheduling-and-beds** | 150 appointments across a 29-day window (past ones completed, no-show or cancelled; 72 still to come), 9 patients in today's queue at every stage, 2 wards and 11 beds priced from 450 to 2,500 |
+| **08-triage** | one morning in the queue — 4 awaiting vitals, 3 ready for a doctor, 3 already through — and `clinics.triage_required = true`, so nobody reaches a doctor without vitals |
 | **07-admissions** | 6 patients currently on the ward including one moved down from ICU, 5 discharged with their stays billed, and one deposit left overdue so the board shows the red state |
 
 ## Two things to know
+
+**It creates no departments.** A clinic's department list is a real configuration
+decision, not demo furniture. Joy Speciality runs one ("General Practice"); an earlier
+version of this seed invented four more, and they then had to be unpicked from the
+queue, the appointments and the charges. The data seeds into whatever departments the
+clinic already has.
 
 **The appointment slots are deliberately spaced.** `appointments_no_provider_overlap` is
 an exclusion constraint, and this tenant has one doctor, so every appointment is

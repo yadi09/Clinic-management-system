@@ -20,6 +20,9 @@ SELECT :tid::uuid AS tid,
        (SELECT id FROM users WHERE tenant_id=:tid::uuid AND email='triage@joy.com') AS nurse,
        (SELECT id FROM users WHERE tenant_id=:tid::uuid AND email='reception@joy.com') AS recep;
 
+-- One morning in one department: four still waiting for vitals, three ready for a
+-- doctor, three already through. Multiply this by a department list and you get five
+-- days of arrivals stacked onto one screen, which reads as a backlog, not a clinic.
 CREATE TEMP TABLE slot AS
 SELECT row_number() OVER (ORDER BY d.name, v.k) AS seq,
        d.id AS dept_id, d.name AS dept, v.k, v.stage, v.state, v.vitals, v.mins
@@ -28,10 +31,13 @@ CROSS JOIN (VALUES
   (1,'triage','waiting',      false, 495),
   (2,'triage','waiting',      false, 510),
   (3,'triage','called',       false, 520),
-  (4,'triage','waiting',      true,  460),
-  (5,'triage','waiting',      true,  475),
-  (6,'with_doctor','waiting', true,  445),
-  (7,'with_doctor','in_consult', true, 430)
+  (4,'triage','waiting',      false, 528),
+  (5,'triage','waiting',      true,  460),
+  (6,'triage','waiting',      true,  475),
+  (7,'triage','called',       true,  482),
+  (8,'with_doctor','waiting', true,  445),
+  (9,'with_doctor','in_consult', true, 430),
+  (10,'with_doctor','in_consult', true, 418)
 ) AS v(k,stage,state,vitals,mins)
 WHERE d.tenant_id=:tid::uuid;
 
@@ -46,7 +52,7 @@ SELECT s.*, r.patient_id, r.mrn FROM slot s JOIN ranked r ON r.rn = s.seq;
 INSERT INTO queue_entries (id, tenant_id, branch_id, department_id, patient_id, stage, state, priority,
                            assigned_provider_id, enqueued_at, called_at, started_at, created_by)
 SELECT md5('tq'||k.seq::text)::uuid, c.tid, c.branch, k.dept_id, k.patient_id, k.stage, k.state,
-       CASE WHEN k.dept='Emergency' AND k.k <= 2 THEN 1 ELSE 0 END,
+       CASE WHEN k.k <= 2 THEN 1 ELSE 0 END,
        CASE WHEN k.stage='with_doctor' THEN c.doc END,
        date_trunc('day', now()) + k.mins * interval '1 minute',
        CASE WHEN k.state <> 'waiting' THEN date_trunc('day', now()) + (k.mins + 9) * interval '1 minute' END,
