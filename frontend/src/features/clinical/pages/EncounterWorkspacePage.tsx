@@ -18,6 +18,8 @@ import { useAuth } from "@/app/auth-context";
 import { getClinic, getSettings, listBranches, listProviders } from "@/features/admin/api";
 import { printPrescription, printLabRequest } from "@/features/clinical/print";
 import { DictateButton } from "@/features/clinical/components/DictateButton";
+import { FLAG_CLS, VitalsGrid } from "@/features/clinical/components/VitalsStrip";
+import { PatientStoryPanel } from "@/features/clinical/components/PatientStory";
 import { bookAppointment, listAppointments, markFollowup, rescheduleAppointment, setAppointmentStatus, transitionQueue } from "@/features/scheduling/api";
 import { createOrder, encounterLabs, listTests } from "@/features/lab/api";
 import { PregnancyDatingCard } from "@/features/maternity/PregnancyCalculator";
@@ -27,30 +29,25 @@ import {
   cancelLabReferral,
   createLabReferral,
   getVitalFields,
-  getWorkspace,
-  listHistory,
   openEncounter,
   removeDiagnosis,
   removeMedication,
   recordLabReferralResult,
   runAssist,
   saveNote,
+  patientStory,
   searchCatalog,
   searchDrugs,
   setAside,
   signEncounter,
   signReferralUpload,
   uploadToTarget,
-  vitalFlag,
   type AssistResult,
   type CatalogEntry,
   type Drug,
-  type HistoryItem,
   type LabReferral,
   type ReferralFile,
   type ReferralValue,
-  type VitalField,
-  type Vitals,
   type Workspace,
 } from "@/features/clinical/api";
 import { CreateDrugDialog } from "@/features/clinical/DrugLibrary";
@@ -64,13 +61,6 @@ const SECTIONS = [
   { id: "prescription", label: "Prescription" },
 ];
 const DEFERRED = ["Attachments"];
-
-const FLAG_CLS: Record<string, string> = {
-  normal: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  low: "border-sky-300 bg-sky-50 text-sky-700",
-  high: "border-amber-300 bg-amber-50 text-amber-700",
-  critical: "border-rose-300 bg-rose-50 text-rose-700",
-};
 
 function hhmm(iso?: string) {
   if (!iso) return "";
@@ -307,7 +297,7 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
         {/* Right rail — AI co-pilot + patient history timeline */}
         <div className={cn("space-y-4", pane === "note" && "hidden", "lg:block")}>
           <div className={paneCls("assist")}><AssistPanel encounterId={ws.encounter_id} /></div>
-          <div className={paneCls("history")}><HistoryPanel patientId={ws.patient.patient_id} /></div>
+          <div className={paneCls("history")}><PatientStoryPanel patientId={ws.patient.patient_id} /></div>
         </div>
       </div>
 
@@ -637,286 +627,6 @@ function AssistPanel({ encounterId }: { encounterId: string }) {
   );
 }
 
-function HistoryPanel({ patientId }: { patientId: string }) {
-  const history = useQuery({ queryKey: ["history", patientId], queryFn: () => listHistory(patientId) });
-  const [open, setOpen] = useState<HistoryItem | null>(null);
-  return (
-    <Card className="hidden h-fit p-4 lg:block">
-      <h3 className="mb-3 text-h3">History</h3>
-      {(history.data?.length ?? 0) === 0 ? (
-        <p className="text-xs text-muted-foreground">No past visits.</p>
-      ) : (
-        <ol className="space-y-2">
-          {(history.data ?? []).map((h) => (
-            <li key={h.id}>
-              <button
-                onClick={() => setOpen(h)}
-                className="w-full rounded-md border-l-2 border-primary/30 py-1 pl-3 pr-2 text-left transition-colors hover:bg-muted"
-              >
-                <p className="text-xs font-semibold text-brand">
-                  {new Date(h.started_at).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {h.type}
-                  {h.provider_name ? ` · ${h.provider_name}` : ""}
-                </p>
-                {h.primary_dx ? <p className="truncate text-xs">{h.primary_dx}</p> : null}
-              </button>
-            </li>
-          ))}
-        </ol>
-      )}
-      <p className="mt-3 text-[11px] text-muted-foreground">Click a visit to see the full record.</p>
-      {open && <HistoryDetailDialog item={open} onClose={() => setOpen(null)} />}
-    </Card>
-  );
-}
-
-const STATUS_LABEL: Record<string, string> = { closed: "Signed", open: "In progress", awaiting_results: "Awaiting results" };
-
-// HistoryDetailDialog opens a past visit in full: vitals (flagged), the SOAP note,
-// diagnoses, prescription and lab results — everything that happened that day.
-function HistoryDetailDialog({ item, onClose }: { item: HistoryItem; onClose: () => void }) {
-  const { flagOn } = useAuth();
-  const ws = useQuery({ queryKey: ["history-ws", item.id], queryFn: () => getWorkspace(item.id) });
-  const vfields = useQuery({ queryKey: ["vital-fields"], queryFn: getVitalFields });
-  const labs = useQuery({ queryKey: ["history-labs", item.id], queryFn: () => encounterLabs(item.id), enabled: flagOn("laboratory") });
-
-  const d = ws.data;
-  const note = d?.note;
-  const soap: { label: string; text: string }[] = note
-    ? [
-        { label: "Subjective", text: note.subjective },
-        { label: "Objective", text: note.objective },
-        { label: "Assessment", text: note.assessment },
-        { label: "Plan", text: note.plan },
-      ].filter((s) => s.text?.trim())
-    : [];
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
-            {new Date(item.started_at).toLocaleDateString(undefined, { weekday: "short", day: "2-digit", month: "long", year: "numeric" })}
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <span>{item.type}</span>
-          <span>· {hhmm(item.started_at)}</span>
-          {item.provider_name && <span>· {item.provider_name}</span>}
-          {d && <Badge variant={d.status === "closed" ? "success" : "outline"}>{STATUS_LABEL[d.status] ?? d.status}</Badge>}
-        </div>
-
-        {ws.isLoading && <p className="py-6 text-center text-sm text-muted-foreground">Loading the visit…</p>}
-        {ws.isError && <p className="py-6 text-center text-sm text-destructive">Could not load this visit.</p>}
-
-        {d && (
-          <div className="space-y-5">
-            <Section title="Allergies">
-              {d.allergies.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No known allergies.</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {d.allergies.map((a, i) => (
-                    <span key={`${a.substance}-${i}`} className="flex items-center gap-1 rounded-full bg-rose-600 px-3 py-1 text-xs font-semibold text-white">
-                      <AlertTriangle className="h-3.5 w-3.5" /> {a.substance}
-                      {a.severity ? ` · ${a.severity}` : ""}{a.reaction ? ` · ${a.reaction}` : ""}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </Section>
-
-            {d.vitals.length > 0 && (
-              <Section title="Vitals">
-                <div className="space-y-3">
-                  {d.vitals.map((v, i) => (
-                    <div key={v.recorded_at ?? i}>
-                      {(d.vitals.length > 1 || v.recorded_at) && (
-                        <p className="mb-1 text-xs text-muted-foreground">{v.recorded_at ? new Date(v.recorded_at).toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : `Reading ${i + 1}`}</p>
-                      )}
-                      <VitalsGrid vitals={v} fields={vfields.data ?? []} />
-                    </div>
-                  ))}
-                </div>
-              </Section>
-            )}
-
-            {soap.length > 0 && (
-              <Section title="Note">
-                <div className="space-y-2">
-                  {soap.map((s) => (
-                    <div key={s.label}>
-                      <p className="text-xs font-semibold text-muted-foreground">{s.label}</p>
-                      <p className="whitespace-pre-wrap text-sm">{s.text}</p>
-                    </div>
-                  ))}
-                  {note?.signed_at && (
-                    <p className="pt-1 text-xs text-muted-foreground">Signed {new Date(note.signed_at).toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
-                  )}
-                </div>
-              </Section>
-            )}
-
-            <Section title="Diagnoses">
-              {d.diagnoses.length === 0 ? (
-                <p className="text-xs text-muted-foreground">None recorded.</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {d.diagnoses.map((dx) => (
-                    <span key={dx.id} className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                      {dx.code ? `${dx.code} ` : ""}{dx.description}{dx.is_primary ? " · primary" : ""}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </Section>
-
-            <Section title="Prescription">
-              {d.prescription.length === 0 ? (
-                <p className="text-xs text-muted-foreground">None prescribed.</p>
-              ) : (
-                <div className="divide-y rounded-md border">
-                  {d.prescription.map((m) => (
-                    <div key={m.id} className="px-3 py-2 text-sm">
-                      <span className="font-medium">{m.drug_name}</span>
-                      <span className="text-muted-foreground"> · {[m.dose, m.frequency, m.duration].filter(Boolean).join(" · ")}</span>
-                      {m.instructions ? <p className="text-xs text-muted-foreground">{m.instructions}</p> : null}
-                      {((m.allergens?.length ?? 0) > 0 || m.allergy_override) && (
-                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                          {(m.allergens ?? []).map((a) => (
-                            <Badge key={a} variant="warning" className="gap-1"><AlertTriangle className="h-3 w-3" />{a}</Badge>
-                          ))}
-                          {m.allergy_override && (
-                            <Badge variant="destructive" className="gap-1" title={m.allergy_override}>
-                              Prescribed despite allergy
-                            </Badge>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Section>
-
-            {flagOn("laboratory") && (labs.data?.length ?? 0) > 0 && (
-              <Section title="Labs">
-                <div className="space-y-3">
-                  {(labs.data ?? []).map((o) => (
-                    <div key={o.order_no} className="rounded-md border">
-                      <div className="flex items-center justify-between border-b bg-muted/30 px-3 py-1.5 text-xs">
-                        <span className="font-mono">Order L-{o.order_no}</span>
-                        <Badge variant="outline">{o.priority}</Badge>
-                      </div>
-                      <div className="divide-y">
-                        {o.items.map((it) => (
-                          <div key={it.sample_no} className="px-3 py-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium">{it.test_name}</span>
-                              <Badge variant={it.status === "validated" ? "success" : "outline"}>{it.status.replace("_", " ")}</Badge>
-                            </div>
-                            {it.results.length > 0 && (
-                              <div className="overflow-x-auto">
-                                {/* Phones: a long result value scrolls instead of overflowing the card (no width floor — this column is narrow on desktop too). */}
-                                <table className="mt-1.5 w-full text-xs">
-                                  <tbody>
-                                    {it.results.map((r) => (
-                                      <tr key={r.analyte_id}>
-                                        <td className="py-0.5 text-muted-foreground">{r.name}</td>
-                                        <td className="py-0.5 font-medium">{r.value || "—"}{r.value && r.unit ? ` ${r.unit}` : ""}</td>
-                                        <td className="py-0.5 text-right">
-                                          {r.value ? <Badge variant="outline" className={FLAG_CLS[r.flag] ?? FLAG_CLS.normal}>{r.flag}</Badge> : null}
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            )}
-                            {it.results.length === 0 && it.status !== "validated" && (
-                              <p className="mt-1 text-xs text-muted-foreground">Awaiting lab…</p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Section>
-            )}
-
-            {(d.lab_referrals?.length ?? 0) > 0 && (
-              <Section title="Lab requests">
-                <div className="space-y-3">
-                  {(d.lab_referrals ?? []).map((r) => (
-                    <div key={r.id} className="rounded-md border">
-                      <div className="flex items-center justify-between gap-2 border-b bg-muted/30 px-3 py-1.5 text-sm">
-                        <span className="font-medium">{r.tests.split("\n").filter(Boolean).join(", ")}</span>
-                        <Badge variant={r.status === "resulted" ? "success" : r.status === "cancelled" ? "outline" : "warning"}>{r.status}</Badge>
-                      </div>
-                      <div className="space-y-2 px-3 py-2 text-sm">
-                        {r.indication && <p className="text-xs text-muted-foreground">Indication: {r.indication}</p>}
-                        {r.status === "resulted" ? (
-                          <div className="rounded bg-muted/40 p-2 text-xs">
-                            {(r.external_lab || r.resulted_at) && (
-                              <p className="font-medium">{r.external_lab || "External lab"}{r.resulted_at ? ` · ${new Date(r.resulted_at).toLocaleDateString()}` : ""}</p>
-                            )}
-                            {r.result_summary && <p className="mt-0.5 whitespace-pre-wrap">{r.result_summary}</p>}
-                            {(r.result_values?.length ?? 0) > 0 && (
-                              <div className="overflow-x-auto">
-                                {/* Phones: a long result value scrolls instead of overflowing the card (no width floor — this column is narrow on desktop too). */}
-                                <table className="mt-1.5 w-full">
-                                  <tbody>
-                                    {r.result_values!.map((v, i) => (
-                                      <tr key={i}>
-                                        <td className="py-0.5 text-muted-foreground">{v.name}</td>
-                                        <td className="py-0.5 font-medium">{v.value}{v.unit ? ` ${v.unit}` : ""}</td>
-                                        <td className="py-0.5 text-muted-foreground">{v.ref || ""}</td>
-                                        <td className="py-0.5 text-right">{v.flag ? <Badge variant="outline">{v.flag}</Badge> : null}</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            )}
-                            {(r.result_files?.length ?? 0) > 0 && (
-                              <div className="mt-1.5 flex flex-wrap gap-2">
-                                {r.result_files!.map((f, i) => (
-                                  <a key={i} href={f.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded border bg-background px-2 py-0.5 text-primary hover:underline">
-                                    <Printer className="h-3 w-3" /> {f.name}
-                                  </a>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-muted-foreground">{r.status === "cancelled" ? "Cancelled." : "Awaiting result."}</p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Section>
-            )}
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h4>
-      {children}
-    </div>
-  );
-}
-
 function SectionHead({ title, step, done, children }: {
   title: string; step?: number; done?: boolean; children?: React.ReactNode;
 }) {
@@ -1045,124 +755,16 @@ function ProgressRail({ done, missing }: { done: Record<string, boolean>; missin
   );
 }
 
-type Flag = "low" | "normal" | "high" | null;
-
-function numOr(v: unknown): number | undefined {
-  if (v == null || v === "") return undefined;
-  const n = Number(v);
-  return Number.isNaN(n) ? undefined : n;
-}
-// Combine two flags into the "most notable" one (abnormal wins over normal).
-function worstFlag(a: Flag, b: Flag): Flag {
-  for (const want of ["high", "low", "normal"] as const) {
-    if (a === want || b === want) return want;
-  }
-  return null;
-}
-
-// VitalsGrid renders one tile per configured vital, with Low/Normal/High flags
-// computed from the clinic's reference ranges (shared by the workspace + history).
-// It is data-driven off the clinic's vitals form so any enabled field (resp rate,
-// height, …) appears — and any field that has a recorded value still shows even if
-// later disabled, so the read-only history view never hides captured data.
-function VitalsGrid({ vitals, fields }: { vitals: Vitals; fields: VitalField[] }) {
-  const flagOf = (key: string, v: number | undefined): Flag => {
-    const f = fields.find((x) => x.key === key);
-    if (!f || v === undefined) return null;
-    return vitalFlag(f, v);
-  };
-  const val = (key: string): string | undefined => {
-    const raw = (vitals as unknown as Record<string, unknown>)[key];
-    return raw == null || raw === "" ? undefined : String(raw);
-  };
-  const shown = fields.filter((f) => f.enabled || val(f.key) !== undefined).sort((a, b) => a.order - b.order);
-  const hasBP = shown.some((f) => f.key === "systolic") && shown.some((f) => f.key === "diastolic");
-
-  const tiles: { key: string; label: string; value: string; flag: Flag }[] = [];
-  let bpDone = false;
-  for (const f of shown) {
-    if ((f.key === "systolic" || f.key === "diastolic") && hasBP) {
-      if (bpDone) continue;
-      bpDone = true;
-      const s = val("systolic"), d = val("diastolic");
-      tiles.push({
-        key: "bp", label: "BP",
-        value: s && d ? `${s}/${d}` : "—",
-        flag: worstFlag(flagOf("systolic", numOr(vitals.systolic)), flagOf("diastolic", numOr(vitals.diastolic))),
-      });
-      continue;
-    }
-    const v = val(f.key);
-    tiles.push({
-      key: f.key, label: f.label,
-      value: v ? `${v}${f.unit ? ` ${f.unit}` : ""}` : "—",
-      flag: flagOf(f.key, numOr(v)),
-    });
-  }
-
-  const off = tiles.filter((t) => t.flag && t.flag !== "normal");
-
-  return (
-    <div className="space-y-2.5">
-      {/* Is anything wrong? — answered before the doctor has to read five chips.
-          The old grid rendered 65% SpO2 and 98% SpO2 in the same colour with a 10px
-          label beside them, so a peri-arrest set of observations looked like any
-          other. The summary answers it in one line; the tiles say which. */}
-      {off.length > 0 ? (
-        <p className="flex flex-wrap items-center gap-x-1.5 text-sm font-semibold text-destructive">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          {off.length} of {tiles.length} outside the normal range
-          <span className="font-normal text-muted-foreground">
-            — {off.map((t) => t.label).join(", ")}
-          </span>
-        </p>
-      ) : tiles.length > 0 ? (
-        <p className="flex items-center gap-1.5 text-sm text-emerald-700">
-          <Check className="h-4 w-4 shrink-0" /> All recorded vitals are within range
-        </p>
-      ) : null}
-
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-        {tiles.map((t) => <VitalCard key={t.key} label={t.label} value={t.value} flag={t.flag} />)}
-      </div>
-
-      <p className="text-xs text-muted-foreground">
-        Taken {hhmm(vitals.recorded_at)}
-        {vitals.notes ? <> · <span className="text-foreground">{vitals.notes}</span></> : null}
-      </p>
-    </div>
-  );
-}
-
-/** Loud when it matters, quiet when it does not — the contrast is what makes an
- *  abnormal observation findable at a glance. */
-const VITAL_TONE: Record<string, { tile: string; value: string; chip: string }> = {
-  low:      { tile: "border-sky-300 bg-sky-50/70",   value: "text-sky-800",   chip: "bg-sky-600" },
-  high:     { tile: "border-amber-300 bg-amber-50",  value: "text-amber-800", chip: "bg-amber-500" },
-  critical: { tile: "border-rose-300 bg-rose-50",    value: "text-rose-800",  chip: "bg-rose-600" },
-};
-
-function VitalCard({ label, value, flag }: { label: string; value: string; flag?: Flag }) {
-  const tone = flag && flag !== "normal" ? VITAL_TONE[flag] : undefined;
-  return (
-    <div className={cn("relative overflow-hidden rounded-lg border p-3",
-      tone ? tone.tile : "bg-background")}>
-      {tone && <span className={cn("absolute inset-y-0 left-0 w-1", tone.chip)} />}
-      <div className="flex items-center justify-between gap-1">
-        <p className={cn("text-xs", tone ? "font-medium text-foreground/70" : "text-muted-foreground")}>{label}</p>
-        {tone && (
-          <span className={cn("rounded-full px-1.5 text-[10px] font-bold uppercase tracking-wide text-white", tone.chip)}>
-            {flag}
-          </span>
-        )}
-      </div>
-      <p className={cn("mt-0.5 font-semibold tabular-nums", tone ? `text-lg ${tone.value}` : "text-brand")}>{value}</p>
-    </div>
-  );
-}
-
 function DiagnosisPicker({ ws, locked, onChanged }: { ws: Workspace; locked: boolean; onChanged: () => void }) {
   const [term, setTerm] = useState("");
+  // What this patient keeps coming back with. A follow-up for a known condition is the
+  // commonest consultation there is, and typing "Type 2 diabetes mellitus" into a
+  // search box for the fifth time is work the record could have saved.
+  const story = useQuery({
+    queryKey: ["story", ws.patient.patient_id],
+    queryFn: () => patientStory(ws.patient.patient_id),
+    enabled: !locked,
+  });
   const results = useQuery({
     queryKey: ["catalog", term],
     queryFn: () => searchCatalog({ search: term }),
@@ -1177,6 +779,19 @@ function DiagnosisPicker({ ws, locked, onChanged }: { ws: Workspace; locked: boo
     mutationFn: (id: string) => removeDiagnosis(ws.encounter_id, id),
     onSuccess: onChanged,
   });
+  // Adding a past problem goes through the catalogue rather than free text, so the
+  // repeat diagnosis is the same coded entry as the original — otherwise the problem
+  // list quietly splits into two spellings of the same condition.
+  const addByName = useMutation({
+    mutationFn: async (description: string) => {
+      const found = await searchCatalog({ search: description });
+      const exact = found.find((c) => c.name.toLowerCase() === description.toLowerCase()) ?? found[0];
+      if (!exact) throw new Error("not in the catalogue");
+      return addDiagnosis(ws.encounter_id, { catalog_id: exact.id, is_primary: ws.diagnoses.length === 0 });
+    },
+    onSuccess: onChanged,
+    onError: () => toast.error("That diagnosis is no longer in the catalogue — search for it instead"),
+  });
 
   return (
     <div className="space-y-2">
@@ -1190,6 +805,28 @@ function DiagnosisPicker({ ws, locked, onChanged }: { ws: Workspace; locked: boo
         ))}
         {ws.diagnoses.length === 0 && <span className="text-xs text-muted-foreground">No diagnosis yet.</span>}
       </div>
+
+      {!locked && (() => {
+        const already = new Set(ws.diagnoses.map((d) => d.description.toLowerCase()));
+        const seen = (story.data?.problems ?? [])
+          .filter((p) => p.recurring && !already.has(p.description.toLowerCase()))
+          .slice(0, 4);
+        if (seen.length === 0) return null;
+        return (
+          <div className="rounded-md border border-dashed bg-muted/30 px-2.5 py-2">
+            <p className="text-[11px] text-muted-foreground">Seen before for — tap to add</p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {seen.map((p) => (
+                <button key={p.description} type="button" disabled={addByName.isPending}
+                  onClick={() => addByName.mutate(p.description)}
+                  className="touch-hit rounded-full border bg-card px-2.5 py-1 text-xs font-medium transition-colors hover:border-primary hover:text-primary disabled:opacity-50">
+                  {p.description} <span className="text-muted-foreground">×{p.times}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
       {!locked && (
         <div className="relative">
           <Input placeholder="Search diagnoses…" value={term} onChange={(e) => setTerm(e.target.value)} />

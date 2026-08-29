@@ -211,6 +211,26 @@ export interface HistoryItem {
   provider_name?: string;
   primary_dx?: string;
 }
+// --- the patient's story: what they carry, what they are on, where they are going ---
+export interface Problem {
+  code?: string; description: string; times: number;
+  first_seen: string; last_seen: string; recurring: boolean;
+}
+export interface Medicine {
+  drug_name: string; dose?: string; frequency?: string; duration?: string;
+  instructions?: string; last_prescribed: string;
+}
+export interface TrendPoint {
+  at: string; systolic?: number; diastolic?: number; pulse?: number;
+  spo2?: number; temp_c?: number; weight_kg?: number;
+}
+export interface Story { problems: Problem[]; medicines: Medicine[]; trend: TrendPoint[] }
+
+/** The record asked the way a doctor asks it, in one request. */
+export function patientStory(patientId: string) {
+  return apiFetch<Story>(`/patients/${patientId}/story`);
+}
+
 /** Past encounters for the patient (timeline). */
 export function listHistory(patientId: string) {
   return apiFetch<HistoryItem[]>(`/encounters?patient=${patientId}`);

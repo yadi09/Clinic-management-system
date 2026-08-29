@@ -323,6 +323,8 @@ type Service interface {
 	SetAside(ctx context.Context, encounterID uuid.UUID) error
 	// MyBoard returns the calling doctor's in-progress and done-today encounters.
 	MyBoard(ctx context.Context, providerID uuid.UUID, doneSince time.Time, doneUntil *time.Time) (*Board, error)
+	// Story is the problem-oriented view: problems, medicines, vitals trend.
+	Story(ctx context.Context, patientID uuid.UUID) (*Story, error)
 	History(ctx context.Context, patientID uuid.UUID) ([]HistoryItem, error)
 	// ImportHistory stores a migrated (paper / old-system) record as a back-dated,
 	// signed historical encounter+note so it appears in the patient's timeline.
@@ -435,4 +437,46 @@ type CertificateInput struct {
 	RestDays      int
 	RestFrom      string // YYYY-MM-DD
 	Notes         string
+}
+
+// --- the patient's story (problem-oriented view of the record) ---
+
+// Problem is a diagnosis this patient has had, and how often.
+type Problem struct {
+	Code        string    `json:"code,omitempty"`
+	Description string    `json:"description"`
+	Times       int       `json:"times"`
+	FirstSeen   time.Time `json:"first_seen"`
+	LastSeen    time.Time `json:"last_seen"`
+	// Recurring is Times > 1 — a pattern rather than a one-off.
+	Recurring bool `json:"recurring"`
+}
+
+// Medicine is the most recent prescription of one drug.
+type Medicine struct {
+	DrugName       string    `json:"drug_name"`
+	Dose           string    `json:"dose,omitempty"`
+	Frequency      string    `json:"frequency,omitempty"`
+	Duration       string    `json:"duration,omitempty"`
+	Instructions   string    `json:"instructions,omitempty"`
+	LastPrescribed time.Time `json:"last_prescribed"`
+}
+
+// TrendPoint is one set of observations, for plotting change over time.
+type TrendPoint struct {
+	At        time.Time `json:"at"`
+	Systolic  *int      `json:"systolic,omitempty"`
+	Diastolic *int      `json:"diastolic,omitempty"`
+	Pulse     *int      `json:"pulse,omitempty"`
+	SpO2      *int      `json:"spo2,omitempty"`
+	TempC     *float64  `json:"temp_c,omitempty"`
+	WeightKg  *float64  `json:"weight_kg,omitempty"`
+}
+
+// Story is what a doctor asks of a record: what the patient carries, what they are
+// on, and which way their numbers are going.
+type Story struct {
+	Problems  []Problem    `json:"problems"`
+	Medicines []Medicine   `json:"medicines"`
+	Trend     []TrendPoint `json:"trend"`
 }

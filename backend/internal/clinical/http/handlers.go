@@ -363,6 +363,22 @@ func (h *Handlers) History(c *gin.Context) {
 	httpx.OK(c, out)
 }
 
+// Story handles GET /patients/:id/story — the problem-oriented view of the record:
+// what this patient carries, what they are on, and which way their numbers are going.
+func (h *Handlers) Story(c *gin.Context) {
+	patientID, err := id.Decode(id.PrefixPatient, c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("invalid patient id"))
+		return
+	}
+	st, err := h.svc.Story(c.Request.Context(), patientID)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, st)
+}
+
 // ImportHistory handles POST /history-import — store a migrated (paper/old-system)
 // record as a back-dated historical encounter for a patient.
 func (h *Handlers) ImportHistory(c *gin.Context) {
