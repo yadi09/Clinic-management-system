@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Baby, CalendarClock } from "lucide-react";
+import { AlertTriangle, Baby, CalendarClock, CheckCircle2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -63,12 +63,24 @@ function ready(method: DatingMethod, i: DatingInputs): boolean {
 
 /** The full method → inputs → live-result form, with Save. */
 export function PregnancyCalculator({ patientId, onSaved }: { patientId: string; onSaved?: () => void }) {
+  // What is already on file. Without this the calculator opened blank on a patient
+  // whose dating was recorded minutes earlier, so there was no way to tell an
+  // unrecorded pregnancy from a recorded one except by saving again over the top.
+  const existing = useQuery({ queryKey: ["dating", patientId], queryFn: () => getDating(patientId) });
+  const onFile = existing.data?.dating ?? null;
   const [method, setMethod] = useState<DatingMethod>("LMP");
   const [inputs, setInputs] = useState<DatingInputs>({ cycleLength: 28 });
   const [gaDate, setGaDate] = useState(todayISO());
   const [note, setNote] = useState("");
   const [result, setResult] = useState<DatingResult | null>(null);
   const set = (patch: Partial<DatingInputs>) => setInputs((p) => ({ ...p, ...patch }));
+
+  // Open on the method the dating was recorded with — re-entering it under LMP when it
+  // was dated by ultrasound is how a redate gets triggered by accident.
+  const [methodPinned, setMethodPinned] = useState(false);
+  useEffect(() => {
+    if (!methodPinned && onFile?.method) { setMethod(onFile.method); setMethodPinned(true); }
+  }, [onFile?.method, methodPinned]);
 
   const isReady = ready(method, inputs);
   const debounced = useDebounce(JSON.stringify({ method, inputs, gaDate }), 300);
@@ -100,6 +112,21 @@ export function PregnancyCalculator({ patientId, onSaved }: { patientId: string;
 
   return (
     <div className="space-y-4">
+      {onFile && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+          <p className="flex flex-wrap items-center gap-x-2 text-sm font-semibold text-emerald-900">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            Dating already recorded — EDD {fmtG(onFile.edd)}
+            <Badge variant="success" className="text-[10px]">{onFile.gestationalAge?.label}</Badge>
+          </p>
+          <p className="mt-0.5 text-xs text-emerald-800">
+            By {METHODS.find((m) => m.key === onFile.method)?.label ?? onFile.method ?? "—"}
+            {onFile.updatedAt && <> · saved {new Date(onFile.updatedAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</>}.
+            Anything you enter below replaces it, and the change is kept in the history.
+          </p>
+        </div>
+      )}
+
       {/* Method tabs */}
       <div className="flex flex-wrap gap-1 rounded-md border bg-card p-0.5">
         {METHODS.map((m) => (

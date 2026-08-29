@@ -4,6 +4,9 @@
 package http
 
 import (
+	"strings"
+
+	"github.com/google/uuid"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -180,6 +183,42 @@ func (h *Handlers) Get(c *gin.Context) {
 		dating["updatedAt"] = d.UpdatedAt.Format(time.RFC3339)
 	}
 	httpx.OK(c, gin.H{"dating": dating})
+}
+
+// Summary handles GET /dating/summary?patients=pat_a,pat_b — which of these patients
+// already has a dating, so a worklist can say so on the row instead of making the
+// nurse open the calculator to find out.
+func (h *Handlers) Summary(c *gin.Context) {
+	raw := strings.Split(c.Query("patients"), ",")
+	ids := make([]uuid.UUID, 0, len(raw))
+	for _, r := range raw {
+		r = strings.TrimSpace(r)
+		if r == "" {
+			continue
+		}
+		pid, err := id.Decode(id.PrefixPatient, r)
+		if err != nil {
+			httpx.Fail(c, apperr.Validation("invalid patient id"))
+			return
+		}
+		ids = append(ids, pid)
+	}
+	found, err := h.svc.SummaryFor(c.Request.Context(), ids, gaDateOrToday(c.Query("gaDate")))
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	items := make([]gin.H, 0, len(found))
+	for pid, d := range found {
+		row := resultDTO(d.Result)
+		row["patientId"] = id.Encode(id.PrefixPatient, pid)
+		row["method"] = string(d.Method)
+		if d.UpdatedAt != nil {
+			row["updatedAt"] = d.UpdatedAt.Format(time.RFC3339)
+		}
+		items = append(items, row)
+	}
+	httpx.OK(c, gin.H{"items": items})
 }
 
 // History handles GET /patients/:id/dating/history.

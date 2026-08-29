@@ -16,6 +16,7 @@ import { useAuth } from "@/app/auth-context";
 import { getVisit, getVitalFields, recordVitals, vitalFlag, type VitalsBody, type VitalField } from "@/features/clinical/api";
 import { assignProvider, listQueue, type QueueEntry } from "@/features/scheduling/api";
 import { PregnancyDatingDialog } from "@/features/maternity/PregnancyCalculator";
+import { datingSummary } from "@/features/maternity/api";
 import { DateRangeFilter, windowFor, type DateWindow } from "@/components/ui/date-range-filter";
 import { DictateButton } from "@/features/clinical/components/DictateButton";
 
@@ -54,6 +55,18 @@ export function TriagePage() {
     refetchInterval: 30000,
   });
 
+  // Which of the patients on the board already have a dating. One request for all of
+  // them: a nurse could not otherwise tell a recorded pregnancy from an unrecorded one
+  // without opening the calculator on each row to look.
+  const maternityOn = flagOn("maternity");
+  const patientIds = (queue.data ?? []).map((e) => e.patient_id);
+  const dating = useQuery({
+    queryKey: ["dating-summary", patientIds.join(",")],
+    queryFn: () => datingSummary(patientIds),
+    enabled: maternityOn && patientIds.length > 0,
+  });
+  const datingBy = new Map((dating.data?.items ?? []).map((d) => [d.patientId, d]));
+
   const [vitalsFor, setVitalsFor] = useState<QueueEntry | null>(null);
   const [datingFor, setDatingFor] = useState<string | null>(null);
   const [tab, setTab] = useState<"awaiting" | "ready" | "assigned">("awaiting");
@@ -66,6 +79,7 @@ export function TriagePage() {
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["triage", dept] });
     qc.invalidateQueries({ queryKey: ["triage-assigned", dept] });
+    qc.invalidateQueries({ queryKey: ["dating-summary"] });
   };
 
   return (
@@ -126,15 +140,25 @@ export function TriagePage() {
                 ) : (
                   <Badge variant="warning" className="gap-1"><AlertCircle className="h-3 w-3" /> Vitals pending</Badge>
                 )}
+                {/* Dating is a fact about the patient, not about this visit — so it is
+                    stated on the row rather than hidden behind the button. */}
+                {maternityOn && datingBy.has(e.patient_id) && (
+                  <Badge variant="brand" className="gap-1">
+                    <Baby className="h-3 w-3" />
+                    {datingBy.get(e.patient_id)!.gestationalAge?.label} · EDD{" "}
+                    {new Date(datingBy.get(e.patient_id)!.edd + "T00:00:00")
+                      .toLocaleDateString(undefined, { day: "numeric", month: "short" })}
+                  </Badge>
+                )}
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button variant={e.has_vitals ? "ghost" : "default"} size="sm" onClick={() => setVitalsFor(e)}>
                 <Activity className="h-4 w-4" /> {e.has_vitals ? "Edit vitals" : "Record vitals"}
               </Button>
-              {flagOn("maternity") && (
+              {maternityOn && (
                 <Button variant="outline" size="sm" onClick={() => setDatingFor(e.patient_id)}>
-                  <Baby className="h-4 w-4" /> Dating
+                  <Baby className="h-4 w-4" /> {datingBy.has(e.patient_id) ? "Update dating" : "Dating"}
                 </Button>
               )}
               {e.has_vitals && <AssignControl queueId={e.id} onAssigned={refresh} />}

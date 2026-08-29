@@ -48,6 +48,9 @@ type HistoryEntry struct {
 type Service interface {
 	// Preview computes a dating without persisting (live UI).
 	Preview(ctx context.Context, method pregnancy.Method, in pregnancy.Inputs, gaDate time.Time) (pregnancy.Result, error)
+	// SummaryFor returns the current dating for each of the given patients that has
+	// one, keyed by patient — for worklists that must show whether dating exists.
+	SummaryFor(ctx context.Context, patientIDs []uuid.UUID, gaDate time.Time) (map[uuid.UUID]Dating, error)
 	// GetDating returns the patient's current dating (nil if none), GA recomputed for gaDate.
 	GetDating(ctx context.Context, patientID uuid.UUID, gaDate time.Time) (*Dating, error)
 	// SaveDating computes, upserts the current dating and appends a history row in one tx.

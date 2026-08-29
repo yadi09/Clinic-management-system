@@ -57,6 +57,48 @@ func (s *Service) Preview(ctx context.Context, method pregnancy.Method, in pregn
 	return r, nil
 }
 
+// SummaryFor prices a whole worklist in one query.
+//
+// The triage board needs to know, per row, whether this patient already has a dating —
+// without it the nurse cannot tell a recorded pregnancy from an unrecorded one, and
+// re-opens the calculator to find out. Per-row fetching would be one request per
+// patient on every refresh, so the board asks once for the patients it is showing.
+func (s *Service) SummaryFor(ctx context.Context, patientIDs []uuid.UUID, gaDate time.Time) (map[uuid.UUID]maternity.Dating, error) {
+	out := map[uuid.UUID]maternity.Dating{}
+	if len(patientIDs) == 0 {
+		return out, nil
+	}
+	tid, _ := actorOf(ctx)
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		rows, e := tx.Query(ctx,
+			`SELECT patient_id, method, calculated_lmp, updated_at FROM pregnancy_dating
+			  WHERE tenant_id = $1 AND patient_id = ANY($2::uuid[])`, tid, patientIDs)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var pid uuid.UUID
+			var method string
+			var lmp, updated time.Time
+			if e := rows.Scan(&pid, &method, &lmp, &updated); e != nil {
+				return e
+			}
+			u := updated
+			out[pid] = maternity.Dating{
+				Method:    pregnancy.Method(method),
+				Result:    pregnancy.ResultFromLMP(lmp, gaDate),
+				UpdatedAt: &u,
+			}
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
 func (s *Service) GetDating(ctx context.Context, patientID uuid.UUID, gaDate time.Time) (*maternity.Dating, error) {
 	tid, _ := actorOf(ctx)
 	var method string

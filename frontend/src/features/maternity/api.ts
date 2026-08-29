@@ -62,6 +62,13 @@ export function saveDating(patientId: string, body: DatingBody) {
 export function getDating(patientId: string) {
   return apiFetch<{ dating: DatingResult | null }>(`/patients/${patientId}/dating`);
 }
+/** Which of these patients already has a dating — one request for a whole worklist,
+ *  so a board can mark the rows instead of asking per patient on every refresh. */
+export interface DatingSummary extends DatingResult { patientId: string }
+export function datingSummary(patientIds: string[]) {
+  if (patientIds.length === 0) return Promise.resolve({ items: [] as DatingSummary[] });
+  return apiFetch<{ items: DatingSummary[] }>(`/dating/summary?patients=${patientIds.join(",")}`);
+}
 export function getDatingHistory(patientId: string) {
   return apiFetch<{ entries: DatingHistoryEntry[] }>(`/patients/${patientId}/dating/history`);
 }
