@@ -35,6 +35,17 @@ export interface BoardBed {
   admitted_at?: string;
   est_cost?: string;
   payment_due_at?: string;
+  /** Money actually received against this stay. */
+  paid?: string;
+  /** Accrued but never raised as a charge — what a top-up would ask for. */
+  unbilled?: string;
+  /** Cost so far, less money received and money waived. */
+  outstanding?: string;
+  /** How many nights the settled money reaches, walked in the order slept. */
+  covered_nights: number;
+  covered_thru?: string;
+  /** Nights the stay was booked for, when one was given at admission. */
+  planned_nights?: number;
 }
 export interface Admission {
   id?: string;
@@ -81,4 +92,7 @@ export const admit = (body: { patient_id: string; bed_id: string; deposit_amount
 export const discharge = (admissionId: string) => apiFetch<Admission>(`/inpatient/admissions/${admissionId}/discharge`, { method: "POST" });
 export const transfer = (admissionId: string, bedId: string) =>
   apiFetch<void>(`/inpatient/admissions/${admissionId}/transfer`, { method: "POST", body: { bed_id: bedId } });
+/** Ask the family for more of the running bed bill; the charge lands on the cashier. */
+export const topUp = (admissionId: string, body: { nights?: number; amount?: string }) =>
+  apiFetch<Admission>(`/inpatient/admissions/${admissionId}/topup`, { method: "POST", body });
 export const bedReport = () => apiFetch<BedReport>("/inpatient/report");

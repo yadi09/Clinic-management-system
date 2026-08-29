@@ -64,6 +64,26 @@ type BoardBed struct {
 	EstCost      string     `json:"est_cost,omitempty"`
 	PaymentDueAt *time.Time `json:"payment_due_at,omitempty"`
 	Overdue      bool       `json:"overdue"`
+
+	// What the family has actually paid, and what is still to come. A bed card
+	// that shows only a running total tells a nurse nothing they can act on.
+	Paid string `json:"paid,omitempty"`
+	// Accrued but never raised as a charge: the cashier cannot collect this
+	// until someone asks for it, which is what Ask for a top-up does.
+	Unbilled      string     `json:"unbilled,omitempty"`
+	Outstanding   string     `json:"outstanding,omitempty"`
+	CoveredNights int        `json:"covered_nights"`
+	CoveredThru   *time.Time `json:"covered_thru,omitempty"`
+	// Nights the stay was booked for, when one was given at admission.
+	PlannedNights int `json:"planned_nights,omitempty"`
+}
+
+// TopUpInput asks the family for more of the running bed bill. Nights is what staff
+// actually think in — "another ten days" — and is converted at the bed's own rate;
+// Amount is the escape hatch for a part payment that is not a whole number of nights.
+type TopUpInput struct {
+	Nights int
+	Amount string
 }
 
 type AdmitInput struct {
@@ -125,5 +145,6 @@ type Service interface {
 	Admit(ctx context.Context, in AdmitInput) (*Admission, error)
 	Discharge(ctx context.Context, admissionID uuid.UUID) (*Admission, error)
 	Transfer(ctx context.Context, admissionID, newBedID uuid.UUID) error
+	TopUp(ctx context.Context, admissionID uuid.UUID, in TopUpInput) (*Admission, error)
 	Report(ctx context.Context) (*Report, error)
 }

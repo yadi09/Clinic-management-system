@@ -24,6 +24,9 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	g.POST("/admissions", httpx.RequirePermission("bed.assign"), h.Admit)
 	g.POST("/admissions/:id/discharge", httpx.RequirePermission("bed.assign"), h.Discharge)
 	g.POST("/admissions/:id/transfer", httpx.RequirePermission("bed.assign"), h.Transfer)
+	// Asking for money is a billing act, so it takes a billing permission even
+	// though it is reached from the bed board.
+	g.POST("/admissions/:id/topup", httpx.RequirePermission("payment.charge"), h.TopUp)
 
 	g.GET("/report", httpx.RequirePermission("bed.manage"), h.Report)
 }

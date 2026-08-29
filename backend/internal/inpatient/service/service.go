@@ -247,6 +247,7 @@ func (s *Service) Board(ctx context.Context) ([]inpatient.BoardBed, error) {
 		rows, e := tx.Query(ctx,
 			`SELECT b.id, b.ward_id, w.name, b.label, b.bed_type, b.daily_rate::text, b.out_of_service,
 			        a.id, a.patient_id, p.first_name, p.last_name, p.mrn, a.admitted_at, a.daily_rate::text, a.payment_due_at,
+			        greatest(0, (a.expected_discharge - (a.admitted_at AT TIME ZONE 'Africa/Addis_Ababa')::date)) AS planned_nights,
 			        (a.payment_due_at IS NOT NULL AND a.payment_due_at < now() AND c.status = 'pending') AS overdue
 			 FROM beds b
 			 JOIN wards w ON w.id = b.ward_id AND w.tenant_id = b.tenant_id
@@ -266,8 +267,9 @@ func (s *Service) Board(ctx context.Context) ([]inpatient.BoardBed, error) {
 			var admittedAt, dueAt *time.Time
 			var admRate *string
 			var overdue *bool
+			var planned *int
 			if e := rows.Scan(&bb.ID, &bb.WardID, &bb.WardName, &bb.Label, &bb.BedType, &bb.DailyRate, &bb.OutOfService,
-				&admID, &patID, &first, &last, &mrn, &admittedAt, &admRate, &dueAt, &overdue); e != nil {
+				&admID, &patID, &first, &last, &mrn, &admittedAt, &admRate, &dueAt, &planned, &overdue); e != nil {
 				return e
 			}
 			if admID != nil {
@@ -278,6 +280,9 @@ func (s *Service) Board(ctx context.Context) ([]inpatient.BoardBed, error) {
 				bb.AdmittedAt = admittedAt
 				bb.PaymentDueAt = dueAt
 				bb.Overdue = overdue != nil && *overdue
+				if planned != nil {
+					bb.PlannedNights = *planned
+				}
 				// Priced below, from the segments, so the board and the bill agree.
 				_ = admRate
 			}
@@ -292,7 +297,7 @@ func (s *Service) Board(ctx context.Context) ([]inpatient.BoardBed, error) {
 				live = append(live, *b.AdmissionID)
 			}
 		}
-		costs, e := stayCosts(ctx, tx, tid, live, now.Format(time.RFC3339Nano))
+		costs, e := stayMoney(ctx, tx, tid, live, now.Format(time.RFC3339Nano))
 		if e != nil {
 			return e
 		}
@@ -303,6 +308,11 @@ func (s *Service) Board(ctx context.Context) ([]inpatient.BoardBed, error) {
 			c := costs[*out[i].AdmissionID]
 			out[i].Days = c.Nights
 			out[i].EstCost = fmtMoney(c.Amount)
+			out[i].Paid = fmtMoney(c.Paid)
+			out[i].Unbilled = fmtMoney(c.Unbilled)
+			out[i].Outstanding = fmtMoney(c.Outstanding)
+			out[i].CoveredNights = c.CoveredNights
+			out[i].CoveredThru = c.CoveredThru
 		}
 		return nil
 	})
@@ -369,6 +379,9 @@ func (s *Service) Admit(ctx context.Context, in inpatient.AdmitInput) (*inpatien
 			if _, e := tx.Exec(ctx, `UPDATE bed_admissions SET deposit_charge_id=$1 WHERE tenant_id=$2 AND id=$3`, cid, tid, id); e != nil {
 				return e
 			}
+			if _, e := tx.Exec(ctx, `UPDATE charges SET admission_id=$1 WHERE tenant_id=$2 AND id=$3`, id, tid, cid); e != nil {
+				return e
+			}
 		}
 		res = inpatient.Admission{
 			ID: id, PatientID: in.PatientID, BedID: in.BedID, WardName: wardName, BedLabel: bedLabel,
@@ -424,24 +437,32 @@ func (s *Service) Discharge(ctx context.Context, admissionID uuid.UUID) (*inpati
 			tid, admissionID, now); e != nil {
 			return e
 		}
-		costs, e := stayCosts(ctx, tx, tid, []uuid.UUID{admissionID}, now.Format(time.RFC3339Nano))
+		costs, e := stayMoney(ctx, tx, tid, []uuid.UUID{admissionID}, now.Format(time.RFC3339Nano))
 		if e != nil {
 			return e
 		}
 		cost := costs[admissionID]
 		nights := cost.Nights
 		total := cost.Amount
-		remainder := total - money(charged)
-		newCharged := money(charged)
+		// Whatever the stay ran up that nobody has asked for yet. Taken from the
+		// charges themselves, so a deposit and any number of top-ups are already
+		// accounted for and the patient is never billed twice for the same night.
+		remainder := cost.Unbilled
+		newCharged := cost.Billed
 		if remainder > 0.005 {
-			if _, ce := s.billing.RaiseChargeTx(ctx, tx, billing.ChargeInput{
+			cid, ce := s.billing.RaiseChargeTx(ctx, tx, billing.ChargeInput{
 				PatientID: patientID, BranchID: &branchID, Source: "bed",
 				Description: fmt.Sprintf("Bed stay — %s / %s (%d day%s)", wardName, bedLabel, nights, plural(nights)), Amount: fmtMoney(remainder),
-			}); ce != nil {
+			})
+			if ce != nil {
 				return ce
 			}
-			newCharged = total
+			if _, e := tx.Exec(ctx, `UPDATE charges SET admission_id=$1 WHERE tenant_id=$2 AND id=$3`, admissionID, tid, cid); e != nil {
+				return e
+			}
+			newCharged = cost.Billed + remainder
 		}
+		_ = charged
 		if _, e := tx.Exec(ctx,
 			`UPDATE bed_admissions SET status='discharged', discharged_at=now(), charged_amount=$3, discharged_by=$4, updated_at=now()
 			 WHERE tenant_id=$1 AND id=$2`, tid, admissionID, fmtMoney(newCharged), actor); e != nil {
@@ -682,4 +703,92 @@ func plural(n int) string {
 func isUnique(err error) bool {
 	var pg *pgconn.PgError
 	return errors.As(err, &pg) && pg.Code == "23505"
+}
+
+// TopUp asks the family for more of the running bed bill.
+//
+// A bed accrued its cost silently and raised a single charge at discharge, so a
+// thirty-day stay had nothing on the cashier after the deposit — the desk could not
+// take a payment even when the family arrived offering one. Staff think in nights
+// ("another ten days"), so Nights is the primary input and is priced at the bed the
+// patient is in now; Amount covers the part payment that is not a whole number of
+// nights.
+//
+// Paying ahead is allowed and is the common case: a family that books thirty days and
+// pays for ten has covered more nights than the patient has yet slept. Nothing here
+// caps the ask at what has accrued.
+func (s *Service) TopUp(ctx context.Context, admissionID uuid.UUID, in inpatient.TopUpInput) (*inpatient.Admission, error) {
+	tid, _ := actorOf(ctx)
+	var res inpatient.Admission
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		var patientID, branchID uuid.UUID
+		var status, wardName, bedLabel, rate string
+		e := tx.QueryRow(ctx,
+			`SELECT a.patient_id, a.branch_id, a.status, w.name, b.label, b.daily_rate::text
+			   FROM bed_admissions a
+			   JOIN beds b ON b.id=a.bed_id AND b.tenant_id=a.tenant_id
+			   JOIN wards w ON w.id=b.ward_id AND w.tenant_id=a.tenant_id
+			  WHERE a.tenant_id=$1 AND a.id=$2`, tid, admissionID).
+			Scan(&patientID, &branchID, &status, &wardName, &bedLabel, &rate)
+		if errors.Is(e, pgx.ErrNoRows) {
+			return apperr.NotFound("ADMISSION_NOT_FOUND", "admission not found")
+		}
+		if e != nil {
+			return e
+		}
+		if status != "active" {
+			return apperr.Validation("this patient has already been discharged")
+		}
+
+		// What to ask for, in order of how deliberate the request is.
+		amount := 0.0
+		desc := ""
+		switch {
+		case in.Nights > 0:
+			amount = round2(float64(in.Nights) * money(rate))
+			desc = fmt.Sprintf("Bed — %s / %s (%d night%s)", wardName, bedLabel, in.Nights, plural(in.Nights))
+		case in.Amount != "":
+			amount = money(in.Amount)
+			desc = fmt.Sprintf("Bed — %s / %s (part payment)", wardName, bedLabel)
+		default:
+			// No figure given: ask for everything the stay has run up that nobody
+			// has billed yet.
+			m, me := stayMoney(ctx, tx, tid, []uuid.UUID{admissionID}, time.Now().Format(time.RFC3339Nano))
+			if me != nil {
+				return me
+			}
+			amount = m[admissionID].Unbilled
+			desc = fmt.Sprintf("Bed — %s / %s (to date)", wardName, bedLabel)
+		}
+		if amount <= 0.005 {
+			return apperr.Validation("there is nothing to bill for this bed yet")
+		}
+
+		cid, ce := s.billing.RaiseChargeTx(ctx, tx, billing.ChargeInput{
+			PatientID: patientID, BranchID: &branchID, Source: "bed",
+			Description: desc, Amount: fmtMoney(amount),
+		})
+		if ce != nil {
+			return ce
+		}
+		if _, e := tx.Exec(ctx, `UPDATE charges SET admission_id=$1 WHERE tenant_id=$2 AND id=$3`, admissionID, tid, cid); e != nil {
+			return e
+		}
+		if _, e := tx.Exec(ctx,
+			`UPDATE bed_admissions SET charged_amount = charged_amount + $3, updated_at=now()
+			  WHERE tenant_id=$1 AND id=$2`, tid, admissionID, fmtMoney(amount)); e != nil {
+			return e
+		}
+		res = inpatient.Admission{ID: admissionID, PatientID: patientID, WardName: wardName, BedLabel: bedLabel,
+			Status: status, DailyRate: rate, EstCost: fmtMoney(amount)}
+		return s.publisher.Publish(ctx, tx, &tid, "bed_admission", admissionID, "inpatient.topped_up",
+			map[string]any{"admission_id": admissionID, "patient_id": patientID, "amount": fmtMoney(amount), "nights": in.Nights})
+	})
+	if ae, ok := apperr.As(err); ok {
+		return nil, ae
+	}
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return &res, nil
 }

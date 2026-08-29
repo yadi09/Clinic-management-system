@@ -165,6 +165,19 @@ func boardBedDTO(b inpatient.BoardBed) gin.H {
 		h["patient_name"] = b.PatientName
 		h["mrn"] = b.MRN
 		h["est_cost"] = b.EstCost
+		// The money the card is built around. Sent whenever the bed is occupied,
+		// including the zeroes: "nothing paid" is an answer the ward needs, and an
+		// omitted field would read as "unknown".
+		h["paid"] = b.Paid
+		h["unbilled"] = b.Unbilled
+		h["outstanding"] = b.Outstanding
+		h["covered_nights"] = b.CoveredNights
+		if b.PlannedNights > 0 {
+			h["planned_nights"] = b.PlannedNights
+		}
+		if b.CoveredThru != nil {
+			h["covered_thru"] = b.CoveredThru.Format(time.RFC3339)
+		}
 		if b.AdmittedAt != nil {
 			h["admitted_at"] = b.AdmittedAt.Format(time.RFC3339)
 		}
@@ -302,4 +315,31 @@ func decode(c *gin.Context, prefix, raw string) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return u, true
+}
+
+// TopUp raises a charge for part of a running bed bill so the cashier can collect it.
+//
+// Requires payment.charge, not bed.assign: asking a patient for money is a billing act
+// wherever it happens, and the board is not a way around that.
+func (h *Handlers) TopUp(c *gin.Context) {
+	aid, ok := decode(c, id.PrefixAdmission, c.Param("id"))
+	if !ok {
+		return
+	}
+	var req struct {
+		Nights int    `json:"nights"`
+		Amount string `json:"amount"`
+	}
+	// A body is optional: with neither figure, bill everything accrued so far.
+	_ = c.ShouldBindJSON(&req)
+	if req.Nights < 0 {
+		httpx.Fail(c, apperr.Validation("nights cannot be negative"))
+		return
+	}
+	out, err := h.svc.TopUp(c.Request.Context(), aid, inpatient.TopUpInput{Nights: req.Nights, Amount: req.Amount})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.Created(c, out)
 }
