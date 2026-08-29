@@ -5,6 +5,7 @@ import { AlertTriangle, Baby, CalendarClock, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -295,18 +296,63 @@ export function PregnancyDatingCard({ patientId }: { patientId: string }) {
       {q.isLoading ? (
         <Skeleton className="mt-3 h-10 w-full" />
       ) : dating ? (
-        <div className="mt-3 space-y-1">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span className="text-lg font-semibold text-brand">EDD {fmtG(dating.edd)}</span>
-            {dating.gestationalAge.valid && <Badge variant="brand">{dating.gestationalAge.label} today</Badge>}
-          </div>
-          <p className="text-xs text-muted-foreground">{formatEthiopian(dating.edd)} EC · dated by {dating.method?.replace("_", " ").toLowerCase()}</p>
-          {dating.gestationalAge.valid && dating.gestationalAge.weeks >= 41 && (
-            <p className="flex items-center gap-1 text-xs text-amber-700"><AlertTriangle className="h-3 w-3" /> Post-dates — review.</p>
-          )}
-        </div>
+        (() => {
+          // A pregnancy is a journey with a known length, so show the position along
+          // it. "19w 0d" is precise and means nothing at a glance; a bar between
+          // conception and term, marked by trimester, is read without thinking.
+          const w = dating.gestationalAge.weeks;
+          const pct = Math.max(0, Math.min(100, (dating.gestationalAge.days / 280) * 100));
+          const tri = w < 14 ? "First trimester" : w < 28 ? "Second trimester" : "Third trimester";
+          const post = dating.gestationalAge.valid && w >= 41;
+          const term = dating.gestationalAge.valid && w >= 37 && w < 41;
+          const daysToGo = Math.max(0, 280 - dating.gestationalAge.days);
+          return (
+            <div className="mt-3 space-y-2.5">
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span className="text-2xl font-bold leading-none text-brand">{dating.gestationalAge.label}</span>
+                <Badge variant={post ? "destructive" : term ? "success" : "brand"}>
+                  {post ? "Post-dates" : term ? "Term" : tri}
+                </Badge>
+              </div>
+              {dating.gestationalAge.valid && (
+                <div>
+                  <div className="relative h-2 overflow-hidden rounded-full bg-muted">
+                    {/* term window, 37–40 weeks */}
+                    <span className="absolute inset-y-0 bg-emerald-500/25"
+                      style={{ left: `${(259 / 280) * 100}%`, right: 0 }} />
+                    <span className={cn("absolute inset-y-0 left-0 rounded-full",
+                      post ? "bg-destructive" : "bg-brand")} style={{ width: `${pct}%` }} />
+                  </div>
+                  <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
+                    <span>0w</span><span>14w</span><span>28w</span><span>40w</span>
+                  </div>
+                </div>
+              )}
+              <p className="text-sm">
+                <span className="text-muted-foreground">Due </span>
+                <span className="font-semibold">{fmtG(dating.edd)}</span>
+                {dating.gestationalAge.valid && !post && (
+                  <span className="text-muted-foreground"> · {daysToGo} days to go</span>
+                )}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {formatEthiopian(dating.edd)} EC · dated by {dating.method?.replace("_", " ").toLowerCase()}
+              </p>
+              {post && (
+                <p className="flex items-center gap-1.5 rounded-md bg-destructive/10 px-2 py-1.5 text-xs font-medium text-destructive">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Past 41 weeks — review today.
+                </p>
+              )}
+            </div>
+          );
+        })()
       ) : (
-        <p className="mt-3 text-sm text-muted-foreground">No dating on file.</p>
+        <div className="mt-3 rounded-md border border-dashed px-3 py-3 text-center">
+          <p className="text-sm font-medium">No dating on file</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Set it once and every visit shows the gestational age and due date.
+          </p>
+        </div>
       )}
       <PregnancyDatingDialog patientId={patientId} open={open} onOpenChange={setOpen} onSaved={() => q.refetch()} />
     </Card>

@@ -20,6 +20,7 @@ import { printPrescription, printLabRequest } from "@/features/clinical/print";
 import { DictateButton } from "@/features/clinical/components/DictateButton";
 import { FLAG_CLS, VitalsGrid } from "@/features/clinical/components/VitalsStrip";
 import { PatientStoryPanel } from "@/features/clinical/components/PatientStory";
+import { SECTION_TONES, WorkSection } from "@/features/clinical/components/WorkSection";
 import { bookAppointment, listAppointments, markFollowup, rescheduleAppointment, setAppointmentStatus, transitionQueue } from "@/features/scheduling/api";
 import { createOrder, encounterLabs, listTests } from "@/features/lab/api";
 import { PregnancyDatingCard } from "@/features/maternity/PregnancyCalculator";
@@ -52,14 +53,6 @@ import {
 } from "@/features/clinical/api";
 import { CreateDrugDialog } from "@/features/clinical/DrugLibrary";
 
-const SECTIONS = [
-  { id: "subjective", label: "Subjective" },
-  { id: "objective", label: "Objective / Vitals" },
-  { id: "assessment", label: "Assessment / Dx" },
-  { id: "plan", label: "Plan" },
-  { id: "lab", label: "Orders / Lab" },
-  { id: "prescription", label: "Prescription" },
-];
 const DEFERRED = ["Attachments"];
 
 function hhmm(iso?: string) {
@@ -174,6 +167,7 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
   if (!done.plan) missing.push("Plan is empty");
 
   const elapsed = useElapsed(ws.started_at);
+  const active = useActiveSection(SECTION_TONES.map((t) => t.id));
   const [pane, setPane] = useState<"note" | "history" | "assist">("note");
   const paneCls = (p: typeof pane) => cn(pane === p ? "" : "hidden", "lg:block");
 
@@ -225,18 +219,18 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[200px_minmax(0,1fr)_320px]">
-        <ProgressRail done={done} missing={missing} />
+        <ProgressRail done={done} missing={missing} active={active} />
 
         {/* Center */}
         <div className={cn("min-w-0 space-y-5", paneCls("note"))}>
-          <Card id="subjective" className="p-4">
-            <SectionHead title="Subjective" step={1} done={done.subjective}>{!locked && <DictateButton onText={(t) => appendField("subjective", t)} />}</SectionHead>
+          <WorkSection id="subjective" done={done.subjective}
+            action={!locked && <DictateButton onText={(t) => appendField("subjective", t)} />}>
             <Textarea rows={4} placeholder="What brought them in? How long, what makes it worse, what have they already tried?"
               value={soap.subjective} disabled={locked} onChange={(e) => setField("subjective", e.target.value)} />
-          </Card>
+          </WorkSection>
 
-          <Card id="objective" className="p-4">
-            <SectionHead title="Objective / Vitals" step={2} done={done.objective}>{!locked && <DictateButton onText={(t) => appendField("objective", t)} />}</SectionHead>
+          <WorkSection id="objective" done={done.objective}
+            action={!locked && <DictateButton onText={(t) => appendField("objective", t)} />}>
             {latest ? (
               <div className="mb-3">
                 <VitalsGrid vitals={latest} fields={vfields.data ?? []} />
@@ -248,29 +242,25 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
             )}
             <Textarea rows={3} placeholder="Examination findings — what you saw, heard and felt."
               value={soap.objective} disabled={locked} onChange={(e) => setField("objective", e.target.value)} />
-          </Card>
+          </WorkSection>
 
-          <Card id="assessment" className="p-4">
-            <SectionHead title="Assessment / Diagnosis" step={3} done={done.assessment}>{!locked && <DictateButton onText={(t) => appendField("assessment", t)} />}</SectionHead>
+          <WorkSection id="assessment" done={done.assessment}
+            count={ws.diagnoses.length > 0 ? `${ws.diagnoses.length} recorded` : undefined}
+            action={!locked && <DictateButton onText={(t) => appendField("assessment", t)} />}>
             <Textarea rows={3} className="mb-3" placeholder="What do you think this is, and what else could it be?"
               value={soap.assessment} disabled={locked} onChange={(e) => setField("assessment", e.target.value)} />
             <DiagnosisPicker ws={ws} locked={locked} onChanged={onChanged} />
-          </Card>
+          </WorkSection>
 
-          <Card id="plan" className="p-4">
-            <SectionHead title="Plan" step={4} done={done.plan}>{!locked && <DictateButton onText={(t) => appendField("plan", t)} />}</SectionHead>
+          <WorkSection id="plan" done={done.plan}
+            action={!locked && <DictateButton onText={(t) => appendField("plan", t)} />}>
             <Textarea rows={3} placeholder="Treatment, advice, and when to come back — or what should bring them back sooner."
               value={soap.plan} disabled={locked} onChange={(e) => setField("plan", e.target.value)} />
-          </Card>
+          </WorkSection>
 
-          <section id="lab">
-            <LabOrders ws={ws} locked={locked} />
-            <LabReferralPanel ws={ws} locked={locked} onChanged={onChanged} />
-          </section>
-
-          <section id="prescription">
-            <PrescriptionPanel ws={ws} locked={locked} onChanged={onChanged} />
-          </section>
+          <LabOrders ws={ws} locked={locked} />
+          <LabReferralPanel ws={ws} locked={locked} onChanged={onChanged} />
+          <PrescriptionPanel ws={ws} locked={locked} onChanged={onChanged} />
 
           {flagOn("maternity") && <PregnancyDatingCard patientId={ws.patient.patient_id} />}
           {!locked && <FollowUp ws={ws} />}
@@ -397,7 +387,12 @@ function FollowUp({ ws }: { ws: Workspace }) {
   if (existing && !editing) {
     return (
       <Card className="p-4">
-        <h2 className="mb-3 text-h3">Follow-up</h2>
+        <h2 className="mb-3 flex items-center gap-2 text-h3">
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-emerald-100 text-emerald-700">
+            <CalendarCheck className="h-4 w-4" />
+          </span>
+          Follow-up
+        </h2>
         <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
@@ -449,12 +444,47 @@ function FollowUp({ ws }: { ws: Workspace }) {
   const onSubmit = () => (existing ? reschedule.mutate() : book.mutate());
   return (
     <Card className="p-4">
-      <h2 className="mb-2 text-h3">Follow-up</h2>
+      <div className="mb-2">
+        <h2 className="flex items-center gap-2 text-h3">
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-emerald-100 text-emerald-700">
+            <CalendarPlus className="h-4 w-4" />
+          </span>
+          Follow-up
+        </h2>
+        {!editing && <p className="mt-0.5 text-xs text-muted-foreground">When should they come back?</p>}
+      </div>
       {existingQ.isLoading ? (
         <p className="text-xs text-muted-foreground">Checking for an existing follow-up…</p>
       ) : (
         <>
           {editing && <p className="mb-2 text-xs text-muted-foreground">Pick a new date for this follow-up.</p>}
+
+          {/* A doctor says "come back in two weeks", not "come back on 12/09/2026".
+              The intervals are the common answers; the date field is still there for
+              the uncommon one, and it fills in so the choice stays visible. */}
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {[
+              { label: "In 3 days", days: 3 },
+              { label: "1 week", days: 7 },
+              { label: "2 weeks", days: 14 },
+              { label: "1 month", days: 30 },
+              { label: "3 months", days: 90 },
+            ].map((q) => {
+              const iso = new Date(Date.now() + q.days * 86_400_000).toISOString().slice(0, 10);
+              const on = date === iso;
+              return (
+                <button key={q.label} type="button" onClick={() => setDate(iso)}
+                  className={cn("touch-hit rounded-full border px-3 py-1.5 text-sm transition-colors",
+                    on ? "border-primary bg-primary/10 font-medium text-primary" : "hover:border-primary hover:text-primary")}>
+                  {q.label}
+                  <span className="ml-1.5 text-xs text-muted-foreground">
+                    {new Date(iso + "T00:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
           <div className="flex flex-wrap items-end gap-3">
             <div className="space-y-1.5">
               <Label>Date</Label>
@@ -627,25 +657,6 @@ function AssistPanel({ encounterId }: { encounterId: string }) {
   );
 }
 
-function SectionHead({ title, step, done, children }: {
-  title: string; step?: number; done?: boolean; children?: React.ReactNode;
-}) {
-  return (
-    <div className="mb-2 flex items-center justify-between gap-2">
-      <h2 className="flex items-center gap-2 text-h3">
-        {step !== undefined && (
-          <span className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold",
-            done ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>
-            {done ? <Check className="h-3.5 w-3.5" /> : step}
-          </span>
-        )}
-        {title}
-      </h2>
-      {children}
-    </div>
-  );
-}
-
 /** How long this consultation has been running. A doctor cares about the clock;
  *  the encounter's opaque id, which used to sit here, is for support tickets. */
 function useElapsed(startedAt: string) {
@@ -711,26 +722,57 @@ function ConsultHeader({ ws, elapsed, save, savedAt, locked, children }: {
   );
 }
 
-/** The rail stops being seven links and starts being the state of the note:
- *  what is written, what is still empty, and whether it can be signed. */
-function ProgressRail({ done, missing }: { done: Record<string, boolean>; missing: string[] }) {
+/** Where am I? — the question the old rail could not answer.
+ *
+ *  Clicking a link scrolled somewhere and then the rail forgot about it, so halfway
+ *  down a long consultation the doctor had no idea which part they were in. It now
+ *  follows the scroll: the section on screen is lit, in that section's own colour, and
+ *  the tick says whether it has anything in it. */
+function useActiveSection(ids: string[]): string {
+  const [active, setActive] = useState(ids[0] ?? "");
+  useEffect(() => {
+    const seen = new Map<string, number>();
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) seen.set(e.target.id, e.intersectionRatio);
+        // The most-visible section wins, so a short one sandwiched between two long
+        // ones does not flicker the rail as it scrolls past.
+        let best = "", ratio = 0;
+        for (const [id, r] of seen) if (r > ratio) { best = id; ratio = r; }
+        if (best) setActive(best);
+      },
+      // The band excludes the sticky header, or the section hidden behind it wins.
+      { rootMargin: "-140px 0px -55% 0px", threshold: [0, 0.25, 0.5, 1] },
+    );
+    ids.forEach((id) => { const el = document.getElementById(id); if (el) io.observe(el); });
+    return () => io.disconnect();
+  }, [ids.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+  return active;
+}
+
+function ProgressRail({ done, missing, active }: {
+  done: Record<string, boolean>; missing: string[]; active: string;
+}) {
   return (
     <Card className="sticky top-36 hidden h-fit p-3 lg:block">
       <nav className="space-y-0.5 text-sm">
-        {SECTIONS.map((sec, i) => (
-          <a key={sec.id} href={`#${sec.id}`}
-            className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
-            <span className={cn("grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-bold",
-              done[sec.id] ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>
-              {done[sec.id] ? <Check className="h-3 w-3" /> : i + 1}
-            </span>
-            <span className="truncate">{sec.label}</span>
-          </a>
-        ))}
+        {SECTION_TONES.map((t) => {
+          const on = active === t.id;
+          return (
+            <a key={t.id} href={`#${t.id}`}
+              className={cn("flex items-center gap-2 rounded-md px-2.5 py-1.5 transition-colors",
+                on ? cn("font-medium", t.active) : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
+              <span className={cn("h-6 w-1 shrink-0 rounded-full", on ? t.bar : "bg-transparent")} />
+              <span className={cn("grid h-5 w-5 shrink-0 place-items-center rounded-md", on ? t.chip : "text-muted-foreground")}>
+                <t.Icon className="h-3.5 w-3.5" />
+              </span>
+              <span className="min-w-0 flex-1 truncate">{t.short}</span>
+              {done[t.id] && <Check className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}
+            </a>
+          );
+        })}
         {DEFERRED.map((d) => (
-          <span key={d} className="flex items-center gap-2 px-2.5 py-1.5 text-muted-foreground/40">
-            <span className="h-5 w-5" />{d}
-          </span>
+          <span key={d} className="flex items-center gap-2 px-2.5 py-1.5 pl-[1.4rem] text-muted-foreground/40">{d}</span>
         ))}
       </nav>
       <div className="mt-3 border-t pt-3">
@@ -885,27 +927,49 @@ function LabOrders({ ws, locked }: { ws: Workspace; locked: boolean }) {
 
   if (!enabled) return null;
   const pickedCount = Object.values(picked).filter(Boolean).length;
-  const hasCritical = (orders.data ?? []).some((o) => o.items.some((it) => it.results.some((r) => r.flag === "critical")));
+  // Name what is critical. "Critical lab value returned — review below" made the
+  // doctor go and find it; the analyte and its value are what they were going to look
+  // for anyway, so say them.
+  const criticals = (orders.data ?? []).flatMap((o) =>
+    o.items.flatMap((it) => it.results.filter((r) => r.flag === "critical").map((r) => ({ test: it.test_name, r }))));
+  const pending = (orders.data ?? []).flatMap((o) => o.items).filter((it) => it.status !== "validated").length;
 
   return (
-    <div>
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-h3">Orders / Lab</h2>
-        {!locked && canOrder && (
-          <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
-            <FlaskConical className="h-3.5 w-3.5" /> Order labs
-          </Button>
-        )}
-      </div>
+    <WorkSection id="lab"
+      done={(orders.data?.length ?? 0) > 0}
+      count={(orders.data?.length ?? 0) > 0
+        ? `${(orders.data ?? []).flatMap((o) => o.items).length} test${(orders.data ?? []).flatMap((o) => o.items).length === 1 ? "" : "s"}${pending ? ` · ${pending} awaiting` : ""}`
+        : undefined}
+      action={!locked && canOrder && (
+        <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+          <FlaskConical className="h-3.5 w-3.5" /> Order labs
+        </Button>
+      )}>
 
-      {hasCritical && (
-        <div className="mb-2 flex items-center gap-2 rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800">
-          <AlertTriangle className="h-4 w-4" /> Critical lab value returned — review below.
+      {criticals.length > 0 && (
+        <div className="mb-3 rounded-lg border border-l-4 border-rose-300 border-l-rose-600 bg-rose-50 px-3 py-2.5">
+          <p className="flex items-center gap-2 text-sm font-bold text-rose-900">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            {criticals.length === 1 ? "A critical result has come back" : `${criticals.length} critical results have come back`}
+          </p>
+          <ul className="mt-1 space-y-0.5">
+            {criticals.map(({ test, r }) => (
+              <li key={`${test}-${r.analyte_id}`} className="text-sm text-rose-800">
+                <span className="font-semibold tabular-nums">{r.name} {r.value}{r.unit ? ` ${r.unit}` : ""}</span>
+                <span className="text-rose-700"> · {test}</span>
+                {(r.ref_low || r.ref_high) && (
+                  <span className="text-xs text-rose-600"> (normal {r.ref_low ?? "?"}–{r.ref_high ?? "?"})</span>
+                )}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
       {(orders.data?.length ?? 0) === 0 ? (
-        <p className="text-xs text-muted-foreground">No labs ordered.</p>
+        <p className="rounded-md border border-dashed px-3 py-3 text-center text-sm text-muted-foreground">
+          Nothing ordered for this visit.
+        </p>
       ) : (
         <div className="space-y-3">
           {(orders.data ?? []).map((o) => (
@@ -916,31 +980,44 @@ function LabOrders({ ws, locked }: { ws: Workspace; locked: boolean }) {
               </div>
               <div className="divide-y">
                 {o.items.map((it) => (
-                  <div key={it.sample_no} className="px-3 py-2">
-                    <div className="flex items-center justify-between">
+                  <div key={it.sample_no} className="px-3 py-2.5">
+                    <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-medium">{it.test_name}</span>
-                      <Badge variant={it.status === "validated" ? "success" : "outline"}>{it.status.replace("_", " ")}</Badge>
+                      <Badge variant={it.status === "validated" ? "success" : "outline"} className="capitalize">
+                        {it.status.replace("_", " ")}
+                      </Badge>
                     </div>
                     {it.results.length > 0 && (
-                      <div className="overflow-x-auto">
-                        {/* Phones: a long result value scrolls instead of overflowing the card (no width floor — this column is narrow on desktop too). */}
-                        <table className="mt-1.5 w-full text-xs">
-                          <tbody>
-                            {it.results.map((r) => (
-                              <tr key={r.analyte_id}>
-                                <td className="py-0.5 text-muted-foreground">{r.name}</td>
-                                <td className="py-0.5 font-medium">{r.value || "—"}{r.value && r.unit ? ` ${r.unit}` : ""}</td>
-                                <td className="py-0.5 text-right">
-                                  {r.value ? <Badge variant="outline" className={FLAG_CLS[r.flag] ?? FLAG_CLS.normal}>{r.flag}</Badge> : null}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                      <ul className="mt-1.5 space-y-1">
+                        {it.results.map((r) => {
+                          const off = r.flag && r.flag !== "normal";
+                          const crit = r.flag === "critical";
+                          return (
+                            <li key={r.analyte_id}
+                              className={cn("flex flex-wrap items-baseline gap-x-2 rounded px-2 py-1 text-sm",
+                                crit ? "bg-rose-50" : off ? "bg-amber-50/60" : "")}>
+                              <span className="min-w-0 flex-1 truncate text-muted-foreground">{r.name}</span>
+                              <span className={cn("shrink-0 tabular-nums",
+                                crit ? "text-base font-bold text-rose-700" : off ? "font-semibold text-amber-800" : "font-medium")}>
+                                {r.value || "—"}{r.value && r.unit ? ` ${r.unit}` : ""}
+                              </span>
+                              {(r.ref_low || r.ref_high) && (
+                                <span className="shrink-0 text-[11px] text-muted-foreground">
+                                  {r.ref_low ?? "?"}–{r.ref_high ?? "?"}
+                                </span>
+                              )}
+                              {r.value && off && (
+                                <Badge variant="outline" className={cn("shrink-0 text-[10px] uppercase", FLAG_CLS[r.flag])}>{r.flag}</Badge>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
                     )}
                     {it.results.length === 0 && it.status !== "validated" && (
-                      <p className="mt-1 text-xs text-muted-foreground">Awaiting lab…</p>
+                      <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-500" /> With the lab…
+                      </p>
                     )}
                   </div>
                 ))}
@@ -986,7 +1063,7 @@ function LabOrders({ ws, locked }: { ws: Workspace; locked: boolean }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </WorkSection>
   );
 }
 
@@ -1236,9 +1313,12 @@ function PrescriptionPanel({ ws, locked, onChanged }: { ws: Workspace; locked: b
   const remove = useMutation({ mutationFn: (id: string) => removeMedication(ws.encounter_id, id), onSuccess: onChanged });
 
   return (
-    <div>
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-h3">Prescription</h2>
+    <WorkSection id="prescription"
+      done={ws.prescription.length > 0}
+      count={ws.prescription.length > 0
+        ? `${ws.prescription.length} medicine${ws.prescription.length === 1 ? "" : "s"}`
+        : undefined}
+      action={
         <div className="flex items-center gap-2">
           {ws.prescription.length > 0 && (
             <Button size="sm" variant="outline" onClick={printScript}>
@@ -1247,42 +1327,62 @@ function PrescriptionPanel({ ws, locked, onChanged }: { ws: Workspace; locked: b
           )}
           {!locked && (
             <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
-              <Plus /> Add medication
+              <Plus className="h-3.5 w-3.5" /> Add medication
             </Button>
           )}
         </div>
-      </div>
+      }>
       {ws.prescription.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No medication prescribed.</p>
+        <p className="rounded-md border border-dashed px-3 py-3 text-center text-sm text-muted-foreground">
+          Nothing prescribed at this visit.
+        </p>
       ) : (
-        <div className="divide-y rounded-md border">
-          {ws.prescription.map((m) => (
-            <div key={m.id} className="flex items-start justify-between gap-3 px-3 py-2 text-sm">
-              <div className="min-w-0">
-                <span className="font-medium">{m.drug_name}</span>
-                <span className="text-muted-foreground"> · {[m.dose, m.frequency, m.duration].filter(Boolean).join(" · ")}</span>
-                {m.instructions ? <p className="text-xs text-muted-foreground">{m.instructions}</p> : null}
-                {((m.allergens?.length ?? 0) > 0 || m.allergy_override) && (
-                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                    {(m.allergens ?? []).map((a) => (
-                      <Badge key={a} variant="warning" className="gap-1"><AlertTriangle className="h-3 w-3" />{a}</Badge>
-                    ))}
-                    {m.allergy_override && (
-                      <Badge variant="destructive" className="gap-1" title={m.allergy_override}>
-                        Prescribed despite allergy
-                      </Badge>
+        <ul className="space-y-2">
+          {ws.prescription.map((m) => {
+            const clash = (m.allergens?.length ?? 0) > 0 || !!m.allergy_override;
+            return (
+              <li key={m.id}
+                className={cn("relative overflow-hidden rounded-lg border px-3 py-2.5",
+                  clash ? "border-l-4 border-l-rose-500 bg-rose-50/50" : "bg-card")}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    {/* The drug is what a pharmacist and a patient both look for first,
+                        so it is not buried mid-sentence between dots any more. */}
+                    <p className="font-semibold leading-tight">{m.drug_name}</p>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {[m.dose, m.frequency, m.duration].filter(Boolean).map((bit) => (
+                        <span key={bit} className="rounded bg-muted px-1.5 py-0.5 text-xs text-foreground/80">{bit}</span>
+                      ))}
+                    </div>
+                    {m.instructions ? <p className="mt-1 text-xs text-muted-foreground">{m.instructions}</p> : null}
+                    {clash && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        {(m.allergens ?? []).map((a) => (
+                          <Badge key={a} variant="destructive" className="gap-1 text-[10px]">
+                            <AlertTriangle className="h-3 w-3" />Allergic to {a}
+                          </Badge>
+                        ))}
+                        {m.allergy_override && (
+                          <span className="text-xs font-medium text-rose-700">Given anyway — {m.allergy_override}</span>
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
-              {!locked && <button onClick={() => remove.mutate(m.id)} className="shrink-0 text-muted-foreground hover:text-destructive">Remove</button>}
-            </div>
-          ))}
-        </div>
+                  {!locked && (
+                    <button onClick={() => remove.mutate(m.id)} aria-label={`Remove ${m.drug_name}`}
+                      className="touch-hit shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive">
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       )}
 
       {open && <AddMedicationDialog encounterId={ws.encounter_id} onClose={() => setOpen(false)} onAdded={onChanged} />}
-    </div>
+    </WorkSection>
   );
 }
 
