@@ -54,15 +54,6 @@ func activeBranchOf(ctx context.Context) *uuid.UUID {
 func money(s string) float64    { f, _ := strconv.ParseFloat(s, 64); return f }
 func fmtMoney(f float64) string { return strconv.FormatFloat(f, 'f', 2, 64) }
 
-// billedDays is ceil(elapsed/24h) in the clinic's local time, minimum 1.
-func billedDays(from, to time.Time) int {
-	d := int(math.Ceil(to.Sub(from).Hours() / 24))
-	if d < 1 {
-		d = 1
-	}
-	return d
-}
-
 // --- wards ---
 
 func (s *Service) ListWards(ctx context.Context) ([]inpatient.Ward, error) {
@@ -287,14 +278,33 @@ func (s *Service) Board(ctx context.Context) ([]inpatient.BoardBed, error) {
 				bb.AdmittedAt = admittedAt
 				bb.PaymentDueAt = dueAt
 				bb.Overdue = overdue != nil && *overdue
-				if admittedAt != nil {
-					bb.Days = billedDays(*admittedAt, now)
-					bb.EstCost = fmtMoney(float64(bb.Days) * money(deref(admRate)))
-				}
+				// Priced below, from the segments, so the board and the bill agree.
+				_ = admRate
 			}
 			out = append(out, bb)
 		}
-		return rows.Err()
+		if e := rows.Err(); e != nil {
+			return e
+		}
+		live := []uuid.UUID{}
+		for _, b := range out {
+			if b.AdmissionID != nil {
+				live = append(live, *b.AdmissionID)
+			}
+		}
+		costs, e := stayCosts(ctx, tx, tid, live, now.Format(time.RFC3339Nano))
+		if e != nil {
+			return e
+		}
+		for i := range out {
+			if out[i].AdmissionID == nil {
+				continue
+			}
+			c := costs[*out[i].AdmissionID]
+			out[i].Days = c.Nights
+			out[i].EstCost = fmtMoney(c.Amount)
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, apperr.Internal(err)
@@ -340,6 +350,14 @@ func (s *Service) Admit(ctx context.Context, in inpatient.AdmitInput) (*inpatien
 			return e
 		}
 
+		// The stay's first segment. Money is computed from these, never from the
+		// admission's own bed_id/daily_rate, which Transfer moves.
+		if _, e := tx.Exec(ctx,
+			`INSERT INTO bed_admission_stays (tenant_id, admission_id, bed_id, daily_rate, from_at)
+			 VALUES ($1,$2,$3,$4,$5)`, tid, id, in.BedID, rate, admittedAt); e != nil {
+			return e
+		}
+
 		if deposit > 0 {
 			cid, ce := s.billing.RaiseChargeTx(ctx, tx, billing.ChargeInput{
 				PatientID: in.PatientID, BranchID: &branchID, Source: "bed",
@@ -355,9 +373,10 @@ func (s *Service) Admit(ctx context.Context, in inpatient.AdmitInput) (*inpatien
 		res = inpatient.Admission{
 			ID: id, PatientID: in.PatientID, BedID: in.BedID, WardName: wardName, BedLabel: bedLabel,
 			AdmittedAt: admittedAt, Status: "active", DailyRate: rate, PaymentDueAt: in.PaymentDueAt,
-			Days: billedDays(admittedAt, time.Now()),
+			// A fresh admission has crossed no midnight: one night, at this bed's rate.
+			Days: 1,
 		}
-		res.EstCost = fmtMoney(float64(res.Days) * money(rate))
+		res.EstCost = fmtMoney(money(rate))
 		return s.publisher.Publish(ctx, tx, &tid, "bed_admission", id, "inpatient.admitted",
 			map[string]any{"admission_id": id, "patient_id": in.PatientID, "bed_id": in.BedID, "deposit": fmtMoney(deposit)})
 	})
@@ -397,8 +416,21 @@ func (s *Service) Discharge(ctx context.Context, admissionID uuid.UUID) (*inpati
 			return apperr.Validation("this admission is already discharged")
 		}
 		now := time.Now()
-		nights := billedDays(admittedAt, now)
-		total := float64(nights) * money(rate)
+		// Close the open segment first, then price every bed the patient actually
+		// occupied. `rate` below is only the LAST bed's and is no longer what the
+		// stay costs.
+		if _, e := tx.Exec(ctx,
+			`UPDATE bed_admission_stays SET to_at=$3 WHERE tenant_id=$1 AND admission_id=$2 AND to_at IS NULL`,
+			tid, admissionID, now); e != nil {
+			return e
+		}
+		costs, e := stayCosts(ctx, tx, tid, []uuid.UUID{admissionID}, now.Format(time.RFC3339Nano))
+		if e != nil {
+			return e
+		}
+		cost := costs[admissionID]
+		nights := cost.Nights
+		total := cost.Amount
 		remainder := total - money(charged)
 		newCharged := money(charged)
 		if remainder > 0.005 {
@@ -464,6 +496,21 @@ func (s *Service) Transfer(ctx context.Context, admissionID, newBedID uuid.UUID)
 		}
 		if ct.RowsAffected() == 0 {
 			return apperr.NotFound("ADMISSION_NOT_FOUND", "admission not found")
+		}
+		// The admission row now names the CURRENT bed, which is what the board wants.
+		// What the patient is billed comes from the segments, so the nights already
+		// spent in the old bed keep the old bed's rate — before this, the transfer
+		// silently repriced the entire stay.
+		moved := time.Now()
+		if _, e := tx.Exec(ctx,
+			`UPDATE bed_admission_stays SET to_at=$3 WHERE tenant_id=$1 AND admission_id=$2 AND to_at IS NULL`,
+			tid, admissionID, moved); e != nil {
+			return e
+		}
+		if _, e := tx.Exec(ctx,
+			`INSERT INTO bed_admission_stays (tenant_id, admission_id, bed_id, daily_rate, from_at)
+			 VALUES ($1,$2,$3,$4,$5)`, tid, admissionID, newBedID, rate, moved); e != nil {
+			return e
 		}
 		return s.publisher.Publish(ctx, tx, &tid, "bed_admission", admissionID, "inpatient.transferred",
 			map[string]any{"admission_id": admissionID, "bed_id": newBedID})
@@ -567,12 +614,26 @@ func (s *Service) Report(ctx context.Context) (*inpatient.Report, error) {
 			a.Status = "active"
 			a.DailyRate = rate
 			a.Overdue = true
-			a.Days = billedDays(a.AdmittedAt, now)
-			a.EstCost = fmtMoney(float64(a.Days) * money(rate))
 			rep.Overdue = append(rep.Overdue, a)
 		}
 		or.Close()
-		return or.Err()
+		if e := or.Err(); e != nil {
+			return e
+		}
+		ids := make([]uuid.UUID, 0, len(rep.Overdue))
+		for _, a := range rep.Overdue {
+			ids = append(ids, a.ID)
+		}
+		costs, e := stayCosts(ctx, tx, tid, ids, now.Format(time.RFC3339Nano))
+		if e != nil {
+			return e
+		}
+		for i := range rep.Overdue {
+			c := costs[rep.Overdue[i].ID]
+			rep.Overdue[i].Days = c.Nights
+			rep.Overdue[i].EstCost = fmtMoney(c.Amount)
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, apperr.Internal(err)
