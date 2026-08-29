@@ -1,19 +1,20 @@
 import { Card } from "@/components/ui/card";
 import { useAuth } from "@/app/auth-context";
-import { navSections } from "@/app/nav";
+import { navSections, visibleNav } from "@/app/nav";
 import { GLOSSARY, helpForRoute, type HelpEntry } from "@/features/help/content";
 
 // HelpCenterPage shows help for the pages THIS role can reach (built from the same
 // nav + help data), plus a shared glossary.
 export function HelpCenterPage() {
-  const { can, user } = useAuth();
+  const { can, user, flagOn } = useAuth();
   const role = user?.roles?.[0]?.replace(/_/g, " ") ?? "your role";
 
-  const sections = navSections
+  // Help for a module the clinic doesn't have is worse than no help: it teaches
+  // a workflow the staff cannot follow. Same filter as the sidebar.
+  const sections = visibleNav(navSections, can, flagOn)
     .map((s) => ({
       heading: s.heading,
       items: s.items
-        .filter((i) => !i.perm || i.perm.some((p) => can(p)))
         .map((i) => ({ label: i.label, entry: helpForRoute(i.to) }))
         .filter((x): x is { label: string; entry: HelpEntry } => !!x.entry),
     }))

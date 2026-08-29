@@ -5,7 +5,7 @@ import { UserPlus } from "lucide-react";
 
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useAuth } from "@/app/auth-context";
-import { navSections } from "@/app/nav";
+import { navSections, visibleNav } from "@/app/nav";
 import { useDebounce } from "@/hooks/useDebounce";
 import { searchPatients } from "@/features/patients/api";
 
@@ -14,7 +14,7 @@ export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
-  const { can } = useAuth();
+  const { can, flagOn } = useAuth();
   const debounced = useDebounce(query, 250);
 
   useEffect(() => {
@@ -46,7 +46,9 @@ export function CommandPalette() {
     navigate(to);
   };
 
-  const navItems = navSections.flatMap((s) => s.items).filter((i) => !i.perm || i.perm.some((p) => can(p)));
+  // Jumping to a page is still navigating: the palette offers exactly what the
+  // sidebar offers, so it cannot route a general clinic into a dental report.
+  const navItems = visibleNav(navSections, can, flagOn).flatMap((s) => s.items);
 
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>

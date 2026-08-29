@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, Bell, Search, LogOut, ChevronsUpDown, Building2, Check } from "lucide-react";
 
 import { useAuth } from "@/app/auth-context";
-import { navSections } from "@/app/nav";
+import { navSections, visibleNav } from "@/app/nav";
 import { inboxCount } from "@/features/lab/api";
 import { PageHelp } from "@/features/help/PageHelp";
 import { CommandPalette } from "@/app/command-palette";
@@ -45,24 +45,7 @@ export function AppShell() {
     }
   };
 
-  // A module the clinic isn't entitled to (feature flag off) is hidden entirely.
-  const moduleFor = (to: string) => (to.startsWith("/pharmacy") ? "pharmacy" : to.startsWith("/lab") ? "laboratory" : to.startsWith("/inpatient") ? "inpatient" : to.startsWith("/chairside") ? "dental" : null);
-  // A dental clinic doesn't use the encounter-centric flow (triage → queue →
-  // consultation) — its record of care is the tooth chart + treatment plan on the
-  // patient page. Hide those items so the menu matches how a dental clinic works.
-  const dentalHidden = new Set(["/triage", "/queue", "/worklist"]);
-  const isDental = flagOn("dental");
-  const sections = navSections
-    .map((s) => ({
-      ...s,
-      items: s.items.filter((i) => {
-        if (i.perm && !i.perm.some((p) => can(p))) return false;
-        if (isDental && dentalHidden.has(i.to)) return false;
-        const mod = moduleFor(i.to);
-        return !mod || flagOn(mod);
-      }),
-    }))
-    .filter((s) => s.items.length > 0);
+  const sections = visibleNav(navSections, can, flagOn);
 
   // Live alert badge for the doctor's results inbox (unacknowledged criticals).
   const labInbox = useQuery({
