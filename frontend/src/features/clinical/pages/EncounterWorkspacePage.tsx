@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CalendarCheck, CalendarPlus, Check, FlaskConical, PauseCircle, Pencil, Pill, Plus, Printer, Search, Sparkles, X } from "lucide-react";
+import { AlertTriangle, CalendarCheck, CalendarPlus, Check, ClipboardList, Clock, FlaskConical, History as HistoryIcon, PauseCircle, Pencil, Pill, Plus, Printer, Search, Sparkles, X } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -118,6 +119,7 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
   const soapRef = useRef(soap);
   soapRef.current = soap; // always the latest, so a delayed dictation appends to current text
   const [savedAt, setSavedAt] = useState<string | null>(ws.note.status === "signed" ? ws.note.signed_at ?? null : null);
+  const [save, setSave] = useState<SaveState>(ws.note.status === "signed" ? "saved" : "unsaved");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Cancel any pending auto-save on unmount (e.g. after sign navigates away).
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
@@ -126,12 +128,15 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
     if (locked) return;
     const next = { ...soapRef.current, [k]: v };
     setSoap(next);
+    setSave("saving");
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(async () => {
       try {
         await saveNote(ws.encounter_id, next);
         setSavedAt(new Date().toISOString());
+        setSave("saved");
       } catch {
+        setSave("unsaved");
         toast.error("Could not auto-save the note");
       }
     }, 800);
@@ -160,30 +165,46 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
     onError: () => toast.error("Could not sign the encounter"),
   });
 
+  // What is written and what is not — drives the rail, the step ticks, and the
+  // "before signing" list, so the doctor never has to hunt for what is missing.
+  const done: Record<string, boolean> = {
+    subjective: soap.subjective.trim().length > 0,
+    // Vitals are the nurse's work, not the doctor's, so they do not tick this off —
+    // otherwise the section reads "done" the moment the patient walks in, and a set of
+    // observations nobody has examined against looks like a completed step.
+    objective: soap.objective.trim().length > 0,
+    assessment: soap.assessment.trim().length > 0 || ws.diagnoses.length > 0,
+    plan: soap.plan.trim().length > 0,
+    lab: ws.lab_referrals.length > 0,
+    prescription: ws.prescription.length > 0,
+  };
+  const missing: string[] = [];
+  if (ws.diagnoses.length === 0) missing.push("No diagnosis recorded");
+  if (!done.subjective) missing.push("Subjective is empty");
+  if (!done.plan) missing.push("Plan is empty");
+
+  const elapsed = useElapsed(ws.started_at);
+  const [pane, setPane] = useState<"note" | "history" | "assist">("note");
+  const paneCls = (p: typeof pane) => cn(pane === p ? "" : "hidden", "lg:block");
+
   return (
     <div className="space-y-4">
-      {/* Banner */}
-      <div className="flex flex-wrap items-center gap-4 rounded-xl bg-brand px-5 py-4 text-white">
-        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-sm font-semibold">{initials(ws.patient.name)}</div>
-        <div className="min-w-0">
-          <p className="text-lg font-semibold leading-tight">{ws.patient.name}</p>
-          <p className="text-xs text-white/70">
-            MRN {ws.patient.mrn} · {ws.patient.age}{ws.patient.gender ? ws.patient.gender[0].toUpperCase() : ""}
-            {ws.patient.blood_group ? ` · ${ws.patient.blood_group}` : ""}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {ws.allergies.map((a) => (
-            <span key={a.substance} className="flex items-center gap-1 rounded-full bg-rose-600 px-3 py-1 text-xs font-semibold">
-              <AlertTriangle className="h-3.5 w-3.5" /> Allergy: {a.substance}
-            </span>
-          ))}
-        </div>
-        <div className="ml-auto text-right text-xs text-white/70">
-          <p>Encounter {ws.encounter_id.slice(-6)}</p>
-          <p>Started {hhmm(ws.started_at)}</p>
-        </div>
-      </div>
+      <ConsultHeader ws={ws} elapsed={elapsed} save={save} savedAt={savedAt} locked={locked}>
+        {!locked && (
+          <>
+            {ws.status === "open" && (
+              <Button variant="ghost" size="sm" className="touch-hit hidden text-white hover:bg-white/15 hover:text-white sm:inline-flex"
+                loading={park.isPending} onClick={() => park.mutate()}>
+                <PauseCircle className="h-4 w-4" /> Set aside
+              </Button>
+            )}
+            <Button size="sm" className="touch-hit bg-white text-brand hover:bg-white/90"
+              loading={sign.isPending} onClick={() => setConfirmSign(true)}>
+              <Check className="h-4 w-4" /> Sign &amp; close
+            </Button>
+          </>
+        )}
+      </ConsultHeader>
 
       {locked && (
         <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
@@ -196,51 +217,61 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[180px_1fr_300px]">
-        {/* Left rail */}
-        <Card className="hidden h-fit p-3 lg:block">
-          <nav className="space-y-1 text-sm">
-            {SECTIONS.map((s) => (
-              <a key={s.id} href={`#${s.id}`} className="block rounded-md px-3 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
-                {s.label}
-              </a>
-            ))}
-            {DEFERRED.map((d) => (
-              <span key={d} className="block cursor-not-allowed rounded-md px-3 py-1.5 text-muted-foreground/40">{d}</span>
-            ))}
-          </nav>
-          <p className="mt-4 px-3 text-xs text-emerald-600">{savedAt ? `Auto-saved ${hhmm(savedAt)}` : "Not saved yet"}</p>
-        </Card>
+      {/* On a phone the note, the history and the assistant were three screens
+          stacked — the doctor scrolled past the whole consultation to reach the last
+          visit. They become three panes of the same screen instead. */}
+      <div className="flex gap-1 rounded-lg border bg-card p-1 lg:hidden">
+        {([
+          { k: "note", label: "Note", Icon: ClipboardList },
+          { k: "history", label: "History", Icon: HistoryIcon },
+          { k: "assist", label: "Assist", Icon: Sparkles },
+        ] as const).map(({ k, label, Icon }) => (
+          <button key={k} type="button" onClick={() => setPane(k)}
+            className={cn("touch-hit flex flex-1 items-center justify-center gap-1.5 rounded-md py-2 text-sm font-medium transition-colors",
+              pane === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}>
+            <Icon className="h-4 w-4" /> {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[200px_minmax(0,1fr)_320px]">
+        <ProgressRail done={done} missing={missing} />
 
         {/* Center */}
-        <div className="space-y-5">
-          <section id="subjective">
-            <SectionHead title="Subjective">{!locked && <DictateButton onText={(t) => appendField("subjective", t)} />}</SectionHead>
-            <Textarea rows={4} placeholder="Chief complaint, history…" value={soap.subjective} disabled={locked} onChange={(e) => setField("subjective", e.target.value)} />
-          </section>
+        <div className={cn("min-w-0 space-y-5", paneCls("note"))}>
+          <Card id="subjective" className="p-4">
+            <SectionHead title="Subjective" step={1} done={done.subjective}>{!locked && <DictateButton onText={(t) => appendField("subjective", t)} />}</SectionHead>
+            <Textarea rows={4} placeholder="What brought them in? How long, what makes it worse, what have they already tried?"
+              value={soap.subjective} disabled={locked} onChange={(e) => setField("subjective", e.target.value)} />
+          </Card>
 
-          <section id="objective">
-            <SectionHead title="Objective / Vitals">{!locked && <DictateButton onText={(t) => appendField("objective", t)} />}</SectionHead>
+          <Card id="objective" className="p-4">
+            <SectionHead title="Objective / Vitals" step={2} done={done.objective}>{!locked && <DictateButton onText={(t) => appendField("objective", t)} />}</SectionHead>
             {latest ? (
               <div className="mb-3">
                 <VitalsGrid vitals={latest} fields={vfields.data ?? []} />
               </div>
             ) : (
-              <p className="mb-3 text-xs text-muted-foreground">No vitals recorded at triage.</p>
+              <p className="mb-3 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+                No vitals were recorded at triage.
+              </p>
             )}
-            <Textarea rows={3} placeholder="Examination findings…" value={soap.objective} disabled={locked} onChange={(e) => setField("objective", e.target.value)} />
-          </section>
+            <Textarea rows={3} placeholder="Examination findings — what you saw, heard and felt."
+              value={soap.objective} disabled={locked} onChange={(e) => setField("objective", e.target.value)} />
+          </Card>
 
-          <section id="assessment">
-            <SectionHead title="Assessment / Diagnosis">{!locked && <DictateButton onText={(t) => appendField("assessment", t)} />}</SectionHead>
-            <Textarea rows={3} className="mb-3" placeholder="Clinical assessment…" value={soap.assessment} disabled={locked} onChange={(e) => setField("assessment", e.target.value)} />
+          <Card id="assessment" className="p-4">
+            <SectionHead title="Assessment / Diagnosis" step={3} done={done.assessment}>{!locked && <DictateButton onText={(t) => appendField("assessment", t)} />}</SectionHead>
+            <Textarea rows={3} className="mb-3" placeholder="What do you think this is, and what else could it be?"
+              value={soap.assessment} disabled={locked} onChange={(e) => setField("assessment", e.target.value)} />
             <DiagnosisPicker ws={ws} locked={locked} onChanged={onChanged} />
-          </section>
+          </Card>
 
-          <section id="plan">
-            <SectionHead title="Plan">{!locked && <DictateButton onText={(t) => appendField("plan", t)} />}</SectionHead>
-            <Textarea rows={3} placeholder="Plan, advice, follow-up…" value={soap.plan} disabled={locked} onChange={(e) => setField("plan", e.target.value)} />
-          </section>
+          <Card id="plan" className="p-4">
+            <SectionHead title="Plan" step={4} done={done.plan}>{!locked && <DictateButton onText={(t) => appendField("plan", t)} />}</SectionHead>
+            <Textarea rows={3} placeholder="Treatment, advice, and when to come back — or what should bring them back sooner."
+              value={soap.plan} disabled={locked} onChange={(e) => setField("plan", e.target.value)} />
+          </Card>
 
           <section id="lab">
             <LabOrders ws={ws} locked={locked} />
@@ -254,24 +285,29 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
           {flagOn("maternity") && <PregnancyDatingCard patientId={ws.patient.patient_id} />}
           {!locked && <FollowUp ws={ws} />}
 
-          {!locked && (
-            <div className="flex justify-end gap-2">
-              {ws.status === "open" && (
-                <Button variant="outline" loading={park.isPending} onClick={() => park.mutate()}>
-                  <PauseCircle className="h-4 w-4" /> Set aside (awaiting results)
-                </Button>
-              )}
-              <Button className="bg-primary" loading={sign.isPending} onClick={() => setConfirmSign(true)}>
-                <Check /> Sign &amp; close
-              </Button>
+          {!locked && missing.length > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-amber-900">Before signing</p>
+              <ul className="mt-1 space-y-0.5">
+                {missing.map((m) => (
+                  <li key={m} className="flex items-start gap-1.5 text-sm text-amber-800">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{m}
+                  </li>
+                ))}
+              </ul>
             </div>
+          )}
+          {!locked && ws.status === "open" && (
+            <Button variant="outline" className="w-full sm:hidden" loading={park.isPending} onClick={() => park.mutate()}>
+              <PauseCircle className="h-4 w-4" /> Set aside (awaiting results)
+            </Button>
           )}
         </div>
 
         {/* Right rail — AI co-pilot + patient history timeline */}
-        <div className="space-y-4">
-          <AssistPanel encounterId={ws.encounter_id} />
-          <HistoryPanel patientId={ws.patient.patient_id} />
+        <div className={cn("space-y-4", pane === "note" && "hidden", "lg:block")}>
+          <div className={paneCls("assist")}><AssistPanel encounterId={ws.encounter_id} /></div>
+          <div className={paneCls("history")}><HistoryPanel patientId={ws.patient.patient_id} /></div>
         </div>
       </div>
 
@@ -881,12 +917,131 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function SectionHead({ title, children }: { title: string; children?: React.ReactNode }) {
+function SectionHead({ title, step, done, children }: {
+  title: string; step?: number; done?: boolean; children?: React.ReactNode;
+}) {
   return (
     <div className="mb-2 flex items-center justify-between gap-2">
-      <h2 className="text-h3">{title}</h2>
+      <h2 className="flex items-center gap-2 text-h3">
+        {step !== undefined && (
+          <span className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold",
+            done ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>
+            {done ? <Check className="h-3.5 w-3.5" /> : step}
+          </span>
+        )}
+        {title}
+      </h2>
       {children}
     </div>
+  );
+}
+
+/** How long this consultation has been running. A doctor cares about the clock;
+ *  the encounter's opaque id, which used to sit here, is for support tickets. */
+function useElapsed(startedAt: string) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  const mins = Math.max(0, Math.round((now - new Date(startedAt).getTime()) / 60000));
+  return mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+
+type SaveState = "saved" | "saving" | "unsaved";
+
+/** Everything the doctor must be able to see and reach at any scroll depth:
+ *  who this is, what they are allergic to, whether the note is safe, and the way out. */
+function ConsultHeader({ ws, elapsed, save, savedAt, locked, children }: {
+  ws: Workspace; elapsed: string; save: SaveState; savedAt: string | null; locked: boolean;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="sticky top-16 z-30 -mx-4 mb-4 border-b bg-brand px-4 py-3 text-white shadow-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/15 text-sm font-semibold">
+            {initials(ws.patient.name)}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-base font-semibold leading-tight">{ws.patient.name}</p>
+            <p className="truncate text-xs text-white/70">
+              {ws.patient.mrn} · {ws.patient.age}{ws.patient.gender ? ws.patient.gender[0].toUpperCase() : ""}
+              {ws.patient.blood_group ? ` · ${ws.patient.blood_group}` : ""}
+              <span className="ml-2 inline-flex items-center gap-1"><Clock className="h-3 w-3" />{elapsed}</span>
+            </p>
+          </div>
+        </div>
+
+        {/* Allergies ride in the header, at every scroll position, because the
+            prescription is written further down the page than they used to be shown. */}
+        {ws.allergies.length > 0 && (
+          <div className="flex min-w-0 flex-wrap gap-1.5">
+            {ws.allergies.map((a) => (
+              <span key={a.substance}
+                className="flex items-center gap-1 rounded-full bg-rose-600 px-2.5 py-1 text-xs font-semibold">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> {a.substance}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="ml-auto flex items-center gap-3">
+          {!locked && (
+            <span className="hidden items-center gap-1.5 text-xs text-white/75 sm:flex">
+              <span className={cn("h-1.5 w-1.5 rounded-full",
+                save === "saving" ? "animate-pulse bg-amber-300" : save === "saved" ? "bg-emerald-400" : "bg-white/40")} />
+              {save === "saving" ? "Saving…" : savedAt ? `Saved ${hhmm(savedAt)}` : "Not saved yet"}
+            </span>
+          )}
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The rail stops being seven links and starts being the state of the note:
+ *  what is written, what is still empty, and whether it can be signed. */
+function ProgressRail({ done, missing }: { done: Record<string, boolean>; missing: string[] }) {
+  return (
+    <Card className="sticky top-36 hidden h-fit p-3 lg:block">
+      <nav className="space-y-0.5 text-sm">
+        {SECTIONS.map((sec, i) => (
+          <a key={sec.id} href={`#${sec.id}`}
+            className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+            <span className={cn("grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-bold",
+              done[sec.id] ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>
+              {done[sec.id] ? <Check className="h-3 w-3" /> : i + 1}
+            </span>
+            <span className="truncate">{sec.label}</span>
+          </a>
+        ))}
+        {DEFERRED.map((d) => (
+          <span key={d} className="flex items-center gap-2 px-2.5 py-1.5 text-muted-foreground/40">
+            <span className="h-5 w-5" />{d}
+          </span>
+        ))}
+      </nav>
+      <div className="mt-3 border-t pt-3">
+        {missing.length === 0 ? (
+          <p className="flex items-start gap-1.5 text-xs font-medium text-emerald-700">
+            <Check className="mt-px h-3.5 w-3.5 shrink-0" /> Ready to sign
+          </p>
+        ) : (
+          <>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Before signing</p>
+            <ul className="mt-1 space-y-0.5">
+              {missing.map((m) => (
+                <li key={m} className="flex items-start gap-1.5 text-xs text-amber-700">
+                  <AlertTriangle className="mt-px h-3 w-3 shrink-0" />{m}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
+    </Card>
   );
 }
 
@@ -945,26 +1100,63 @@ function VitalsGrid({ vitals, fields }: { vitals: Vitals; fields: VitalField[] }
     });
   }
 
+  const off = tiles.filter((t) => t.flag && t.flag !== "normal");
+
   return (
-    <div className="space-y-2">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+    <div className="space-y-2.5">
+      {/* Is anything wrong? — answered before the doctor has to read five chips.
+          The old grid rendered 65% SpO2 and 98% SpO2 in the same colour with a 10px
+          label beside them, so a peri-arrest set of observations looked like any
+          other. The summary answers it in one line; the tiles say which. */}
+      {off.length > 0 ? (
+        <p className="flex flex-wrap items-center gap-x-1.5 text-sm font-semibold text-destructive">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          {off.length} of {tiles.length} outside the normal range
+          <span className="font-normal text-muted-foreground">
+            — {off.map((t) => t.label).join(", ")}
+          </span>
+        </p>
+      ) : tiles.length > 0 ? (
+        <p className="flex items-center gap-1.5 text-sm text-emerald-700">
+          <Check className="h-4 w-4 shrink-0" /> All recorded vitals are within range
+        </p>
+      ) : null}
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         {tiles.map((t) => <VitalCard key={t.key} label={t.label} value={t.value} flag={t.flag} />)}
       </div>
-      {vitals.notes ? (
-        <p className="text-xs text-muted-foreground"><span className="font-medium">Notes:</span> {vitals.notes}</p>
-      ) : null}
+
+      <p className="text-xs text-muted-foreground">
+        Taken {hhmm(vitals.recorded_at)}
+        {vitals.notes ? <> · <span className="text-foreground">{vitals.notes}</span></> : null}
+      </p>
     </div>
   );
 }
 
+/** Loud when it matters, quiet when it does not — the contrast is what makes an
+ *  abnormal observation findable at a glance. */
+const VITAL_TONE: Record<string, { tile: string; value: string; chip: string }> = {
+  low:      { tile: "border-sky-300 bg-sky-50/70",   value: "text-sky-800",   chip: "bg-sky-600" },
+  high:     { tile: "border-amber-300 bg-amber-50",  value: "text-amber-800", chip: "bg-amber-500" },
+  critical: { tile: "border-rose-300 bg-rose-50",    value: "text-rose-800",  chip: "bg-rose-600" },
+};
+
 function VitalCard({ label, value, flag }: { label: string; value: string; flag?: Flag }) {
+  const tone = flag && flag !== "normal" ? VITAL_TONE[flag] : undefined;
   return (
-    <div className="rounded-lg border bg-background p-3">
+    <div className={cn("relative overflow-hidden rounded-lg border p-3",
+      tone ? tone.tile : "bg-background")}>
+      {tone && <span className={cn("absolute inset-y-0 left-0 w-1", tone.chip)} />}
       <div className="flex items-center justify-between gap-1">
-        <p className="text-xs text-muted-foreground">{label}</p>
-        {flag && <span className={`rounded-full border px-1.5 text-[10px] font-medium capitalize ${FLAG_CLS[flag]}`}>{flag}</span>}
+        <p className={cn("text-xs", tone ? "font-medium text-foreground/70" : "text-muted-foreground")}>{label}</p>
+        {tone && (
+          <span className={cn("rounded-full px-1.5 text-[10px] font-bold uppercase tracking-wide text-white", tone.chip)}>
+            {flag}
+          </span>
+        )}
       </div>
-      <p className="font-semibold text-brand">{value}</p>
+      <p className={cn("mt-0.5 font-semibold tabular-nums", tone ? `text-lg ${tone.value}` : "text-brand")}>{value}</p>
     </div>
   );
 }
