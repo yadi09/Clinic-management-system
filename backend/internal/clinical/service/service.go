@@ -420,6 +420,19 @@ func (s *Service) SignAndClose(ctx context.Context, encounterID uuid.UUID) error
 		payload := map[string]any{"encounter_id": encounterID, "patient_id": enc.PatientID}
 		if enc.QueueEntryID != nil {
 			payload["queue_entry_id"] = *enc.QueueEntryID
+			// Take the patient off the board in the same transaction that closes their
+			// encounter. The browser was doing this afterwards, in a try/catch whose
+			// comment said "worklist will reconcile" — nothing reconciles it. A dropped
+			// connection between the two calls left a signed, locked encounter whose
+			// patient sat on the queue for ever, and the only cure was a manual
+			// transition. Signed and still waiting are not two states a queue should be
+			// able to hold at once, so they are now written together or not at all.
+			if _, e := tx.Exec(ctx,
+				`UPDATE queue_entries SET state='done', ended_at=coalesce(ended_at, now()), updated_at=now()
+				  WHERE tenant_id=$1 AND id=$2 AND state <> 'done' AND deleted_at IS NULL`,
+				tenantID, *enc.QueueEntryID); e != nil {
+				return e
+			}
 		}
 		return s.publisher.Publish(ctx, tx, &tenantID, "encounter", encounterID, "clinical.encounter.closed", payload)
 	})

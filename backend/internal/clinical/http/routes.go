@@ -36,7 +36,7 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	enc.GET("", h.History)        // ?patient= → patient history timeline
 	// The same record, asked the way a doctor asks it.
 	rg.GET("/patients/:id/story", httpx.RequirePermission("encounter.manage"), h.Story)
-	enc.GET("/board", h.MyBoard)  // doctor's "My day": in-progress + done today
+	enc.GET("/board", h.MyBoard) // doctor's "My day": in-progress + done today
 	enc.GET("/:id", h.GetWorkspace)
 	enc.POST("/:id/assist", h.Assist) // AI clinical decision-support co-pilot
 	enc.PUT("/:id/note", h.SaveNote)
