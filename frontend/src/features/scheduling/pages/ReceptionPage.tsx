@@ -47,7 +47,7 @@ import {
 } from "@/features/scheduling/api";
 import { ArrivalRow, clock, coveredNow, day } from "@/features/scheduling/reception/ArrivalList";
 
-type Lens = "expected" | "waiting" | "seen";
+type Lens = "expected" | "waiting" | "seen" | "settle";
 const etb = (n: number | string) => `ETB ${Number(n || 0).toFixed(2)}`;
 
 export function ReceptionPage() {
@@ -74,7 +74,15 @@ export function ReceptionPage() {
   });
 
   const lists = today.data;
-  const rows = (lists?.[lens] ?? []) as ReceptionPatient[];
+  // Treated, and still owing — the people about to walk out of the door.
+  //
+  // Letting a patient be seen before paying is the whole point of "pay later", but
+  // it only works if somebody catches them on the way out. Without this the desk had
+  // no list of who had been treated and not yet settled: the patient simply left, and
+  // the charge became a debt nobody had decided to carry. "Seen" answers who was
+  // treated; this answers who still owes for it.
+  const settling = (lists?.seen ?? []).filter((r) => Number(r.owed || 0) > 0);
+  const rows = (lens === "settle" ? settling : (lists?.[lens] ?? [])) as ReceptionPatient[];
   const searching = debounced.trim().length >= 2;
 
   // Keep the selected person in step with fresh data (their owed figure may change,
@@ -110,6 +118,7 @@ export function ReceptionPage() {
                   { value: "expected", label: "Expected", badge: lists?.expected.length ?? 0 },
                   { value: "waiting", label: "Waiting", badge: lists?.waiting.length ?? 0 },
                   { value: "seen", label: "Seen", badge: lists?.seen.length ?? 0 },
+                  { value: "settle", label: "To settle", badge: settling.length },
                 ]}
               />
             </div>
@@ -158,6 +167,7 @@ export function ReceptionPage() {
             ) : rows.length === 0 ? (
               <p className="py-10 text-center text-sm text-muted-foreground">
                 {lens === "expected" ? "Nobody booked today — search for a walk-in."
+                  : lens === "settle" ? "Everyone treated today has paid."
                   : lens === "waiting" ? "Nobody is waiting."
                     : "Nobody has been seen yet today."}
               </p>
@@ -267,6 +277,20 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
   // finding that out after telling the patient they are done is worse than not
   // offering it. Overriding is a manager's decision, recorded against their name.
   const refused = mustPay && canCollect && paymentBlocked(pay);
+  // Everything this patient still owes — what the desk collects on the way out.
+  const outstanding = Number(p.owed || 0);
+  const settleOwed = useMutation({
+    mutationFn: (force: boolean) => settleVisit(p.patient_id, {
+      rail_id: pay.railId || undefined, method: pay.method, reference: pay.reference, force,
+    }),
+    onSuccess: () => {
+      toast.success(`${p.name}: ${etb(outstanding)} collected`);
+      qc.invalidateQueries({ queryKey: ["reception-today"] });
+      qc.invalidateQueries({ queryKey: ["pending-charges"] });
+      onDone();
+    },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not take the payment"),
+  });
   const canOverride = can("payment.waive");
 
   const receive = useMutation({
@@ -345,9 +369,41 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
       </div>
 
       {received ? (
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-          Already received — waiting since {clock(p.waiting_since!)}
-          {p.department_name && ` for ${p.department_name}`}.
+        <div className="space-y-3">
+          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+            Already received — waiting since {clock(p.waiting_since!)}
+            {p.department_name && ` for ${p.department_name}`}.
+          </div>
+
+          {/* Settling on the way out.
+              A patient treated on "pay later" has to be caught before they leave, and
+              this panel used to end at the green box — the desk could see they owed
+              money and had no way to take it without going to the cashier page and
+              finding them again. */}
+          {outstanding > 0.005 && canCollect && (
+            <div className="space-y-2 rounded-lg border border-l-4 border-l-destructive bg-destructive/5 p-3">
+              <p className="text-sm font-semibold text-destructive">
+                {etb(outstanding)} still to pay
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {p.owed_agreed
+                  ? "Agreed to be billed later — take it now if they can settle before leaving."
+                  : "Not yet collected. Take it before they leave."}
+              </p>
+              <PaymentRailPicker rails={rails.data} value={pay} onChange={setPay}
+                expected={outstanding.toFixed(2)} patientId={p.patient_id} compact />
+              {paymentBlocked(pay) ? (
+                <PaymentRefused canOverride={canOverride} pending={settleOwed.isPending}
+                  onForce={() => settleOwed.mutate(true)} />
+              ) : (
+                <Button className="w-full" loading={settleOwed.isPending}
+                  disabled={paymentIncomplete(rails.data, pay)}
+                  onClick={() => settleOwed.mutate(false)}>
+                  <HandCoins className="h-4 w-4" /> Collect {etb(outstanding)}
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <>

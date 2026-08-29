@@ -19,7 +19,7 @@ export function ArrivalRow({ p, selected, onPick, lens }: {
   p: ReceptionPatient;
   selected: boolean;
   onPick: () => void;
-  lens: "expected" | "waiting" | "seen";
+  lens: "expected" | "waiting" | "seen" | "settle";
 }) {
   const covered = coveredNow(p);
   const owes = Number(p.owed || 0) > 0;
@@ -63,8 +63,12 @@ export function ArrivalRow({ p, selected, onPick, lens }: {
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           {covered && <Badge variant="success">Free follow-up · until {day(p.free_until!)}</Badge>}
           {owes && (
-            <Badge variant="destructive">
-              Owes {etb(p.owed)}{p.owed_oldest_days ? ` · ${p.owed_oldest_days}d` : ""}
+            // Agreed credit is a plan; an uncollected charge is a surprise. On the
+            // settle lens what matters is only that it is still to be taken.
+            <Badge variant={p.owed_agreed && lens !== "settle" ? "outline" : "destructive"}>
+              {lens === "settle" ? "To collect " : p.owed_agreed ? "Billed later · " : "Owes "}
+              {etb(p.owed)}
+              {lens !== "settle" && p.owed_oldest_days ? ` · ${p.owed_oldest_days}d` : ""}
             </Badge>
           )}
         </div>
