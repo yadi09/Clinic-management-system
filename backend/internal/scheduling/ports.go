@@ -203,6 +203,9 @@ type ReceptionPatient struct {
 	// definition Finance uses for "Owed to you": charges sitting at status 'pending'.
 	Owed           string `json:"owed,omitempty"`
 	OwedOldestDays int    `json:"owed_oldest_days,omitempty"`
+	// OwedAgreed is true when every pending charge was deliberately deferred —
+	// treat-now-pay-later — rather than simply never collected.
+	OwedAgreed bool `json:"owed_agreed,omitempty"`
 
 	// Where they are once received.
 	Stage        string `json:"stage,omitempty"` // triage | with_doctor

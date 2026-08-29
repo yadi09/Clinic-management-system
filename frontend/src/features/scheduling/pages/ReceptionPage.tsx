@@ -24,9 +24,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Segmented } from "@/components/ui/segmented";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/sonner";
+import { cn } from "@/lib/utils";
 import { AppError } from "@/lib/api-client";
 import { useAuth } from "@/app/auth-context";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -34,7 +35,7 @@ import { useIsLargeScreen } from "@/hooks/useMediaQuery";
 import { searchPatients, type PatientSummary } from "@/features/patients/api";
 import { listDepartments, listProviders, getSettings } from "@/features/admin/api";
 import {
-  listServices, patientCharges, raiseCharge, settleVisit, waiveCharge, waiverReasons,
+  deferVisit, listServices, patientCharges, raiseCharge, settleVisit, waiveCharge, waiverReasons,
   type ServiceItem,
 } from "@/features/billing/api";
 import {
@@ -235,6 +236,7 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
   const [extras, setExtras] = useState<Record<string, boolean>>({});
   const [pay, setPay] = useState<PaymentChoice>(EMPTY_PAYMENT);
   const [waiveOpen, setWaiveOpen] = useState(false);
+  const [deferOpen, setDeferOpen] = useState(false);
   const [waiveReason, setWaiveReason] = useState("");
 
   useEffect(() => {
@@ -382,11 +384,15 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
             </details>
           )}
 
-          {/* old debt: surfaced, never folded into today's payment */}
+          {/* Old debt: surfaced, never folded into today's payment. Money the clinic
+              AGREED to be owed is not the same fact as a charge nobody collected —
+              one is a plan, the other is a surprise — so they do not look alike. */}
           {Number(p.owed || 0) > 0 && (
-            <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <div className={cn("flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm",
+              p.owed_agreed ? "border-sky-200 bg-sky-50 text-sky-900" : "border-amber-200 bg-amber-50 text-amber-900")}>
               <span className="min-w-0 flex-1">
-                Owes <b>{etb(p.owed!)}</b> from earlier visits
+                {p.owed_agreed ? <>Being billed later — <b>{etb(p.owed!)}</b> agreed</>
+                  : <>Owes <b>{etb(p.owed!)}</b> from earlier visits</>}
                 {p.owed_oldest_days ? ` · oldest ${p.owed_oldest_days} days` : ""}
               </span>
               <Button asChild size="sm" variant="outline"><Link to="/cashier">See it</Link></Button>
@@ -448,6 +454,12 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
                     away. Nothing is marked paid on this path. */}
                 <Button variant="outline" className="flex-1" disabled={!routeReady} loading={receive.isPending}
                   onClick={() => receive.mutate({ mode: "cashier" })}>Send to cashier</Button>
+                {canOverride && (
+                  <Button variant="ghost" onClick={() => setDeferOpen(true)}
+                    title="Let them be seen now and settle later — the debt stays on the record">
+                    Pay later…
+                  </Button>
+                )}
                 {canCollect && (
                   <Button variant="ghost" onClick={() => setWaiveOpen(true)}>Waive…</Button>
                 )}
@@ -457,6 +469,8 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
         </>
       )}
 
+      <DeferDialog open={deferOpen} onClose={() => setDeferOpen(false)} patient={p} total={total}
+        onDone={() => { setDeferOpen(false); onDone(); }} />
       <WaiveDialog open={waiveOpen} onClose={() => setWaiveOpen(false)} reasons={reasons.data ?? []}
         value={waiveReason} onChange={setWaiveReason} patient={p} onDone={onDone} />
     </div>
@@ -498,6 +512,56 @@ function FeeBlock({ defaults, extrasTotal, total }: { defaults: ServiceItem[]; e
 }
 
 /** Free, on purpose, with a reason — the only way a visit costs nothing without payment. */
+/** Treat now, bill later.
+ *
+ *  Deliberately not the waiver dialog with different words. Waiving says the money is
+ *  gone; this says it is still owed and the clinic has agreed to wait — so the reason
+ *  is compulsory, it is kept against the charges, and the copy is explicit that the
+ *  patient still owes it. A clinic treating a staff member's child or someone brought
+ *  in bleeding was previously forced to choose between writing the money off and
+ *  turning them away. */
+function DeferDialog({ open, onClose, patient, total, onDone }: {
+  open: boolean; onClose: () => void; patient: ReceptionPatient; total: number; onDone: () => void;
+}) {
+  const [reason, setReason] = useState("");
+  const REASONS = ["Emergency — treat first", "Staff or dependent", "Known patient — settles monthly",
+    "Insurance / company account", "Cannot pay today", "Other"];
+  const defer = useMutation({
+    mutationFn: () => deferVisit(patient.patient_id, { reason }),
+    onSuccess: (r) => {
+      toast.success(`${patient.name} can be seen now — ${r.deferred} charge${r.deferred === 1 ? "" : "s"} still owed`);
+      onDone();
+    },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not defer this visit"),
+  });
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent fullOnMobile className="max-w-md">
+        <DialogHeader><DialogTitle>Treat now, pay later</DialogTitle></DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          {patient.name} will be sent through without paying. The <b>{etb(total)}</b> stays owed,
+          stays at the cashier and appears in the debt report — it is not written off.
+        </p>
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Why? (kept on the record)</Label>
+          <Select value={reason} onValueChange={setReason}>
+            <SelectTrigger><SelectValue placeholder="Choose a reason" /></SelectTrigger>
+            <SelectContent>
+              {REASONS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={!reason} loading={defer.isPending} onClick={() => defer.mutate()}>
+            Send through, bill later
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function WaiveDialog({ open, onClose, reasons, value, onChange, patient, onDone }: {
   open: boolean; onClose: () => void; reasons: string[]; value: string;
   onChange: (s: string) => void; patient: ReceptionPatient; onDone: () => void;

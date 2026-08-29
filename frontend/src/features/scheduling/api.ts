@@ -196,6 +196,8 @@ export interface ReceptionPatient {
   /** Raised and unpaid — the same definition Finance uses for "Owed to you". */
   owed?: string;
   owed_oldest_days?: number;
+  /** Every pending charge was deliberately deferred, rather than never collected. */
+  owed_agreed?: boolean;
   stage?: string;
   waiting_since?: string;
 }

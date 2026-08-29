@@ -632,6 +632,37 @@ func (h *Handlers) SettleVisit(c *gin.Context) {
 	httpx.OK(c, out)
 }
 
+// DeferVisit handles POST /billing/patients/:id/defer — treat now, bill later.
+func (h *Handlers) DeferVisit(c *gin.Context) {
+	pid, ok := decodeBilling(c, id.PrefixPatient, "id")
+	if !ok {
+		return
+	}
+	var req struct {
+		Reason    string   `json:"reason"`
+		ChargeIDs []string `json:"charge_ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("a reason is required"))
+		return
+	}
+	ids := make([]uuid.UUID, 0, len(req.ChargeIDs))
+	for _, raw := range req.ChargeIDs {
+		cid, err := id.Decode(id.PrefixCharge, raw)
+		if err != nil {
+			httpx.Fail(c, apperr.Validation("invalid charge id"))
+			return
+		}
+		ids = append(ids, cid)
+	}
+	n, err := h.svc.DeferVisit(c.Request.Context(), pid, req.Reason, ids)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"deferred": n})
+}
+
 func (h *Handlers) WaiveCharge(c *gin.Context) {
 	cid, ok := decodeBilling(c, id.PrefixCharge, "id")
 	if !ok {

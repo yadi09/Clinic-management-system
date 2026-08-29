@@ -31,7 +31,7 @@ const receptionCols = `
 	p.id, trim(coalesce(p.first_name,'') || ' ' || coalesce(p.last_name,'')),
 	coalesce(p.mrn,''),
 	coalesce(date_part('year', age(p.dob))::int, 0), coalesce(p.gender,''), coalesce(p.phone,''),
-	coalesce(owed.amt, 0)::text, coalesce(owed.oldest, 0)::int`
+	coalesce(owed.amt, 0)::text, coalesce(owed.oldest, 0)::int, coalesce(owed.all_agreed, false)`
 
 // owedCTE is the same definition Finance uses for "Owed to you" — charges raised and
 // still pending — so the number on a reception row and the number on the Finance page
@@ -40,7 +40,11 @@ const owedCTE = `
 WITH owed AS (
   SELECT c.patient_id,
          sum(c.amount) AS amt,
-         max((now() AT TIME ZONE $2)::date - (c.created_at AT TIME ZONE $2)::date) AS oldest
+         max((now() AT TIME ZONE $2)::date - (c.created_at AT TIME ZONE $2)::date) AS oldest,
+         -- Money the clinic agreed to be owed is not the same fact as a charge nobody
+         -- collected, and the desk should not have to treat them alike. Both are still
+         -- owed; only one is a surprise.
+         bool_and(c.deferred_at IS NOT NULL) AS all_agreed
     FROM charges c
    WHERE c.tenant_id = $1 AND c.status = 'pending' AND c.deleted_at IS NULL
    GROUP BY c.patient_id
@@ -82,7 +86,7 @@ func (s *Service) ReceptionToday(ctx context.Context) (*scheduling.ReceptionToda
 			var provID, deptID *uuid.UUID
 			var startsAt time.Time
 			var freeUntil *time.Time
-			if e := rows.Scan(&pid, &r.Name, &r.MRN, &r.Age, &r.Sex, &r.Phone, &r.Owed, &r.OwedOldestDays,
+			if e := rows.Scan(&pid, &r.Name, &r.MRN, &r.Age, &r.Sex, &r.Phone, &r.Owed, &r.OwedOldestDays, &r.OwedAgreed,
 				&apptID, &startsAt, &provID, &r.ProviderName, &deptID, &r.DepartmentName,
 				&r.Reason, &r.IsFollowup, &freeUntil); e != nil {
 				rows.Close()
@@ -137,7 +141,7 @@ func (s *Service) ReceptionToday(ctx context.Context) (*scheduling.ReceptionToda
 			var pid uuid.UUID
 			var state string
 			var enqueuedAt time.Time
-			if e := qrows.Scan(&pid, &r.Name, &r.MRN, &r.Age, &r.Sex, &r.Phone, &r.Owed, &r.OwedOldestDays,
+			if e := qrows.Scan(&pid, &r.Name, &r.MRN, &r.Age, &r.Sex, &r.Phone, &r.Owed, &r.OwedOldestDays, &r.OwedAgreed,
 				&state, &r.Stage, &enqueuedAt, &r.DepartmentName, &r.ProviderName); e != nil {
 				return e
 			}

@@ -47,6 +47,10 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	b.POST("/checkout", collect, h.SettleVisit) // one-click visit checkout (settle all a patient's charges)
 	b.GET("/payments", collect, h.Payments)     // cashier's "Paid today" list (by receipt)
 	b.POST("/refund-visit", mgr, h.RefundVisit) // refund an entire receipt (manager-gated)
+	// Treat now, bill later. The same authority as waiving, because deciding a
+	// patient may owe the clinic money is the same class of decision as deciding they
+	// never will — and the desk should have to ask someone either way.
+	b.POST("/patients/:id/defer", httpx.RequirePermission("payment.waive"), h.DeferVisit)
 	b.POST("/charges/:id/waive", httpx.RequirePermission("payment.waive"), h.WaiveCharge)
 	b.POST("/charges/:id/void", httpx.RequirePermission("payment.waive"), h.VoidCharge) // retire a pending charge (mistake / patient left)
 	b.POST("/charges/:id/refund", mgr, h.RefundCharge)                                  // reverse a settled charge (manager-gated)

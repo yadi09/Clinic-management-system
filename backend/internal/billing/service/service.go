@@ -759,6 +759,87 @@ func (s *Service) WaiveCharge(ctx context.Context, id uuid.UUID, reason string) 
 	return nil
 }
 
+// DeferVisit lets a patient be treated now and billed later.
+//
+// Not a waiver: the money is still owed, still at the cashier, still in the ageing.
+// What changes is that a person decided it, with a reason, and the fee stops holding
+// the patient at the door. A clinic that treats a staff member's child, or someone
+// brought in bleeding, is not writing the money off — and until now those were the
+// same button.
+//
+// Scoped to a visit rather than a charge because that is the decision being made: you
+// let the PATIENT through, not one line of their bill.
+func (s *Service) DeferVisit(ctx context.Context, patientID uuid.UUID, reason string, chargeIDs []uuid.UUID) (int, error) {
+	tenantID, actor := actorOf(ctx)
+	if strings.TrimSpace(reason) == "" {
+		return 0, apperr.Validation("say why this patient is being treated before paying — it goes on the record")
+	}
+	var n int
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		q := billingdb.New(tx)
+		// Either the charges the desk named, or everything still pending for the patient.
+		rows, e := tx.Query(ctx,
+			`UPDATE charges SET deferred_at = now(), deferred_by = $3, defer_reason = $4, updated_at = now()
+			  WHERE tenant_id = $1 AND patient_id = $2 AND status = 'pending' AND deleted_at IS NULL
+			    AND deferred_at IS NULL
+			    AND ($5::uuid[] IS NULL OR id = ANY($5))
+			  RETURNING id, branch_id, department_id, to_triage, provider_id`,
+			tenantID, patientID, actor, strings.TrimSpace(reason), nullUUIDs(chargeIDs))
+		if e != nil {
+			return e
+		}
+		type row struct {
+			id       uuid.UUID
+			branch   *uuid.UUID
+			dept     *uuid.UUID
+			toTriage bool
+			provider *uuid.UUID
+		}
+		var got []row
+		for rows.Next() {
+			var r row
+			if e := rows.Scan(&r.id, &r.branch, &r.dept, &r.toTriage, &r.provider); e != nil {
+				rows.Close()
+				return e
+			}
+			got = append(got, r)
+		}
+		rows.Close()
+		if e := rows.Err(); e != nil {
+			return e
+		}
+		n = len(got)
+		if n == 0 {
+			return apperr.Conflict("NOTHING_TO_DEFER", "there is nothing pending on this visit to defer")
+		}
+		for _, r := range got {
+			if e := s.publisher.Publish(ctx, tx, &tenantID, "charge", r.id, "billing.charge.deferred",
+				map[string]any{"charge_id": r.id, "patient_id": patientID, "reason": reason}); e != nil {
+				return e
+			}
+		}
+		// Now that nothing unagreed is outstanding, let them through the door.
+		last := got[len(got)-1]
+		return advanceIfPaid(ctx, tx, q, tenantID, actor, last.branch, last.dept, last.toTriage, last.provider, patientID)
+	})
+	if ae, ok := apperr.As(err); ok {
+		return 0, ae
+	}
+	if err != nil {
+		return 0, apperr.Internal(err)
+	}
+	return n, nil
+}
+
+// nullUUIDs turns an empty selection into SQL NULL, which the UPDATE reads as
+// "every pending charge" rather than "none".
+func nullUUIDs(ids []uuid.UUID) any {
+	if len(ids) == 0 {
+		return nil
+	}
+	return ids
+}
+
 // VoidCharge retires a still-pending charge (keying error / patient left). It is
 // distinct from a waiver (no service given, free) — a void simply cancels the bill.
 func (s *Service) VoidCharge(ctx context.Context, id uuid.UUID, reason string) error {
@@ -1336,11 +1417,15 @@ func advanceIfPaid(ctx context.Context, tx pgx.Tx, q *billingdb.Queries, tenantI
 	//
 	// Routed charges (department set) are the ones raised to let a patient in; those
 	// are what must be clear. Raw pgx because sqlc cannot be regenerated here.
+	// A deferred charge is money the clinic has agreed to be owed, so it does not hold
+	// the patient at the door — that is the whole point of agreeing to it. It stays
+	// pending and stays owed; it simply stops being a gate.
 	var pending int
 	if e := tx.QueryRow(ctx,
 		`SELECT count(*)::int FROM charges
 		  WHERE tenant_id = $1 AND patient_id = $2 AND status = 'pending'
-		    AND deleted_at IS NULL AND department_id IS NOT NULL`,
+		    AND deleted_at IS NULL AND department_id IS NOT NULL
+		    AND deferred_at IS NULL`,
 		tenantID, patientID).Scan(&pending); e != nil {
 		return e
 	}

@@ -344,6 +344,9 @@ type Service interface {
 
 	SettleCharge(ctx context.Context, id uuid.UUID, in SettleInput) error
 	SettleVisit(ctx context.Context, patientID uuid.UUID, in SettleInput) (*VisitSettlement, error)
+	// DeferVisit lets a patient be treated now and billed later: the charges stay
+	// pending and owed, but stop holding them at the door.
+	DeferVisit(ctx context.Context, patientID uuid.UUID, reason string, chargeIDs []uuid.UUID) (int, error)
 	WaiveCharge(ctx context.Context, id uuid.UUID, reason string) error
 	VoidCharge(ctx context.Context, id uuid.UUID, reason string) error
 	RefundCharge(ctx context.Context, id uuid.UUID, reason string) error

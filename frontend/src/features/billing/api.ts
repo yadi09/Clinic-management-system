@@ -265,6 +265,11 @@ export function voidCharge(id: string, reason: string) {
 export function refundCharge(id: string, reason: string) {
   return apiFetch<void>(`/billing/charges/${id}/refund`, { method: "POST", body: { reason } });
 }
+/** Treat now, bill later: the charges stay owed and stay at the cashier, but stop
+ *  holding the patient at the door. Manager-gated, and the reason is kept. */
+export function deferVisit(patientId: string, body: { reason: string; charge_ids?: string[] }) {
+  return apiFetch<{ deferred: number }>(`/billing/patients/${patientId}/defer`, { method: "POST", body });
+}
 export function waiverReasons() {
   return apiFetch<string[]>("/billing/waiver-reasons");
 }
