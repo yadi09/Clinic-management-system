@@ -315,9 +315,14 @@ them, that is worth a small guard later.
 The work is the same shape each time: widen the `feature_flags` CHECK constraint to add
 the new flags (same migration pattern as 00031 and 00034), map them in the plan preset
 in `provision.go` — which already inserts flags with `source='plan'` — hide the surface
-with `flagOn(...)` in the frontend, and add a `RequireFeature` middleware on the
-server. That middleware does not exist: **feature flags are currently written and read
-but never enforced server-side**, so today they are UI hints, not boundaries.
+with `flagOn(...)` in the frontend, and wrap the route group in
+`httpx.RequireFlag("...")`.
+
+*(Correction to an earlier draft of this document, which said no server-side flag
+enforcement existed. It does: `httpx.RequireFlag` returns `ModuleDisabled` and already
+guards `/dental`, `/pharmacy`, `/lab`, `/inpatient` and the maternity routes. So the
+gate is a real boundary wherever a flag exists — what is missing is only a flag for the
+features that never had one.)*
 
 **Treat now, pay later needs no work.** `pay_later` and `pay_later_note` are already
 on the session, the money projection already separates a promise from a delivered
