@@ -232,6 +232,7 @@ type Service interface {
 	Create(ctx context.Context, in PatientInput) (*Patient, []Duplicate, error)
 	Update(ctx context.Context, id uuid.UUID, in PatientInput) (*Patient, error)
 	Get(ctx context.Context, id uuid.UUID) (*Profile, error)
+	Overview(ctx context.Context, id uuid.UUID, scope OverviewScope) (*Overview, error)
 	Search(ctx context.Context, f SearchFilter, page, pageSize int) (*SearchResult, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 
@@ -249,4 +250,88 @@ type Service interface {
 	SignAttachmentUpload(ctx context.Context, patientID uuid.UUID, in AttachmentSignInput) (storage.UploadTarget, error)
 	RecordAttachment(ctx context.Context, patientID uuid.UUID, in AttachmentInput) (*Attachment, error)
 	RemoveAttachment(ctx context.Context, patientID, id uuid.UUID) error
+}
+
+// The patient page opened on a wall of the same-sized cards — Demographics, then
+// Allergies, then Conditions — and answered none of the questions any of the four
+// people who open it actually arrive with. Reception wants to know whether this
+// person owes money and when they are next booked. Triage wants the last vitals.
+// The doctor wants what the patient carries and what they are on. The lab wants
+// what is outstanding on the bench. None of that was on the page, and some of it
+// had no endpoint at all.
+//
+// Overview is the "right now" half: the facts that are true of this patient at this
+// moment, as opposed to their record. Each block is filled only for a caller
+// entitled to it, so the same call serves a cashier and a physician without either
+// seeing the other's screen.
+type Overview struct {
+	HereNow   *Presence    `json:"here_now,omitempty"`
+	Money     *MoneyBrief  `json:"money,omitempty"`
+	Next      *ApptBrief   `json:"next_appointment,omitempty"`
+	LastVisit *VisitBrief  `json:"last_visit,omitempty"`
+	Labs      *LabBrief    `json:"labs,omitempty"`
+	Vitals    *VitalsBrief `json:"vitals,omitempty"`
+}
+
+// Presence is where the patient physically is, if they are in the building.
+type Presence struct {
+	Kind     string    `json:"kind"` // "queue" | "bed"
+	State    string    `json:"state,omitempty"`
+	Stage    string    `json:"stage,omitempty"`
+	Where    string    `json:"where,omitempty"` // department, or ward / bed
+	Provider string    `json:"provider,omitempty"`
+	Since    time.Time `json:"since"`
+	Nights   int       `json:"nights,omitempty"`
+}
+
+type MoneyBrief struct {
+	Owed       string     `json:"owed"`
+	OldestDays int        `json:"oldest_days"`
+	AllAgreed  bool       `json:"all_agreed"`
+	LastPaidAt *time.Time `json:"last_paid_at,omitempty"`
+}
+
+type ApptBrief struct {
+	StartsAt   time.Time `json:"starts_at"`
+	Provider   string    `json:"provider,omitempty"`
+	Department string    `json:"department,omitempty"`
+	IsFollowup bool      `json:"is_followup"`
+}
+
+// VisitBrief carries the date for anyone who may open the patient, and the reason
+// only for someone allowed to read the clinical record.
+type VisitBrief struct {
+	At        time.Time `json:"at"`
+	Diagnosis string    `json:"diagnosis,omitempty"`
+	Provider  string    `json:"provider,omitempty"`
+	Open      bool      `json:"open"`
+}
+
+type LabBrief struct {
+	OnTheBench int        `json:"on_the_bench"` // ordered / collected / in process
+	ToValidate int        `json:"to_validate"`  // resulted, not yet validated
+	Critical   int        `json:"critical"`
+	LastAt     *time.Time `json:"last_at,omitempty"`
+}
+
+type VitalsBrief struct {
+	RecordedAt time.Time `json:"recorded_at"`
+	Systolic   *int      `json:"systolic,omitempty"`
+	Diastolic  *int      `json:"diastolic,omitempty"`
+	Pulse      *int      `json:"pulse,omitempty"`
+	TempC      *string   `json:"temp_c,omitempty"`
+	RespRate   *int      `json:"resp_rate,omitempty"`
+	SpO2       *int      `json:"spo2,omitempty"`
+	WeightKg   *string   `json:"weight_kg,omitempty"`
+	HeightCm   *string   `json:"height_cm,omitempty"`
+}
+
+// OverviewScope is what the caller is allowed to be told, decided at the HTTP edge
+// from the principal's permissions and passed down rather than re-derived here.
+type OverviewScope struct {
+	Money    bool
+	Schedule bool
+	Clinical bool
+	Labs     bool
+	Vitals   bool
 }

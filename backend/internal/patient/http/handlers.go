@@ -357,3 +357,44 @@ func toDuplicateDTOs(dups []patient.Duplicate) []duplicateDTO {
 	}
 	return out
 }
+
+// Overview handles GET /patients/:id/overview.
+//
+// The scope is decided here, from the caller's own permissions, and passed down.
+// A cashier asking about a patient is told what they owe and when they are next
+// booked; a physician is told what the last visit was for; a lab scientist is told
+// what is on the bench. Nobody is handed a block they could not have opened the
+// corresponding page to read, so this endpoint cannot become a way around the
+// permissions that guard those pages.
+func (h *Handlers) Overview(c *gin.Context) {
+	pid, ok := h.patientID(c)
+	if !ok {
+		return
+	}
+	p, ok := httpx.PrincipalFrom(c)
+	if !ok {
+		httpx.Fail(c, apperr.Unauthenticated("authentication required"))
+		return
+	}
+	any := func(codes ...string) bool {
+		for _, code := range codes {
+			if p.HasPermission(code) {
+				return true
+			}
+		}
+		return false
+	}
+	scope := patient.OverviewScope{
+		Money:    any("payment.charge", "payment.collect", "billing.manage"),
+		Schedule: any("appointment.manage", "queue.manage", "encounter.manage"),
+		Clinical: any("encounter.manage"),
+		Labs:     any("lab.order", "lab.process", "lab.validate", "lab.manage", "encounter.manage"),
+		Vitals:   any("triage.manage", "encounter.manage", "lab.process", "lab.validate"),
+	}
+	out, err := h.svc.Overview(c.Request.Context(), pid, scope)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}

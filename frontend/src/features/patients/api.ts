@@ -199,3 +199,51 @@ export function addCondition(patientId: string, body: { icd_code?: string; descr
 export function removeCondition(patientId: string, id: string) {
   return apiFetch<void>(`/patients/${patientId}/conditions/${id}`, { method: "DELETE" });
 }
+
+// --- what is true about this patient right now -----------------------------
+//
+// The record (allergies, conditions, past visits) says who someone is over time.
+// This says where they are standing, what they owe, what is on the bench and when
+// they are next expected — the questions the four people who open this page arrive
+// with. Blocks are filled by the server according to the caller's permissions, so
+// an absent block means "not yours to see", not "nothing to report".
+export interface Presence {
+  kind: "queue" | "bed";
+  state?: string;
+  stage?: string;
+  where?: string;
+  provider?: string;
+  since: string;
+  nights?: number;
+}
+export interface PatientOverview {
+  here_now?: Presence;
+  money?: { owed: string; oldest_days: number; all_agreed: boolean; last_paid_at?: string };
+  next_appointment?: { starts_at: string; provider?: string; department?: string; is_followup: boolean };
+  last_visit?: { at: string; diagnosis?: string; provider?: string; open: boolean };
+  labs?: { on_the_bench: number; to_validate: number; critical: number; last_at?: string };
+  vitals?: {
+    recorded_at: string;
+    systolic?: number; diastolic?: number; pulse?: number; temp_c?: string;
+    resp_rate?: number; spo2?: number; weight_kg?: string; height_cm?: string;
+  };
+}
+export function patientOverview(id: string): Promise<PatientOverview> {
+  return apiFetch<PatientOverview>(`/patients/${id}/overview`);
+}
+
+/** Every test this patient has ever had, newest order first. */
+export interface PatientLabOrder {
+  order_no: number;
+  priority: string;
+  created_at: string;
+  items: {
+    sample_no: number;
+    test_name: string;
+    status: string;
+    results: { name: string; unit?: string; value?: string; flag: string; ref_low?: string; ref_high?: string }[];
+  }[];
+}
+export function patientLabs(id: string): Promise<PatientLabOrder[]> {
+  return apiFetch<PatientLabOrder[]>(`/lab/patients/${id}/labs`);
+}

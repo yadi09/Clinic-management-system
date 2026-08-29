@@ -29,6 +29,9 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	order := httpx.RequirePermission("lab.order")
 	g.POST("/orders", order, h.CreateOrder)
 	g.GET("/encounters/:id/labs", order, h.EncounterLabs)
+	// Everything this patient has ever had done — the question the bench asks and
+	// the encounter-scoped view could not answer.
+	g.GET("/patients/:id/labs", httpx.RequireAnyPermission("lab.order", "lab.process", "lab.validate", "lab.manage"), h.PatientLabs)
 	g.GET("/encounters/:id/pending", order, h.PendingLabs)
 	// Doctor results inbox (returned results; unacknowledged criticals pinned).
 	g.GET("/inbox", order, h.Inbox)

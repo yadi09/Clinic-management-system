@@ -170,6 +170,7 @@ type PendingSummary struct {
 
 // Service is the lab module API.
 type Service interface {
+	PatientLabs(ctx context.Context, patientID uuid.UUID) ([]EncounterOrder, error)
 	ListTests(ctx context.Context, activeOnly bool) ([]LabTest, error)
 	ListAnalytes(ctx context.Context, testID uuid.UUID) ([]Analyte, error)
 	CreateTest(ctx context.Context, code, name, specimen, price string) (*LabTest, error)

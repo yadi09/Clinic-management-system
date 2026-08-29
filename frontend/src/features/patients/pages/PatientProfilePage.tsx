@@ -18,6 +18,7 @@ import {
   addAllergy,
   addCondition,
   getPatient,
+  patientOverview,
   removeAllergy,
   removeCondition,
 } from "@/features/patients/api";
@@ -28,12 +29,14 @@ import { printReceipt } from "@/features/billing/print";
 import { getClinic } from "@/features/admin/api";
 import { AppError } from "@/lib/api-client";
 import { formatEthiopian } from "@/lib/ethiopian";
+import { VisitDetailDialog, PatientStoryPanel } from "@/features/clinical/components/PatientStory";
+import { LabHistoryPanel, LastVitalsCard, RightNow, lensesFor, LENS_LABEL, type Lens } from "@/features/patients/components/PatientHub";
 import { PregnancyDatingCard } from "@/features/maternity/PregnancyCalculator";
 import { CertificateCard } from "@/features/clinical/CertificateCard";
 import { DentalWorkspace } from "@/features/dental/DentalWorkspace";
 import { PatientEditDialog } from "@/features/patients/components/PatientEditDialog";
 import { StickyAlertBar, useScrolledPast, type ClinicalAlert } from "@/features/patients/components/StickyAlertBar";
-import { listHistory } from "@/features/clinical/api";
+import { listHistory, type HistoryItem } from "@/features/clinical/api";
 
 function age(dob: string) {
   const d = new Date(dob);
@@ -53,6 +56,15 @@ export function PatientProfilePage() {
   const scrolledPast = useScrolledPast(bannerRef);
 
   const { data, isLoading, isError } = useQuery({ queryKey: ["patient", id], queryFn: () => getPatient(id) });
+  // What is true right now, filled by the server according to who is asking.
+  const overview = useQuery({ queryKey: ["patient-overview", id], queryFn: () => patientOverview(id), enabled: !!id });
+  // Most people hold exactly one lens and never see a switcher. An owner who is
+  // also the doctor holds all three, and can look at the page the way their
+  // receptionist does — which is the only reliable way to find out that it reads
+  // badly for them.
+  const lenses = lensesFor(can);
+  const [lens, setLens] = useState<Lens | null>(null);
+  const view: Lens = lens && lenses.includes(lens) ? lens : (lenses[0] ?? "desk");
   const invalidate = () => qc.invalidateQueries({ queryKey: ["patient", id] });
 
   // Dental clinics get a dedicated workspace in place of the general-medical
@@ -160,22 +172,42 @@ export function PatientProfilePage() {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle>Demographics</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <Row label="Phone" value={data.phone} />
-            <Row label="Email" value={data.email} />
-            <Row label="National ID" value={data.national_id} />
-            <Row label="Passport" value={data.passport_no} />
-            <Row label="Date of birth" value={data.dob ? `${data.dob} · ${formatEthiopian(data.dob)} EC` : undefined} />
-          </CardContent>
-        </Card>
+      {/* What is true right now, before any of the record. */}
+      <RightNow o={overview.data} loading={overview.isLoading} />
 
-        <div className="space-y-6 lg:col-span-2">
-          {flagOn("maternity") && data.gender === "female" && <PregnancyDatingCard patientId={id} />}
+      {lenses.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">Reading as</span>
+          {lenses.map((l) => (
+            <button key={l} onClick={() => setLens(l)}
+              className={`touch-hit rounded-full px-3 py-1 text-xs font-medium ${
+                view === l ? "bg-brand text-brand-foreground" : "bg-muted text-muted-foreground hover:bg-accent"}`}>
+              {LENS_LABEL[l]}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* The narrow column is reference: who they are and how to reach them.
+            It is the desk's main material and everyone else's footnote, which is why
+            it is beside the record rather than on top of it. */}
+        <div className="space-y-6 lg:col-span-1">
+          <Card>
+            <CardHeader>
+              <CardTitle>Contact & identity</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <Row label="Phone" value={data.phone} />
+              <Row label="Email" value={data.email} />
+              <Row label="National ID" value={data.national_id} />
+              <Row label="Passport" value={data.passport_no} />
+              <Row label="Date of birth" value={data.dob ? `${data.dob} · ${formatEthiopian(data.dob)} EC` : undefined} />
+            </CardContent>
+          </Card>
+
+          {/* Safety travels with the patient, not with the reader's job: a
+              cashier who can see the record at all should see the allergies. */}
           <SectionCard
             title="Allergies"
             action={editable && <AllergyDialog patientId={id} onSaved={invalidate} />}
@@ -207,17 +239,43 @@ export function PatientProfilePage() {
               />
             ))}
           </SectionCard>
+        </div>
 
-          {can("encounter.manage") && <VisitHistorySection patientId={id} />}
+        {/* The wide column is the work, ordered by who is reading. */}
+        <div className="space-y-6 lg:col-span-2">
+          {view === "care" && (
+            <>
+              {/* Triage records these and then could not see them; the doctor
+                  reads them first. Either way they lead. */}
+              {(can("triage.manage") || can("encounter.manage")) && <LastVitalsCard o={overview.data} />}
+              {flagOn("maternity") && data.gender === "female" && <PregnancyDatingCard patientId={id} />}
+              {can("encounter.manage") && <PatientStoryPanel patientId={id} />}
+              {can("encounter.manage") && <VisitHistorySection patientId={id} />}
+              {(can("lab.order") || can("encounter.manage")) && <LabHistoryPanel patientId={id} />}
+              <DocumentsSection attachments={data.attachments} />
+              <CertificateCard patientId={id} canIssue={can("encounter.manage")} />
+            </>
+          )}
 
-          <DocumentsSection attachments={data.attachments} />
+          {view === "desk" && (
+            <>
+              {(can("payment.collect") || can("payment.charge") || can("billing.manage")) && (
+                <BillingSection patientId={id} patientName={fullName} mrn={data.mrn} canRefund={can("billing.manage")} />
+              )}
+              {can("encounter.manage") && <VisitHistorySection patientId={id} />}
+              <DocumentsSection attachments={data.attachments} />
+              <CertificateCard patientId={id} canIssue={can("encounter.manage")} />
+            </>
+          )}
 
-          {/* A general clinic issues far more of these than a dental one — a sick
-              note is the commonest thing a walk-in asks for after the treatment. */}
-          <CertificateCard patientId={id} canIssue={can("encounter.manage")} />
-
-          {(can("payment.collect") || can("payment.charge") || can("billing.manage")) && (
-            <BillingSection patientId={id} patientName={fullName} mrn={data.mrn} canRefund={can("billing.manage")} />
+          {view === "lab" && (
+            <>
+              <LabHistoryPanel patientId={id} />
+              {/* Reference ranges are read against age and sex, and a reaction to
+                  a dye is the bench's problem too. */}
+              <LastVitalsCard o={overview.data} />
+              <DocumentsSection attachments={data.attachments} />
+            </>
           )}
         </div>
       </div>
@@ -302,11 +360,23 @@ function BillingSection({ patientId, patientName, mrn, canRefund }: { patientId:
  * only ever called from inside the encounter workspace, so a clinician opening a
  * patient could not see what happened last time without leaving the page.
  */
+/**
+ * A past visit opens as a record, not as a workspace.
+ *
+ * Every row here linked to /encounter/<encounter id>, but that route is
+ * /encounter/:queueEntryId — it opens a LIVE consultation by the queue ticket that
+ * created it. Handing it an encounter id made it ask the server to open an
+ * encounter for a queue entry that does not exist, and every visit in every
+ * patient's history answered "Could not open this encounter."
+ *
+ * The fix is not to make the workspace accept both ids: a closed visit is not a
+ * workspace at all. It opens in the read-only viewer that already existed for it.
+ */
 function VisitHistorySection({ patientId }: { patientId: string }) {
-  const navigate = useNavigate();
   const q = useQuery({ queryKey: ["history", patientId], queryFn: () => listHistory(patientId) });
   const rows = q.data ?? [];
   const [all, setAll] = useState(false);
+  const [open, setOpen] = useState<HistoryItem | null>(null);
   const shown = all ? rows : rows.slice(0, 5);
 
   return (
@@ -325,7 +395,7 @@ function VisitHistorySection({ patientId }: { patientId: string }) {
         shown.map((h) => (
           <button
             key={h.id}
-            onClick={() => navigate(`/encounter/${h.id}`)}
+            onClick={() => setOpen(h)}
             className="flex w-full items-center gap-3 rounded-md px-1 py-2 text-left hover:bg-accent"
           >
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-secondary text-brand">
@@ -345,6 +415,7 @@ function VisitHistorySection({ patientId }: { patientId: string }) {
           </button>
         ))
       )}
+      {open && <VisitDetailDialog item={open} onClose={() => setOpen(null)} />}
     </SectionCard>
   );
 }

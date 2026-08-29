@@ -508,3 +508,17 @@ func decode(c *gin.Context, prefix, param string) (uuid.UUID, bool) {
 	}
 	return u, true
 }
+
+// PatientLabs handles GET /lab/patients/:id/labs.
+func (h *Handlers) PatientLabs(c *gin.Context) {
+	pid, ok := decode(c, id.PrefixPatient, "id")
+	if !ok {
+		return
+	}
+	out, err := h.svc.PatientLabs(c.Request.Context(), pid)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
