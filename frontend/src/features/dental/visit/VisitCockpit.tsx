@@ -205,7 +205,7 @@ export function VisitCockpit({
             already shows (this visit's fee, its extras, its course's deposit) is
             excluded, so nothing is asked for twice. */}
         {editable && (
-          <UnbilledCallout patientId={patientId} canCollect={canCollect} focusedPlanId={plan.id}
+          <UnbilledCallout patientId={patientId} canCollect={canCollect} focusedPlanId={plan.id} onOpen={onPick}
             items={owedForPatient(plans, { exclude: coveredByCockpit(session, plan), withDeposit: true })}
             compact={state === "recording"} />
         )}

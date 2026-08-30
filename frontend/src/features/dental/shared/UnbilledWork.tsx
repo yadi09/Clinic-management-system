@@ -15,7 +15,7 @@
 // Same shape as Deposit.tsx on purpose: one selector, two views (a callout for the
 // chair, rows for the money panel), so the two cannot disagree about what is owed.
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { HandCoins, Receipt } from "lucide-react";
+import { ChevronRight, HandCoins, Receipt } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,11 @@ export interface OwedItem {
   planId: string;
   planStart: string;
   planTitle: string;
+  /** The visit to open when the row is clicked. A debt names work; the work is
+   *  somewhere, and a row that names it without going there makes the reader hunt.
+   *  An extra opens the visit it was added to; a down payment opens the first visit
+   *  of its course, because a deposit has no visit of its own. */
+  openSessionId?: string;
   /** How it reads to a human. Mirrors the server's dental.SessionDesc. */
   label: string;
   amount: string;
@@ -69,6 +74,7 @@ export function owedOnPlan(plan: Plan, opts?: Opts): OwedItem[] {
       && (dep.payment === "unpaid" || dep.payment === "refunded")) {
     out.push({
       sessionId: dep.id, planId: plan.id, planStart: plan.start_date,
+      openSessionId: plan.sessions.find((x) => x.status !== "cancelled")?.id,
       planTitle: plan.title, label: "down payment",
       amount: dep.amount_due, refunded: dep.payment === "refunded",
     });
@@ -82,6 +88,7 @@ export function owedOnPlan(plan: Plan, opts?: Opts): OwedItem[] {
         sessionId: s.id,
         planId: plan.id,
         planStart: plan.start_date,
+        openSessionId: s.id,
         planTitle: plan.title,
         label: `session ${s.seq} of ${plan.session_count}`,
         amount: s.amount_due,
@@ -94,6 +101,7 @@ export function owedOnPlan(plan: Plan, opts?: Opts): OwedItem[] {
         sessionId: ex.id,
         planId: plan.id,
         planStart: plan.start_date,
+        openSessionId: s.id,
         planTitle: plan.title,
         label: `${ex.service_name || "extra treatment"} added at visit ${s.seq}`,
         amount: ex.amount_due,
@@ -140,11 +148,14 @@ function useSendToCashier(patientId: string) {
  * Deliberately quieter than the deposit's callout — that one blocks a course from
  * starting, this one is a debt already incurred — but still impossible to scroll past.
  */
-export function UnbilledCallout({ patientId, items, canCollect, compact, focusedPlanId }: {
+export function UnbilledCallout({ patientId, items, canCollect, compact, focusedPlanId, onOpen }: {
   patientId: string;
   items: OwedItem[];
   canCollect: boolean;
   compact?: boolean;
+  /** Open the visit a debt is for. Without it the row names work the reader then
+   *  has to go and find, which on a patient with three courses is a search. */
+  onOpen?: (sessionId: string) => void;
   /** The course being treated. Anything owed on a DIFFERENT course is still shown —
    *  that is the point of the callout — but it has to be marked as such. */
   focusedPlanId?: string;
@@ -170,16 +181,28 @@ export function UnbilledCallout({ patientId, items, canCollect, compact, focused
           // 700 ETB" beside a visit worth 500. The money was right and owed; it just
           // belonged to a different course, and nothing on the row said so.
           const elsewhere = !!focusedPlanId && it.planId !== focusedPlanId;
+          const open = onOpen && it.openSessionId ? () => onOpen(it.openSessionId!) : undefined;
+          const text = (
+            <span className={cn("min-w-0 truncate", open && "group-hover:underline")}>
+              <span className="text-muted-foreground">{it.planTitle} · </span>{it.label}
+            </span>
+          );
+          const mark = elsewhere ? (
+            <span className="shrink-0 whitespace-nowrap rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+              another course · from {startedOn(it.planStart)}
+            </span>
+          ) : null;
           return (
           <div key={it.sessionId} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-            <span className="min-w-0 flex-1 truncate">
-              <span className="text-muted-foreground">{it.planTitle} · </span>{it.label}
-              {elsewhere && (
-                <span className="ml-1.5 whitespace-nowrap rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
-                  another course · from {startedOn(it.planStart)}
-                </span>
-              )}
-            </span>
+            {open ? (
+              <button type="button" onClick={open} title="Open this visit"
+                className="group flex min-w-0 flex-1 items-center gap-1.5 rounded text-left">
+                {text}{mark}
+                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground opacity-60 group-hover:opacity-100" />
+              </button>
+            ) : (
+              <span className="flex min-w-0 flex-1 items-center gap-1.5">{text}{mark}</span>
+            )}
             <span className="shrink-0 tabular-nums font-semibold">{birr(it.amount)}</span>
             {it.refunded && <Badge variant="destructive">Refunded — owed again</Badge>}
             {canCollect && (
