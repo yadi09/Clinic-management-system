@@ -15,10 +15,12 @@ import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
 import { EthiopianDateInput } from "@/components/EthiopianDateInput";
 import { PatientCombobox } from "@/features/scheduling/components/BookingDialog";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/app/auth-context";
 import { admit, bedBoard, discharge, topUp, transfer, type BoardBed } from "@/features/inpatient/api";
 
 const fmtBirr = (s?: string) => (s ? `ETB ${Number(s).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "—");
+const num = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtDate = (iso?: string) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "");
 
 export function BedsBoardPage() {
@@ -116,6 +118,19 @@ export function BedsBoardPage() {
  * the grey tail is the nights still booked ahead — so "paid ten of thirty days" is
  * something you see before you read it.
  */
+function MoneyRow({ label, value, tone, strong }: { label: string; value?: string; tone?: "danger"; strong?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-2 text-xs">
+      <span className={tone === "danger" ? "text-destructive" : "text-muted-foreground"}>{label}</span>
+      {value !== undefined && (
+        <span className={cn("tabular-nums", strong ? "font-semibold" : "font-medium", tone === "danger" && "text-destructive")}>
+          {fmtBirr(value)}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function StayMoney({ b }: { b: BoardBed }) {
   const owed = Number(b.outstanding || 0);
   const unbilled = Number(b.unbilled || 0);
@@ -124,19 +139,45 @@ function StayMoney({ b }: { b: BoardBed }) {
   const planned = b.planned_nights || 0;
   const scale = Math.max(planned, b.days, b.covered_nights, 1);
   const pct = (n: number) => `${Math.min(100, (n / scale) * 100)}%`;
+  const split = atCashier > 0.005 && unbilled > 0.005;
 
   return (
     <div className="mt-2 space-y-1.5 rounded-md bg-muted/40 p-2">
-      <div className="flex items-baseline justify-between gap-2 text-xs">
-        <span className="text-muted-foreground">Paid</span>
-        <span className="font-medium tabular-nums">{fmtBirr(b.paid ?? "0")}</span>
-      </div>
-      <div className="flex items-baseline justify-between gap-2 text-xs">
-        <span className={owed > 0.005 ? "text-destructive" : "text-muted-foreground"}>
-          {owed > 0.005 ? "Still to pay" : "Nothing owed"}
-        </span>
-        {owed > 0.005 && <span className="font-semibold tabular-nums text-destructive">{fmtBirr(b.outstanding)}</span>}
-      </div>
+      {/* A ledger, not three unrelated figures.
+          The card used to put "Still to pay ETB 1,800" in the loudest red next to a
+          button reading "Ask for ETB 300", with the sentence that reconciles them in
+          grey below a progress bar. Both numbers were right — 1,800 is what four
+          nights have cost and nobody has paid, 300 is the part of it that has never
+          been raised as a charge — but nothing on the card said they were parts of
+          one sum, so it read as a contradiction.
+          The amount on the button is now a line of the total it belongs to. */}
+      <MoneyRow label="Stay so far" value={b.est_cost} />
+      <MoneyRow label="Paid" value={b.paid ?? "0"} />
+      {owed > 0.005 ? (
+        <>
+          <MoneyRow label="Still to pay" value={b.outstanding} tone="danger" strong />
+          {split ? (
+            <div className="ml-1 space-y-0.5 border-l-2 border-slate-200 pl-2">
+              <div className="flex items-baseline justify-between gap-2 text-[11px] text-muted-foreground">
+                <span>at the cashier now</span>
+                <span className="tabular-nums">{num(atCashier)}</span>
+              </div>
+              <div className="flex items-baseline justify-between gap-2 text-[11px] text-muted-foreground">
+                <span>not billed yet</span>
+                <span className="tabular-nums">{num(unbilled)}</span>
+              </div>
+            </div>
+          ) : (
+            <p className="text-[11px] leading-tight text-muted-foreground">
+              {atCashier > 0.005
+                ? "All of it is waiting at the cashier."
+                : "None of it has been billed — the cashier cannot take it until you ask."}
+            </p>
+          )}
+        </>
+      ) : (
+        <MoneyRow label="Nothing owed" />
+      )}
 
       <div className="flex h-1.5 overflow-hidden rounded-full bg-slate-200">
         <div className="bg-emerald-500" style={{ width: pct(b.covered_nights) }} />
@@ -146,8 +187,6 @@ function StayMoney({ b }: { b: BoardBed }) {
         {b.covered_nights > 0
           ? <>
               Paid through {fmtDate(b.covered_thru)} ·{" "}
-              {/* "2 of 1 night" is what you get from dividing by a booking that was
-                  never made, or that the family has already paid past. */}
               {/* Against the booking if there is one, otherwise against the nights
                   actually slept — but never "2 of 1", which is what dividing by a
                   total the family has already paid past used to produce. */}
@@ -157,16 +196,6 @@ function StayMoney({ b }: { b: BoardBed }) {
             </>
           : <>No nights paid for yet{planned ? ` · booked for ${planned} nights` : ""}</>}
       </p>
-
-      {owed > 0.005 && (
-        <p className="text-[11px] leading-tight text-muted-foreground">
-          {atCashier > 0.005 && unbilled > 0.005
-            ? <>{fmtBirr(atCashier.toFixed(2))} waiting at the cashier · {fmtBirr(unbilled.toFixed(2))} not asked for yet</>
-            : atCashier > 0.005
-              ? <>Waiting at the cashier</>
-              : <>Not asked for yet — the cashier cannot take it until you do</>}
-        </p>
-      )}
     </div>
   );
 }
@@ -194,14 +223,14 @@ function BedCard({ b, onAdmit, onDischarge, onTransfer, onTopUp, onOpenPatient }
       {b.occupied ? (
         <div className="mt-2 space-y-1">
           <button className="block truncate font-medium text-brand hover:underline" onClick={() => b.patient_id && onOpenPatient(b.patient_id)}>{b.patient_name}</button>
-          <div className="text-xs text-muted-foreground">{b.mrn} · {b.days} night{b.days === 1 ? "" : "s"} · {fmtBirr(b.est_cost)} so far</div>
+          <div className="text-xs text-muted-foreground">{b.mrn} · {b.days} night{b.days === 1 ? "" : "s"} in this bed</div>
           {b.overdue && b.payment_due_at && (
             <div className="flex items-center gap-1 text-xs text-destructive"><AlertTriangle className="h-3 w-3" /> due {fmtDate(b.payment_due_at)}</div>
           )}
           <StayMoney b={b} />
           {unbilled > 0.005 && can("payment.charge") && (
             <Button size="sm" className="mt-2 w-full" onClick={onTopUp}>
-              <HandCoins className="h-3.5 w-3.5" /> Ask for {fmtBirr(unbilled.toFixed(2))}
+              <HandCoins className="h-3.5 w-3.5" /> Bill {fmtBirr(unbilled.toFixed(2))}
             </Button>
           )}
           <div className="mt-2 flex gap-2">
@@ -319,6 +348,7 @@ function TransferDialog({ from, freeBeds, onOpenChange, onDone }: { from: BoardB
 function TopUpDialog({ bed, onOpenChange, onDone }: { bed: BoardBed; onOpenChange: (o: boolean) => void; onDone: () => void }) {
   const rate = Number(bed.daily_rate || 0);
   const unbilled = Number(bed.unbilled || 0);
+  const atCashier = Math.max(0, Number(bed.outstanding || 0) - unbilled);
   const [mode, setMode] = useState<"nights" | "amount">("nights");
   const [nights, setNights] = useState(rate > 0 ? String(Math.max(1, Math.ceil(unbilled / rate))) : "1");
   const [amount, setAmount] = useState(unbilled > 0 ? unbilled.toFixed(2) : "");
@@ -333,9 +363,18 @@ function TopUpDialog({ bed, onOpenChange, onDone }: { bed: BoardBed; onOpenChang
       <DialogContent>
         <DialogHeader><DialogTitle>Ask {bed.patient_name} for payment</DialogTitle></DialogHeader>
         <div className="space-y-4">
+          {/* The same ledger the card shows, so the screen that takes the decision
+              and the screen that prompted it cannot disagree. */}
+          <div className="space-y-1 rounded-md bg-muted/40 p-3 text-sm">
+            <div className="flex justify-between"><span className="text-muted-foreground">Stay so far · {bed.days} night{bed.days === 1 ? "" : "s"}</span><span className="tabular-nums">{fmtBirr(bed.est_cost)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Paid</span><span className="tabular-nums">{fmtBirr(bed.paid ?? "0")}</span></div>
+            {atCashier > 0.005 && (
+              <div className="flex justify-between"><span className="text-muted-foreground">Already at the cashier</span><span className="tabular-nums">{fmtBirr(atCashier.toFixed(2))}</span></div>
+            )}
+            <div className="flex justify-between font-medium"><span>Never billed</span><span className="tabular-nums">{fmtBirr(unbilled.toFixed(2))}</span></div>
+          </div>
           <p className="text-sm text-muted-foreground">
-            {bed.ward_name} · {bed.label} at {fmtBirr(bed.daily_rate)}/night. {bed.days} night{bed.days === 1 ? "" : "s"} slept,
-            {" "}{bed.covered_nights} paid for.
+            {bed.ward_name} · {bed.label} at {fmtBirr(bed.daily_rate)}/night.
           </p>
 
           <div className="flex gap-2">
@@ -365,7 +404,9 @@ function TopUpDialog({ bed, onOpenChange, onDone }: { bed: BoardBed; onOpenChang
               <span className="text-lg font-semibold tabular-nums">{fmtBirr(total)}</span>
             </div>
             {unbilled > 0.005 && (
-              <p className="mt-1 text-xs text-muted-foreground">{fmtBirr(unbilled.toFixed(2))} has been slept but never billed.</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Billing {fmtBirr(unbilled.toFixed(2))} clears everything slept so far.
+              </p>
             )}
           </div>
         </div>
