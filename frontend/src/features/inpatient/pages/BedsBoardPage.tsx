@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, ArrowLeftRight, BedDouble, HandCoins, LogOut, Plus } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, BadgeDollarSign, BedDouble, HandCoins, LogOut, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -131,6 +131,17 @@ function MoneyRow({ label, value, tone, strong }: { label: string; value?: strin
   );
 }
 
+function SplitRow({ label, value }: { label: string; value: number }) {
+  const zero = value <= 0.005;
+  return (
+    <div className={cn("flex items-baseline justify-between gap-2 text-[11px]",
+      zero ? "text-muted-foreground/50" : "text-muted-foreground")}>
+      <span>{label}</span>
+      <span className="tabular-nums">{num(value)}</span>
+    </div>
+  );
+}
+
 function StayMoney({ b }: { b: BoardBed }) {
   const owed = Number(b.outstanding || 0);
   const unbilled = Number(b.unbilled || 0);
@@ -139,7 +150,6 @@ function StayMoney({ b }: { b: BoardBed }) {
   const planned = b.planned_nights || 0;
   const scale = Math.max(planned, b.days, b.covered_nights, 1);
   const pct = (n: number) => `${Math.min(100, (n / scale) * 100)}%`;
-  const split = atCashier > 0.005 && unbilled > 0.005;
 
   return (
     <div className="mt-2 space-y-1.5 rounded-md bg-muted/40 p-2">
@@ -156,24 +166,16 @@ function StayMoney({ b }: { b: BoardBed }) {
       {owed > 0.005 ? (
         <>
           <MoneyRow label="Still to pay" value={b.outstanding} tone="danger" strong />
-          {split ? (
-            <div className="ml-1 space-y-0.5 border-l-2 border-slate-200 pl-2">
-              <div className="flex items-baseline justify-between gap-2 text-[11px] text-muted-foreground">
-                <span>at the cashier now</span>
-                <span className="tabular-nums">{num(atCashier)}</span>
-              </div>
-              <div className="flex items-baseline justify-between gap-2 text-[11px] text-muted-foreground">
-                <span>not billed yet</span>
-                <span className="tabular-nums">{num(unbilled)}</span>
-              </div>
-            </div>
-          ) : (
-            <p className="text-[11px] leading-tight text-muted-foreground">
-              {atCashier > 0.005
-                ? "All of it is waiting at the cashier."
-                : "None of it has been billed — the cashier cannot take it until you ask."}
-            </p>
-          )}
+          {/* Always both halves, including the zero.
+              When one of them was a sentence instead — "All of it is waiting at the
+              cashier." — the card stopped looking like the card beside it, and the
+              missing Bill button read as something broken rather than as nothing to
+              bill. A row that says 0.00 answers the question the button's absence
+              raises; a paragraph in grey does not. */}
+          <div className="ml-1 space-y-0.5 border-l-2 border-slate-200 pl-2">
+            <SplitRow label="at the cashier now" value={atCashier} />
+            <SplitRow label="not billed yet" value={unbilled} />
+          </div>
         </>
       ) : (
         <MoneyRow label="Nothing owed" />
@@ -202,7 +204,9 @@ function StayMoney({ b }: { b: BoardBed }) {
 
 function BedCard({ b, onAdmit, onDischarge, onTransfer, onTopUp, onOpenPatient }: { b: BoardBed; onAdmit: () => void; onDischarge: () => void; onTransfer: () => void; onTopUp: () => void; onOpenPatient: (id: string) => void }) {
   const { can } = useAuth();
+  const navigate = useNavigate();
   const unbilled = Number(b.unbilled || 0);
+  const outstanding = Number(b.outstanding || 0);
   const accent = b.out_of_service ? "border-l-slate-300" : b.occupied ? (b.overdue ? "border-l-destructive" : "border-l-primary") : "border-l-emerald-500";
   return (
     <Card className={`border-l-4 p-3 ${accent}`}>
@@ -228,11 +232,21 @@ function BedCard({ b, onAdmit, onDischarge, onTransfer, onTopUp, onOpenPatient }
             <div className="flex items-center gap-1 text-xs text-destructive"><AlertTriangle className="h-3 w-3" /> due {fmtDate(b.payment_due_at)}</div>
           )}
           <StayMoney b={b} />
-          {unbilled > 0.005 && can("payment.charge") && (
+          {/* Money owed always has a next move, and the card should name it.
+              Where nothing is left to bill, the money is already on the cashier's
+              list — so the move is to go and take it, not to raise it again. */}
+          {unbilled > 0.005 && can("payment.charge") ? (
             <Button size="sm" className="mt-2 w-full" onClick={onTopUp}>
-              <HandCoins className="h-3.5 w-3.5" /> Bill {fmtBirr(unbilled.toFixed(2))}
+              <HandCoins className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">Bill {fmtBirr(unbilled.toFixed(2))}</span>
             </Button>
-          )}
+          ) : outstanding > 0.005 && can("payment.collect") ? (
+            <Button size="sm" variant="outline" className="mt-2 w-full" title="Opens the Cashier"
+              onClick={() => navigate("/cashier")}>
+              <BadgeDollarSign className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">Collect {fmtBirr(b.outstanding)}</span>
+            </Button>
+          ) : null}
           <div className="mt-2 flex gap-2">
             <Button size="sm" variant="outline" onClick={onTransfer}><ArrowLeftRight className="h-3.5 w-3.5" /> Transfer</Button>
             <Button size="sm" variant="ghost" onClick={onDischarge}><LogOut className="h-3.5 w-3.5" /> Discharge</Button>
