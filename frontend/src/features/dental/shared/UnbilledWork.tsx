@@ -36,6 +36,11 @@ interface Opts {
 /** One thing that was delivered, is owed, and has no charge behind it. */
 export interface OwedItem {
   sessionId: string;
+  /** Which course it belongs to. A patient can have several, and they are very
+   *  often called the same thing — "Root canal" three times over. Without this the
+   *  chair cannot tell a debt on THIS course from a debt on another one. */
+  planId: string;
+  planStart: string;
   planTitle: string;
   /** How it reads to a human. Mirrors the server's dental.SessionDesc. */
   label: string;
@@ -63,7 +68,8 @@ export function owedOnPlan(plan: Plan, opts?: Opts): OwedItem[] {
   if (withDeposit && dep && !exclude?.has(dep.id) && num(dep.amount_due) > 0.005
       && (dep.payment === "unpaid" || dep.payment === "refunded")) {
     out.push({
-      sessionId: dep.id, planTitle: plan.title, label: "down payment",
+      sessionId: dep.id, planId: plan.id, planStart: plan.start_date,
+      planTitle: plan.title, label: "down payment",
       amount: dep.amount_due, refunded: dep.payment === "refunded",
     });
   }
@@ -74,6 +80,8 @@ export function owedOnPlan(plan: Plan, opts?: Opts): OwedItem[] {
     if (s.status === "done" && isBillable(s) && !exclude?.has(s.id)) {
       out.push({
         sessionId: s.id,
+        planId: plan.id,
+        planStart: plan.start_date,
         planTitle: plan.title,
         label: `session ${s.seq} of ${plan.session_count}`,
         amount: s.amount_due,
@@ -84,6 +92,8 @@ export function owedOnPlan(plan: Plan, opts?: Opts): OwedItem[] {
       if (ex.status === "cancelled" || !isBillable(ex) || exclude?.has(ex.id)) continue;
       out.push({
         sessionId: ex.id,
+        planId: plan.id,
+        planStart: plan.start_date,
         planTitle: plan.title,
         label: `${ex.service_name || "extra treatment"} added at visit ${s.seq}`,
         amount: ex.amount_due,
@@ -130,11 +140,14 @@ function useSendToCashier(patientId: string) {
  * Deliberately quieter than the deposit's callout — that one blocks a course from
  * starting, this one is a debt already incurred — but still impossible to scroll past.
  */
-export function UnbilledCallout({ patientId, items, canCollect, compact }: {
+export function UnbilledCallout({ patientId, items, canCollect, compact, focusedPlanId }: {
   patientId: string;
   items: OwedItem[];
   canCollect: boolean;
   compact?: boolean;
+  /** The course being treated. Anything owed on a DIFFERENT course is still shown —
+   *  that is the point of the callout — but it has to be marked as such. */
+  focusedPlanId?: string;
 }) {
   const send = useSendToCashier(patientId);
   if (items.length === 0) return null;
@@ -151,10 +164,21 @@ export function UnbilledCallout({ patientId, items, canCollect, compact }: {
         the desk is what turns it into money.
       </p>
       <div className="mt-2 space-y-1.5">
-        {items.map((it) => (
+        {items.map((it) => {
+          // A patient with three courses all called "Root canal" made this row read
+          // as if it were about the visit in the chair: "Root canal · session 1 of 5,
+          // 700 ETB" beside a visit worth 500. The money was right and owed; it just
+          // belonged to a different course, and nothing on the row said so.
+          const elsewhere = !!focusedPlanId && it.planId !== focusedPlanId;
+          return (
           <div key={it.sessionId} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
             <span className="min-w-0 flex-1 truncate">
               <span className="text-muted-foreground">{it.planTitle} · </span>{it.label}
+              {elsewhere && (
+                <span className="ml-1.5 whitespace-nowrap rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                  another course · from {startedOn(it.planStart)}
+                </span>
+              )}
             </span>
             <span className="shrink-0 tabular-nums font-semibold">{birr(it.amount)}</span>
             {it.refunded && <Badge variant="destructive">Refunded — owed again</Badge>}
@@ -166,11 +190,15 @@ export function UnbilledCallout({ patientId, items, canCollect, compact }: {
               </Button>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 }
+
+const startedOn = (iso?: string) =>
+  iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "an earlier date";
 
 /** The money-panel version: the same facts, indented under their course, for a reader
  *  who is auditing rather than treating. */
