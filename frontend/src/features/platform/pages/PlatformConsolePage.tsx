@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Copy, KeyRound, LogOut, Plus, ShieldCheck, Handshake, CreditCard, Pencil } from "lucide-react";
+import { Building2, Copy, KeyRound, LogOut, Plus, ShieldCheck, Handshake, CreditCard, Pencil, Target, Contact, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
@@ -14,13 +14,14 @@ import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/app/auth-context";
 import {
   clinicUsage, createPlan, getClinicModules, getClinicPolicies, setClinicPolicies,
-  impersonateOwner, listClinics, listPartnerLeads, listPlans, platformToken,
+  impersonateOwner, listClinics, listPartnerLeads, listPlans, platformRole, platformToken,
   provisionClinic, reactivateClinic, setClinicModules, setClinicPlan, setLeadStatus, suspendClinic, updatePlan,
   type Clinic, type PartnerLead, type Plan, type UsageLine, type ProvisionResult,
   getVerifyETKey,
   setVerifyETKey,
   clearVerifyETKey,
 } from "@/features/platform/api";
+import { PipelineView, ProspectsView, TeamView } from "@/features/platform/crm/CrmViews";
 
 const MODULES = [
   { key: "laboratory", label: "Laboratory" },
@@ -65,7 +66,12 @@ export function PlatformConsolePage() {
   const [result, setResult] = useState<ProvisionResult | null>(null);
   const [modulesFor, setModulesFor] = useState<Clinic | null>(null);
   const [planFor, setPlanFor] = useState<Clinic | null>(null);
-  const [tab, setTab] = useState<"clinics" | "plans" | "leads" | "integrations">("clinics");
+  // A marketing account holds crm.work and nothing else, so the tenant tabs would
+  // refuse it anyway. Landing them on the pipeline is the difference between a tool
+  // and a console full of doors that do not open.
+  const role = platformRole();
+  const isRep = role === "marketer";
+  const [tab, setTab] = useState<Tab>(isRep ? "pipeline" : "clinics");
 
   const setStatus = useMutation({
     mutationFn: ({ id, action }: { id: string; action: "suspend" | "reactivate" }) =>
@@ -114,28 +120,38 @@ export function PlatformConsolePage() {
         <div className="flex items-center gap-2">
           <ShieldCheck className="h-5 w-5 text-emerald-400" />
           <span className="font-semibold">Platform Console</span>
-          <Badge variant="outline" className="border-zinc-700 text-zinc-400">super-admin</Badge>
+          <Badge variant="outline" className="border-zinc-700 text-zinc-400">{isRep ? "marketing" : "super-admin"}</Badge>
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={() => setCreating(true)}><Plus className="h-4 w-4" /> New clinic</Button>
+          {!isRep && <Button size="sm" onClick={() => setCreating(true)}><Plus className="h-4 w-4" /> New clinic</Button>}
           <Button size="sm" variant="ghost" className="text-zinc-400" onClick={() => { platformToken.clear(); navigate("/platform/login"); }}>
             <LogOut className="h-4 w-4" /> Sign out
           </Button>
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-6 py-8">
-        <div className="mb-6 flex w-fit gap-1 rounded-lg border border-zinc-800 bg-zinc-900 p-1">
-          <button onClick={() => setTab("clinics")} className={"flex items-center gap-2 rounded-md px-3 py-1.5 text-sm " + (tab === "clinics" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200")}><Building2 className="h-4 w-4" /> Clinics</button>
-          <button onClick={() => setTab("plans")} className={"flex items-center gap-2 rounded-md px-3 py-1.5 text-sm " + (tab === "plans" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200")}><CreditCard className="h-4 w-4" /> Plans</button>
-          <button onClick={() => setTab("leads")} className={"flex items-center gap-2 rounded-md px-3 py-1.5 text-sm " + (tab === "leads" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200")}><Handshake className="h-4 w-4" /> Partner leads</button>
-          <button onClick={() => setTab("integrations")} className={"flex items-center gap-2 rounded-md px-3 py-1.5 text-sm " + (tab === "integrations" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200")}><KeyRound className="h-4 w-4" /> Integrations</button>
+      {/* The pipeline is a board, not a document: it needs the width of the screen,
+          while the tenant tables read better at a fixed measure. */}
+      <main className={`mx-auto px-6 py-8 ${tab === "pipeline" ? "max-w-[1600px]" : "max-w-5xl"}`}>
+        <div className="mb-6 flex w-fit flex-wrap gap-1 rounded-lg border border-zinc-800 bg-zinc-900 p-1">
+          <TabBtn id="pipeline" tab={tab} set={setTab} icon={Target}>Pipeline</TabBtn>
+          <TabBtn id="prospects" tab={tab} set={setTab} icon={Contact}>Prospects</TabBtn>
+          {!isRep && <TabBtn id="team" tab={tab} set={setTab} icon={Users}>Team</TabBtn>}
+          {!isRep && <span className="mx-1 my-1 w-px bg-zinc-800" />}
+          {!isRep && <button onClick={() => setTab("clinics")} className={"flex items-center gap-2 rounded-md px-3 py-1.5 text-sm " + (tab === "clinics" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200")}><Building2 className="h-4 w-4" /> Clinics</button>}
+          {!isRep && <button onClick={() => setTab("plans")} className={"flex items-center gap-2 rounded-md px-3 py-1.5 text-sm " + (tab === "plans" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200")}><CreditCard className="h-4 w-4" /> Plans</button>}
+          {!isRep && <button onClick={() => setTab("leads")} className={"flex items-center gap-2 rounded-md px-3 py-1.5 text-sm " + (tab === "leads" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200")}><Handshake className="h-4 w-4" /> Partner leads</button>}
+          {!isRep && <button onClick={() => setTab("integrations")} className={"flex items-center gap-2 rounded-md px-3 py-1.5 text-sm " + (tab === "integrations" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200")}><KeyRound className="h-4 w-4" /> Integrations</button>}
         </div>
 
-        {tab === "plans" && <PlansView />}
-        {tab === "integrations" && <IntegrationsView />}
-        {tab === "leads" && <PartnerLeadsView />}
-        {tab === "clinics" && (<>
+        {tab === "pipeline" && <PipelineView canAdmin={!isRep} />}
+        {tab === "prospects" && <ProspectsView canAdmin={!isRep} />}
+        {tab === "team" && <TeamView />}
+
+        {tab === "plans" && !isRep && <PlansView />}
+        {tab === "integrations" && !isRep && <IntegrationsView />}
+        {tab === "leads" && !isRep && <PartnerLeadsView />}
+        {tab === "clinics" && !isRep && (<>
         <h1 className="mb-1 text-xl font-semibold">Clinics</h1>
         <p className="mb-5 text-sm text-zinc-400">{clinics.length} clinic{clinics.length === 1 ? "" : "s"} on the platform.</p>
 
@@ -712,5 +728,19 @@ function IntegrationsView() {
         </p>
       </div>
     </>
+  );
+}
+
+type Tab = "pipeline" | "prospects" | "team" | "clinics" | "plans" | "leads" | "integrations";
+
+function TabBtn({ id, tab, set, icon: Icon, children }: {
+  id: Tab; tab: Tab; set: (t: Tab) => void; icon: typeof Target; children: React.ReactNode;
+}) {
+  return (
+    <button onClick={() => set(id)}
+      className={"flex items-center gap-2 rounded-md px-3 py-1.5 text-sm " +
+        (tab === id ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200")}>
+      <Icon className="h-4 w-4" /> {children}
+    </button>
   );
 }

@@ -200,3 +200,84 @@ export function setVerifyETKey(key: string) {
 export function clearVerifyETKey() {
   return pfetch<void>("/integrations/verifyet", { method: "DELETE" });
 }
+
+/* ------------------------------------------------------------------- CRM */
+
+/** Which console this account gets. The server enforces it; this only decides
+ *  which tabs are worth rendering, so a marketer is not shown tenant controls
+ *  that would refuse them anyway. */
+export function platformRole(): "admin" | "marketer" {
+  const t = platformToken.get();
+  if (!t) return "admin";
+  try {
+    const claims = JSON.parse(atob(t.split(".")[1] ?? ""));
+    return (claims.roles ?? []).includes("marketer") ? "marketer" : "admin";
+  } catch {
+    return "admin";
+  }
+}
+
+export interface CrmPhase { id: string; seq: number; name: string; intent?: string; waiting: number }
+export interface Campaign {
+  id: string; name: string; goal?: string; is_active: boolean;
+  phases: CrmPhase[]; active: number; signed_up: number; created_at: string;
+}
+export interface Prospect {
+  id: string; clinic_name: string;
+  contact_name?: string; contact_role?: string;
+  phone?: string; phone_alt?: string; email?: string;
+  address?: string; map_url?: string; note?: string;
+  source: string; status: "open" | "signed_up" | "not_yet" | "not_interested";
+  ready_on?: string; outcome_note?: string;
+  owner_id?: string; owner_name?: string;
+  campaign_id?: string; campaign_name?: string;
+  phase_id?: string; phase_name?: string; phase_seq?: number; phase_count?: number;
+  last_touch_at?: string; last_touch_kind?: string; last_touch_by?: string;
+  touches: number; created_at: string;
+}
+export interface Touch { id: string; kind: string; note?: string; happened_at: string; by_name?: string }
+export interface Step { phase_name: string; seq: number; note?: string; done_by?: string; done_at: string }
+export interface Rep { id: string; email: string; full_name: string; role: string; status: string; open: number; signed_up: number }
+export interface Board { campaign: Campaign; columns: { phase: CrmPhase; prospects: Prospect[] }[] }
+export interface Duplicate { id: string; clinic_name: string; phone?: string; owner_name?: string; status: string; why: string }
+
+export interface PhaseDraft { id?: string; name: string; intent?: string }
+
+export const listCampaigns = () => pfetch<Campaign[]>("/crm/campaigns");
+export const createCampaign = (body: { name: string; goal?: string; phases: PhaseDraft[] }) =>
+  pfetch<Campaign>("/crm/campaigns", { method: "POST", body });
+export const updateCampaign = (id: string, body: { name: string; goal?: string; phases: PhaseDraft[] }) =>
+  pfetch<void>(`/crm/campaigns/${id}`, { method: "PUT", body });
+export const setCampaignActive = (id: string, active: boolean) =>
+  pfetch<void>(`/crm/campaigns/${id}/active`, { method: "POST", body: { active } });
+export const getBoard = (id: string) => pfetch<Board>(`/crm/campaigns/${id}/board`);
+
+export const listProspects = (q = "", status = "", owner = "") =>
+  pfetch<Prospect[]>(`/crm/prospects?q=${encodeURIComponent(q)}&status=${status}&owner=${owner}`);
+export const getProspect = (id: string) =>
+  pfetch<{ prospect: Prospect; touches: Touch[]; steps: Step[] }>(`/crm/prospects/${id}`);
+export const checkDuplicates = (name: string, phone: string) =>
+  pfetch<Duplicate[]>(`/crm/prospects/duplicates?name=${encodeURIComponent(name)}&phone=${encodeURIComponent(phone)}`);
+export const createProspect = (body: Record<string, string | undefined>) =>
+  pfetch<Prospect>("/crm/prospects", { method: "POST", body });
+export const updateProspect = (id: string, body: Record<string, string | undefined>) =>
+  pfetch<void>(`/crm/prospects/${id}`, { method: "PUT", body });
+export const assignProspect = (id: string, owner_id: string) =>
+  pfetch<void>(`/crm/prospects/${id}/assign`, { method: "POST", body: { owner_id } });
+export const enrolProspect = (id: string, campaign_id: string) =>
+  pfetch<void>(`/crm/prospects/${id}/enrol`, { method: "POST", body: { campaign_id } });
+export const completePhase = (id: string, note?: string) =>
+  pfetch<Prospect>(`/crm/prospects/${id}/complete-phase`, { method: "POST", body: { note } });
+export const setOutcome = (id: string, body: { status: string; ready_on?: string; note?: string }) =>
+  pfetch<void>(`/crm/prospects/${id}/outcome`, { method: "POST", body });
+export const reopenProspect = (id: string) => pfetch<void>(`/crm/prospects/${id}/reopen`, { method: "POST" });
+export const logTouch = (id: string, body: { kind: string; note?: string; happened_at?: string }) =>
+  pfetch<void>(`/crm/prospects/${id}/touches`, { method: "POST", body });
+
+export const listReps = () => pfetch<Rep[]>("/crm/reps");
+export const createRep = (body: { email: string; full_name: string; role: string; password: string }) =>
+  pfetch<Rep>("/crm/reps", { method: "POST", body });
+export const setRepStatus = (id: string, status: string) =>
+  pfetch<void>(`/crm/reps/${id}/status`, { method: "POST", body: { status } });
+export const importInbound = (campaign_id?: string) =>
+  pfetch<{ imported: number }>("/crm/inbound/import", { method: "POST", body: { campaign_id } });
