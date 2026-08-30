@@ -20,10 +20,20 @@ type Disease struct {
 
 // Context is the fixed reporting context shown in the page header.
 type Context struct {
-	OrgUnit     string
-	DataSet     string
+	OrgUnit string
+	// True once this clinic has chosen its own facility in DHIS2. Until then
+	// OrgUnit is the clinic's own name and nothing has been linked — which the
+	// header must say, because the alternative is a report that looks filed.
+	OrgUnitLinked bool
+	DataSet       string
+	// Period is what the push actually writes to, e.g. "201812" (Ethiopian) or
+	// "202608" (Gregorian) — derived from today, never a constant.
 	Period      string
 	PeriodLabel string
+	// The Gregorian days the Ethiopian month covers, so "current month" is a
+	// claim the reader can check rather than one they have to trust.
+	PeriodStart string
+	PeriodEnd   string
 	Department  string
 	Outcome     string
 }

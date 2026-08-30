@@ -82,8 +82,15 @@ export function Dhis2ReportPage() {
 
       {/* Reporting context (mirrors the DHIS2 form header) */}
       <Card className="flex flex-wrap gap-x-8 gap-y-3 p-4">
-        <Ctx label="Organisation unit" value={rep.context.org_unit} icon />
-        <Ctx label="Period (current month)" value={rep.context.period_label} />
+        {/* The clinic's own name until a DHIS2 facility is chosen — never a
+            stand-in, and never someone else's facility. */}
+        <Ctx label="Organisation unit" value={rep.context.org_unit} icon
+          note={rep.context.org_unit_linked ? "linked to DHIS2" : "not yet linked to a DHIS2 facility"}
+          warn={!rep.context.org_unit_linked} />
+        {/* "This month" is checkable rather than asserted: the Ethiopian month
+            with the Gregorian days it actually covers. */}
+        <Ctx label="Period (current month)" value={rep.context.period_label}
+          note={`${gdate(rep.context.period_start)} – ${gdate(rep.context.period_end)}`} />
         <Ctx label="Data set" value={rep.context.data_set} />
         <Ctx label="Department" value={rep.context.department} />
         <Ctx label="Outcome" value={rep.context.outcome} />
@@ -391,7 +398,12 @@ function MappingDialog({ open, onOpenChange, diseases, onSaved }: { open: boolea
   );
 }
 
-function Ctx({ label, value, icon }: { label: string; value: string; icon?: boolean }) {
+const gdate = (iso?: string) =>
+  iso ? new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "";
+
+function Ctx({ label, value, icon, note, warn }: {
+  label: string; value: string; icon?: boolean; note?: string; warn?: boolean;
+}) {
   return (
     <div className="min-w-0">
       <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
@@ -399,6 +411,9 @@ function Ctx({ label, value, icon }: { label: string; value: string; icon?: bool
         {icon && <Building2 className="h-3.5 w-3.5 text-brand" />}
         {value}
       </div>
+      {note && (
+        <div className={`text-[11px] ${warn ? "text-amber-700" : "text-muted-foreground"}`}>{note}</div>
+      )}
     </div>
   );
 }

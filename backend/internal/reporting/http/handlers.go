@@ -181,8 +181,10 @@ func (h *Handlers) GetReport(c *gin.Context) {
 	httpx.OK(c, gin.H{
 		"configured": rep.Configured,
 		"context": gin.H{
-			"org_unit": rep.Context.OrgUnit, "data_set": rep.Context.DataSet,
-			"period": rep.Context.Period, "period_label": rep.Context.PeriodLabel,
+			"org_unit": rep.Context.OrgUnit, "org_unit_linked": rep.Context.OrgUnitLinked,
+			"data_set": rep.Context.DataSet,
+			"period":   rep.Context.Period, "period_label": rep.Context.PeriodLabel,
+			"period_start": rep.Context.PeriodStart, "period_end": rep.Context.PeriodEnd,
 			"department": rep.Context.Department, "outcome": rep.Context.Outcome,
 		},
 		"columns":       columns(),

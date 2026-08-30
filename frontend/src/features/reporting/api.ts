@@ -16,9 +16,14 @@ export interface Dhis2Report {
   configured: boolean;
   context: {
     org_unit: string;
+    /** False until the clinic has chosen its own facility in DHIS2. */
+    org_unit_linked: boolean;
     data_set: string;
     period: string;
     period_label: string;
+    /** The Gregorian days the Ethiopian month covers (YYYY-MM-DD). */
+    period_start: string;
+    period_end: string;
     department: string;
     outcome: string;
   };

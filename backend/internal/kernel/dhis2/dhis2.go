@@ -24,21 +24,24 @@ import (
 	"time"
 )
 
-// Fixed showcase coordinates (verified against the live dataset). These are
-// structural constants for the demo; the per-disease dataElement IDs and counts
-// live in the database (editable). See the integration spec.
+// Structural constants for the Disease Registration dataset. The facility and the
+// period are NOT among them: the facility is whichever one the clinic chose in its
+// own DHIS2 settings, and the period is derived from today.
+//
+// They used to be constants here — OrgUnit "B4BMy0ufdrd" / "Harer Medium Clinic",
+// Period "202506" — left over from the showcase. Every clinic that had not yet
+// connected saw a real and unrelated facility's name in the organisation-unit
+// field of a Ministry return, and a period beside the header that had nothing to do
+// with the month being reported. Neither is a value any clinic should inherit, so
+// neither exists any more.
 const (
 	DataSet           = "JXiOYKPIaQ1" // Disease Registration, Monthly
-	OrgUnit           = "B4BMy0ufdrd" // Harer Medium Clinic
-	Period            = "202506"      // Gregorian YYYYMM (UI shows "Sene 2018")
 	attrCategoryCombo = "OjWAOYgrrP2" // dataset's attribute category combo (Department × Outcome)
 )
 
 // Context labels shown in the UI header (purely cosmetic).
 const (
-	OrgUnitName = "Harer Medium Clinic"
 	DataSetName = "Disease Registration (Monthly)"
-	PeriodLabel = "Sene 2018"
 	Department  = "OPD1"
 	Outcome     = "Morbidity"
 )

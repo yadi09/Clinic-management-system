@@ -154,22 +154,58 @@ func (s *Service) GetReport(ctx context.Context) (*reporting.Report, error) {
 	for i := range diseases {
 		diseases[i].DataElement = mapping[diseaseKey(diseases[i].Name)] // "" = not mapped
 	}
-	orgUnitName := cfg.OrgUnitName
-	if orgUnitName == "" {
-		orgUnitName = dhis2.OrgUnitName
+	// The facility this clinic has chosen in DHIS2 — or, until one is chosen, the
+	// clinic's own name.
+	//
+	// It used to fall back to a constant from the showcase: every clinic that had
+	// not connected saw "Harer Medium Clinic", the name of a real and unrelated
+	// facility, sitting where the organisation unit goes on a Ministry return. A
+	// header that names someone else's facility is worse than a blank one.
+	orgUnitName, linked := cfg.OrgUnitName, cfg.OrgUnitName != ""
+	if !linked {
+		name, e := s.clinicName(ctx)
+		if e != nil {
+			return nil, e
+		}
+		orgUnitName = name
 	}
+	// The same period the push computes, not a constant beside it: a header that
+	// can disagree with what gets written is a header nobody can rely on.
+	_, _, _, ey, em := ethiocal.MonthRange(time.Now())
 	return &reporting.Report{
 		Configured: cfg.Connected,
 		Context: reporting.Context{
-			OrgUnit:     orgUnitName,
-			DataSet:     dhis2.DataSetName,
-			Period:      dhis2.Period,
-			PeriodLabel: label, // the live current Ethiopian month, e.g. "Hamle 2018"
-			Department:  dhis2.Department,
-			Outcome:     dhis2.Outcome,
+			OrgUnit:       orgUnitName,
+			OrgUnitLinked: linked,
+			DataSet:       dhis2.DataSetName,
+			Period:        periodFor(cfg.PeriodCalendar, start, ey, em),
+			PeriodLabel:   label, // the live current Ethiopian month, e.g. "Nehase 2018"
+			PeriodStart:   start.Format("2006-01-02"),
+			PeriodEnd:     end.AddDate(0, 0, -1).Format("2006-01-02"),
+			Department:    dhis2.Department,
+			Outcome:       dhis2.Outcome,
 		},
 		Diseases: diseases,
 	}, nil
+}
+
+// clinicName is what this clinic calls itself, for the header of a return it has
+// not yet linked to a DHIS2 facility.
+func (s *Service) clinicName(ctx context.Context) (string, error) {
+	tid := tenantID(ctx)
+	name := ""
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT coalesce(name,'') FROM clinics WHERE tenant_id=$1 AND deleted_at IS NULL LIMIT 1`,
+			tid).Scan(&name)
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", apperr.Internal(err)
+	}
+	return name, nil
 }
 
 // --- per-clinic config -----------------------------------------------------
