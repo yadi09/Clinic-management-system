@@ -1076,3 +1076,94 @@ func (h *Handlers) FinishCourse(c *gin.Context) {
 	}
 	httpx.OK(c, gin.H{"sessions_cancelled": n})
 }
+
+/* ------------------------------------------------- this clinic's procedures */
+
+func (h *Handlers) ListProcedures(c *gin.Context) {
+	out, err := h.svc.ListProcedures(c.Request.Context(), c.Query("all") == "1")
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	rows := make([]gin.H, 0, len(out))
+	for _, p := range out {
+		rows = append(rows, gin.H{"id": id.Encode(id.PrefixProcedure, p.ID), "name": p.Name,
+			"is_active": p.IsActive, "sort_order": p.SortOrder})
+	}
+	httpx.OK(c, rows)
+}
+
+func (h *Handlers) CreateProcedure(c *gin.Context) {
+	var r struct {
+		Name string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&r); err != nil {
+		httpx.Fail(c, apperr.Validation("give the procedure a name"))
+		return
+	}
+	out, err := h.svc.CreateProcedure(c.Request.Context(), r.Name)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.Created(c, gin.H{"id": id.Encode(id.PrefixProcedure, out.ID), "name": out.Name,
+		"is_active": out.IsActive, "sort_order": out.SortOrder})
+}
+
+func (h *Handlers) UpdateProcedure(c *gin.Context) {
+	pid, err := id.Decode(id.PrefixProcedure, c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("that id is not valid"))
+		return
+	}
+	var r struct {
+		Name     string `json:"name"`
+		IsActive *bool  `json:"is_active"`
+	}
+	if e := c.ShouldBindJSON(&r); e != nil {
+		httpx.Fail(c, apperr.Validation("give the procedure a name"))
+		return
+	}
+	if e := h.svc.UpdateProcedure(c.Request.Context(), pid, r.Name, r.IsActive); e != nil {
+		httpx.Fail(c, e)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+func (h *Handlers) DeleteProcedure(c *gin.Context) {
+	pid, err := id.Decode(id.PrefixProcedure, c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("that id is not valid"))
+		return
+	}
+	if e := h.svc.DeleteProcedure(c.Request.Context(), pid); e != nil {
+		httpx.Fail(c, e)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+func (h *Handlers) ReorderProcedures(c *gin.Context) {
+	var r struct {
+		IDs []string `json:"ids"`
+	}
+	if err := c.ShouldBindJSON(&r); err != nil {
+		httpx.Fail(c, apperr.Validation("send the order"))
+		return
+	}
+	ids := make([]uuid.UUID, 0, len(r.IDs))
+	for _, raw := range r.IDs {
+		u, e := id.Decode(id.PrefixProcedure, raw)
+		if e != nil {
+			httpx.Fail(c, apperr.Validation("that id is not valid"))
+			return
+		}
+		ids = append(ids, u)
+	}
+	if e := h.svc.ReorderProcedures(c.Request.Context(), ids); e != nil {
+		httpx.Fail(c, e)
+		return
+	}
+	httpx.NoContent(c)
+}

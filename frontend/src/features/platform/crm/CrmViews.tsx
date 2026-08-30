@@ -486,7 +486,7 @@ export function TodayView({ canAdmin }: { canAdmin: boolean }) {
   const [open, setOpen] = useState<string | null>(null);
   const reps = useQuery({ queryKey: ["crm-reps"], queryFn: listReps });
   const work = useQuery({ queryKey: ["crm-worklist", owner], queryFn: () => worklist(owner) });
-  const rows = work.data ?? [];
+  const rows = useMemo(() => work.data ?? [], [work.data]);
   const grouped = useMemo(
     () => BUCKETS.map((b) => ({ ...b, items: rows.filter((r) => r.reason === b.key) })).filter((b) => b.items.length),
     [rows],

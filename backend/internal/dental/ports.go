@@ -350,6 +350,11 @@ type SessionCalItem struct {
 
 // Service is the dental module API.
 type Service interface {
+	ListProcedures(ctx context.Context, includeRetired bool) ([]Procedure, error)
+	CreateProcedure(ctx context.Context, name string) (*Procedure, error)
+	UpdateProcedure(ctx context.Context, id uuid.UUID, name string, active *bool) error
+	DeleteProcedure(ctx context.Context, id uuid.UUID) error
+	ReorderProcedures(ctx context.Context, ids []uuid.UUID) error
 	Summary(ctx context.Context, patientID uuid.UUID) (*Summary, error)
 
 	GetChart(ctx context.Context, patientID uuid.UUID) (*Chart, error)
@@ -475,4 +480,13 @@ type Unbilled struct {
 	// how the record form was unlocked.
 	PromisedTotal string `json:"promised_total"`
 	PromisedCount int    `json:"promised_count"`
+}
+
+// Procedure is one entry in this clinic's own list of what it does. Sessions record
+// the procedure as text, so retiring or renaming one never rewrites a past visit.
+type Procedure struct {
+	ID        uuid.UUID `json:"-"`
+	Name      string    `json:"name"`
+	IsActive  bool      `json:"is_active"`
+	SortOrder int       `json:"sort_order"`
 }

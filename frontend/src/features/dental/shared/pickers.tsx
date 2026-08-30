@@ -4,6 +4,7 @@
 // Both are deliberately multi-select — a single appointment routinely treats two
 // teeth, and the old single-value fields meant the second one went unrecorded.
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Check, ChevronDown, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import { STATUS_LABEL, statusStyle, TOOTH_QUADRANTS, TOOTH_STATUSES } from "@/features/dental/ToothChart";
+import { listProcedures } from "@/features/dental/api";
 
 /** Palmer codes in chart order, so a selection always reads UR6, UR7 — never UR7, UR6. */
 export const FLAT_TEETH = TOOTH_QUADRANTS.flatMap((q) => q.codes);
@@ -18,12 +20,15 @@ export const FLAT_TEETH = TOOTH_QUADRANTS.flatMap((q) => q.codes);
 /** Comma-separated storage <-> array. The server stores "UR6, UR7" verbatim. */
 export const parseCsv = (s?: string) => (s ? s.split(",").map((t) => t.trim()).filter(Boolean) : []);
 
-export const DENTAL_PROCEDURES = [
-  "Consultation", "X-Ray", "Teeth Cleaning", "Scaling & Polishing", "Tooth Extraction",
-  "Filling (Composite)", "Filling (Amalgam)", "Root Canal Treatment", "Crown Placement",
-  "Bridge", "Partial Denture", "Full Denture", "Teeth Whitening", "Orthodontic Consultation",
-  "Braces Fitting", "Emergency Treatment", "Other",
-];
+/**
+ * The list of procedures belongs to the clinic, not to this build.
+ *
+ * It used to be a constant here: the same seventeen names for every practice on the
+ * platform, so a clinic doing implants could not offer "Implant placement" and one
+ * that does no dentures scrolled past two kinds. It is now read from the clinic's
+ * own list, which they edit in Settings, and this array survives only as the set a
+ * workspace is seeded with the first time it is asked.
+ */
 
 
 export function ProcedureMultiSelect({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
@@ -31,8 +36,11 @@ export function ProcedureMultiSelect({ value, onChange }: { value: string[]; onC
   const [query, setQuery] = useState("");
   const q = query.trim();
   const toggle = (p: string) => onChange(value.includes(p) ? value.filter((x) => x !== p) : [...value, p]);
-  // Built-in list plus any custom values already selected, so ticks always show.
-  const options = [...DENTAL_PROCEDURES, ...value.filter((v) => !DENTAL_PROCEDURES.includes(v))];
+  // The clinic's own list, plus anything already recorded on this visit that is no
+  // longer offered — a retired procedure must still show its tick on an old record.
+  const mine = useQuery({ queryKey: ["dental-procedures"], queryFn: () => listProcedures(), staleTime: 300000 });
+  const names = (mine.data ?? []).map((p) => p.name);
+  const options = [...names, ...value.filter((v) => !names.includes(v))];
   const exact = options.some((p) => p.toLowerCase() === q.toLowerCase());
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQuery(""); }}>
@@ -71,6 +79,17 @@ export function ProcedureMultiSelect({ value, onChange }: { value: string[]; onC
 
 // Multi-tooth picker (Palmer), grouped by quadrant, showing each tooth's charted
 // condition. Value is the selected codes; stored joined as "UR6, UR7".
+/** "All 32 teeth" and "Upper arch · 16" say what a list of codes cannot. */
+function summarise(sel: string[]) {
+  if (sel.length === FLAT_TEETH.length) return `All ${FLAT_TEETH.length} teeth`;
+  for (const half of ["Upper", "Lower"] as const) {
+    const arch = archOf(half);
+    if (sameSet(sel, arch)) return `${half} arch · ${arch.length} teeth`;
+  }
+  if (sel.length > 6) return `${sel.length} teeth · ${sel.slice(0, 5).join(", ")}…`;
+  return `${sel.length} selected · ${sel.join(", ")}`;
+}
+
 export function ToothMultiSelect({ teeth, value, onChange, placeholder }: { teeth: Record<string, string>; value: string[]; onChange: (codes: string[]) => void; placeholder?: string }) {
   const ordered = FLAT_TEETH.filter((c) => value.includes(c));
   const toggle = (c: string) => onChange(value.includes(c) ? value.filter((x) => x !== c) : [...value, c]);
@@ -79,15 +98,42 @@ export function ToothMultiSelect({ teeth, value, onChange, placeholder }: { teet
       <PopoverTrigger asChild>
         <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
           <span className={cn("truncate", value.length === 0 && "text-muted-foreground")}>
-            {value.length === 0 ? (placeholder ?? "No specific tooth") : `${value.length} selected · ${ordered.join(", ")}`}
+            {value.length === 0 ? (placeholder ?? "No specific tooth") : summarise(ordered)}
           </span>
           <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="max-h-72 overflow-auto p-1" style={{ width: "var(--radix-popover-trigger-width)" }}>
-        {TOOTH_QUADRANTS.map((quad) => (
+      <PopoverContent align="start" className="max-h-80 overflow-auto p-1" style={{ width: "var(--radix-popover-trigger-width)" }}>
+        {/* Some treatment is not done to a tooth but to a mouth. Braces, a full
+            scale and polish, a whitening — ticking thirty-two boxes for those is
+            not data entry, it is an obstacle, and the tooth field ends up empty
+            instead. One tap for the whole mouth, one per arch. */}
+        <div className="sticky top-0 z-10 mb-1 flex flex-wrap gap-1 border-b bg-popover px-1 pb-1.5 pt-1">
+          <QuickPick label={`All ${FLAT_TEETH.length}`} onPick={() => onChange([...FLAT_TEETH])}
+            active={value.length === FLAT_TEETH.length} />
+          <QuickPick label="Upper" onPick={() => onChange(archOf("Upper"))} active={sameSet(value, archOf("Upper"))} />
+          <QuickPick label="Lower" onPick={() => onChange(archOf("Lower"))} active={sameSet(value, archOf("Lower"))} />
+          {value.length > 0 && (
+            <button type="button" onClick={() => onChange([])}
+              className="ml-auto rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground">
+              Clear
+            </button>
+          )}
+        </div>
+        {TOOTH_QUADRANTS.map((quad) => {
+          const all = quad.codes.every((c) => value.includes(c));
+          return (
           <div key={quad.label} className="py-0.5">
-            <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">{quad.label}</div>
+            <div className="flex items-center justify-between px-2 py-1">
+              <span className="text-xs font-semibold text-muted-foreground">{quad.label}</span>
+              <button type="button"
+                onClick={() => onChange(all
+                  ? value.filter((c) => !quad.codes.includes(c))
+                  : [...value, ...quad.codes.filter((c) => !value.includes(c))])}
+                className="rounded px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground">
+                {all ? "none" : "all 8"}
+              </button>
+            </div>
             {quad.codes.map((code) => {
               const cond = teeth[code] ?? "";
               const st = statusStyle(cond);
@@ -105,9 +151,27 @@ export function ToothMultiSelect({ teeth, value, onChange, placeholder }: { teet
               );
             })}
           </div>
-        ))}
+          );
+        })}
       </PopoverContent>
     </Popover>
+  );
+}
+
+/** An arch is the two quadrants whose label starts with it — Upper right + left. */
+function archOf(half: "Upper" | "Lower") {
+  return TOOTH_QUADRANTS.filter((q) => q.label.startsWith(half)).flatMap((q) => q.codes);
+}
+const sameSet = (a: string[], b: string[]) =>
+  a.length === b.length && b.every((x) => a.includes(x));
+
+function QuickPick({ label, onPick, active }: { label: string; onPick: () => void; active?: boolean }) {
+  return (
+    <button type="button" onClick={onPick}
+      className={cn("touch-hit rounded-md border px-2 py-1 text-xs font-medium",
+        active ? "border-brand bg-brand text-brand-foreground" : "hover:bg-accent")}>
+      {label}
+    </button>
   );
 }
 

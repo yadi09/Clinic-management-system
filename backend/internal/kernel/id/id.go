@@ -76,6 +76,7 @@ const (
 	PrefixProspect    = "psp" // a clinic being courted
 	PrefixEnrollment  = "enr" // a prospect walking through one campaign
 	PrefixTouch       = "tch" // a call, a visit, a message
+	PrefixProcedure   = "prc" // a dental procedure this clinic offers
 )
 
 // base32 lower-case, no padding. Decoding is case-insensitive.

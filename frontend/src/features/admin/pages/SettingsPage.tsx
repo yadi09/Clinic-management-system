@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/app/auth-context";
+import { createProcedure, deleteProcedure, listProcedures, reorderProcedures, updateProcedure } from "@/features/dental/api";
 import { changeEmailApi, changePasswordApi, signOutOtherDevicesApi } from "@/features/auth/api";
 import {
   branchUsage,
@@ -68,8 +69,8 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { AppError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
-type SectionKey = "account" | "profile" | "locations" | "flow" | "payments" | "vitals" | "diagnoses" | "drugs";
-const SECTIONS: { group: string; items: { key: SectionKey; label: string; icon: LucideIcon }[] }[] = [
+type SectionKey = "account" | "profile" | "locations" | "flow" | "payments" | "vitals" | "diagnoses" | "drugs" | "procedures";
+const SECTIONS: { group: string; items: { key: SectionKey; label: string; icon: LucideIcon; flag?: string }[] }[] = [
   {
     group: "General",
     items: [
@@ -91,6 +92,9 @@ const SECTIONS: { group: string; items: { key: SectionKey; label: string; icon: 
       { key: "vitals", label: "Vitals form", icon: Stethoscope },
       { key: "diagnoses", label: "Diagnosis catalog", icon: ClipboardList },
       { key: "drugs", label: "Drugs & allergens", icon: Pill },
+      // Dental only: the list of what this practice does. Hidden elsewhere by
+      // the same flag that hides the chart and the treatment plan.
+      { key: "procedures", label: "Dental procedures", icon: Stethoscope, flag: "dental" },
     ],
   },
 ];
@@ -100,7 +104,7 @@ const SECTIONS: { group: string; items: { key: SectionKey; label: string; icon: 
 const BRANCHES_ENABLED = false;
 
 export function SettingsPage() {
-  const { can } = useAuth();
+  const { can, flagOn } = useAuth();
   const manage = can("clinic.manage");
   // ?section= so a prompt elsewhere in the app can send someone straight here —
   // "configure your payment methods" is useless as advice if it does not arrive
@@ -118,7 +122,7 @@ export function SettingsPage() {
           {SECTIONS.map((g) => (
             <div key={g.group} className="mb-2">
               <p className="px-3 pb-1 pt-3 text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">{g.group}</p>
-              {g.items.filter((it) => it.key !== "locations" || BRANCHES_ENABLED).map((it) => (
+              {g.items.filter((it) => (it.key !== "locations" || BRANCHES_ENABLED) && (!it.flag || flagOn(it.flag))).map((it) => (
                 <button
                   key={it.key}
                   onClick={() => setActive(it.key)}
@@ -149,6 +153,7 @@ export function SettingsPage() {
           {active === "vitals" && <VitalsFormCard manage={manage} />}
           {active === "diagnoses" && <DiagnosisCatalogCard manage={manage} />}
           {active === "drugs" && <DrugLibraryCard manage={manage} />}
+          {active === "procedures" && <DentalProceduresCard manage={manage} />}
         </div>
       </div>
     </div>
@@ -1481,5 +1486,108 @@ function RailDialog({ rail, onClose, onSaved }: { rail: PaymentRail | null; onCl
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * The list of what this practice does.
+ *
+ * It was a constant in the frontend — the same seventeen names for every clinic on
+ * the platform — so a practice doing implants could not offer one, and a practice
+ * doing no dentures scrolled past two kinds on every visit. A clinic's vocabulary is
+ * its own.
+ *
+ * Retiring is offered beside deleting because they mean different things. A retired
+ * procedure leaves the picker and stays legible in every visit that recorded it;
+ * that is what a clinic means by "we stopped doing that". Nothing here can rewrite a
+ * past visit either way: a session stores what was done as text.
+ */
+function DentalProceduresCard({ manage }: { manage: boolean }) {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["dental-procedures-all"], queryFn: () => listProcedures(true) });
+  const [adding, setAdding] = useState("");
+  const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
+  const [err, setErr] = useState("");
+  const done = () => {
+    qc.invalidateQueries({ queryKey: ["dental-procedures-all"] });
+    qc.invalidateQueries({ queryKey: ["dental-procedures"] });
+  };
+  const run = (fn: () => Promise<unknown>) =>
+    fn().then(() => { setErr(""); done(); }).catch((e: Error) => setErr(e.message));
+
+  const rows = q.data ?? [];
+  const move = (i: number, by: number) => {
+    const next = [...rows];
+    const j = i + by;
+    if (j < 0 || j >= next.length) return;
+    [next[i], next[j]] = [next[j], next[i]];
+    run(() => reorderProcedures(next.map((r) => r.id)));
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Dental procedures</CardTitle>
+        <CardDescription>
+          What this clinic offers, in the order you want to see it. This is the list the
+          chairside picker shows. Changing it never alters a visit already recorded.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {err && <p className="text-sm text-destructive">{err}</p>}
+
+        {manage && (
+          <div className="flex flex-wrap gap-2">
+            <Input className="max-w-xs" placeholder="Add a procedure — e.g. Implant placement"
+              value={adding} onChange={(e) => setAdding(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && adding.trim()) { run(() => createProcedure(adding)); setAdding(""); } }} />
+            <Button disabled={!adding.trim()} onClick={() => { run(() => createProcedure(adding)); setAdding(""); }}>
+              Add
+            </Button>
+          </div>
+        )}
+
+        {q.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No procedures yet.</p>
+        ) : (
+          <ul className="divide-y rounded-md border">
+            {rows.map((p, i) => (
+              <li key={p.id} className="flex flex-wrap items-center gap-2 p-2.5">
+                {editing?.id === p.id ? (
+                  <>
+                    <Input className="max-w-xs" value={editing.name} autoFocus
+                      onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+                    <Button size="sm" onClick={() => { run(() => updateProcedure(p.id, { name: editing.name })); setEditing(null); }}>
+                      Save
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
+                  </>
+                ) : (
+                  <>
+                    <span className={`flex-1 text-sm ${p.is_active ? "" : "text-muted-foreground line-through"}`}>{p.name}</span>
+                    {!p.is_active && <Badge variant="outline">retired</Badge>}
+                    {manage && (
+                      <div className="flex items-center gap-1">
+                        <Button size="sm" variant="ghost" className="px-2" title="Move up" onClick={() => move(i, -1)}>↑</Button>
+                        <Button size="sm" variant="ghost" className="px-2" title="Move down" onClick={() => move(i, 1)}>↓</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditing({ id: p.id, name: p.name })}>Rename</Button>
+                        <Button size="sm" variant="ghost"
+                          onClick={() => run(() => updateProcedure(p.id, { name: p.name, is_active: !p.is_active }))}>
+                          {p.is_active ? "Retire" : "Bring back"}
+                        </Button>
+                        <Button size="sm" variant="ghost" className="text-destructive"
+                          onClick={() => run(() => deleteProcedure(p.id))}>Remove</Button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }

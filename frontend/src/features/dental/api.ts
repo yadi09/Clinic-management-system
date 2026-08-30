@@ -424,3 +424,20 @@ export function unbilledTreatment(params: { from?: string; to?: string; limit?: 
   const qs = q.toString();
   return apiFetch<UnbilledReport>(`/dental/unbilled${qs ? `?${qs}` : ""}`);
 }
+
+
+/* ---------------------------------------------- this clinic's procedures */
+
+export interface DentalProcedure { id: string; name: string; is_active: boolean; sort_order: number }
+
+/** The picker's list. `all` includes retired names, for the settings screen. */
+export const listProcedures = (all = false) =>
+  apiFetch<DentalProcedure[]>(`/dental/procedures${all ? "?all=1" : ""}`);
+export const createProcedure = (name: string) =>
+  apiFetch<DentalProcedure>("/dental/procedures", { method: "POST", body: { name } });
+export const updateProcedure = (id: string, body: { name: string; is_active?: boolean }) =>
+  apiFetch<void>(`/dental/procedures/${id}`, { method: "PUT", body });
+export const deleteProcedure = (id: string) =>
+  apiFetch<void>(`/dental/procedures/${id}`, { method: "DELETE" });
+export const reorderProcedures = (ids: string[]) =>
+  apiFetch<void>("/dental/procedures/reorder", { method: "POST", body: { ids } });
