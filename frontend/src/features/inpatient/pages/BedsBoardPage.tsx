@@ -20,6 +20,9 @@ import { useAuth } from "@/app/auth-context";
 import { admit, bedBoard, discharge, topUp, transfer, type BoardBed } from "@/features/inpatient/api";
 
 const fmtBirr = (s?: string) => (s ? `ETB ${Number(s).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "—");
+/** Nights slept beyond the booked stay, or 0 when no end date was given. */
+const overNights = (b: BoardBed) =>
+  b.planned_nights ? Math.max(0, b.days - b.planned_nights) : 0;
 const num = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtDate = (iso?: string) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "");
 
@@ -131,6 +134,83 @@ function MoneyRow({ label, value, tone, strong }: { label: string; value?: strin
   );
 }
 
+/**
+ * The stay itself, as one picture.
+ *
+ * The card said "2 nights in this bed" and stopped. It could not tell you the day
+ * the patient came in, the day they are due out, or — the question a ward round
+ * actually asks — whether they are past it. Worse, the only bar on the card measured
+ * MONEY, so a reader looking for time found a bar that moved for a reason they could
+ * not see.
+ *
+ * One block per night, so the unit you count in is the unit you look at. Green is
+ * paid for, amber is slept and not paid for, grey is booked and still to come. When
+ * the stay runs past its booking a red line marks where the booking ended, and every
+ * block to the right of it is visibly beyond the plan.
+ */
+function StayTimeline({ b }: { b: BoardBed }) {
+  const slept = b.days;
+  const planned = b.planned_nights || 0;
+  const covered = b.covered_nights;
+  const over = planned > 0 ? Math.max(0, slept - planned) : 0;
+  const span = Math.max(planned, slept, 1);
+  // A long stay stops being countable in blocks; fall back to proportions.
+  const blocks = span <= 21 ? span : 0;
+
+  // A night beyond the booking is its own fact, so it gets its own colour rather
+  // than sharing amber with a night that is merely unpaid. Paid stays green even
+  // past the plan — the money is the money; the line marks where the plan ended.
+  const fill = (i: number) =>
+    i <= covered ? "bg-emerald-500"
+      : planned > 0 && i > planned ? "bg-rose-400"
+      : i <= slept ? "bg-amber-400"
+      : "bg-slate-200";
+  const pct = (n: number) => `${Math.min(100, (n / span) * 100)}%`;
+
+  return (
+    <div className="mt-2 space-y-1">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xs font-semibold">Night {slept + 1}</span>
+        {over > 0 ? (
+          <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+            {over} night{over === 1 ? "" : "s"} past the plan
+          </span>
+        ) : (
+          <span className="text-[11px] text-muted-foreground">
+            {b.expected_discharge ? `due out ${fmtDate(b.expected_discharge)}` : "no end date set"}
+          </span>
+        )}
+      </div>
+
+      <div className="relative flex h-2 gap-px rounded-sm">
+        {blocks > 0
+          ? Array.from({ length: blocks }, (_, i) => (
+              <div key={i} className={cn("flex-1 rounded-[1px]", fill(i + 1))} />
+            ))
+          : (
+            <div className="flex h-2 w-full overflow-hidden rounded-sm bg-slate-200">
+              <div className="bg-emerald-500" style={{ width: pct(covered) }} />
+              <div className="bg-amber-400" style={{ width: pct(Math.max(0, slept - covered)) }} />
+            </div>
+          )}
+        {/* Where the booking ended — everything to the right of it is extra. */}
+        {over > 0 && (
+          <span className="absolute inset-y-[-2px] w-1 rounded-full bg-rose-600" style={{ left: pct(planned) }} aria-hidden />
+        )}
+      </div>
+
+      <div className="flex items-baseline justify-between gap-2 text-[11px] text-muted-foreground">
+        <span>in {fmtDate(b.admitted_at)}</span>
+        <span>
+          {covered > 0
+            ? `${covered} of ${Math.max(planned, slept)} nights paid`
+            : "no nights paid yet"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function SplitRow({ label, value }: { label: string; value: number }) {
   const zero = value <= 0.005;
   return (
@@ -147,9 +227,6 @@ function StayMoney({ b }: { b: BoardBed }) {
   const unbilled = Number(b.unbilled || 0);
   // Already asked for and sitting at the till, as opposed to never billed at all.
   const atCashier = Math.max(0, owed - unbilled);
-  const planned = b.planned_nights || 0;
-  const scale = Math.max(planned, b.days, b.covered_nights, 1);
-  const pct = (n: number) => `${Math.min(100, (n / scale) * 100)}%`;
 
   return (
     <div className="mt-2 space-y-1.5 rounded-md bg-muted/40 p-2">
@@ -181,23 +258,6 @@ function StayMoney({ b }: { b: BoardBed }) {
         <MoneyRow label="Nothing owed" />
       )}
 
-      <div className="flex h-1.5 overflow-hidden rounded-full bg-slate-200">
-        <div className="bg-emerald-500" style={{ width: pct(b.covered_nights) }} />
-        <div className="bg-amber-400" style={{ width: pct(Math.max(0, b.days - b.covered_nights)) }} />
-      </div>
-      <p className="text-[11px] leading-tight text-muted-foreground">
-        {b.covered_nights > 0
-          ? <>
-              Paid through {fmtDate(b.covered_thru)} ·{" "}
-              {/* Against the booking if there is one, otherwise against the nights
-                  actually slept — but never "2 of 1", which is what dividing by a
-                  total the family has already paid past used to produce. */}
-              {b.covered_nights <= (planned || b.days)
-                ? `${b.covered_nights} of ${planned || b.days} nights`
-                : `${b.covered_nights} night${b.covered_nights === 1 ? "" : "s"} covered`}
-            </>
-          : <>No nights paid for yet{planned ? ` · booked for ${planned} nights` : ""}</>}
-      </p>
     </div>
   );
 }
@@ -218,7 +278,9 @@ function BedCard({ b, onAdmit, onDischarge, onTransfer, onTopUp, onOpenPatient }
         {b.out_of_service ? (
           <Badge variant="outline">out of service</Badge>
         ) : b.occupied ? (
-          <Badge variant={b.overdue ? "destructive" : "success"}>{b.overdue ? "payment overdue" : "occupied"}</Badge>
+          <Badge variant={b.overdue ? "destructive" : overNights(b) > 0 ? "warning" : "success"}>
+            {b.overdue ? "payment overdue" : overNights(b) > 0 ? "over the plan" : "occupied"}
+          </Badge>
         ) : (
           <Badge variant="success">available</Badge>
         )}
@@ -227,10 +289,11 @@ function BedCard({ b, onAdmit, onDischarge, onTransfer, onTopUp, onOpenPatient }
       {b.occupied ? (
         <div className="mt-2 space-y-1">
           <button className="block truncate font-medium text-brand hover:underline" onClick={() => b.patient_id && onOpenPatient(b.patient_id)}>{b.patient_name}</button>
-          <div className="text-xs text-muted-foreground">{b.mrn} · {b.days} night{b.days === 1 ? "" : "s"} in this bed</div>
+          <div className="text-xs text-muted-foreground">{b.mrn}</div>
           {b.overdue && b.payment_due_at && (
-            <div className="flex items-center gap-1 text-xs text-destructive"><AlertTriangle className="h-3 w-3" /> due {fmtDate(b.payment_due_at)}</div>
+            <div className="flex items-center gap-1 text-xs text-destructive"><AlertTriangle className="h-3 w-3" /> payment due {fmtDate(b.payment_due_at)}</div>
           )}
+          <StayTimeline b={b} />
           <StayMoney b={b} />
           {/* Money owed always has a next move, and the card should name it.
               Where nothing is left to bill, the money is already on the cashier's

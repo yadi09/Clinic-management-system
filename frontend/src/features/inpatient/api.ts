@@ -46,6 +46,8 @@ export interface BoardBed {
   covered_thru?: string;
   /** Nights the stay was booked for, when one was given at admission. */
   planned_nights?: number;
+  /** The day the stay was booked to end (YYYY-MM-DD), when one was given. */
+  expected_discharge?: string;
 }
 export interface Admission {
   id?: string;

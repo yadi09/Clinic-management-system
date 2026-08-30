@@ -74,8 +74,12 @@ type BoardBed struct {
 	Outstanding   string     `json:"outstanding,omitempty"`
 	CoveredNights int        `json:"covered_nights"`
 	CoveredThru   *time.Time `json:"covered_thru,omitempty"`
-	// Nights the stay was booked for, when one was given at admission.
-	PlannedNights int `json:"planned_nights,omitempty"`
+	// Nights the stay was booked for, when one was given at admission, and the day
+	// it was booked to end. The board could say "2 nights" and nothing else: not
+	// when the patient came in, not when they are due out, and so not whether they
+	// are past it — which is the question a ward round actually asks of a bed.
+	PlannedNights     int     `json:"planned_nights,omitempty"`
+	ExpectedDischarge *string `json:"expected_discharge,omitempty"`
 }
 
 // TopUpInput asks the family for more of the running bed bill. Nights is what staff

@@ -248,6 +248,7 @@ func (s *Service) Board(ctx context.Context) ([]inpatient.BoardBed, error) {
 			`SELECT b.id, b.ward_id, w.name, b.label, b.bed_type, b.daily_rate::text, b.out_of_service,
 			        a.id, a.patient_id, p.first_name, p.last_name, p.mrn, a.admitted_at, a.daily_rate::text, a.payment_due_at,
 			        greatest(0, (a.expected_discharge - (a.admitted_at AT TIME ZONE 'Africa/Addis_Ababa')::date)) AS planned_nights,
+			        to_char(a.expected_discharge, 'YYYY-MM-DD') AS expected_discharge,
 			        (a.payment_due_at IS NOT NULL AND a.payment_due_at < now() AND c.status = 'pending') AS overdue
 			 FROM beds b
 			 JOIN wards w ON w.id = b.ward_id AND w.tenant_id = b.tenant_id
@@ -268,8 +269,9 @@ func (s *Service) Board(ctx context.Context) ([]inpatient.BoardBed, error) {
 			var admRate *string
 			var overdue *bool
 			var planned *int
+			var expDis *string
 			if e := rows.Scan(&bb.ID, &bb.WardID, &bb.WardName, &bb.Label, &bb.BedType, &bb.DailyRate, &bb.OutOfService,
-				&admID, &patID, &first, &last, &mrn, &admittedAt, &admRate, &dueAt, &planned, &overdue); e != nil {
+				&admID, &patID, &first, &last, &mrn, &admittedAt, &admRate, &dueAt, &planned, &expDis, &overdue); e != nil {
 				return e
 			}
 			if admID != nil {
@@ -283,6 +285,7 @@ func (s *Service) Board(ctx context.Context) ([]inpatient.BoardBed, error) {
 				if planned != nil {
 					bb.PlannedNights = *planned
 				}
+				bb.ExpectedDischarge = expDis
 				// Priced below, from the segments, so the board and the bill agree.
 				_ = admRate
 			}

@@ -175,6 +175,9 @@ func boardBedDTO(b inpatient.BoardBed) gin.H {
 		if b.PlannedNights > 0 {
 			h["planned_nights"] = b.PlannedNights
 		}
+		if b.ExpectedDischarge != nil {
+			h["expected_discharge"] = *b.ExpectedDischarge
+		}
 		if b.CoveredThru != nil {
 			h["covered_thru"] = b.CoveredThru.Format(time.RFC3339)
 		}
