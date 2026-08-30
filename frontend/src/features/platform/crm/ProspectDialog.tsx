@@ -6,9 +6,9 @@ import { ArrowRight, Check, PhoneCall, X } from "lucide-react";
 
 import {
   completePhase, enrolProspect, getProspect, listCampaigns, listReps, logTouch,
-  reopenProspect, setOutcome, assignProspect, type Prospect,
+  reopenProspect, setOutcome, assignProspect, setPriority, setNextAction, type Prospect,
 } from "@/features/platform/api";
-import { ContactActions, StatusChip, TOUCH_LABEL, ago } from "@/features/platform/crm/shared";
+import { ContactActions, StatusChip, TOUCH_LABEL, ago, silence } from "@/features/platform/crm/shared";
 
 const F = "w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none";
 const BTN = "inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium";
@@ -59,6 +59,21 @@ export function ProspectDialog({ id, canAdmin, onClose }: { id: string; canAdmin
               )}
               {p.owner_name && <span className="text-xs text-zinc-500">owner {p.owner_name}</span>}
             </div>
+
+            {/* Priority is one click, because a judgement that takes a form is a
+                judgement nobody records. */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-zinc-500">Priority</span>
+              {["hot", "warm", "cold"].map((k) => (
+                <button key={k} onClick={() => run(() => setPriority(id, k))}
+                  className={`rounded-full px-2.5 py-1 text-xs capitalize ${p.priority === k ? "bg-zinc-100 text-zinc-900" : "border border-zinc-700 text-zinc-400 hover:bg-zinc-800"}`}>
+                  {k}
+                </button>
+              ))}
+              <span className="ml-auto text-xs text-zinc-500">{silence(p)}</span>
+            </div>
+
+            <NextStepBox id={id} p={p} onDone={refresh} onErr={setErr} />
 
             <ContactActions p={p} size="md" />
             {p.address && <p className="text-sm text-zinc-400">{p.address}</p>}
@@ -221,6 +236,48 @@ function Enrol({ id, campaigns, onDone, onErr }: {
         {campaigns.filter((c) => c.is_active).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
       </select>
       <button className={SOLID} disabled={!cid || m.isPending} onClick={() => m.mutate()}>Add to campaign</button>
+    </div>
+  );
+}
+
+/**
+ * What happens next, and when.
+ *
+ * Offered right after logging a call rather than buried in an edit form: the moment
+ * a rep hangs up is the only moment they know what the next step is, and if it is
+ * not captured then it is not captured at all.
+ */
+function NextStepBox({ id, p, onDone, onErr }: {
+  id: string; p: Prospect; onDone: () => void; onErr: (s: string) => void;
+}) {
+  const [note, setNote] = useState(p.next_action ?? "");
+  const [on, setOn] = useState(p.next_action_at ?? "");
+  const m = useMutation({
+    mutationFn: () => setNextAction(id, note, on),
+    onSuccess: onDone,
+    onError: (e: Error) => onErr(e.message),
+  });
+  const soon = (n: number) => {
+    const d = new Date(); d.setDate(d.getDate() + n);
+    setOn(d.toISOString().slice(0, 10));
+  };
+  return (
+    <div className="rounded-lg border border-zinc-700 p-4">
+      <p className="mb-2 text-xs uppercase tracking-wide text-zinc-500">Next step</p>
+      <input className={F} placeholder="Call back and ask for the manager" value={note} onChange={(e) => setNote(e.target.value)} />
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <input type="date" className={`${F} max-w-[11rem]`} value={on} onChange={(e) => setOn(e.target.value)} />
+        {[["Tomorrow", 1], ["In 3 days", 3], ["Next week", 7]].map(([label, n]) => (
+          <button key={label as string} className="rounded-md border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
+            onClick={() => soon(n as number)}>{label as string}</button>
+        ))}
+        <button className={`${SOLID} ml-auto`} disabled={m.isPending} onClick={() => m.mutate()}>Save</button>
+      </div>
+      {!p.next_action_at && (
+        <p className="mt-2 text-xs text-amber-400/80">
+          No date set — this clinic will not appear on anyone's day.
+        </p>
+      )}
     </div>
   );
 }

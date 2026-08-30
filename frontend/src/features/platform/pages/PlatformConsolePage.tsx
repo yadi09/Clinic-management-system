@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Copy, KeyRound, LogOut, Plus, ShieldCheck, Handshake, CreditCard, Pencil, Target, Contact, Users } from "lucide-react";
+import { Building2, Copy, KeyRound, LogOut, Plus, ShieldCheck, Handshake, CreditCard, Pencil, Target, Contact, Users, Sunrise } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
@@ -21,7 +21,7 @@ import {
   setVerifyETKey,
   clearVerifyETKey,
 } from "@/features/platform/api";
-import { PipelineView, ProspectsView, TeamView } from "@/features/platform/crm/CrmViews";
+import { PipelineView, ProspectsView, TeamView, TodayView } from "@/features/platform/crm/CrmViews";
 
 const MODULES = [
   { key: "laboratory", label: "Laboratory" },
@@ -71,7 +71,7 @@ export function PlatformConsolePage() {
   // and a console full of doors that do not open.
   const role = platformRole();
   const isRep = role === "marketer";
-  const [tab, setTab] = useState<Tab>(isRep ? "pipeline" : "clinics");
+  const [tab, setTab] = useState<Tab>(isRep ? "today" : "clinics");
 
   const setStatus = useMutation({
     mutationFn: ({ id, action }: { id: string; action: "suspend" | "reactivate" }) =>
@@ -134,6 +134,7 @@ export function PlatformConsolePage() {
           while the tenant tables read better at a fixed measure. */}
       <main className={`mx-auto px-6 py-8 ${tab === "pipeline" ? "max-w-[1600px]" : "max-w-5xl"}`}>
         <div className="mb-6 flex w-fit flex-wrap gap-1 rounded-lg border border-zinc-800 bg-zinc-900 p-1">
+          <TabBtn id="today" tab={tab} set={setTab} icon={Sunrise}>Today</TabBtn>
           <TabBtn id="pipeline" tab={tab} set={setTab} icon={Target}>Pipeline</TabBtn>
           <TabBtn id="prospects" tab={tab} set={setTab} icon={Contact}>Prospects</TabBtn>
           {!isRep && <TabBtn id="team" tab={tab} set={setTab} icon={Users}>Team</TabBtn>}
@@ -144,6 +145,7 @@ export function PlatformConsolePage() {
           {!isRep && <button onClick={() => setTab("integrations")} className={"flex items-center gap-2 rounded-md px-3 py-1.5 text-sm " + (tab === "integrations" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200")}><KeyRound className="h-4 w-4" /> Integrations</button>}
         </div>
 
+        {tab === "today" && <TodayView canAdmin={!isRep} />}
         {tab === "pipeline" && <PipelineView canAdmin={!isRep} />}
         {tab === "prospects" && <ProspectsView canAdmin={!isRep} />}
         {tab === "team" && <TeamView />}
@@ -731,7 +733,7 @@ function IntegrationsView() {
   );
 }
 
-type Tab = "pipeline" | "prospects" | "team" | "clinics" | "plans" | "leads" | "integrations";
+type Tab = "today" | "pipeline" | "prospects" | "team" | "clinics" | "plans" | "leads" | "integrations";
 
 function TabBtn({ id, tab, set, icon: Icon, children }: {
   id: Tab; tab: Tab; set: (t: Tab) => void; icon: typeof Target; children: React.ReactNode;

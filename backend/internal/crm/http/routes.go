@@ -24,6 +24,7 @@ func (h *Handlers) Register(v1 *gin.RouterGroup, tokens *auth.TokenService) {
 	g.POST("/campaigns/:id/active", boss, h.SetCampaignActive)
 	g.GET("/campaigns/:id/board", work, h.GetBoard)
 
+	g.GET("/worklist", work, h.Worklist)
 	g.GET("/prospects", work, h.ListProspects)
 	g.GET("/prospects/duplicates", work, h.CheckDuplicates)
 	g.POST("/prospects", work, h.CreateProspect)
@@ -35,6 +36,8 @@ func (h *Handlers) Register(v1 *gin.RouterGroup, tokens *auth.TokenService) {
 	g.POST("/prospects/:id/outcome", work, h.SetOutcome)
 	g.POST("/prospects/:id/reopen", work, h.Reopen)
 	g.POST("/prospects/:id/touches", work, h.LogTouch)
+	g.POST("/prospects/:id/priority", work, h.SetPriority)
+	g.POST("/prospects/:id/next-action", work, h.SetNextAction)
 
 	g.GET("/reps", work, h.ListReps)
 	g.POST("/reps", boss, h.CreateRep)

@@ -92,3 +92,49 @@ export function StatusChip({ status }: { status: string }) {
     </span>
   );
 }
+
+/* ------------------------------------------------------------- priority */
+
+export const PRIORITY: Record<string, { label: string; cls: string; edge: string }> = {
+  hot:  { label: "Hot",  cls: "bg-rose-500/15 text-rose-300 border-rose-500/40",   edge: "border-l-rose-500" },
+  warm: { label: "Warm", cls: "bg-zinc-500/15 text-zinc-300 border-zinc-600",      edge: "border-l-zinc-700" },
+  cold: { label: "Cold", cls: "bg-sky-500/10 text-sky-400/70 border-sky-500/20",   edge: "border-l-sky-800" },
+};
+
+export function PriorityChip({ p }: { p: string }) {
+  const t = PRIORITY[p] ?? PRIORITY.warm;
+  if (p === "warm") return null; // the default says nothing; only the exceptions earn ink
+  return <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${t.cls}`}>{t.label}</span>;
+}
+
+/**
+ * The next step and when it is due — the line that turns a card into a task.
+ *
+ * Overdue is stated in days rather than a date, because "4 days late" is a number a
+ * person acts on and "due 26 Aug" is one they have to compute.
+ */
+export function NextStep({ p }: { p: Prospect }) {
+  if (!p.next_action && !p.next_action_at) return null;
+  const today = new Date().toISOString().slice(0, 10);
+  const late = p.next_action_at ? days(p.next_action_at, today) : 0;
+  const when = !p.next_action_at ? "no date"
+    : late > 0 ? `${late} day${late === 1 ? "" : "s"} late`
+    : late === 0 ? "today"
+    : `in ${-late} day${-late === 1 ? "" : "s"}`;
+  return (
+    <p className={`truncate text-xs ${late > 0 ? "text-rose-300" : late === 0 ? "text-amber-300" : "text-zinc-400"}`}>
+      → {p.next_action || "follow up"} · {when}
+    </p>
+  );
+}
+
+function days(a: string, b: string) {
+  return Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000);
+}
+
+/** How long a clinic has gone unheard from, said plainly. */
+export function silence(p: Prospect) {
+  if (p.silent_days < 0) return "never contacted";
+  if (p.silent_days === 0) return "contacted today";
+  return `${p.silent_days} day${p.silent_days === 1 ? "" : "s"} since contact`;
+}

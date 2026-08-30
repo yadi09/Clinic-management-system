@@ -228,6 +228,12 @@ export interface Prospect {
   phone?: string; phone_alt?: string; email?: string;
   address?: string; map_url?: string; note?: string;
   source: string; status: "open" | "signed_up" | "not_yet" | "not_interested";
+  priority: "hot" | "warm" | "cold";
+  next_action?: string; next_action_at?: string;
+  /** Why this clinic is on the worklist — only set by the worklist. */
+  reason?: string;
+  /** Days since anyone touched it; -1 when nobody ever has. */
+  silent_days: number;
   ready_on?: string; outcome_note?: string;
   owner_id?: string; owner_name?: string;
   campaign_id?: string; campaign_name?: string;
@@ -252,8 +258,16 @@ export const setCampaignActive = (id: string, active: boolean) =>
   pfetch<void>(`/crm/campaigns/${id}/active`, { method: "POST", body: { active } });
 export const getBoard = (id: string) => pfetch<Board>(`/crm/campaigns/${id}/board`);
 
-export const listProspects = (q = "", status = "", owner = "") =>
-  pfetch<Prospect[]>(`/crm/prospects?q=${encodeURIComponent(q)}&status=${status}&owner=${owner}`);
+export interface ProspectFilter { q?: string; status?: string; owner?: string; priority?: string; flag?: string }
+export const listProspects = (f: ProspectFilter = {}) =>
+  pfetch<Prospect[]>(`/crm/prospects?${new URLSearchParams(
+    Object.entries(f).filter(([, v]) => v) as [string, string][]).toString()}`);
+/** One person's morning: what is promised, overdue, due, untouched or going quiet. */
+export const worklist = (owner = "") => pfetch<Prospect[]>(`/crm/worklist?owner=${owner}`);
+export const setPriority = (id: string, priority: string) =>
+  pfetch<void>(`/crm/prospects/${id}/priority`, { method: "POST", body: { priority } });
+export const setNextAction = (id: string, note: string, on: string) =>
+  pfetch<void>(`/crm/prospects/${id}/next-action`, { method: "POST", body: { note, on } });
 export const getProspect = (id: string) =>
   pfetch<{ prospect: Prospect; touches: Touch[]; steps: Step[] }>(`/crm/prospects/${id}`);
 export const checkDuplicates = (name: string, phone: string) =>

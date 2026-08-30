@@ -6,10 +6,11 @@ import { AlertTriangle, Download, Plus, Search, Users } from "lucide-react";
 
 import {
   checkDuplicates, createCampaign, createProspect, createRep, getBoard, importInbound,
-  listCampaigns, listProspects, listReps, setCampaignActive, setRepStatus, updateCampaign,
+  listCampaigns, listProspects, listReps, setCampaignActive, setRepStatus,
+  updateCampaign, worklist,
   type Campaign, type PhaseDraft, type Prospect,
 } from "@/features/platform/api";
-import { ContactActions, LastTouch, StatusChip } from "@/features/platform/crm/shared";
+import { ContactActions, LastTouch, NextStep, PRIORITY, PriorityChip, StatusChip, silence } from "@/features/platform/crm/shared";
 import { ProspectDialog } from "@/features/platform/crm/ProspectDialog";
 
 const F = "w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none";
@@ -80,9 +81,12 @@ export function PipelineView({ canAdmin }: { canAdmin: boolean }) {
                 )}
                 {col.prospects.map((p) => (
                   <button key={p.id} onClick={() => setOpen(p.id)}
-                    className="block w-full rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-left hover:border-zinc-600">
-                    <p className="truncate text-sm font-medium text-white">{p.clinic_name}</p>
+                    className={`block w-full rounded-lg border border-l-4 border-zinc-800 bg-zinc-900 p-3 text-left hover:border-zinc-600 ${PRIORITY[p.priority]?.edge ?? ""}`}>
+                    <p className="flex items-center gap-2 truncate text-sm font-medium text-white">
+                      {p.clinic_name} <PriorityChip p={p.priority} />
+                    </p>
                     {p.contact_name && <p className="truncate text-xs text-zinc-400">{p.contact_name}</p>}
+                    <NextStep p={p} />
                     <div className="mt-2"><ContactActions p={p} /></div>
                     <div className="mt-2"><LastTouch p={p} /></div>
                     {p.owner_name && <p className="mt-1 text-[11px] text-zinc-600">{p.owner_name}</p>}
@@ -135,11 +139,16 @@ export function ProspectsView({ canAdmin }: { canAdmin: boolean }) {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
   const [owner, setOwner] = useState("");
+  const [priority, setPriority_] = useState("");
+  const [flag, setFlag] = useState("");
   const [dueOnly, setDueOnly] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const reps = useQuery({ queryKey: ["crm-reps"], queryFn: listReps });
-  const list = useQuery({ queryKey: ["crm-prospects", q, status, owner], queryFn: () => listProspects(q, status, owner) });
+  const list = useQuery({
+    queryKey: ["crm-prospects", q, status, owner, priority, flag],
+    queryFn: () => listProspects({ q, status, owner, priority, flag }),
+  });
   const due = useMemo(() => (list.data ?? []).filter(isDue), [list.data]);
   const rows = dueOnly ? due : (list.data ?? []);
 
@@ -164,6 +173,24 @@ export function ProspectsView({ canAdmin }: { canAdmin: boolean }) {
         <button className={SOLID} onClick={() => setAdding(true)}><Plus className="h-4 w-4" /> Add a clinic</button>
       </div>
 
+      {/* The questions a rep actually asks of the list, as one click each. */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {[["", "Everything"], ["never", "Never contacted"], ["overdue", "Overdue"],
+          ["due", "Due today"], ["chase", "Promised"], ["silent", "Gone quiet"]].map(([v, label]) => (
+          <button key={v} onClick={() => setFlag(v)}
+            className={`rounded-full px-3 py-1 text-xs ${flag === v ? "bg-zinc-100 text-zinc-900" : "border border-zinc-700 text-zinc-400 hover:bg-zinc-800"}`}>
+            {label}
+          </button>
+        ))}
+        <span className="mx-1 h-4 w-px bg-zinc-800" />
+        {[["", "Any"], ["hot", "Hot"], ["warm", "Warm"], ["cold", "Cold"]].map(([v, label]) => (
+          <button key={v} onClick={() => setPriority_(v)}
+            className={`rounded-full px-3 py-1 text-xs ${priority === v ? "bg-zinc-100 text-zinc-900" : "border border-zinc-700 text-zinc-400 hover:bg-zinc-800"}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
       {due.length > 0 && (
         <button onClick={() => setDueOnly((d) => !d)}
           className={`flex w-full items-center gap-2 rounded-lg border p-3 text-left text-sm ${
@@ -182,12 +209,15 @@ export function ProspectsView({ canAdmin }: { canAdmin: boolean }) {
         <div className="space-y-2">
           {rows.map((p) => (
             <button key={p.id} onClick={() => setOpen(p.id)}
-              className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-left hover:border-zinc-600">
+              className={`flex w-full flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-l-4 border-zinc-800 bg-zinc-900 p-3 text-left hover:border-zinc-600 ${PRIORITY[p.priority]?.edge ?? ""}`}>
               <div className="min-w-[12rem] flex-1">
-                <p className="truncate text-sm font-medium text-white">{p.clinic_name}</p>
+                <p className="flex items-center gap-2 truncate text-sm font-medium text-white">
+                  {p.clinic_name} <PriorityChip p={p.priority} />
+                </p>
                 <p className="truncate text-xs text-zinc-500">
                   {[p.contact_name, p.address].filter(Boolean).join(" · ") || "no contact yet"}
                 </p>
+                <NextStep p={p} />
               </div>
               <ContactActions p={p} />
               <div className="min-w-[10rem]"><LastTouch p={p} /></div>
@@ -218,7 +248,7 @@ export function ProspectsView({ canAdmin }: { canAdmin: boolean }) {
 function AddProspect({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
   const campaigns = useQuery({ queryKey: ["crm-campaigns"], queryFn: listCampaigns });
-  const [f, setF] = useState<Record<string, string>>({ clinic_name: "", contact_name: "", contact_role: "", phone: "", address: "", map_url: "", note: "", campaign_id: "" });
+  const [f, setF] = useState<Record<string, string>>({ clinic_name: "", contact_name: "", contact_role: "", phone: "", address: "", map_url: "", note: "", campaign_id: "", priority: "warm" });
   const [err, setErr] = useState("");
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setF((x) => ({ ...x, [k]: e.target.value }));
@@ -268,6 +298,17 @@ function AddProspect({ onClose }: { onClose: () => void }) {
           <input className={F} placeholder="Address / area" value={f.address} onChange={set("address")} />
           <input className={F} placeholder="Google Maps link (optional)" value={f.map_url} onChange={set("map_url")} />
           <textarea className={F} rows={2} placeholder="Anything worth remembering" value={f.note} onChange={set("note")} />
+          <div>
+            <p className="mb-1 text-xs text-zinc-500">How promising did they seem? Judge it now, while you remember the room.</p>
+            <div className="flex gap-1.5">
+              {["hot", "warm", "cold"].map((k) => (
+                <button key={k} type="button" onClick={() => setF((x) => ({ ...x, priority: k }))}
+                  className={`flex-1 rounded-md px-3 py-1.5 text-xs capitalize ${f.priority === k ? "bg-zinc-100 text-zinc-900" : "border border-zinc-700 text-zinc-300 hover:bg-zinc-800"}`}>
+                  {k}
+                </button>
+              ))}
+            </div>
+          </div>
           <select className={F} value={f.campaign_id} onChange={set("campaign_id")}>
             <option value="">No campaign yet</option>
             {(campaigns.data ?? []).filter((c) => c.is_active).map((c) => <option key={c.id} value={c.id}>Start in {c.name}</option>)}
@@ -416,3 +457,93 @@ export function TeamView() {
 }
 
 export type { Prospect };
+
+/* -------------------------------------------------------------- the day */
+
+/** Why a clinic is on the worklist, in the order it costs to ignore. */
+const BUCKETS: { key: string; title: string; why: string; tone: string }[] = [
+  { key: "promised",      title: "They asked you to come back",  why: "the day they named has arrived", tone: "border-amber-500/50 bg-amber-950/20" },
+  { key: "overdue",       title: "Late",                          why: "you said you would do this by now", tone: "border-rose-500/50 bg-rose-950/20" },
+  { key: "today",         title: "Due today",                     why: "planned for today", tone: "border-sky-500/40 bg-sky-950/20" },
+  { key: "hot_untouched", title: "Hot, and nobody has called",    why: "the ones most expensive to lose", tone: "border-rose-500/40 bg-rose-950/10" },
+  { key: "never",         title: "Collected, never contacted",    why: "in the book for more than three days", tone: "border-zinc-700 bg-zinc-900" },
+  { key: "silent",        title: "Going quiet",                   why: "a fortnight with no contact", tone: "border-zinc-700 bg-zinc-900" },
+];
+
+/**
+ * The screen a rep opens in the morning.
+ *
+ * The board answers "where is everyone"; it does not answer "what do I do now",
+ * and a pipeline that cannot answer that is a filing cabinet. Five of the first
+ * seven clinics collected here had never been contacted — not because anyone
+ * decided to leave them, but because nothing ever put them in front of a person on
+ * a particular day.
+ *
+ * Each group states why it exists, so the list is an argument rather than a demand.
+ */
+export function TodayView({ canAdmin }: { canAdmin: boolean }) {
+  const [owner, setOwner] = useState("");
+  const [open, setOpen] = useState<string | null>(null);
+  const reps = useQuery({ queryKey: ["crm-reps"], queryFn: listReps });
+  const work = useQuery({ queryKey: ["crm-worklist", owner], queryFn: () => worklist(owner) });
+  const rows = work.data ?? [];
+  const grouped = useMemo(
+    () => BUCKETS.map((b) => ({ ...b, items: rows.filter((r) => r.reason === b.key) })).filter((b) => b.items.length),
+    [rows],
+  );
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h1 className="text-xl font-semibold text-white">Today</h1>
+          <p className="text-sm text-zinc-400">
+            {rows.length === 0 ? "Nothing is waiting. The pipeline is up to date."
+              : `${rows.length} clinic${rows.length === 1 ? "" : "s"} need something.`}
+          </p>
+        </div>
+        {canAdmin && (
+          <select className={`${F} max-w-[14rem]`} value={owner} onChange={(e) => setOwner(e.target.value)}>
+            <option value="">Everyone</option>
+            {(reps.data ?? []).map((r) => <option key={r.id} value={r.id}>{r.full_name || r.email}</option>)}
+          </select>
+        )}
+      </div>
+
+      {work.isLoading ? <p className="text-sm text-zinc-500">Loading…</p> : grouped.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-zinc-700 p-10 text-center">
+          <p className="text-zinc-300">Nothing needs chasing.</p>
+          <p className="mt-1 text-sm text-zinc-500">Every clinic has been contacted and has a next step with a date on it.</p>
+        </div>
+      ) : grouped.map((b) => (
+        <section key={b.key}>
+          <div className={`rounded-t-lg border border-b-0 px-3 py-2 ${b.tone}`}>
+            <p className="text-sm font-semibold text-white">{b.title} <span className="text-zinc-400">· {b.items.length}</span></p>
+            <p className="text-xs text-zinc-400">{b.why}</p>
+          </div>
+          <div className="divide-y divide-zinc-800 rounded-b-lg border border-zinc-800">
+            {b.items.map((p) => (
+              <button key={p.id} onClick={() => setOpen(p.id)}
+                className={`flex w-full flex-wrap items-center gap-x-4 gap-y-2 border-l-4 bg-zinc-900 p-3 text-left hover:bg-zinc-800/60 ${PRIORITY[p.priority]?.edge ?? ""}`}>
+                <div className="min-w-[12rem] flex-1">
+                  <p className="flex items-center gap-2 truncate text-sm font-medium text-white">
+                    {p.clinic_name} <PriorityChip p={p.priority} />
+                  </p>
+                  <p className="truncate text-xs text-zinc-500">
+                    {[p.contact_name, p.phase_name].filter(Boolean).join(" · ") || silence(p)}
+                  </p>
+                  <NextStep p={p} />
+                </div>
+                <ContactActions p={p} />
+                <span className="text-xs text-zinc-500">{silence(p)}</span>
+                {p.owner_name && <span className="text-xs text-zinc-600">{p.owner_name}</span>}
+              </button>
+            ))}
+          </div>
+        </section>
+      ))}
+
+      {open && <ProspectDialog id={open} canAdmin={canAdmin} onClose={() => setOpen(null)} />}
+    </div>
+  );
+}

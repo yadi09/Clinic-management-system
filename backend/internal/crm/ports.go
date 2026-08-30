@@ -62,8 +62,17 @@ type Prospect struct {
 	Note        string    `json:"note,omitempty"`
 	Source      string    `json:"source"`
 	Status      string    `json:"status"`
-	ReadyOn     *string   `json:"ready_on,omitempty"`
-	OutcomeNote string    `json:"outcome_note,omitempty"`
+	Priority    string    `json:"priority"`
+	// What the rep decided to do next, and the day it is due. A pipeline without
+	// these is a list of names; with them it is a day's work.
+	NextAction   string  `json:"next_action,omitempty"`
+	NextActionAt *string `json:"next_action_at,omitempty"`
+	// Why this clinic is on the worklist, filled only by Worklist().
+	Reason string `json:"reason,omitempty"`
+	// Days since anyone touched it; -1 when nobody ever has.
+	SilentDays  int     `json:"silent_days"`
+	ReadyOn     *string `json:"ready_on,omitempty"`
+	OutcomeNote string  `json:"outcome_note,omitempty"`
 
 	OwnerID   *uuid.UUID `json:"-"`
 	OwnerName string     `json:"owner_name,omitempty"`
@@ -98,6 +107,7 @@ type ProspectInput struct {
 	MapURL      string
 	Note        string
 	Source      string
+	Priority    string
 	OwnerID     *uuid.UUID
 	CampaignID  *uuid.UUID // enrol straight away, at phase 1
 }
@@ -138,6 +148,18 @@ type Outcome struct {
 	Note    string
 }
 
+// Filter narrows the prospect list. Every field is optional; empty means "any".
+type Filter struct {
+	Q        string
+	Status   string
+	Owner    string
+	Priority string
+	// Flag is a question rather than a column: never (nobody has made contact),
+	// overdue (the next step's day has passed), due (it is today), chase (they said
+	// come back and that day has come), silent (a fortnight with no contact).
+	Flag string
+}
+
 // Rep is a marketing account, for assignment and for the admin's staff list.
 type Rep struct {
 	ID       uuid.UUID `json:"-"`
@@ -169,7 +191,11 @@ type Service interface {
 	SetCampaignActive(ctx context.Context, id uuid.UUID, active bool) error
 	GetBoard(ctx context.Context, campaignID uuid.UUID) (*Board, error)
 
-	ListProspects(ctx context.Context, q, status, owner string) ([]Prospect, error)
+	ListProspects(ctx context.Context, f Filter) ([]Prospect, error)
+	// Worklist is one rep's day: what is overdue, due, promised or going cold.
+	Worklist(ctx context.Context, owner string) ([]Prospect, error)
+	SetPriority(ctx context.Context, id uuid.UUID, priority string) error
+	SetNextAction(ctx context.Context, id uuid.UUID, note, on string) error
 	GetProspect(ctx context.Context, id uuid.UUID) (*Prospect, []Touch, []Step, error)
 	CheckDuplicates(ctx context.Context, name, phone string) ([]Duplicate, error)
 	CreateProspect(ctx context.Context, in ProspectInput) (*Prospect, error)

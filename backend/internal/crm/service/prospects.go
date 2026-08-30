@@ -22,12 +22,16 @@ const prospectCols = `
 	p.id, p.clinic_name, coalesce(p.contact_name,''), coalesce(p.contact_role,''),
 	coalesce(p.phone,''), coalesce(p.phone_alt,''), coalesce(p.email,''),
 	coalesce(p.address,''), coalesce(p.map_url,''), coalesce(p.note,''),
-	p.source, p.status, to_char(p.ready_on,'YYYY-MM-DD'), coalesce(p.outcome_note,''),
+	p.source, p.status, p.priority, coalesce(p.next_action,''),
+	to_char(p.next_action_at,'YYYY-MM-DD'),
+	to_char(p.ready_on,'YYYY-MM-DD'), coalesce(p.outcome_note,''),
 	p.owner_id, coalesce(o.full_name, o.email, ''),
 	e.id, e.campaign_id, coalesce(c.name,''), e.phase_id, coalesce(ph.name,''),
 	coalesce(ph.seq,0), coalesce(pc.n,0),
 	t.happened_at, coalesce(t.kind,''), coalesce(tb.full_name, tb.email, ''),
-	coalesce(tc.n,0), p.created_at`
+	coalesce(tc.n,0), p.created_at,
+	CASE WHEN t.happened_at IS NULL THEN -1
+	     ELSE (current_date - (t.happened_at AT TIME ZONE 'Africa/Addis_Ababa')::date) END`
 
 const prospectFrom = `
 	FROM crm_prospects p
@@ -47,32 +51,42 @@ func scanProspect(rows pgx.Rows) (crm.Prospect, error) {
 	var p crm.Prospect
 	err := rows.Scan(&p.ID, &p.ClinicName, &p.ContactName, &p.ContactRole,
 		&p.Phone, &p.PhoneAlt, &p.Email, &p.Address, &p.MapURL, &p.Note,
-		&p.Source, &p.Status, &p.ReadyOn, &p.OutcomeNote,
+		&p.Source, &p.Status, &p.Priority, &p.NextAction, &p.NextActionAt, &p.ReadyOn, &p.OutcomeNote,
 		&p.OwnerID, &p.OwnerName,
 		&p.EnrollmentID, &p.CampaignID, &p.CampaignName, &p.PhaseID, &p.PhaseName,
 		&p.PhaseSeq, &p.PhaseCount,
-		&p.LastTouchAt, &p.LastTouchKind, &p.LastTouchBy, &p.Touches, &p.CreatedAt)
+		&p.LastTouchAt, &p.LastTouchKind, &p.LastTouchBy, &p.Touches, &p.CreatedAt, &p.SilentDays)
 	return p, err
 }
 
-func (s *Service) ListProspects(ctx context.Context, q, status, owner string) ([]crm.Prospect, error) {
+func (s *Service) ListProspects(ctx context.Context, f crm.Filter) ([]crm.Prospect, error) {
 	var ownerID *uuid.UUID
-	if owner != "" && owner != "all" {
-		u, err := id.Decode(id.PrefixUser, owner)
+	if f.Owner != "" && f.Owner != "all" {
+		u, err := id.Decode(id.PrefixUser, f.Owner)
 		if err != nil {
 			return nil, apperr.Validation("unknown owner")
 		}
 		ownerID = &u
 	}
+	// The default order IS the advice: whatever is hottest and has been ignored
+	// longest comes first. A list sorted by when it was typed in tells a rep
+	// nothing about what to do next.
 	rows, err := s.db.Pool.Query(ctx, `SELECT `+prospectCols+prospectFrom+`
 		 WHERE p.deleted_at IS NULL
 		   AND ($1 = '' OR p.clinic_name ILIKE '%'||$1||'%' OR coalesce(p.phone,'') ILIKE '%'||$1||'%'
 		        OR coalesce(p.contact_name,'') ILIKE '%'||$1||'%' OR coalesce(p.address,'') ILIKE '%'||$1||'%')
 		   AND ($2 = '' OR p.status = $2)
 		   AND ($3::uuid IS NULL OR p.owner_id = $3)
-		 ORDER BY (p.status = 'open') DESC, coalesce(t.happened_at, p.created_at) DESC
+		   AND ($4 = '' OR p.priority = $4)
+		   AND ($5 = '' OR `+flagSQL+`)
+		 ORDER BY (p.status = 'open') DESC,
+		          CASE p.priority WHEN 'hot' THEN 0 WHEN 'warm' THEN 1 ELSE 2 END,
+		          (p.next_action_at IS NOT NULL AND p.next_action_at <= current_date) DESC,
+		          t.happened_at ASC NULLS FIRST,
+		          p.created_at DESC
 		 LIMIT 500`,
-		strings.TrimSpace(q), strings.TrimSpace(status), ownerID)
+		strings.TrimSpace(f.Q), strings.TrimSpace(f.Status), ownerID,
+		strings.TrimSpace(f.Priority), strings.TrimSpace(f.Flag))
 	if err != nil {
 		return nil, apperr.Internal(err)
 	}
@@ -86,6 +100,108 @@ func (s *Service) ListProspects(ctx context.Context, q, status, owner string) ([
 		out = append(out, p)
 	}
 	return out, rows.Err()
+}
+
+// flagSQL answers the questions a rep actually asks of the list. $5 is the flag.
+const flagSQL = `
+	CASE $5
+	  WHEN 'never'   THEN t.happened_at IS NULL
+	  WHEN 'overdue' THEN p.next_action_at IS NOT NULL AND p.next_action_at < current_date
+	  WHEN 'due'     THEN p.next_action_at = current_date
+	  WHEN 'chase'   THEN p.status = 'not_yet' AND p.ready_on IS NOT NULL AND p.ready_on <= current_date
+	  WHEN 'silent'  THEN p.status = 'open' AND (t.happened_at IS NULL OR t.happened_at < now() - interval '14 days')
+	  ELSE true
+	END`
+
+// Worklist is one person's morning.
+//
+// Every row carries the reason it is here, so the screen can group by "why" rather
+// than making the rep work it out: a promise whose day has come, a step that has
+// slipped, a hot clinic nobody has phoned, one going quiet. Ordered by how much it
+// costs to leave it another day.
+func (s *Service) Worklist(ctx context.Context, owner string) ([]crm.Prospect, error) {
+	var ownerID *uuid.UUID
+	if owner != "" && owner != "all" {
+		u, err := id.Decode(id.PrefixUser, owner)
+		if err != nil {
+			return nil, apperr.Validation("unknown owner")
+		}
+		ownerID = &u
+	}
+	const reason = `
+		CASE
+		  WHEN p.status = 'not_yet' AND p.ready_on IS NOT NULL AND p.ready_on <= current_date THEN 'promised'
+		  WHEN p.status <> 'open' THEN NULL
+		  WHEN p.next_action_at IS NOT NULL AND p.next_action_at <  current_date THEN 'overdue'
+		  WHEN p.next_action_at IS NOT NULL AND p.next_action_at =  current_date THEN 'today'
+		  WHEN t.happened_at IS NULL AND p.priority = 'hot' THEN 'hot_untouched'
+		  WHEN t.happened_at IS NULL AND p.created_at < now() - interval '3 days' THEN 'never'
+		  WHEN t.happened_at < now() - interval '14 days' THEN 'silent'
+		END`
+	rows, err := s.db.Pool.Query(ctx, `SELECT `+prospectCols+`, `+reason+prospectFrom+`
+		 WHERE p.deleted_at IS NULL AND ($1::uuid IS NULL OR p.owner_id = $1)
+		   AND (`+reason+`) IS NOT NULL
+		 ORDER BY CASE (`+reason+`)
+		            WHEN 'promised' THEN 0 WHEN 'overdue' THEN 1 WHEN 'today' THEN 2
+		            WHEN 'hot_untouched' THEN 3 WHEN 'never' THEN 4 ELSE 5 END,
+		          CASE p.priority WHEN 'hot' THEN 0 WHEN 'warm' THEN 1 ELSE 2 END,
+		          t.happened_at ASC NULLS FIRST
+		 LIMIT 300`, ownerID)
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	defer rows.Close()
+	out := []crm.Prospect{}
+	for rows.Next() {
+		var p crm.Prospect
+		var reasonV *string
+		e := rows.Scan(&p.ID, &p.ClinicName, &p.ContactName, &p.ContactRole,
+			&p.Phone, &p.PhoneAlt, &p.Email, &p.Address, &p.MapURL, &p.Note,
+			&p.Source, &p.Status, &p.Priority, &p.NextAction, &p.NextActionAt, &p.ReadyOn, &p.OutcomeNote,
+			&p.OwnerID, &p.OwnerName,
+			&p.EnrollmentID, &p.CampaignID, &p.CampaignName, &p.PhaseID, &p.PhaseName,
+			&p.PhaseSeq, &p.PhaseCount,
+			&p.LastTouchAt, &p.LastTouchKind, &p.LastTouchBy, &p.Touches, &p.CreatedAt, &p.SilentDays,
+			&reasonV)
+		if e != nil {
+			return nil, apperr.Internal(e)
+		}
+		p.Reason = deref(reasonV)
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// SetPriority is one click on a card: this one matters more than the others.
+func (s *Service) SetPriority(ctx context.Context, pid uuid.UUID, priority string) error {
+	switch priority {
+	case "hot", "warm", "cold":
+	default:
+		return apperr.Validation("priority is hot, warm or cold")
+	}
+	if _, err := s.db.Pool.Exec(ctx,
+		`UPDATE crm_prospects SET priority=$2, updated_at=now() WHERE id=$1 AND deleted_at IS NULL`,
+		pid, priority); err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}
+
+// SetNextAction records what happens next and when. An empty date clears it, which
+// is how a rep says "nothing planned" without inventing a day.
+func (s *Service) SetNextAction(ctx context.Context, pid uuid.UUID, note, on string) error {
+	on = strings.TrimSpace(on)
+	if on != "" {
+		if _, e := time.Parse("2006-01-02", on); e != nil {
+			return apperr.Validation("that is not a real date")
+		}
+	}
+	if _, err := s.db.Pool.Exec(ctx,
+		`UPDATE crm_prospects SET next_action=$2, next_action_at=$3, updated_at=now()
+		  WHERE id=$1 AND deleted_at IS NULL`, pid, nz(note), nz(on)); err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
 }
 
 func (s *Service) GetProspect(ctx context.Context, pid uuid.UUID) (*crm.Prospect, []crm.Touch, []crm.Step, error) {
@@ -196,6 +312,9 @@ func (s *Service) CreateProspect(ctx context.Context, in crm.ProspectInput) (*cr
 	if in.Source == "" {
 		in.Source = "field"
 	}
+	if in.Priority == "" {
+		in.Priority = "warm"
+	}
 	owner := in.OwnerID
 	if owner == nil {
 		// Whoever collected it owns it, unless an admin said otherwise.
@@ -205,10 +324,10 @@ func (s *Service) CreateProspect(ctx context.Context, in crm.ProspectInput) (*cr
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		if e := tx.QueryRow(ctx, `
 			INSERT INTO crm_prospects (clinic_name, contact_name, contact_role, phone, phone_alt, email,
-			                           address, map_url, note, source, owner_id, created_by)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+			                           address, map_url, note, source, priority, owner_id, created_by)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
 			name, nz(in.ContactName), nz(in.ContactRole), nz(in.Phone), nz(in.PhoneAlt), nz(in.Email),
-			nz(in.Address), nz(in.MapURL), nz(in.Note), in.Source, owner, actor(ctx)).Scan(&pid); e != nil {
+			nz(in.Address), nz(in.MapURL), nz(in.Note), in.Source, in.Priority, owner, actor(ctx)).Scan(&pid); e != nil {
 			return e
 		}
 		if in.CampaignID != nil {

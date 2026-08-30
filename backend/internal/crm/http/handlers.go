@@ -68,6 +68,17 @@ func prospectDTO(p crm.Prospect) gin.H {
 		"source": p.Source, "status": p.Status, "outcome_note": p.OutcomeNote,
 		"owner_name": p.OwnerName, "touches": p.Touches, "created_at": p.CreatedAt,
 	}
+	h["priority"] = p.Priority
+	h["silent_days"] = p.SilentDays
+	if p.NextAction != "" {
+		h["next_action"] = p.NextAction
+	}
+	if p.NextActionAt != nil {
+		h["next_action_at"] = *p.NextActionAt
+	}
+	if p.Reason != "" {
+		h["reason"] = p.Reason
+	}
 	if p.ReadyOn != nil {
 		h["ready_on"] = *p.ReadyOn
 	}
@@ -196,7 +207,10 @@ func (h *Handlers) GetBoard(c *gin.Context) {
 /* ------------------------------------------------------------- prospects */
 
 func (h *Handlers) ListProspects(c *gin.Context) {
-	out, err := h.svc.ListProspects(ctxOf(c), c.Query("q"), c.Query("status"), c.Query("owner"))
+	out, err := h.svc.ListProspects(ctxOf(c), crm.Filter{
+		Q: c.Query("q"), Status: c.Query("status"), Owner: c.Query("owner"),
+		Priority: c.Query("priority"), Flag: c.Query("flag"),
+	})
 	if err != nil {
 		httpx.Fail(c, err)
 		return
@@ -256,6 +270,7 @@ type prospectReq struct {
 	MapURL      string `json:"map_url"`
 	Note        string `json:"note"`
 	Source      string `json:"source"`
+	Priority    string `json:"priority"`
 	OwnerID     string `json:"owner_id"`
 	CampaignID  string `json:"campaign_id"`
 }
@@ -264,7 +279,7 @@ func (r prospectReq) toInput(c *gin.Context) (crm.ProspectInput, bool) {
 	in := crm.ProspectInput{
 		ClinicName: r.ClinicName, ContactName: r.ContactName, ContactRole: r.ContactRole,
 		Phone: r.Phone, PhoneAlt: r.PhoneAlt, Email: r.Email, Address: r.Address,
-		MapURL: r.MapURL, Note: r.Note, Source: r.Source,
+		MapURL: r.MapURL, Note: r.Note, Source: r.Source, Priority: r.Priority,
 	}
 	if r.OwnerID != "" {
 		u, ok := decode(c, id.PrefixUser, r.OwnerID)
@@ -514,4 +529,52 @@ func (h *Handlers) ImportInbound(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, gin.H{"imported": n})
+}
+
+/* ------------------------------------------------- priority and next step */
+
+func (h *Handlers) Worklist(c *gin.Context) {
+	out, err := h.svc.Worklist(ctxOf(c), c.Query("owner"))
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	rows := make([]gin.H, 0, len(out))
+	for _, p := range out {
+		rows = append(rows, prospectDTO(p))
+	}
+	httpx.OK(c, rows)
+}
+
+func (h *Handlers) SetPriority(c *gin.Context) {
+	pid, ok := decode(c, id.PrefixProspect, c.Param("id"))
+	if !ok {
+		return
+	}
+	var r struct {
+		Priority string `json:"priority"`
+	}
+	_ = c.ShouldBindJSON(&r)
+	if err := h.svc.SetPriority(ctxOf(c), pid, r.Priority); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+func (h *Handlers) SetNextAction(c *gin.Context) {
+	pid, ok := decode(c, id.PrefixProspect, c.Param("id"))
+	if !ok {
+		return
+	}
+	var r struct {
+		Note string `json:"note"`
+		On   string `json:"on"`
+	}
+	_ = c.ShouldBindJSON(&r)
+	if err := h.svc.SetNextAction(ctxOf(c), pid, r.Note, r.On); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
 }
