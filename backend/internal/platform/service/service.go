@@ -46,9 +46,10 @@ var slugRe = regexp.MustCompile(`[^a-z0-9-]+`)
 func (s *Service) Authenticate(ctx context.Context, email, password string) (*platform.Login, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	var id uuid.UUID
-	var hash, status string
+	var hash, status, role string
 	err := s.db.Pool.QueryRow(ctx,
-		`SELECT id, password_hash, status FROM platform_admins WHERE email = $1`, email).Scan(&id, &hash, &status)
+		`SELECT id, password_hash, status, role FROM platform_admins WHERE email = $1`, email).
+		Scan(&id, &hash, &status, &role)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, apperr.Unauthenticated("invalid credentials")
 	}
@@ -61,7 +62,15 @@ func (s *Service) Authenticate(ctx context.Context, email, password string) (*pl
 	if status != "active" {
 		return nil, apperr.Forbidden("ADMIN_INACTIVE", "this platform admin is not active")
 	}
-	tok, exp, err := s.tokens.IssueAccess(id, uuid.Nil, email, []string{"platform_admin"}, []string{"platform.admin"}, nil, nil, "")
+	// A marketing account is a platform login, not a super-admin. It carries only
+	// crm.work, so every tenant control in this console — provision, suspend,
+	// impersonate, plans — refuses it at the middleware rather than by hiding a
+	// button.
+	roles, perms := []string{"platform_admin"}, []string{"platform.admin", "crm.work"}
+	if role == "marketer" {
+		roles, perms = []string{"marketer"}, []string{"crm.work"}
+	}
+	tok, exp, err := s.tokens.IssueAccess(id, uuid.Nil, email, roles, perms, nil, nil, "")
 	if err != nil {
 		return nil, apperr.Internal(err)
 	}

@@ -70,6 +70,12 @@ const (
 	PrefixMessage          = "msg" // patient SMS (queued, sent, skipped or failed)
 	PrefixCampaign         = "cmp" // a one-off message to a chosen set of patients
 	PrefixPaymentRail      = "pmt" // a way this clinic is paid (cash, a card machine, a named account)
+	// The vendor's own sales pipeline (above the tenant boundary).
+	PrefixCrmCampaign = "crc" // a marketing campaign: an ordered set of phases
+	PrefixCrmPhase    = "crp" // one step of a campaign
+	PrefixProspect    = "psp" // a clinic being courted
+	PrefixEnrollment  = "enr" // a prospect walking through one campaign
+	PrefixTouch       = "tch" // a call, a visit, a message
 )
 
 // base32 lower-case, no padding. Decoding is case-insensitive.

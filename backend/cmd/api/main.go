@@ -34,6 +34,8 @@ import (
 	billingservice "github.com/reicb/clinicsaas/internal/billing/service"
 	clinicalhttp "github.com/reicb/clinicsaas/internal/clinical/http"
 	clinicalservice "github.com/reicb/clinicsaas/internal/clinical/service"
+	crmhttp "github.com/reicb/clinicsaas/internal/crm/http"
+	crmservice "github.com/reicb/clinicsaas/internal/crm/service"
 	dashboardhttp "github.com/reicb/clinicsaas/internal/dashboard/http"
 	dashboardservice "github.com/reicb/clinicsaas/internal/dashboard/service"
 	dentalhttp "github.com/reicb/clinicsaas/internal/dental/http"
@@ -149,6 +151,7 @@ func main() {
 	// Platform (super-admin) layer: provisions tenants across the RLS boundary via a
 	// dedicated privileged connection. Disabled when PLATFORM_DATABASE_URL is unset.
 	var platformHandlers *platformhttp.Handlers
+	var crmHandlers *crmhttp.Handlers
 	if cfg.PlatformDatabaseURL != "" {
 		platformDB, perr := connectWithRetry(ctx, cfg.PlatformDatabaseURL, 10, 2*time.Second)
 		if perr != nil {
@@ -157,6 +160,9 @@ func main() {
 			defer platformDB.Close()
 			platformSvc := platformservice.NewService(platformDB, tokens, cfg.MFAEncKey)
 			platformHandlers = platformhttp.NewHandlers(platformSvc)
+			// The vendor's own sales pipeline shares the privileged connection: it is
+			// business data, not clinic data, and lives above the tenant boundary.
+			crmHandlers = crmhttp.NewHandlers(crmservice.NewService(platformDB))
 			log.Info("platform (super-admin) surface enabled")
 
 			// Receipt verification. The key is entered in the super-admin console and
@@ -173,7 +179,7 @@ func main() {
 		}
 	}
 
-	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, reportingHandlers, dashboardHandlers, maternityHandlers, inpatientHandlers, dentalHandlers, messagingHandlers, pharmacyHandlers, labHandlers, financeHandlers, platformHandlers)
+	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, reportingHandlers, dashboardHandlers, maternityHandlers, inpatientHandlers, dentalHandlers, messagingHandlers, pharmacyHandlers, labHandlers, financeHandlers, platformHandlers, crmHandlers)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -220,6 +226,7 @@ func newRouter(
 	labHandlers *labhttp.Handlers,
 	financeHandlers *financehttp.Handlers,
 	platformHandlers *platformhttp.Handlers,
+	crmHandlers *crmhttp.Handlers,
 ) *gin.Engine {
 	if cfg.IsProd() {
 		gin.SetMode(gin.ReleaseMode)
@@ -252,6 +259,9 @@ func newRouter(
 	identityHandlers.RegisterPublic(v1) // /auth/login, /auth/refresh, /auth/mfa, /auth/logout
 	if platformHandlers != nil {
 		platformHandlers.Register(v1, tokens) // /platform/auth/login (public) + /platform/clinics (platform.admin)
+	}
+	if crmHandlers != nil {
+		crmHandlers.Register(v1, tokens) // /platform/crm/... (crm.work; campaigns + accounts need platform.admin)
 	}
 	protected := v1.Group("", httpx.RequireAuth(tokens))     // requires a valid access token
 	identityHandlers.RegisterProtected(protected)            // /auth/me
