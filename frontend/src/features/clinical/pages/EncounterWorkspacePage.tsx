@@ -873,7 +873,7 @@ function DiagnosisPicker({ ws, locked, onChanged }: { ws: Workspace; locked: boo
         <div className="relative">
           <Input placeholder="Search diagnoses…" value={term} onChange={(e) => setTerm(e.target.value)} />
           {term.trim() && (results.data?.length ?? 0) > 0 && (
-            <div className="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-md border bg-background shadow-md">
+            <div className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border bg-background shadow-md">
               {(results.data ?? []).map((e) => (
                 <button key={e.id} onClick={() => add.mutate(e)} className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-muted">
                   <span>{e.code ? <span className="font-mono text-xs text-muted-foreground">{e.code} </span> : null}{e.name}</span>

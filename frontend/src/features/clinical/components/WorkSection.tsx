@@ -61,8 +61,13 @@ export function WorkSection({ id, done, count, action, children }: {
 }) {
   const t = toneOf(id);
   return (
-    <Card id={id} className="relative scroll-mt-32 overflow-hidden p-4 pl-5">
-      <span className={cn("absolute inset-y-0 left-0 w-1.5", t.bar)} aria-hidden />
+    // No overflow-hidden. It was here to stop the spine spilling past the card's
+    // rounded corners, and it also clipped every autocomplete inside the section:
+    // typing a diagnosis or a drug opened a list that was cut off at the bottom of
+    // the card and appeared to sit underneath the next one. The spine rounds its own
+    // left edge instead, which is the job overflow-hidden was doing.
+    <Card id={id} className="relative scroll-mt-32 p-4 pl-5">
+      <span className={cn("absolute inset-y-0 left-0 w-1.5 rounded-l-lg", t.bar)} aria-hidden />
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="flex items-center gap-2 text-h3">
           <span className={cn("grid h-7 w-7 shrink-0 place-items-center rounded-lg", t.chip)}>
