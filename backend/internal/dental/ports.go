@@ -351,6 +351,11 @@ type SessionCalItem struct {
 // Service is the dental module API.
 type Service interface {
 	ListProcedures(ctx context.Context, includeRetired bool) ([]Procedure, error)
+	ListToothStatuses(ctx context.Context, includeRetired bool) ([]ToothStatus, error)
+	CreateToothStatus(ctx context.Context, label, color string) (*ToothStatus, error)
+	UpdateToothStatus(ctx context.Context, id uuid.UUID, label, color string, active *bool) error
+	DeleteToothStatus(ctx context.Context, id uuid.UUID) error
+	ReorderToothStatuses(ctx context.Context, ids []uuid.UUID) error
 	CreateProcedure(ctx context.Context, name string) (*Procedure, error)
 	UpdateProcedure(ctx context.Context, id uuid.UUID, name string, active *bool) error
 	DeleteProcedure(ctx context.Context, id uuid.UUID) error
@@ -489,4 +494,15 @@ type Procedure struct {
 	Name      string    `json:"name"`
 	IsActive  bool      `json:"is_active"`
 	SortOrder int       `json:"sort_order"`
+}
+
+// ToothStatus is one condition a clinic marks on a tooth. Code is stable and is what
+// a chart stores; label and colour are the clinic's to change.
+type ToothStatus struct {
+	ID        uuid.UUID `json:"-"`
+	Code      string    `json:"code"`
+	Label     string    `json:"label"`
+	Color     string    `json:"color"`
+	SortOrder int       `json:"sort_order"`
+	IsActive  bool      `json:"is_active"`
 }

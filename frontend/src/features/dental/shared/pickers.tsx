@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
-import { STATUS_LABEL, statusStyle, TOOTH_QUADRANTS, TOOTH_STATUSES } from "@/features/dental/ToothChart";
+import { TOOTH_QUADRANTS } from "@/features/dental/ToothChart";
+import { useToothStatuses } from "@/features/dental/toothStatus";
 import { listProcedures } from "@/features/dental/api";
 
 /** Palmer codes in chart order, so a selection always reads UR6, UR7 — never UR7, UR6. */
@@ -79,26 +80,41 @@ export function ProcedureMultiSelect({ value, onChange }: { value: string[]; onC
 
 // Multi-tooth picker (Palmer), grouped by quadrant, showing each tooth's charted
 // condition. Value is the selected codes; stored joined as "UR6, UR7".
-/** "All 32 teeth" and "Upper arch · 16" say what a list of codes cannot. */
-function summarise(sel: string[]) {
+/** "All 32 teeth", "Upper arch · 16" and "All decayed · 5" say what a list of codes
+ *  cannot. A selection a dentist made in one tap should read back the same way. */
+function summarise(sel: string[], teeth: Record<string, string>, labelOf: (c: string) => string) {
   if (sel.length === FLAT_TEETH.length) return `All ${FLAT_TEETH.length} teeth`;
   for (const half of ["Upper", "Lower"] as const) {
     const arch = archOf(half);
     if (sameSet(sel, arch)) return `${half} arch · ${arch.length} teeth`;
+  }
+  const conds = new Set(sel.map((c) => teeth[c] ?? ""));
+  if (conds.size === 1) {
+    const only = [...conds][0];
+    if (only && sameSet(sel, FLAT_TEETH.filter((c) => teeth[c] === only))) {
+      return `All ${labelOf(only).toLowerCase()} · ${sel.length}`;
+    }
   }
   if (sel.length > 6) return `${sel.length} teeth · ${sel.slice(0, 5).join(", ")}…`;
   return `${sel.length} selected · ${sel.join(", ")}`;
 }
 
 export function ToothMultiSelect({ teeth, value, onChange, placeholder }: { teeth: Record<string, string>; value: string[]; onChange: (codes: string[]) => void; placeholder?: string }) {
+  const sts = useToothStatuses();
   const ordered = FLAT_TEETH.filter((c) => value.includes(c));
+  // Conditions this mouth actually has, with counts. Offering "Crown · 0" would
+  // make the row longer and tell the dentist nothing; the chart in front of them
+  // is what decides which buttons are worth showing.
+  const charted = sts.list
+    .map((st) => ({ st, codes: FLAT_TEETH.filter((c) => teeth[c] === st.code) }))
+    .filter((x) => x.codes.length > 0);
   const toggle = (c: string) => onChange(value.includes(c) ? value.filter((x) => x !== c) : [...value, c]);
   return (
     <Popover>
       <PopoverTrigger asChild>
         <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
           <span className={cn("truncate", value.length === 0 && "text-muted-foreground")}>
-            {value.length === 0 ? (placeholder ?? "No specific tooth") : summarise(ordered)}
+            {value.length === 0 ? (placeholder ?? "No specific tooth") : summarise(ordered, teeth, sts.labelOf)}
           </span>
           <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
         </Button>
@@ -120,6 +136,27 @@ export function ToothMultiSelect({ teeth, value, onChange, placeholder }: { teet
             </button>
           )}
         </div>
+
+        {/* By condition. "Every decayed tooth" is how a dentist describes the work
+            before they describe the teeth, and reading five codes off the chart to
+            tick five boxes is transcription, not a decision. */}
+        {charted.length > 0 && (
+          <div className="sticky top-[41px] z-10 mb-1 flex flex-wrap gap-1 border-b bg-popover px-1 pb-1.5">
+            {charted.map(({ st, codes }) => {
+              const on = sameSet(value, codes);
+              const style = sts.styleOf(st.code);
+              return (
+                <button key={st.code} type="button"
+                  onClick={() => onChange(on ? [] : codes)}
+                  style={on ? { background: style.borderColor, borderColor: style.borderColor, color: "#fff" }
+                            : { background: style.background, borderColor: style.borderColor, color: style.color }}
+                  className="touch-hit rounded-md border px-2 py-1 text-xs font-medium">
+                  All {st.label.toLowerCase()} · {codes.length}
+                </button>
+              );
+            })}
+          </div>
+        )}
         {TOOTH_QUADRANTS.map((quad) => {
           const all = quad.codes.every((c) => value.includes(c));
           return (
@@ -136,7 +173,7 @@ export function ToothMultiSelect({ teeth, value, onChange, placeholder }: { teet
             </div>
             {quad.codes.map((code) => {
               const cond = teeth[code] ?? "";
-              const st = statusStyle(cond);
+              const st = sts.styleOf(cond);
               const checked = value.includes(code);
               return (
                 <button key={code} type="button" onClick={() => toggle(code)}
@@ -146,7 +183,7 @@ export function ToothMultiSelect({ teeth, value, onChange, placeholder }: { teet
                   </span>
                   <span className="h-2.5 w-2.5 shrink-0 rounded-sm border" style={{ background: st.background, borderColor: st.borderColor }} />
                   <span className="font-medium tabular-nums">{code}</span>
-                  {cond && <span className="text-xs text-muted-foreground">· {STATUS_LABEL[cond] ?? cond}</span>}
+                  {cond && <span className="text-xs text-muted-foreground">· {sts.labelOf(cond)}</span>}
                 </button>
               );
             })}
@@ -193,6 +230,7 @@ export function ToothPalmerPicker({ value, onChange, teeth }: {
   /** The patient's charted status, so a decayed or crowned tooth still reads as one. */
   teeth: Record<string, string>;
 }) {
+  const sts = useToothStatuses();
   const toggle = (code: string) =>
     onChange(value.includes(code) ? value.filter((c) => c !== code) : [...value, code]);
 
@@ -201,14 +239,14 @@ export function ToothPalmerPicker({ value, onChange, teeth }: {
       {q.codes.map((code) => {
         const on = value.includes(code);
         const charted = teeth[code];
-        const st = statusStyle(charted ?? "");
+        const st = sts.styleOf(charted ?? "");
         return (
           <button
             key={code}
             type="button"
             onClick={() => toggle(code)}
             aria-pressed={on}
-            title={`Palmer ${code} · ${STATUS_LABEL[charted] ?? "Not charted"}${on ? " · selected" : ""}`}
+            title={`Palmer ${code} · ${charted ? sts.labelOf(charted) : "Not charted"}${on ? " · selected" : ""}`}
             // The STATUS keeps the tooth's own colour whether it is selected or not.
             // Filling a selected tooth solid was hiding the very thing the chart is
             // for: a decayed tooth stopped looking decayed the moment you picked it.
@@ -257,13 +295,13 @@ export function ToothPalmerPicker({ value, onChange, teeth }: {
           to hover each tooth to find out what — a paper chart has always carried its
           legend, and so should this one. */}
       <div className="mt-2.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t pt-2">
-        {TOOTH_STATUSES.map((k) => {
-          const st = statusStyle(k);
+        {sts.list.map((k) => {
+          const st = sts.styleOf(k.code);
           return (
-            <span key={k} className="flex items-center gap-1 text-[10px] text-muted-foreground">
+            <span key={k.code} className="flex items-center gap-1 text-[10px] text-muted-foreground">
               <span className="h-2.5 w-2.5 rounded-sm border"
                 style={{ background: st.background, borderColor: st.borderColor }} />
-              {STATUS_LABEL[k]}
+              {k.label}
             </span>
           );
         })}

@@ -36,7 +36,8 @@ import { useFocusVisit } from "@/features/dental/visit/useFocusVisit";
 import { AllergyDialog } from "@/features/dental/AllergyDialog";
 import { ExaminationCard } from "@/features/dental/ExaminationCard";
 import { invalidateDental } from "@/features/dental/invalidate";
-import { STATUS_LABEL, ToothChart } from "@/features/dental/ToothChart";
+import { ToothChart } from "@/features/dental/ToothChart";
+import { useToothStatuses } from "@/features/dental/toothStatus";
 import { FLAT_TEETH, ToothMultiSelect } from "@/features/dental/shared/pickers";
 import { PriceAgainstList, ServicePicker } from "@/features/dental/shared/ServicePicker";
 import { PatientMessages } from "@/features/messaging/PatientMessages";
@@ -105,6 +106,8 @@ function genPreview(start: string, count: number, unit: string, ivl: number, tot
 }
 
 export function DentalWorkspace({ patientId }: { patientId: string }) {
+  // The conditions, their order and their colours are the clinic's, not this file's.
+  const toothSts = useToothStatuses();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { can } = useAuth();
@@ -263,14 +266,13 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
     // Computed outside the state updater: React may run an updater more than once,
     // and starting a save from inside one is a side effect in a place that promises
     // to be pure.
-    const cycle = ["", "healthy", "decayed", "filled", "extracted", "crown"];
     const prev = draft.current[code] ?? "";
-    const next = cycle[(cycle.indexOf(prev) + 1) % cycle.length];
+    const next = toothSts.next(prev);
     applyTooth(code, next);
     // Tap-to-cycle with autosave means a stray thumb-tap silently rewrites the
     // record. Name what just changed and offer the way back; one toast id per
     // tooth, so re-taps update the toast instead of stacking five of them.
-    toast(`${code} → ${next ? STATUS_LABEL[next] ?? next : "Cleared"}`, {
+    toast(`${code} → ${next ? toothSts.labelOf(next) : "Cleared"}`, {
       id: `tooth-${code}`,
       action: { label: "Undo", onClick: () => applyTooth(code, prev) },
     });

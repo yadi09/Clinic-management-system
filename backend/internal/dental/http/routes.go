@@ -23,6 +23,7 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	view := d.Group("", httpx.RequireAnyPermission("dental.manage", "dental.read"))
 	// The picker every clinician uses, so it reads with the clinical permissions.
 	view.GET("/procedures", h.ListProcedures)
+	view.GET("/tooth-statuses", h.ListToothStatuses)
 
 	// Editing the list is a settings act: whoever runs the clinic, or the dentist.
 	cfg := d.Group("", httpx.RequireAnyPermission("clinic.manage", "dental.manage"))
@@ -30,6 +31,10 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	cfg.PUT("/procedures/:id", h.UpdateProcedure)
 	cfg.DELETE("/procedures/:id", h.DeleteProcedure)
 	cfg.POST("/procedures/reorder", h.ReorderProcedures)
+	cfg.POST("/tooth-statuses", h.CreateToothStatus)
+	cfg.PUT("/tooth-statuses/:id", h.UpdateToothStatus)
+	cfg.DELETE("/tooth-statuses/:id", h.DeleteToothStatus)
+	cfg.POST("/tooth-statuses/reorder", h.ReorderToothStatuses)
 
 	view.GET("/outstanding", h.Outstanding)
 	view.GET("/patients/:id/summary", h.Summary)

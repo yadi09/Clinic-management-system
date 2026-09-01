@@ -182,3 +182,195 @@ func (s *Service) ReorderProcedures(ctx context.Context, ids []uuid.UUID) error 
 	}
 	return nil
 }
+
+/* ----------------------------------------------- the conditions on a chart */
+
+// defaultToothStatuses is what a clinic starts charting with, and the colours its
+// screens already used. Like the procedure list, a starting point rather than a
+// definition.
+var defaultToothStatuses = []dental.ToothStatus{
+	{Code: "healthy", Label: "Healthy", Color: "#0a7c59"},
+	{Code: "decayed", Label: "Decayed", Color: "#c0392b"},
+	{Code: "filled", Label: "Filled", Color: "#1a4fd8"},
+	{Code: "extracted", Label: "Extracted", Color: "#b8b8b8"},
+	{Code: "crown", Label: "Crown", Color: "#f0c040"},
+}
+
+func (s *Service) ListToothStatuses(ctx context.Context, includeRetired bool) ([]dental.ToothStatus, error) {
+	tenantID, _ := actorOf(ctx)
+	out := []dental.ToothStatus{}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		var n int
+		if e := tx.QueryRow(ctx,
+			`SELECT count(*) FROM dental_tooth_statuses WHERE tenant_id=$1 AND deleted_at IS NULL`,
+			tenantID).Scan(&n); e != nil {
+			return e
+		}
+		if n == 0 {
+			for i, d := range defaultToothStatuses {
+				if _, e := tx.Exec(ctx,
+					`INSERT INTO dental_tooth_statuses (tenant_id, code, label, color, sort_order)
+					 VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`,
+					tenantID, d.Code, d.Label, d.Color, i+1); e != nil {
+					return e
+				}
+			}
+		}
+		rows, e := tx.Query(ctx, `
+			SELECT id, code, label, color, sort_order, is_active
+			  FROM dental_tooth_statuses
+			 WHERE tenant_id=$1 AND deleted_at IS NULL AND ($2 OR is_active)
+			 ORDER BY sort_order, lower(label)`, tenantID, includeRetired)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var t dental.ToothStatus
+			if e := rows.Scan(&t.ID, &t.Code, &t.Label, &t.Color, &t.SortOrder, &t.IsActive); e != nil {
+				return e
+			}
+			out = append(out, t)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+// slugCode turns a label into the stable key a chart will store.
+func slugCode(label string) string {
+	var b strings.Builder
+	prevDash := false
+	for _, r := range strings.ToLower(strings.TrimSpace(label)) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			prevDash = false
+		default:
+			if !prevDash && b.Len() > 0 {
+				b.WriteByte('_')
+				prevDash = true
+			}
+		}
+	}
+	return strings.Trim(b.String(), "_")
+}
+
+func (s *Service) CreateToothStatus(ctx context.Context, label, color string) (*dental.ToothStatus, error) {
+	tenantID, _ := actorOf(ctx)
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return nil, apperr.Validation("give the condition a name")
+	}
+	code := slugCode(label)
+	if code == "" {
+		return nil, apperr.Validation("that name has no letters or numbers in it")
+	}
+	if !hexColor(color) {
+		return nil, apperr.Validation("pick a colour")
+	}
+	var t dental.ToothStatus
+	e := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `
+			INSERT INTO dental_tooth_statuses (tenant_id, code, label, color, sort_order)
+			VALUES ($1,$2,$3,$4, coalesce((SELECT max(sort_order) FROM dental_tooth_statuses
+			                                WHERE tenant_id=$1 AND deleted_at IS NULL), 0) + 1)
+			RETURNING id, code, label, color, sort_order, is_active`,
+			tenantID, code, label, color).
+			Scan(&t.ID, &t.Code, &t.Label, &t.Color, &t.SortOrder, &t.IsActive)
+	})
+	if e != nil {
+		if isUniqueViolation(e) {
+			return nil, apperr.Conflict("STATUS_EXISTS", "that condition is already on the chart")
+		}
+		return nil, apperr.Internal(e)
+	}
+	return &t, nil
+}
+
+// UpdateToothStatus changes the label, the colour or whether it is offered.
+//
+// The code is untouched on purpose: it is what every chart already stores, and a
+// settings screen must not be able to reinterpret a dentist's marks after the fact.
+func (s *Service) UpdateToothStatus(ctx context.Context, id uuid.UUID, label, color string, active *bool) error {
+	tenantID, _ := actorOf(ctx)
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return apperr.Validation("give the condition a name")
+	}
+	if !hexColor(color) {
+		return apperr.Validation("pick a colour")
+	}
+	e := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		tag, ex := tx.Exec(ctx, `
+			UPDATE dental_tooth_statuses
+			   SET label=$3, color=$4, is_active=coalesce($5, is_active), updated_at=now()
+			 WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL`,
+			tenantID, id, label, color, active)
+		if ex != nil {
+			return ex
+		}
+		if tag.RowsAffected() == 0 {
+			return apperr.NotFound("STATUS_NOT_FOUND", "no such condition")
+		}
+		return nil
+	})
+	if ae, ok := apperr.As(e); ok {
+		return ae
+	}
+	if e != nil {
+		return apperr.Internal(e)
+	}
+	return nil
+}
+
+// DeleteToothStatus retires a condition from the palette. Teeth already marked with
+// it keep the mark — the chart stores the code, and the code still reads.
+func (s *Service) DeleteToothStatus(ctx context.Context, id uuid.UUID) error {
+	tenantID, _ := actorOf(ctx)
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		_, e := tx.Exec(ctx,
+			`UPDATE dental_tooth_statuses SET deleted_at=now() WHERE tenant_id=$1 AND id=$2`,
+			tenantID, id)
+		return e
+	})
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}
+
+func (s *Service) ReorderToothStatuses(ctx context.Context, ids []uuid.UUID) error {
+	tenantID, _ := actorOf(ctx)
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		for i, id := range ids {
+			if _, e := tx.Exec(ctx,
+				`UPDATE dental_tooth_statuses SET sort_order=$3, updated_at=now()
+				  WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL`, tenantID, id, i+1); e != nil {
+				return e
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
+}
+
+// hexColor keeps a stray value out of a style attribute.
+func hexColor(c string) bool {
+	c = strings.TrimSpace(c)
+	if len(c) != 7 || c[0] != '#' {
+		return false
+	}
+	for _, r := range c[1:] {
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')) {
+			return false
+		}
+	}
+	return true
+}

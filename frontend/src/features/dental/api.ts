@@ -441,3 +441,19 @@ export const deleteProcedure = (id: string) =>
   apiFetch<void>(`/dental/procedures/${id}`, { method: "DELETE" });
 export const reorderProcedures = (ids: string[]) =>
   apiFetch<void>("/dental/procedures/reorder", { method: "POST", body: { ids } });
+
+/* --------------------------------- the conditions this clinic marks on a tooth */
+
+export interface ToothStatusDef {
+  id: string; code: string; label: string; color: string; sort_order: number; is_active: boolean;
+}
+export const listToothStatuses = (all = false) =>
+  apiFetch<ToothStatusDef[]>(`/dental/tooth-statuses${all ? "?all=1" : ""}`);
+export const createToothStatus = (label: string, color: string) =>
+  apiFetch<ToothStatusDef>("/dental/tooth-statuses", { method: "POST", body: { label, color } });
+export const updateToothStatus = (id: string, body: { label: string; color: string; is_active?: boolean }) =>
+  apiFetch<void>(`/dental/tooth-statuses/${id}`, { method: "PUT", body });
+export const deleteToothStatus = (id: string) =>
+  apiFetch<void>(`/dental/tooth-statuses/${id}`, { method: "DELETE" });
+export const reorderToothStatuses = (ids: string[]) =>
+  apiFetch<void>("/dental/tooth-statuses/reorder", { method: "POST", body: { ids } });

@@ -2,30 +2,12 @@
 // upper-left, lower-right, lower-left), 8 teeth each. Tap a tooth to cycle its
 // status; colors mirror the clinic's existing paper chart.
 import { cn } from "@/lib/utils";
+import { useToothStatuses, type ToothStatuses } from "@/features/dental/toothStatus";
 
-// The status cycle a tap walks through (empty → … → empty).
-const CYCLE = ["", "healthy", "decayed", "filled", "extracted", "crown"] as const;
-
-const STATUS_STYLE: Record<string, { background: string; borderColor: string; color: string }> = {
-  "": { background: "#ffffff", borderColor: "#dddde8", color: "#c9c9d4" },
-  healthy: { background: "#e0f9f0", borderColor: "#0a7c59", color: "#0a7c59" },
-  decayed: { background: "#fde8e6", borderColor: "#c0392b", color: "#c0392b" },
-  filled: { background: "#eef2ff", borderColor: "#1a4fd8", color: "#1a4fd8" },
-  extracted: { background: "#f5f5f5", borderColor: "#cccccc", color: "#b8b8b8" },
-  crown: { background: "#fff8e0", borderColor: "#f0c040", color: "#b8860b" },
-};
-
-export const TOOTH_STATUSES = ["healthy", "decayed", "filled", "extracted", "crown"] as const;
-export const STATUS_LABEL: Record<string, string> = {
-  healthy: "Healthy", decayed: "Decayed", filled: "Filled", extracted: "Extracted", crown: "Crown",
-};
-export function statusStyle(status: string) {
-  return STATUS_STYLE[status] ?? STATUS_STYLE[""];
-}
-export function nextStatus(current: string) {
-  const i = CYCLE.indexOf((current || "") as (typeof CYCLE)[number]);
-  return CYCLE[(i + 1) % CYCLE.length];
-}
+// Conditions, their colours and the order a tap walks them all belong to the clinic
+// now — see features/dental/toothStatus. Nothing about a tooth is decided here.
+export { useToothStatuses };
+export type { ToothStatuses };
 
 const UPPER: [string[], string[]] = [
   ["UR8", "UR7", "UR6", "UR5", "UR4", "UR3", "UR2", "UR1"],
@@ -44,17 +26,17 @@ export const TOOTH_QUADRANTS: { label: string; codes: string[] }[] = [
   { label: "Lower left", codes: LOWER[1] },
 ];
 
-function Tooth({ code, status, editable, onToggle }: { code: string; status: string; editable: boolean; onToggle: (c: string) => void }) {
-  const st = statusStyle(status);
+function Tooth({ code, status, editable, onToggle, sts }: { code: string; status: string; editable: boolean; onToggle: (c: string) => void; sts: ToothStatuses }) {
+  const st = sts.styleOf(status);
   return (
     <button
       type="button"
       disabled={!editable}
       onClick={() => onToggle(code)}
-      title={`Palmer ${code}${status ? ` · ${STATUS_LABEL[status] ?? status}` : ""}`}
+      title={`Palmer ${code}${status ? ` · ${sts.labelOf(status)}` : ""}`}
       // title= never surfaces on touch, so the status has to be readable another
       // way — this is also what a screen reader announces per tooth.
-      aria-label={`${code}${status ? ` — ${STATUS_LABEL[status] ?? status}` : ""}`}
+      aria-label={`${code}${status ? ` — ${sts.labelOf(status)}` : ""}`}
       style={st}
       className={cn(
         // 28×32px was fine under a cursor; under a thumb it cycles the neighbour.
@@ -68,7 +50,7 @@ function Tooth({ code, status, editable, onToggle }: { code: string; status: str
   );
 }
 
-function Quadrant({ label, codes, teeth, editable, onToggle, align }: { label: string; codes: string[]; teeth: Record<string, string>; editable: boolean; onToggle: (c: string) => void; align: "end" | "start" }) {
+function Quadrant({ label, codes, teeth, editable, onToggle, align, sts }: { label: string; codes: string[]; teeth: Record<string, string>; editable: boolean; onToggle: (c: string) => void; align: "end" | "start"; sts: ToothStatuses }) {
   return (
     <div>
       {/* Stacked one per row below md, position no longer says which quadrant a
@@ -80,7 +62,7 @@ function Quadrant({ label, codes, teeth, editable, onToggle, align }: { label: s
         "max-md:grid max-md:grid-cols-8 max-md:gap-1 md:flex md:gap-1",
         align === "end" ? "md:justify-end" : "md:justify-start")}>
         {codes.map((c) => (
-          <Tooth key={c} code={c} status={teeth[c] ?? ""} editable={editable} onToggle={onToggle} />
+          <Tooth key={c} code={c} status={teeth[c] ?? ""} editable={editable} onToggle={onToggle} sts={sts} />
         ))}
       </div>
     </div>
@@ -88,25 +70,26 @@ function Quadrant({ label, codes, teeth, editable, onToggle, align }: { label: s
 }
 
 export function ToothChart({ teeth, editable, onToggle }: { teeth: Record<string, string>; editable: boolean; onToggle: (code: string) => void }) {
+  const sts = useToothStatuses();
   return (
     <div className="space-y-2">
       {/* Side by side the two arches need ~520px; a phone gets one quadrant per
           row so eight teeth fill the width instead of shrinking below a finger. */}
       <div className="grid grid-cols-1 gap-x-4 gap-y-2 border-b pb-3 md:grid-cols-2">
-        <Quadrant label="Upper right" codes={UPPER[0]} teeth={teeth} editable={editable} onToggle={onToggle} align="end" />
-        <Quadrant label="Upper left" codes={UPPER[1]} teeth={teeth} editable={editable} onToggle={onToggle} align="start" />
+        <Quadrant label="Upper right" codes={UPPER[0]} teeth={teeth} editable={editable} onToggle={onToggle} align="end" sts={sts} />
+        <Quadrant label="Upper left" codes={UPPER[1]} teeth={teeth} editable={editable} onToggle={onToggle} align="start" sts={sts} />
       </div>
       <div className="grid grid-cols-1 gap-x-4 gap-y-2 md:grid-cols-2">
-        <Quadrant label="Lower right" codes={LOWER[0]} teeth={teeth} editable={editable} onToggle={onToggle} align="end" />
-        <Quadrant label="Lower left" codes={LOWER[1]} teeth={teeth} editable={editable} onToggle={onToggle} align="start" />
+        <Quadrant label="Lower right" codes={LOWER[0]} teeth={teeth} editable={editable} onToggle={onToggle} align="end" sts={sts} />
+        <Quadrant label="Lower left" codes={LOWER[1]} teeth={teeth} editable={editable} onToggle={onToggle} align="start" sts={sts} />
       </div>
       <div className="flex flex-wrap gap-3 pt-1">
-        {TOOTH_STATUSES.map((s) => {
-          const st = statusStyle(s);
+        {sts.list.map((s) => {
+          const st = sts.styleOf(s.code);
           return (
-            <span key={s} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span key={s.code} className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span className="h-3 w-3 rounded-sm border" style={{ background: st.background, borderColor: st.borderColor }} />
-              {STATUS_LABEL[s]}
+              {s.label}
             </span>
           );
         })}

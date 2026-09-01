@@ -1167,3 +1167,99 @@ func (h *Handlers) ReorderProcedures(c *gin.Context) {
 	}
 	httpx.NoContent(c)
 }
+
+/* ------------------------------------------- the conditions on this chart */
+
+func toothStatusDTO(t dental.ToothStatus) gin.H {
+	return gin.H{"id": id.Encode(id.PrefixToothStatus, t.ID), "code": t.Code, "label": t.Label,
+		"color": t.Color, "sort_order": t.SortOrder, "is_active": t.IsActive}
+}
+
+func (h *Handlers) ListToothStatuses(c *gin.Context) {
+	out, err := h.svc.ListToothStatuses(c.Request.Context(), c.Query("all") == "1")
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	rows := make([]gin.H, 0, len(out))
+	for _, t := range out {
+		rows = append(rows, toothStatusDTO(t))
+	}
+	httpx.OK(c, rows)
+}
+
+func (h *Handlers) CreateToothStatus(c *gin.Context) {
+	var r struct {
+		Label string `json:"label"`
+		Color string `json:"color"`
+	}
+	if err := c.ShouldBindJSON(&r); err != nil {
+		httpx.Fail(c, apperr.Validation("give the condition a name and a colour"))
+		return
+	}
+	out, err := h.svc.CreateToothStatus(c.Request.Context(), r.Label, r.Color)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.Created(c, toothStatusDTO(*out))
+}
+
+func (h *Handlers) UpdateToothStatus(c *gin.Context) {
+	sid, err := id.Decode(id.PrefixToothStatus, c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("that id is not valid"))
+		return
+	}
+	var r struct {
+		Label    string `json:"label"`
+		Color    string `json:"color"`
+		IsActive *bool  `json:"is_active"`
+	}
+	if e := c.ShouldBindJSON(&r); e != nil {
+		httpx.Fail(c, apperr.Validation("give the condition a name and a colour"))
+		return
+	}
+	if e := h.svc.UpdateToothStatus(c.Request.Context(), sid, r.Label, r.Color, r.IsActive); e != nil {
+		httpx.Fail(c, e)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+func (h *Handlers) DeleteToothStatus(c *gin.Context) {
+	sid, err := id.Decode(id.PrefixToothStatus, c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("that id is not valid"))
+		return
+	}
+	if e := h.svc.DeleteToothStatus(c.Request.Context(), sid); e != nil {
+		httpx.Fail(c, e)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+func (h *Handlers) ReorderToothStatuses(c *gin.Context) {
+	var r struct {
+		IDs []string `json:"ids"`
+	}
+	if err := c.ShouldBindJSON(&r); err != nil {
+		httpx.Fail(c, apperr.Validation("send the order"))
+		return
+	}
+	ids := make([]uuid.UUID, 0, len(r.IDs))
+	for _, raw := range r.IDs {
+		u, e := id.Decode(id.PrefixToothStatus, raw)
+		if e != nil {
+			httpx.Fail(c, apperr.Validation("that id is not valid"))
+			return
+		}
+		ids = append(ids, u)
+	}
+	if e := h.svc.ReorderToothStatuses(c.Request.Context(), ids); e != nil {
+		httpx.Fail(c, e)
+		return
+	}
+	httpx.NoContent(c)
+}

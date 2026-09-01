@@ -11,7 +11,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/app/auth-context";
-import { createProcedure, deleteProcedure, listProcedures, reorderProcedures, updateProcedure } from "@/features/dental/api";
+import { createProcedure, deleteProcedure, listProcedures, reorderProcedures, updateProcedure,
+  createToothStatus, deleteToothStatus, listToothStatuses, reorderToothStatuses, updateToothStatus } from "@/features/dental/api";
 import { changeEmailApi, changePasswordApi, signOutOtherDevicesApi } from "@/features/auth/api";
 import {
   branchUsage,
@@ -69,7 +70,7 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { AppError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
-type SectionKey = "account" | "profile" | "locations" | "flow" | "payments" | "vitals" | "diagnoses" | "drugs" | "procedures";
+type SectionKey = "account" | "profile" | "locations" | "flow" | "payments" | "vitals" | "diagnoses" | "drugs" | "procedures" | "toothconditions";
 const SECTIONS: { group: string; items: { key: SectionKey; label: string; icon: LucideIcon; flag?: string }[] }[] = [
   {
     group: "General",
@@ -95,6 +96,7 @@ const SECTIONS: { group: string; items: { key: SectionKey; label: string; icon: 
       // Dental only: the list of what this practice does. Hidden elsewhere by
       // the same flag that hides the chart and the treatment plan.
       { key: "procedures", label: "Dental procedures", icon: Stethoscope, flag: "dental" },
+      { key: "toothconditions", label: "Tooth conditions", icon: ClipboardList, flag: "dental" },
     ],
   },
 ];
@@ -154,6 +156,7 @@ export function SettingsPage() {
           {active === "diagnoses" && <DiagnosisCatalogCard manage={manage} />}
           {active === "drugs" && <DrugLibraryCard manage={manage} />}
           {active === "procedures" && <DentalProceduresCard manage={manage} />}
+          {active === "toothconditions" && <ToothConditionsCard manage={manage} />}
         </div>
       </div>
     </div>
@@ -1579,6 +1582,119 @@ function DentalProceduresCard({ manage }: { manage: boolean }) {
                         </Button>
                         <Button size="sm" variant="ghost" className="text-destructive"
                           onClick={() => run(() => deleteProcedure(p.id))}>Remove</Button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * The conditions this clinic marks on a tooth.
+ *
+ * Five were compiled in — healthy, decayed, filled, extracted, crown — so a practice
+ * charting "root treated" or "implant" had nowhere to put them. The order here is
+ * the order a tap cycles through on the chart, which is why moving a row matters:
+ * put the ones you mark most often first and charting a mouth takes fewer taps.
+ *
+ * A condition's internal code is fixed when it is created and never changes, so
+ * renaming "Filled" to "Restored" relabels every legend and leaves every chart
+ * exactly as the dentist marked it. Removing one is equally safe: a tooth already
+ * marked keeps its mark.
+ */
+function ToothConditionsCard({ manage }: { manage: boolean }) {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["tooth-statuses-all"], queryFn: () => listToothStatuses(true) });
+  const [label, setLabel] = useState("");
+  const [color, setColor] = useState("#0a7c59");
+  const [editing, setEditing] = useState<{ id: string; label: string; color: string } | null>(null);
+  const [err, setErr] = useState("");
+  const done = () => {
+    qc.invalidateQueries({ queryKey: ["tooth-statuses-all"] });
+    qc.invalidateQueries({ queryKey: ["tooth-statuses"] });
+  };
+  const run = (fn: () => Promise<unknown>) =>
+    fn().then(() => { setErr(""); done(); }).catch((e: Error) => setErr(e.message));
+
+  const rows = q.data ?? [];
+  const move = (i: number, by: number) => {
+    const next = [...rows];
+    const j = i + by;
+    if (j < 0 || j >= next.length) return;
+    [next[i], next[j]] = [next[j], next[i]];
+    run(() => reorderToothStatuses(next.map((r) => r.id)));
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Tooth conditions</CardTitle>
+        <CardDescription>
+          What you can mark on a tooth, and the colour it shows in. This order is the
+          order a tap cycles through on the chart. Renaming or removing one never changes
+          a tooth already marked.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {err && <p className="text-sm text-destructive">{err}</p>}
+
+        {manage && (
+          <div className="flex flex-wrap items-center gap-2">
+            <input type="color" value={color} onChange={(e) => setColor(e.target.value)}
+              className="h-9 w-12 cursor-pointer rounded-md border bg-card p-1" aria-label="Colour" />
+            <Input className="max-w-xs" placeholder="Add a condition — e.g. Root treated"
+              value={label} onChange={(e) => setLabel(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && label.trim()) { run(() => createToothStatus(label, color)); setLabel(""); } }} />
+            <Button disabled={!label.trim()} onClick={() => { run(() => createToothStatus(label, color)); setLabel(""); }}>
+              Add
+            </Button>
+          </div>
+        )}
+
+        {q.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : (
+          <ul className="divide-y rounded-md border">
+            {rows.map((t, i) => (
+              <li key={t.id} className="flex flex-wrap items-center gap-2 p-2.5">
+                {editing?.id === t.id ? (
+                  <>
+                    <input type="color" value={editing.color} className="h-9 w-12 cursor-pointer rounded-md border bg-card p-1"
+                      onChange={(e) => setEditing({ ...editing, color: e.target.value })} aria-label="Colour" />
+                    <Input className="max-w-xs" value={editing.label} autoFocus
+                      onChange={(e) => setEditing({ ...editing, label: e.target.value })} />
+                    <Button size="sm" onClick={() => { run(() => updateToothStatus(t.id, { label: editing.label, color: editing.color })); setEditing(null); }}>
+                      Save
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
+                  </>
+                ) : (
+                  <>
+                    {/* The swatch as it appears on a tooth, not as a raw colour chip:
+                        what the clinic is choosing is how a tooth will look. */}
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border text-xs font-semibold"
+                      style={{ background: `color-mix(in srgb, ${t.color} 14%, white)`, borderColor: t.color, color: t.color }}>
+                      6
+                    </span>
+                    <span className={`flex-1 text-sm ${t.is_active ? "" : "text-muted-foreground line-through"}`}>{t.label}</span>
+                    {!t.is_active && <Badge variant="outline">retired</Badge>}
+                    {manage && (
+                      <div className="flex items-center gap-1">
+                        <Button size="sm" variant="ghost" className="px-2" title="Move up" onClick={() => move(i, -1)}>↑</Button>
+                        <Button size="sm" variant="ghost" className="px-2" title="Move down" onClick={() => move(i, 1)}>↓</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditing({ id: t.id, label: t.label, color: t.color })}>Edit</Button>
+                        <Button size="sm" variant="ghost"
+                          onClick={() => run(() => updateToothStatus(t.id, { label: t.label, color: t.color, is_active: !t.is_active }))}>
+                          {t.is_active ? "Retire" : "Bring back"}
+                        </Button>
+                        <Button size="sm" variant="ghost" className="text-destructive"
+                          onClick={() => run(() => deleteToothStatus(t.id))}>Remove</Button>
                       </div>
                     )}
                   </>
