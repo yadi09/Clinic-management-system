@@ -375,12 +375,12 @@ func (s *Service) RaiseChargeBatch(ctx context.Context, in billing.ChargeBatchIn
 		if pending > 0 {
 			return apperr.Conflict("PATIENT_HAS_PENDING_CHARGES", "this patient already has unpaid charges at the cashier — settle or void them before registering the visit again")
 		}
-		active, e := q.CountActiveQueueByPatient(ctx, billingdb.CountActiveQueueByPatientParams{TenantID: tenantID, PatientID: in.PatientID})
+		active, e := activeVisitToday(ctx, tx, tenantID, in.PatientID)
 		if e != nil {
 			return e
 		}
 		if active > 0 {
-			return apperr.Conflict("PATIENT_HAS_ACTIVE_VISIT", "this patient is already in an active visit — finish or close it before registering again")
+			return apperr.Conflict("PATIENT_HAS_ACTIVE_VISIT", "this patient is already in an active visit today — finish or close it before registering again")
 		}
 		branch, dept := in.BranchID, in.DepartmentID
 		for _, it := range in.Items {
@@ -1399,6 +1399,34 @@ func parseMoneyB(s string) float64 {
 
 func money2(f float64) string { return strconv.FormatFloat(f, 'f', 2, 64) }
 
+// activeVisitToday counts the patient's live queue entries for the clinic's TODAY.
+//
+// It used to count every open entry ever recorded, and that one missing condition
+// silently swallowed patients. A queue entry is only closed when somebody finishes
+// the visit; one abandoned at the end of a busy day stays 'waiting' for ever. From
+// then on the patient is permanently "already in the queue": reception takes their
+// money, the charge is raised and settled, and the auto-advance after payment sees a
+// live entry from eleven days ago and returns without enqueueing them. Nothing on
+// any screen says why — the desk has collected, and the chair is empty.
+//
+// Thirty-six such rows existed across four clinics when this was found, the oldest
+// from July, and every one of those patients was unreachable.
+//
+// The clinic's day is Addis, not UTC — the same boundary the Z-report, the deposit
+// ageing and the bed nights are held to. An entry from yesterday is not a visit in
+// progress; it is a row nobody closed.
+func activeVisitToday(ctx context.Context, tx pgx.Tx, tenantID, patientID uuid.UUID) (int, error) {
+	var n int
+	err := tx.QueryRow(ctx, `
+		SELECT count(*)::int FROM queue_entries
+		 WHERE tenant_id = $1 AND patient_id = $2 AND deleted_at IS NULL
+		   AND state NOT IN ('done','no_show')
+		   AND (enqueued_at AT TIME ZONE 'Africa/Addis_Ababa')::date
+		     = (now()       AT TIME ZONE 'Africa/Addis_Ababa')::date`,
+		tenantID, patientID).Scan(&n)
+	return n, err
+}
+
 // advanceIfPaid enqueues the patient (auto-advance after payment) once a routed
 // visit charge is settled/waived AND nothing is still owed — so multiple line-items
 // (e.g. registration + consultation) advance the patient exactly once, after the
@@ -1432,12 +1460,12 @@ func advanceIfPaid(ctx context.Context, tx pgx.Tx, q *billingdb.Queries, tenantI
 	if pending > 0 {
 		return nil // this visit is not paid for yet
 	}
-	active, e := q.CountActiveQueueByPatient(ctx, billingdb.CountActiveQueueByPatientParams{TenantID: tenantID, PatientID: patientID})
+	active, e := activeVisitToday(ctx, tx, tenantID, patientID)
 	if e != nil {
 		return e
 	}
 	if active > 0 {
-		return nil // already in the queue
+		return nil // already in the queue today
 	}
 	stage := "with_doctor"
 	if toTriage {
