@@ -23,6 +23,34 @@ type ProvisionInput struct {
 	Modules       map[string]bool // optional module entitlements (e.g. {"laboratory":true,"pharmacy":false})
 }
 
+// Feature is one paid capability the system actually gates. The catalogue is
+// deliberately limited to those: an entry nothing enforces would show in the
+// console as excluded and keep working anyway.
+type Feature struct {
+	Code       string `json:"code"`
+	Name       string `json:"name"`
+	Detail     string `json:"detail,omitempty"`
+	Category   string `json:"category"`
+	ClinicType string `json:"clinic_type"`
+}
+
+// PlanFeatureSet is what one plan includes. Configured false means nobody has
+// described this plan yet, and it therefore gates nothing.
+type PlanFeatureSet struct {
+	Configured bool            `json:"configured"`
+	Features   map[string]bool `json:"features"`
+}
+
+// ClinicEntitlements is one clinic's feature position: what its plan says, and
+// any exception recorded against the clinic itself.
+type ClinicEntitlements struct {
+	PlanName       string            `json:"plan_name"`
+	PlanConfigured bool              `json:"plan_configured"`
+	FromPlan       map[string]bool   `json:"from_plan"`
+	Override       map[string]bool   `json:"override"`
+	Note           map[string]string `json:"note"`
+}
+
 // Plan is a subscription tier the super-admin manages. A nil limit = unlimited.
 type Plan struct {
 	ID               uuid.UUID `json:"-"`
@@ -34,7 +62,9 @@ type Plan struct {
 	StorageGB        *int      `json:"storage_gb"`
 	PatientLimit     *int      `json:"patient_limit"`
 	ImagesPerPatient *int      `json:"images_per_patient"`
+	SMSMonthly       *int      `json:"sms_monthly"` // messages/month on OUR account; 0 = none included
 	PriceMonthly     string    `json:"price_monthly"`
+	Status           string    `json:"status"` // active | retired (retired: kept for whoever is on it, never offered again)
 	InUse            int       `json:"in_use"` // how many clinics are on this plan
 }
 
@@ -49,6 +79,7 @@ type PlanInput struct {
 	PatientLimit     *int
 	ImagesPerPatient *int
 	PriceMonthly     string
+	SMSMonthly       *int
 }
 
 // ClinicPlanInput assigns a clinic to a plan and sets its per-clinic overrides.
@@ -201,6 +232,13 @@ type Service interface {
 	ListPlans(ctx context.Context) ([]Plan, error)
 	CreatePlan(ctx context.Context, in PlanInput) (*Plan, error)
 	UpdatePlan(ctx context.Context, id uuid.UUID, in PlanInput) error
+
+	// What a plan includes, and one clinic's exception to it.
+	Features(ctx context.Context) ([]Feature, error)
+	PlanFeatures(ctx context.Context, planID uuid.UUID) (*PlanFeatureSet, error)
+	SetPlanFeatures(ctx context.Context, planID uuid.UUID, features map[string]bool) error
+	ClinicEntitlements(ctx context.Context, tenantID uuid.UUID) (*ClinicEntitlements, error)
+	SetClinicEntitlement(ctx context.Context, tenantID uuid.UUID, feature string, state *bool, note string) error
 	SetClinicPlan(ctx context.Context, tenantID uuid.UUID, in ClinicPlanInput) error
 	ClinicUsage(ctx context.Context, tenantID uuid.UUID) (*ClinicUsage, error)
 	// CaptureLead stores a public partner-page sign-up (unauthenticated).

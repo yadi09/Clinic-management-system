@@ -191,6 +191,10 @@ type AudienceFilter struct {
 	Search string
 	// SeenWithinDays limits to patients seen recently. 0 = no limit.
 	SeenWithinDays int
+	// NotSeenForDays is the recall list: patients whose last visit is older than
+	// this, plus those with no visit at all — the six-month check-up nobody
+	// booked. 0 = no limit. A plan feature ("Recall lists — who has not been in").
+	NotSeenForDays int
 	// OwingOnly limits to patients with an unpaid balance.
 	OwingOnly bool
 	Limit     int

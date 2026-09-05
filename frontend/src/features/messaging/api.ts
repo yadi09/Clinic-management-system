@@ -175,10 +175,11 @@ export function saveRule(body: {
 export function messageVariables() {
   return apiFetch<MessageVariable[]>("/messaging/variables");
 }
-export function messageAudience(p: { q?: string; seen_days?: number; owing?: boolean } = {}) {
+export function messageAudience(p: { q?: string; seen_days?: number; not_seen_days?: number; owing?: boolean } = {}) {
   const s = new URLSearchParams();
   if (p.q) s.set("q", p.q);
   if (p.seen_days) s.set("seen_days", String(p.seen_days));
+  if (p.not_seen_days) s.set("not_seen_days", String(p.not_seen_days));
   if (p.owing) s.set("owing", "1");
   const q = s.toString();
   return apiFetch<AudienceRow[]>(`/messaging/audience${q ? `?${q}` : ""}`);

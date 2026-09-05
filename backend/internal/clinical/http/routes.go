@@ -38,7 +38,8 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	rg.GET("/patients/:id/story", httpx.RequirePermission("encounter.manage"), h.Story)
 	enc.GET("/board", h.MyBoard) // doctor's "My day": in-progress + done today
 	enc.GET("/:id", h.GetWorkspace)
-	enc.POST("/:id/assist", h.Assist) // AI clinical decision-support co-pilot
+	// AI clinical assist: Group and above, or sold as an add-on on Practice.
+	enc.POST("/:id/assist", httpx.RequireFlag("ai_assist"), h.Assist)
 	enc.PUT("/:id/note", h.SaveNote)
 	enc.POST("/:id/diagnoses", h.AddDiagnosis)
 	enc.DELETE("/:id/diagnoses/:dxId", h.RemoveDiagnosis)

@@ -299,7 +299,8 @@ func planDTO(p platform.Plan) gin.H {
 	return gin.H{
 		"id": id.Encode(id.PrefixPlan, p.ID), "code": p.Code, "name": p.Name, "clinic_type": p.ClinicType,
 		"branch_limit": p.BranchLimit, "user_limit": p.UserLimit, "storage_gb": p.StorageGB,
-		"patient_limit": p.PatientLimit, "images_per_patient": p.ImagesPerPatient, "price_monthly": p.PriceMonthly, "in_use": p.InUse,
+		"patient_limit": p.PatientLimit, "images_per_patient": p.ImagesPerPatient, "sms_monthly": p.SMSMonthly,
+		"price_monthly": p.PriceMonthly, "status": p.Status, "in_use": p.InUse,
 	}
 }
 
@@ -312,13 +313,15 @@ type planReq struct {
 	StorageGB        *int   `json:"storage_gb"`
 	PatientLimit     *int   `json:"patient_limit"`
 	ImagesPerPatient *int   `json:"images_per_patient"`
+	SMSMonthly       *int   `json:"sms_monthly"`
 	PriceMonthly     string `json:"price_monthly"`
 }
 
 func (r planReq) toInput() platform.PlanInput {
 	return platform.PlanInput{
 		Code: r.Code, Name: r.Name, ClinicType: r.ClinicType, BranchLimit: r.BranchLimit, UserLimit: r.UserLimit,
-		StorageGB: r.StorageGB, PatientLimit: r.PatientLimit, ImagesPerPatient: r.ImagesPerPatient, PriceMonthly: r.PriceMonthly,
+		StorageGB: r.StorageGB, PatientLimit: r.PatientLimit, ImagesPerPatient: r.ImagesPerPatient,
+		SMSMonthly: r.SMSMonthly, PriceMonthly: r.PriceMonthly,
 	}
 }
 
@@ -411,4 +414,92 @@ func (h *Handlers) GetClinicUsage(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, u)
+}
+
+// --- plan features & per-clinic entitlements ----------------------------------
+
+// Features handles GET /platform/features — the catalogue of what can be gated.
+func (h *Handlers) Features(c *gin.Context) {
+	out, err := h.svc.Features(c.Request.Context())
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// PlanFeatures handles GET /platform/plans/:id/features.
+func (h *Handlers) PlanFeatures(c *gin.Context) {
+	pid, derr := id.Decode(id.PrefixPlan, c.Param("id"))
+	if derr != nil {
+		httpx.Fail(c, apperr.Validation("invalid plan id"))
+		return
+	}
+	out, err := h.svc.PlanFeatures(c.Request.Context(), pid)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// SetPlanFeatures handles PUT /platform/plans/:id/features.
+func (h *Handlers) SetPlanFeatures(c *gin.Context) {
+	pid, err := id.Decode(id.PrefixPlan, c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("invalid plan id"))
+		return
+	}
+	var req struct {
+		Features map[string]bool `json:"features"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("features are required"))
+		return
+	}
+	if err := h.svc.SetPlanFeatures(c.Request.Context(), pid, req.Features); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+// ClinicEntitlements handles GET /platform/clinics/:id/entitlements.
+func (h *Handlers) ClinicEntitlements(c *gin.Context) {
+	tid, derr := id.Decode(id.PrefixTenant, c.Param("id"))
+	if derr != nil {
+		httpx.Fail(c, apperr.Validation("invalid clinic id"))
+		return
+	}
+	out, err := h.svc.ClinicEntitlements(c.Request.Context(), tid)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// SetClinicEntitlement handles PUT /platform/clinics/:id/entitlements — one
+// feature at a time, because each is a commercial decision with a reason.
+func (h *Handlers) SetClinicEntitlement(c *gin.Context) {
+	tid, err := id.Decode(id.PrefixTenant, c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("invalid clinic id"))
+		return
+	}
+	var req struct {
+		Feature string `json:"feature"`
+		// nil clears the exception and lets the plan decide again.
+		State *bool  `json:"state"`
+		Note  string `json:"note"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Feature) == "" {
+		httpx.Fail(c, apperr.Validation("a feature is required"))
+		return
+	}
+	if err := h.svc.SetClinicEntitlement(c.Request.Context(), tid, strings.TrimSpace(req.Feature), req.State, req.Note); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
 }

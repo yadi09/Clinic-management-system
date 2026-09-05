@@ -18,6 +18,16 @@ export interface NavItem {
   module?: string;
   /** A flag that HIDES this item — a way of working the clinic doesn't use. */
   hideWhen?: string;
+  /**
+   * Permission that keeps a NOT-entitled item visible, so its page can explain
+   * what the feature is and which plan includes it.
+   *
+   * Reception should never see a link it cannot use — that is a dead end in the
+   * middle of a shift. The owner is the person who would buy the thing, so for
+   * them the link stays and the page makes the case. Nobody is shown a feature
+   * they can neither use nor buy.
+   */
+  upsell?: string;
   /** live alert badge to render next to the item (count fetched in the shell) */
   badge?: "labInbox";
 }
@@ -69,7 +79,7 @@ export const navSections: NavSection[] = [
     heading: "Billing",
     items: [
       { to: "/cashier", label: "Cashier", icon: BadgeDollarSign, perm: ["payment.collect"] },
-      { to: "/finance", label: "Finance", icon: Wallet, perm: ["billing.manage"] },
+      { to: "/finance", label: "Finance", icon: Wallet, perm: ["billing.manage"], module: "finance_advanced", upsell: "clinic.manage" },
       { to: "/billing/services", label: "Service catalog", icon: ReceiptText, perm: ["billing.manage"] },
     ],
   },
@@ -82,7 +92,7 @@ export const navSections: NavSection[] = [
   },
   {
     heading: "Reporting",
-    items: [{ to: "/reporting/dhis2", label: "Ministry report", icon: Landmark, perm: ["clinic.manage"] }],
+    items: [{ to: "/reporting/dhis2", label: "Ministry report", icon: Landmark, perm: ["clinic.manage"], module: "dhis2", upsell: "clinic.manage" }],
   },
   {
     heading: "Administration",
@@ -90,7 +100,7 @@ export const navSections: NavSection[] = [
       // Sits under Administration rather than Billing: it is how the clinic talks
       // to patients, and the person who decides that is the person who runs the
       // clinic — not whoever reconciles the till.
-      { to: "/messages", label: "Patient messages", icon: MessageSquare, perm: ["message.send", "message.manage"] },
+      { to: "/messages", label: "Patient messages", icon: MessageSquare, perm: ["message.send", "message.manage"], module: "messaging", upsell: "clinic.manage" },
       { to: "/users", label: "Staff", icon: UserCog, perm: ["user.read"] },
       { to: "/settings", label: "Settings", icon: Settings, perm: ["clinic.manage"] },
     ],
@@ -120,7 +130,8 @@ export function visibleNav(
       ...s,
       items: s.items.filter((i) => {
         if (i.perm && !i.perm.some((p) => can(p))) return false;
-        if (i.module && !flagOn(i.module)) return false;
+        // Not entitled: gone, unless this is the person who could buy it.
+        if (i.module && !flagOn(i.module) && !(i.upsell && can(i.upsell))) return false;
         return !(i.hideWhen && flagOn(i.hideWhen));
       }),
     }))

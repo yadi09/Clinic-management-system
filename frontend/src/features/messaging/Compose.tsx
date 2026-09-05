@@ -23,17 +23,25 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { AppError } from "@/lib/api-client";
+import { useAuth } from "@/app/auth-context";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import {
   messageAudience, previewMessage, sendCampaign,
   type AudienceRow, type MessagingSettings,
 } from "@/features/messaging/api";
 
+// One question with two directions. A negative value is the recall list — "has
+// NOT been in for this long" — which is a different sale (Practice and above) and
+// a different sort order, but the same question a dentist is asking: when did I
+// last see this person.
 const SEEN = [
   { value: "0", label: "Any time" },
-  { value: "90", label: "Last 3 months" },
-  { value: "180", label: "Last 6 months" },
-  { value: "365", label: "Last year" },
+  { value: "90", label: "Seen in the last 3 months" },
+  { value: "180", label: "Seen in the last 6 months" },
+  { value: "365", label: "Seen in the last year" },
+  { value: "-180", label: "Not been in for 6 months", recall: true },
+  { value: "-365", label: "Not been in for a year", recall: true },
+  { value: "-730", label: "Not been in for 2 years", recall: true },
 ];
 
 // Why a patient cannot be reached, in words a receptionist can act on.
@@ -45,6 +53,10 @@ const ISSUE: Record<string, string> = {
 
 export function ComposeTab({ settings }: { settings?: MessagingSettings }) {
   const qc = useQueryClient();
+  const { flagOn } = useAuth();
+  // Recall lists are their own line on the price list, so the options that ask
+  // "who has NOT been in" only appear for a clinic paying for them.
+  const recalls = flagOn("recalls");
   const { ask, dialog } = useConfirmDialog();
   const [seen, setSeen] = useState("180");
   const [owing, setOwing] = useState(false);
@@ -54,11 +66,13 @@ export function ComposeTab({ settings }: { settings?: MessagingSettings }) {
   const [body, setBody] = useState("");
   const [when, setWhen] = useState("");
 
+  const days = Number(seen) || 0;
   const audience = useQuery({
     queryKey: ["message-audience", seen, owing, q],
     queryFn: () => messageAudience({
       q: q.trim() || undefined,
-      seen_days: Number(seen) || undefined,
+      seen_days: days > 0 ? days : undefined,
+      not_seen_days: days < 0 ? -days : undefined,
       owing: owing || undefined,
     }),
   });
@@ -111,11 +125,13 @@ export function ComposeTab({ settings }: { settings?: MessagingSettings }) {
         <CardContent className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="space-y-1.5">
-              <Label>Seen</Label>
+              <Label>Last visit</Label>
               <Select value={seen} onValueChange={(v) => { setSeen(v); setDropped({}); }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {SEEN.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+                  {SEEN.filter((s) => !s.recall || recalls).map((s) => (
+                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -132,6 +148,13 @@ export function ComposeTab({ settings }: { settings?: MessagingSettings }) {
               <span>Only patients who owe money</span>
             </label>
           </div>
+
+          {days < 0 && (
+            <p className="text-xs text-muted-foreground">
+              Recall list — whoever has been away longest is at the top, and patients who have never
+              been in are included.
+            </p>
+          )}
 
           <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
             <Users className="h-4 w-4 text-muted-foreground" />

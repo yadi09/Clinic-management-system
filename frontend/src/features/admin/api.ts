@@ -55,12 +55,22 @@ export interface UsageLine {
   used: number;
   limit: number; // -1 = unlimited; storage in bytes, others are counts
 }
+export interface PlanFeature {
+  code: string;
+  name: string;
+  detail?: string;
+  category: string;
+  included: boolean;
+  /** Active plans of this clinic's type that include it — only when missing. */
+  on_plans?: string[];
+}
 export interface PlanUsage {
   plan_name: string;
   storage: UsageLine;
   patients: UsageLine;
   users: UsageLine;
   branches: UsageLine;
+  features: PlanFeature[];
 }
 export function planUsage() {
   return apiFetch<PlanUsage>("/org/plan-usage");

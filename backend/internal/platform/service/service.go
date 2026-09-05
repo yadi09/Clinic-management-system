@@ -414,9 +414,9 @@ func generatePassword() string {
 func (s *Service) ListPlans(ctx context.Context) ([]platform.Plan, error) {
 	rows, err := s.db.Pool.Query(ctx,
 		`SELECT p.id, p.code, p.name, p.clinic_type, p.branch_limit, p.user_limit, p.storage_gb, p.patient_limit, p.images_per_patient,
-		        coalesce(p.price_monthly,0)::text,
+		        p.sms_monthly, coalesce(p.price_monthly,0)::text, p.status,
 		        (SELECT count(*) FROM tenants t WHERE t.plan_id = p.id AND t.deleted_at IS NULL)::int
-		 FROM plans p ORDER BY p.clinic_type, coalesce(p.price_monthly,0), p.name`)
+		 FROM plans p ORDER BY p.status, p.clinic_type, coalesce(p.price_monthly,0), p.name`)
 	if err != nil {
 		return nil, apperr.Internal(err)
 	}
@@ -424,7 +424,7 @@ func (s *Service) ListPlans(ctx context.Context) ([]platform.Plan, error) {
 	out := []platform.Plan{}
 	for rows.Next() {
 		var p platform.Plan
-		if e := rows.Scan(&p.ID, &p.Code, &p.Name, &p.ClinicType, &p.BranchLimit, &p.UserLimit, &p.StorageGB, &p.PatientLimit, &p.ImagesPerPatient, &p.PriceMonthly, &p.InUse); e != nil {
+		if e := rows.Scan(&p.ID, &p.Code, &p.Name, &p.ClinicType, &p.BranchLimit, &p.UserLimit, &p.StorageGB, &p.PatientLimit, &p.ImagesPerPatient, &p.SMSMonthly, &p.PriceMonthly, &p.Status, &p.InUse); e != nil {
 			return nil, apperr.Internal(e)
 		}
 		out = append(out, p)
@@ -464,12 +464,12 @@ func (s *Service) CreatePlan(ctx context.Context, in platform.PlanInput) (*platf
 	}
 	var id uuid.UUID
 	if e := s.db.Pool.QueryRow(ctx,
-		`INSERT INTO plans (code, name, clinic_type, branch_limit, user_limit, storage_gb, patient_limit, images_per_patient, price_monthly)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::numeric) RETURNING id`,
-		code, name, clinicType, in.BranchLimit, in.UserLimit, in.StorageGB, in.PatientLimit, in.ImagesPerPatient, priceOr0(in.PriceMonthly)).Scan(&id); e != nil {
+		`INSERT INTO plans (code, name, clinic_type, branch_limit, user_limit, storage_gb, patient_limit, images_per_patient, sms_monthly, price_monthly)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::numeric) RETURNING id`,
+		code, name, clinicType, in.BranchLimit, in.UserLimit, in.StorageGB, in.PatientLimit, in.ImagesPerPatient, in.SMSMonthly, priceOr0(in.PriceMonthly)).Scan(&id); e != nil {
 		return nil, apperr.Internal(e)
 	}
-	return &platform.Plan{ID: id, Code: code, Name: name, ClinicType: clinicType, BranchLimit: in.BranchLimit, UserLimit: in.UserLimit, StorageGB: in.StorageGB, PatientLimit: in.PatientLimit, ImagesPerPatient: in.ImagesPerPatient, PriceMonthly: priceOr0(in.PriceMonthly)}, nil
+	return &platform.Plan{ID: id, Code: code, Name: name, ClinicType: clinicType, BranchLimit: in.BranchLimit, UserLimit: in.UserLimit, StorageGB: in.StorageGB, PatientLimit: in.PatientLimit, ImagesPerPatient: in.ImagesPerPatient, SMSMonthly: in.SMSMonthly, PriceMonthly: priceOr0(in.PriceMonthly), Status: "active"}, nil
 }
 
 func (s *Service) UpdatePlan(ctx context.Context, id uuid.UUID, in platform.PlanInput) error {
@@ -482,9 +482,9 @@ func (s *Service) UpdatePlan(ctx context.Context, id uuid.UUID, in platform.Plan
 		return apperr.Validation("clinic type must be all, general, or dental")
 	}
 	ct, err := s.db.Pool.Exec(ctx,
-		`UPDATE plans SET name=$2, clinic_type=$3, branch_limit=$4, user_limit=$5, storage_gb=$6, patient_limit=$7, images_per_patient=$8, price_monthly=$9::numeric, updated_at=now()
+		`UPDATE plans SET name=$2, clinic_type=$3, branch_limit=$4, user_limit=$5, storage_gb=$6, patient_limit=$7, images_per_patient=$8, sms_monthly=$9, price_monthly=$10::numeric, updated_at=now()
 		 WHERE id=$1`,
-		id, name, clinicType, in.BranchLimit, in.UserLimit, in.StorageGB, in.PatientLimit, in.ImagesPerPatient, priceOr0(in.PriceMonthly))
+		id, name, clinicType, in.BranchLimit, in.UserLimit, in.StorageGB, in.PatientLimit, in.ImagesPerPatient, in.SMSMonthly, priceOr0(in.PriceMonthly))
 	if err != nil {
 		return apperr.Internal(err)
 	}
@@ -498,8 +498,8 @@ func (s *Service) UpdatePlan(ctx context.Context, id uuid.UUID, in platform.Plan
 func (s *Service) SetClinicPlan(ctx context.Context, tenantID uuid.UUID, in platform.ClinicPlanInput) error {
 	// A clinic can only be put on a plan meant for its type (or a universal 'all'
 	// plan). This is the server-side guard against cross-type plan assignment.
-	var planType, tenantType string
-	if e := s.db.Pool.QueryRow(ctx, `SELECT clinic_type FROM plans WHERE id = $1`, in.PlanID).Scan(&planType); e != nil {
+	var planType, planStatus, tenantType string
+	if e := s.db.Pool.QueryRow(ctx, `SELECT clinic_type, status FROM plans WHERE id = $1`, in.PlanID).Scan(&planType, &planStatus); e != nil {
 		if errors.Is(e, pgx.ErrNoRows) {
 			return apperr.Validation("unknown plan")
 		}
@@ -513,6 +513,11 @@ func (s *Service) SetClinicPlan(ctx context.Context, tenantID uuid.UUID, in plat
 	}
 	if planType != "all" && planType != tenantType {
 		return apperr.Validation("that plan isn't available for this clinic type")
+	}
+	// A retired plan keeps working for whoever is already on it, but nobody new
+	// joins it — otherwise the price list quietly grows a tier again.
+	if planStatus == "retired" {
+		return apperr.Validation("that plan has been retired — pick a current one")
 	}
 	ct, err := s.db.Pool.Exec(ctx,
 		`UPDATE tenants SET plan_id=$2, storage_gb_override=$3, patient_limit_override=$4, user_limit_override=$5, branch_limit_override=$6, updated_at=now()

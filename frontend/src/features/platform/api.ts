@@ -28,6 +28,44 @@ async function pfetch<T>(path: string, opts: { method?: string; body?: unknown }
   return (json.data ?? json) as T;
 }
 
+export interface Feature {
+  code: string;
+  name: string;
+  detail?: string;
+  category: string;
+  clinic_type: string;
+}
+export interface PlanFeatureSet {
+  /** false when nobody has described this plan yet — it then gates nothing. */
+  configured: boolean;
+  features: Record<string, boolean>;
+}
+export interface ClinicEntitlements {
+  plan_name: string;
+  plan_configured: boolean;
+  from_plan: Record<string, boolean>;
+  override: Record<string, boolean>;
+  note: Record<string, string>;
+}
+export function listFeatures() {
+  return pfetch<Feature[]>("/features");
+}
+export function planFeatures(planId: string) {
+  return pfetch<PlanFeatureSet>(`/plans/${planId}/features`);
+}
+export function setPlanFeatures(planId: string, features: Record<string, boolean>) {
+  return pfetch<void>(`/plans/${planId}/features`, { method: "PUT", body: { features } });
+}
+export function clinicEntitlements(tenantId: string) {
+  return pfetch<ClinicEntitlements>(`/clinics/${tenantId}/entitlements`);
+}
+/** state null clears the exception and lets the plan decide again. */
+export function setClinicEntitlement(tenantId: string, feature: string, state: boolean | null, note?: string) {
+  return pfetch<void>(`/clinics/${tenantId}/entitlements`, {
+    method: "PUT", body: { feature, state, note },
+  });
+}
+
 export interface Clinic {
   id: string;
   name: string;
@@ -77,6 +115,8 @@ export interface Plan {
   images_per_patient: number | null;
   price_monthly: string;
   in_use: number;
+  sms_monthly?: number | null;
+  status?: string;
 }
 export type PlanBody = Omit<Plan, "id" | "in_use">;
 

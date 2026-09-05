@@ -380,12 +380,63 @@ func (s *Service) PlanUsage(ctx context.Context) (*org.PlanUsage, error) {
 			Users:    org.UsageLine{Used: users, Limit: limitOrUnlimited(l.Users)},
 			Branches: org.UsageLine{Used: branches, Limit: limitOrUnlimited(l.Branches)},
 		}
+		feats, e := planFeatures(ctx, tx, tenantID)
+		if e != nil {
+			return e
+		}
+		out.Features = feats
 		return nil
 	})
 	if err != nil {
 		return nil, apperr.Internal(err)
 	}
 	return &out, nil
+}
+
+// planFeatures answers, for each paid feature, "do we have this, and if not who
+// does". One query: the catalogue, this clinic's effective answer (its own
+// entitlement over its plan's), and the other plans of the same type that include
+// it — so the upsell names a real plan the clinic could actually move to rather
+// than a tier invented in the frontend.
+func planFeatures(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) ([]org.PlanFeature, error) {
+	rows, err := tx.Query(ctx, `
+		WITH me AS (
+		    SELECT t.id AS tenant_id, t.plan_id, t.clinic_type FROM tenants t WHERE t.id = $1
+		)
+		SELECT f.code, f.name, coalesce(f.detail, ''), f.category,
+		       coalesce(te.enabled, pf.enabled, false) AS included,
+		       coalesce((
+		         -- Cheapest first, except a 0 price means "let's talk" (Custom) and
+		         -- belongs last: naming it first would answer "what would it take?"
+		         -- with the tier that has no price on it.
+		         SELECT array_agg(p2.name ORDER BY (coalesce(p2.price_monthly,0) = 0), p2.price_monthly)
+		           FROM plan_features pf2
+		           JOIN plans p2 ON p2.id = pf2.plan_id
+		          WHERE pf2.feature = f.code AND pf2.enabled
+		            AND p2.status = 'active'
+		            AND p2.clinic_type IN ('all', (SELECT clinic_type FROM me))
+		       ), '{}')::text[] AS on_plans
+		  FROM features f
+		  LEFT JOIN plan_features pf ON pf.plan_id = (SELECT plan_id FROM me) AND pf.feature = f.code
+		  LEFT JOIN tenant_entitlements te ON te.tenant_id = $1 AND te.feature = f.code
+		 WHERE f.clinic_type IN ('all', (SELECT clinic_type FROM me))
+		 ORDER BY f.sort`, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []org.PlanFeature{}
+	for rows.Next() {
+		var f org.PlanFeature
+		if err := rows.Scan(&f.Code, &f.Name, &f.Detail, &f.Category, &f.Included, &f.OnPlans); err != nil {
+			return nil, err
+		}
+		if f.Included {
+			f.OnPlans = nil
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
 }
 
 // limitOrUnlimited maps a nil (unlimited) cap to -1 for the JSON contract.

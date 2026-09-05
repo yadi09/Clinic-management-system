@@ -31,6 +31,12 @@ func (h *Handlers) Register(v1 *gin.RouterGroup, tokens *auth.TokenService) {
 	admin.GET("/plans", h.ListPlans)
 	admin.POST("/plans", h.CreatePlan)
 	admin.PUT("/plans/:id", h.UpdatePlan)
+	// What a plan includes, and one clinic's exception to it.
+	admin.GET("/features", h.Features)
+	admin.GET("/plans/:id/features", h.PlanFeatures)
+	admin.PUT("/plans/:id/features", h.SetPlanFeatures)
+	admin.GET("/clinics/:id/entitlements", h.ClinicEntitlements)
+	admin.PUT("/clinics/:id/entitlements", h.SetClinicEntitlement)
 	// The vendor's own third-party credentials (currently the Verify.ET key).
 	admin.GET("/integrations/verifyet", h.GetIntegration)
 	admin.PUT("/integrations/verifyet", h.SetIntegration)

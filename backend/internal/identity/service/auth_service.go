@@ -19,6 +19,7 @@ import (
 	identitydb "github.com/reicb/clinicsaas/internal/identity/repo/gen"
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
 	"github.com/reicb/clinicsaas/internal/kernel/auth"
+	"github.com/reicb/clinicsaas/internal/kernel/entitlements"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
 	"github.com/reicb/clinicsaas/internal/kernel/events"
 	"github.com/reicb/clinicsaas/internal/kernel/id"
@@ -318,7 +319,7 @@ func (s *AuthService) Me(ctx context.Context, tenantID, userID uuid.UUID, active
 				effective = nil
 			}
 		}
-		fm, e := resolveFlags(ctx, q, tenantID, effective)
+		fm, e := resolveFlags(ctx, tx, q, tenantID, effective)
 		if e != nil {
 			return e
 		}
@@ -549,9 +550,14 @@ func (s *AuthService) clearFailures(ctx context.Context, tenantID, userID uuid.U
 }
 
 // resolveFlags returns the effective feature flags for a branch: the tenant
-// defaults with any per-branch overrides layered on top. A nil branch (the
-// consolidated "all branches" view) yields the tenant defaults.
-func resolveFlags(ctx context.Context, q *identitydb.Queries, tenantID uuid.UUID, active *uuid.UUID) (map[string]bool, error) {
+// defaults with any per-branch overrides layered on top, and then what the plan
+// actually entitles folded in. A nil branch (the consolidated "all branches"
+// view) yields the tenant defaults.
+//
+// This is the only place the map is built — every RequireFlag gate, and the
+// frontend's own nav filtering via /auth/me, reads what comes out of here. So
+// connecting plans to features needed one change, not one per feature.
+func resolveFlags(ctx context.Context, tx pgx.Tx, q *identitydb.Queries, tenantID uuid.UUID, active *uuid.UUID) (map[string]bool, error) {
 	defaults, err := q.GetTenantFlags(ctx, tenantID)
 	if err != nil {
 		return nil, err
@@ -569,7 +575,11 @@ func resolveFlags(ctx context.Context, q *identitydb.Queries, tenantID uuid.UUID
 			flags[f.Flag] = f.Enabled
 		}
 	}
-	return flags, nil
+	ent, err := entitlements.Effective(ctx, tx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	return entitlements.Apply(flags, ent), nil
 }
 
 // resolveBranchState loads the user's accessible branches (ordered, default
@@ -634,7 +644,7 @@ func (s *AuthService) issueTokens(ctx context.Context, tenantID, userID uuid.UUI
 		if _, tokenBranchIDs, active, _, e = resolveBranchState(ctx, q, tenantID, userID, preferredBranch); e != nil {
 			return e
 		}
-		flags, e = resolveFlags(ctx, q, tenantID, active)
+		flags, e = resolveFlags(ctx, tx, q, tenantID, active)
 		return e
 	}); err != nil {
 		return nil, nil, apperr.Internal(err)
@@ -724,7 +734,7 @@ func (s *AuthService) SwitchBranch(ctx context.Context, tenantID, userID uuid.UU
 			}
 			active = target
 		}
-		flags, e = resolveFlags(ctx, q, tenantID, active)
+		flags, e = resolveFlags(ctx, tx, q, tenantID, active)
 		return e
 	}); err != nil {
 		if ae, ok := apperr.As(err); ok {

@@ -40,8 +40,9 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	b.GET("/charges", httpx.RequireAnyPermission("payment.charge", "payment.collect", "billing.manage"), h.PatientCharges) // ?patient=
 	// Asking the bank about a claimed transfer is part of taking the payment, so it
 	// carries the same permission as taking it.
-	b.POST("/verify-payment", collect, h.VerifyPayment)
-	b.GET("/verify-payment/status", collect, h.PaymentVerificationStatus)
+	verify := httpx.RequireFlag("payment_verification")
+	b.POST("/verify-payment", collect, verify, h.VerifyPayment)
+	b.GET("/verify-payment/status", collect, verify, h.PaymentVerificationStatus)
 
 	b.POST("/charges/:id/settle", collect, h.SettleCharge)
 	b.POST("/checkout", collect, h.SettleVisit) // one-click visit checkout (settle all a patient's charges)

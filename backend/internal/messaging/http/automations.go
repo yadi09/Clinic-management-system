@@ -104,6 +104,21 @@ func (h *Handlers) Audience(c *gin.Context) {
 		}
 		f.SeenWithinDays = n
 	}
+	if v := strings.TrimSpace(c.Query("not_seen_days")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			httpx.Fail(c, apperr.Validation("that is not a number of days"))
+			return
+		}
+		// Gated here rather than on the route: the same endpoint answers an
+		// ordinary "who can I write to" search, which every plan with messaging
+		// gets. Only the recall question is the paid one.
+		if p, ok := httpx.PrincipalFrom(c); ok && !p.FlagEnabled("recalls") {
+			httpx.Fail(c, apperr.ModuleDisabled("recalls"))
+			return
+		}
+		f.NotSeenForDays = n
+	}
 	rows, err := h.svc.Audience(c.Request.Context(), f)
 	if err != nil {
 		httpx.Fail(c, err)

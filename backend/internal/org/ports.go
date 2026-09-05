@@ -120,6 +120,23 @@ type PlanUsage struct {
 	Patients UsageLine `json:"patients"`
 	Users    UsageLine `json:"users"`
 	Branches UsageLine `json:"branches"`
+	// Features is what this plan does and does not include, with the names of the
+	// plans that do include the missing ones. It is what lets a clinic owner see
+	// why a page is not there and what it would take, rather than a link that
+	// silently vanished.
+	Features []PlanFeature `json:"features"`
+}
+
+// PlanFeature is one paid feature from the clinic's point of view.
+type PlanFeature struct {
+	Code     string   `json:"code"`
+	Name     string   `json:"name"`
+	Detail   string   `json:"detail,omitempty"`
+	Category string   `json:"category"`
+	Included bool     `json:"included"`
+	// OnPlans names the active plans of this clinic's type that include it —
+	// empty when the clinic already has it.
+	OnPlans []string `json:"on_plans,omitempty"`
 }
 
 // Service is the organisation module API.

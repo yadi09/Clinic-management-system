@@ -185,6 +185,20 @@ func SMSUsedThisMonth(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) (int64
 // is refused before it starts rather than halfway through, which would leave half
 // the patients messaged and no clean way to finish.
 func EnsureSMSRoom(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID, want int64) error {
+	// The allowance is ours to ration only when the messages are ours to pay for.
+	// A clinic sending through its own SMSEthiopia campaign buys its own credit
+	// from the carrier and shows its own approved name on the patient's handset —
+	// metering that against a plan number would be refusing a send we are not
+	// billed for, on behalf of a balance we do not hold.
+	var ownAccount bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM clinics WHERE tenant_id = $1 AND coalesce(sms_api_key_enc, '') <> '')`,
+		tenantID).Scan(&ownAccount); err != nil {
+		return err
+	}
+	if ownAccount {
+		return nil
+	}
 	l, err := Effective(ctx, tx, tenantID)
 	if err != nil {
 		return err
@@ -195,6 +209,10 @@ func EnsureSMSRoom(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID, want int6
 	used, err := SMSUsedThisMonth(ctx, tx, tenantID)
 	if err != nil {
 		return err
+	}
+	if *l.SMSMonthly == 0 {
+		return apperr.New(http.StatusForbidden, "SMS_LIMIT_REACHED",
+			"this plan doesn't include messages on our account — move up a plan, or connect the clinic's own SMS account in Settings and send under its own name")
 	}
 	if used+want > *l.SMSMonthly {
 		return apperr.New(http.StatusForbidden, "SMS_LIMIT_REACHED",

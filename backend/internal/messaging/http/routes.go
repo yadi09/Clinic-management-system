@@ -15,7 +15,10 @@ import (
 // manage can see what was sent, because "did we tell her?" is a front-desk
 // question and hiding the answer from the front desk helps nobody.
 func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
-	g := rg.Group("/messaging")
+	// Patient SMS is a plan feature (Practice and above on the dental page). The
+	// flag map already carries what the plan entitles, so one gate on the group
+	// covers templates, automations, campaigns and the log alike.
+	g := rg.Group("/messaging", httpx.RequireFlag("messaging"))
 	manage := httpx.RequirePermission("message.manage")
 	use := httpx.RequireAnyPermission("message.send", "message.manage")
 

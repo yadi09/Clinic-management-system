@@ -232,10 +232,16 @@ func (s *Service) Audience(ctx context.Context, f messaging.AudienceFilter) ([]m
 			    AND ($2 = '' OR p.first_name ILIKE '%'||$2||'%' OR p.last_name ILIKE '%'||$2||'%'
 			         OR p.mrn ILIKE '%'||$2||'%')
 			    AND ($3 = 0 OR seen.last_at >= now() - ($3 || ' days')::interval)
+			    AND ($6 = 0 OR seen.last_at IS NULL OR seen.last_at < now() - ($6 || ' days')::interval)
 			    AND (NOT $4 OR coalesce(owed.amt,0) > 0)
-			  ORDER BY seen.last_at DESC NULLS LAST, p.created_at DESC
+			  -- A recall list is read oldest-first: the patient who has been away
+			  -- longest is the one to call. Every other view wants newest first.
+			  ORDER BY CASE WHEN $6 = 0 THEN 0 ELSE 1 END,
+			           CASE WHEN $6 = 0 THEN seen.last_at END DESC NULLS LAST,
+			           seen.last_at ASC NULLS FIRST,
+			           p.created_at DESC
 			  LIMIT $5`,
-			tid, strings.TrimSpace(f.Search), f.SeenWithinDays, f.OwingOnly, f.Limit)
+			tid, strings.TrimSpace(f.Search), f.SeenWithinDays, f.OwingOnly, f.Limit, f.NotSeenForDays)
 		if e != nil {
 			return e
 		}

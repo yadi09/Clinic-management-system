@@ -43,6 +43,7 @@ import { Dhis2ReportPage } from "@/features/reporting/pages/Dhis2ReportPage";
 import { BedsBoardPage } from "@/features/inpatient/pages/BedsBoardPage";
 import { BedConfigPage } from "@/features/inpatient/pages/BedConfigPage";
 import { BedReportsPage } from "@/features/inpatient/pages/BedReportsPage";
+import { PlanGate } from "@/components/PlanGate";
 import { FinancePage } from "@/features/billing/pages/FinancePage";
 import { NotFoundPage } from "@/features/misc/NotFoundPage";
 import { PlatformLoginPage } from "@/features/platform/pages/PlatformLoginPage";
@@ -72,9 +73,9 @@ export function AppRoutes() {
           <Route path="/appointments" element={<AppointmentsPage />} />
           <Route path="/reception" element={<ReceptionPage />} />
           <Route path="/cashier" element={<CashierPage />} />
-          <Route path="/finance" element={<FinancePage />} />
+          <Route path="/finance" element={<PlanGate feature="finance_advanced"><FinancePage /></PlanGate>} />
           <Route path="/billing/services" element={<ServiceCatalogPage />} />
-          <Route path="/messages" element={<MessagesPage />} />
+          <Route path="/messages" element={<PlanGate feature="messaging"><MessagesPage /></PlanGate>} />
           <Route path="/triage" element={<TriagePage />} />
           <Route path="/queue" element={<QueuePage />} />
           <Route path="/worklist" element={<WorklistPage />} />
@@ -96,7 +97,7 @@ export function AppRoutes() {
           <Route path="/lab/items/:itemId" element={<LabOrderItemPage />} />
           <Route path="/lab/catalog" element={<LabCatalogPage />} />
           <Route path="/help" element={<HelpCenterPage />} />
-          <Route path="/reporting/dhis2" element={<Dhis2ReportPage />} />
+          <Route path="/reporting/dhis2" element={<PlanGate feature="dhis2"><Dhis2ReportPage /></PlanGate>} />
           <Route path="/inpatient/beds" element={<BedsBoardPage />} />
           <Route path="/inpatient/config" element={<BedConfigPage />} />
           <Route path="/inpatient/reports" element={<BedReportsPage />} />

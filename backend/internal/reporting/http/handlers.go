@@ -20,7 +20,8 @@ func NewHandlers(svc reporting.Service) *Handlers { return &Handlers{svc: svc} }
 
 // RegisterProtected mounts /reporting/dhis2 under clinic.manage (owner/manager).
 func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
-	g := rg.Group("/reporting/dhis2", httpx.RequirePermission("clinic.manage"))
+	g := rg.Group("/reporting/dhis2", httpx.RequirePermission("clinic.manage"),
+		httpx.RequireFlag("dhis2"))
 	g.GET("", h.GetReport)
 	g.POST("/push", h.Push)
 	g.GET("/submitted", h.Submitted)

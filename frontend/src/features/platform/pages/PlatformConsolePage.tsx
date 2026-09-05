@@ -8,6 +8,7 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
@@ -20,6 +21,7 @@ import {
   getVerifyETKey,
   setVerifyETKey,
   clearVerifyETKey,
+  listFeatures, planFeatures, setPlanFeatures, clinicEntitlements, setClinicEntitlement,
 } from "@/features/platform/api";
 import { PipelineView, ProspectsView, TeamView, TodayView } from "@/features/platform/crm/CrmViews";
 
@@ -361,17 +363,24 @@ function PlansView() {
       <div className="overflow-x-auto rounded-lg border border-zinc-800">
         <table className="w-full text-sm">
           <thead className="border-b border-zinc-800 bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
-            <tr><th className="p-3">Plan</th><th>Type</th><th>Patients</th><th>Storage</th><th>Users</th><th>Branches</th><th>Price/mo</th><th>Clinics</th><th className="p-3" /></tr>
+            <tr><th className="p-3">Plan</th><th>Type</th><th>Patients</th><th>Storage</th><th>Users</th><th>Branches</th><th>SMS/mo</th><th>Price/mo</th><th>Clinics</th><th className="p-3" /></tr>
           </thead>
           <tbody>
             {plans.map((p) => (
               <tr key={p.id} className="border-b border-zinc-800 last:border-0">
-                <td className="p-3"><span className="font-medium">{p.name}</span> <span className="font-mono text-xs text-zinc-500">{p.code}</span></td>
+                <td className="p-3">
+                  <span className="font-medium">{p.name}</span>{" "}
+                  <span className="font-mono text-xs text-zinc-500">{p.code}</span>{" "}
+                  {p.status === "retired" && (
+                    <Badge variant="outline" className="ml-2 border-amber-700 text-amber-400">retired</Badge>
+                  )}
+                </td>
                 <td><Badge variant="outline" className="border-zinc-700 text-zinc-300">{typeLabel(p.clinic_type)}</Badge></td>
                 <td>{limLabel(p.patient_limit)}</td>
                 <td>{p.storage_gb == null ? "Unlimited" : `${p.storage_gb} GB`}</td>
                 <td>{limLabel(p.user_limit)}</td>
                 <td>{limLabel(p.branch_limit)}</td>
+                <td className="tabular-nums">{p.sms_monthly == null ? "Unlimited" : p.sms_monthly === 0 ? "—" : p.sms_monthly.toLocaleString()}</td>
                 <td className="tabular-nums">{Number(p.price_monthly || 0).toLocaleString()} ETB</td>
                 <td>{p.in_use}</td>
                 <td className="p-3 text-right"><button className="text-xs text-sky-300 hover:underline" onClick={() => setEditing(p)}><Pencil className="mr-1 inline h-3 w-3" />Edit</button></td>
@@ -398,6 +407,7 @@ function PlanEditDialog({ plan, onClose, onSaved }: { plan: Plan | "new" | null;
   const [branches, setBranches] = useState("");
   const [images, setImages] = useState("8");
   const [price, setPrice] = useState("");
+  const [sms, setSms] = useState("");
   const [forId, setForId] = useState<string | null>(null);
   const key = plan === "new" ? "new" : p?.id ?? null;
   if (plan && forId !== key) {
@@ -405,12 +415,13 @@ function PlanEditDialog({ plan, onClose, onSaved }: { plan: Plan | "new" | null;
     setCode(p?.code ?? ""); setName(p?.name ?? ""); setClinicType(p?.clinic_type ?? "all");
     setPatients(nStr(p?.patient_limit)); setStorage(nStr(p?.storage_gb));
     setUsers(nStr(p?.user_limit)); setBranches(nStr(p?.branch_limit));
-    setImages(p ? nStr(p.images_per_patient) : "8");
+    setImages(p ? nStr(p.images_per_patient) : "");
+    setSms(p ? nStr(p.sms_monthly ?? null) : "");
     setPrice(p ? String(Number(p.price_monthly || 0)) : "");
   }
   const mut = useMutation({
     mutationFn: async () => {
-      const body = { name: name.trim(), clinic_type: clinicType, patient_limit: numOrNull(patients), storage_gb: numOrNull(storage), user_limit: numOrNull(users), branch_limit: numOrNull(branches), images_per_patient: numOrNull(images), price_monthly: price.trim() || "0" };
+      const body = { name: name.trim(), clinic_type: clinicType, patient_limit: numOrNull(patients), storage_gb: numOrNull(storage), user_limit: numOrNull(users), branch_limit: numOrNull(branches), images_per_patient: numOrNull(images), sms_monthly: numOrNull(sms), price_monthly: price.trim() || "0" };
       if (editing) await updatePlan((plan as Plan).id, body);
       else await createPlan({ code: code.trim(), ...body });
     },
@@ -439,9 +450,15 @@ function PlanEditDialog({ plan, onClose, onSaved }: { plan: Plan | "new" | null;
             <div className="space-y-1.5"><Label>Users</Label><Input type="number" min={0} value={users} onChange={(e) => setUsers(e.target.value)} placeholder="Unlimited" /></div>
             <div className="space-y-1.5"><Label>Branches</Label><Input type="number" min={0} value={branches} onChange={(e) => setBranches(e.target.value)} placeholder="Unlimited" /></div>
             <div className="space-y-1.5"><Label>Images / patient</Label><Input type="number" min={0} value={images} onChange={(e) => setImages(e.target.value)} placeholder="Unlimited" /></div>
+            <div className="space-y-1.5"><Label>SMS / month</Label><Input type="number" min={0} value={sms} onChange={(e) => setSms(e.target.value)} placeholder="Unlimited" /></div>
           </div>
+          <p className="-mt-1 text-xs text-muted-foreground">
+            SMS / month is the allowance on <b>our</b> gateway, which we pay for. 0 = none included.
+            A clinic sending through its own SMSEthiopia account is never counted against it.
+          </p>
           <p className="-mt-1 text-xs text-muted-foreground">Images / patient applies to dental clinics (X-rays, before/after).</p>
           <div className="space-y-1.5"><Label>Price / month (ETB)</Label><Input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0" /></div>
+          {editing && p && <PlanFeatureGrid planId={p.id} />}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => { setForId(null); onClose(); }}>Cancel</Button>
@@ -449,6 +466,76 @@ function PlanEditDialog({ plan, onClose, onSaved }: { plan: Plan | "new" | null;
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+
+/**
+ * What a plan includes, ticked by hand.
+ *
+ * Two things this has to get right. A plan nobody has described yet gates
+ * NOTHING — every clinic on it keeps every feature — so the boxes arrive
+ * pre-ticked and the notice says so; saving an untouched grid changes nothing,
+ * and only a deliberate untick takes something away. And the list is the
+ * catalogue of what the server really enforces, so a box here always means what
+ * it says.
+ */
+function PlanFeatureGrid({ planId }: { planId: string }) {
+  const qc = useQueryClient();
+  const cat = useQuery({ queryKey: ["platform-features"], queryFn: listFeatures });
+  const set = useQuery({ queryKey: ["plan-features", planId], queryFn: () => planFeatures(planId) });
+  const [draft, setDraft] = useState<Record<string, boolean> | null>(null);
+  const [forPlan, setForPlan] = useState<string | null>(null);
+
+  const configured = set.data?.configured ?? false;
+  if (cat.data && set.data && forPlan !== planId) {
+    setForPlan(planId);
+    setDraft(Object.fromEntries(cat.data.map((f) => [f.code, configured ? (set.data.features[f.code] ?? false) : true])));
+  }
+  const mut = useMutation({
+    mutationFn: () => setPlanFeatures(planId, draft ?? {}),
+    onSuccess: () => {
+      toast.success("Plan features saved");
+      qc.invalidateQueries({ queryKey: ["plan-features", planId] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not save the features"),
+  });
+  if (cat.isLoading || set.isLoading) return <Skeleton className="h-24 w-full" />;
+  const groups = [...new Set((cat.data ?? []).map((f) => f.category))];
+  const toggle = (code: string) => setDraft((d) => ({ ...(d ?? {}), [code]: !(d ?? {})[code] }));
+  const dirty = configured
+    ? (cat.data ?? []).some((f) => (draft ?? {})[f.code] !== (set.data?.features[f.code] ?? false))
+    : true;
+
+  return (
+    <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+      <div className="flex items-center justify-between">
+        <Label>What this plan includes</Label>
+        <Button size="sm" variant="outline" disabled={!dirty} loading={mut.isPending} onClick={() => mut.mutate()}>
+          Save features
+        </Button>
+      </div>
+      {!configured && (
+        <p className="text-xs text-amber-400">
+          This plan has never been described, so it currently gates nothing — every clinic on it has
+          everything. Saving with all boxes ticked keeps it exactly that way.
+        </p>
+      )}
+      {groups.map((g) => (
+        <div key={g} className="space-y-1.5">
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">{g}</p>
+          {(cat.data ?? []).filter((f) => f.category === g).map((f) => (
+            <label key={f.code} className="flex cursor-pointer items-start gap-2 text-sm">
+              <input type="checkbox" className="mt-1" checked={!!(draft ?? {})[f.code]} onChange={() => toggle(f.code)} />
+              <span>
+                {f.name}
+                {f.detail && <span className="block text-xs text-zinc-500">{f.detail}</span>}
+              </span>
+            </label>
+          ))}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -528,12 +615,88 @@ function ClinicPlanDialog({ clinic, onClose, onSaved }: { clinic: Clinic | null;
             ))}
           </div>
         </div>
+        {clinic && <ClinicFeatureOverrides tenantId={clinic.id} />}
         <DialogFooter>
           <Button variant="outline" onClick={() => { setForId(null); onClose(); }}>Cancel</Button>
           <Button disabled={!planId} loading={mut.isPending} onClick={() => mut.mutate()}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+
+/**
+ * One clinic's exceptions to its plan — where an add-on actually lands.
+ *
+ * The pricing page sells AI assist for 1,500 a month on a plan that does not
+ * include it; before this there was nowhere to record that sale, so the only way
+ * to honour it was to move the clinic to a plan it had not bought. Three states
+ * per feature: follow the plan, add it, or take it away. Each saves on its own,
+ * because each is a separate commercial decision, and each carries a note so
+ * whoever reads it in a year knows why.
+ */
+function ClinicFeatureOverrides({ tenantId }: { tenantId: string }) {
+  const qc = useQueryClient();
+  const cat = useQuery({ queryKey: ["platform-features"], queryFn: listFeatures });
+  const ent = useQuery({ queryKey: ["clinic-entitlements", tenantId], queryFn: () => clinicEntitlements(tenantId) });
+  const mut = useMutation({
+    mutationFn: (v: { feature: string; state: boolean | null }) =>
+      setClinicEntitlement(tenantId, v.feature, v.state, v.state === null ? "" : "set from the console"),
+    onSuccess: () => {
+      toast.success("Saved");
+      qc.invalidateQueries({ queryKey: ["clinic-entitlements", tenantId] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not save it"),
+  });
+  if (cat.isLoading || ent.isLoading) return <Skeleton className="h-20 w-full" />;
+  const e = ent.data;
+  if (!e) return null;
+  return (
+    <div className="space-y-2">
+      <Label>
+        Features <span className="text-xs font-normal text-muted-foreground">on {e.plan_name}</span>
+      </Label>
+      {!e.plan_configured && (
+        <p className="text-xs text-amber-600">
+          This plan has no feature list, so nothing is gated for this clinic yet. Set the plan's
+          features first — an exception here would have nothing to be an exception to.
+        </p>
+      )}
+      <div className="space-y-1.5">
+        {(cat.data ?? []).map((f) => {
+          const override = f.code in e.override ? e.override[f.code] : null;
+          const effective = override ?? (e.from_plan[f.code] ?? false);
+          const value = override === null ? "plan" : override ? "on" : "off";
+          return (
+            <div key={f.code} className="flex items-center justify-between gap-3 text-sm">
+              <span className="min-w-0">
+                <span className={effective ? "" : "text-muted-foreground"}>{f.name}</span>
+                <span className="block text-xs text-muted-foreground">
+                  {e.from_plan[f.code] ? "included in the plan" : "not in the plan"}
+                  {override !== null && (override ? " · added for this clinic" : " · withdrawn from this clinic")}
+                  {e.note[f.code] ? ` · ${e.note[f.code]}` : ""}
+                </span>
+              </span>
+              <Select
+                value={value}
+                onValueChange={(v) => mut.mutate({ feature: f.code, state: v === "plan" ? null : v === "on" })}
+              >
+                <SelectTrigger className="h-8 w-32 shrink-0"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="plan">Follow plan</SelectItem>
+                  <SelectItem value="on">Add on</SelectItem>
+                  <SelectItem value="off">Withdraw</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        A change reaches the clinic when its staff next sign in or their session refreshes.
+      </p>
+    </div>
   );
 }
 
