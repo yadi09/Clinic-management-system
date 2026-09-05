@@ -120,6 +120,7 @@ export function UsersPage() {
               {(users.data ?? []).map((u) => (
                 <TableRow key={u.id}>
                   <TableCell className="font-medium text-brand">{u.full_name}</TableCell>
+                  <TableCell className="text-muted-foreground">{u.email}</TableCell>
                   <TableCell className="whitespace-nowrap text-muted-foreground">
                     {u.phone ? (
                       <a className="hover:underline" href={`tel:${u.phone}`}>{prettyPhone(u.phone)}</a>
