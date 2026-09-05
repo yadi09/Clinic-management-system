@@ -24,6 +24,9 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	// The picker every clinician uses, so it reads with the clinical permissions.
 	view.GET("/procedures", h.ListProcedures)
 	view.GET("/tooth-statuses", h.ListToothStatuses)
+	// The chair list. Read with the clinical permissions — it carries allergies and
+	// what the patient owes, which is exactly the pairing the chair needs.
+	view.GET("/chairside", h.Chairside)
 
 	// Editing the list is a settings act: whoever runs the clinic, or the dentist.
 	cfg := d.Group("", httpx.RequireAnyPermission("clinic.manage", "dental.manage"))

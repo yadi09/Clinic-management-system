@@ -457,3 +457,42 @@ export const deleteToothStatus = (id: string) =>
   apiFetch<void>(`/dental/tooth-statuses/${id}`, { method: "DELETE" });
 export const reorderToothStatuses = (ids: string[]) =>
   apiFetch<void>("/dental/tooth-statuses/reorder", { method: "POST", body: { ids } });
+
+/* ----------------------------------------------------------- the chair */
+
+/** One row of the chair list. Carries what a check-out would end, so the decision
+ *  can be made on the card rather than by opening four other screens. */
+export interface ChairPatient {
+  queue_id: string;
+  patient_id: string;
+  state: "waiting" | "called" | "in_consult" | "done";
+  stage?: string;
+  priority: number;
+  enqueued_at: string;
+  started_at?: string;
+  ended_at?: string;
+  department_name?: string;
+  provider_id?: string;
+  provider_name?: string;
+  patient_name: string;
+  mrn: string;
+  age: number;
+  sex?: string;
+  /** Severe and moderate only, comma-separated. */
+  allergies?: string;
+  owed: string;
+  unbilled: string;
+  /** Sessions and examinations written down since they were enqueued. */
+  recorded_this_visit: number;
+  plan_title?: string;
+  plan_done?: number;
+  plan_total?: number;
+}
+
+export const chairside = (provider?: string, fromISO?: string, toISO?: string) => {
+  const q = new URLSearchParams();
+  if (provider) q.set("provider", provider);
+  if (fromISO) q.set("from", fromISO);
+  if (toISO) q.set("to", toISO);
+  return apiFetch<ChairPatient[]>(`/dental/chairside?${q.toString()}`);
+};

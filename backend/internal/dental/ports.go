@@ -7,6 +7,7 @@ package dental
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -350,6 +351,7 @@ type SessionCalItem struct {
 
 // Service is the dental module API.
 type Service interface {
+	Chairside(ctx context.Context, providerID *uuid.UUID, from time.Time, until *time.Time) ([]ChairPatient, error)
 	ListProcedures(ctx context.Context, includeRetired bool) ([]Procedure, error)
 	ListToothStatuses(ctx context.Context, includeRetired bool) ([]ToothStatus, error)
 	CreateToothStatus(ctx context.Context, label, color string) (*ToothStatus, error)
@@ -505,4 +507,40 @@ type ToothStatus struct {
 	Color     string    `json:"color"`
 	SortOrder int       `json:"sort_order"`
 	IsActive  bool      `json:"is_active"`
+}
+
+// ChairPatient is one row of the chair list: who is here, and everything a check-out
+// would end. Money and safety live on the card because that is where the decision is.
+type ChairPatient struct {
+	QueueID    uuid.UUID  `json:"-"`
+	PatientID  uuid.UUID  `json:"-"`
+	State      string     `json:"state"`
+	Stage      string     `json:"stage,omitempty"`
+	Priority   int        `json:"priority"`
+	EnqueuedAt time.Time  `json:"enqueued_at"`
+	StartedAt  *time.Time `json:"started_at,omitempty"`
+	EndedAt    *time.Time `json:"ended_at,omitempty"`
+
+	DepartmentName string     `json:"department_name,omitempty"`
+	ProviderID     *uuid.UUID `json:"-"`
+	ProviderName   string     `json:"provider_name,omitempty"`
+
+	PatientName string `json:"patient_name"`
+	MRN         string `json:"mrn"`
+	Age         int    `json:"age"`
+	Sex         string `json:"sex,omitempty"`
+
+	// Anything that could hurt them, severe or moderate only — a mild rash does not
+	// belong in the same red as anaphylaxis.
+	Allergies string `json:"allergies,omitempty"`
+	// Money already raised and unpaid, and treatment delivered that nobody billed.
+	Owed     string `json:"owed"`
+	Unbilled string `json:"unbilled"`
+	// How much was written down since they were enqueued. Zero means a visit that
+	// would leave no record at all — the one thing a check-out must not do quietly.
+	RecordedThisVisit int `json:"recorded_this_visit"`
+
+	PlanTitle string `json:"plan_title,omitempty"`
+	PlanDone  int    `json:"plan_done,omitempty"`
+	PlanTotal int    `json:"plan_total,omitempty"`
 }

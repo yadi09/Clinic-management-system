@@ -5,6 +5,7 @@ package http
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -1262,4 +1263,64 @@ func (h *Handlers) ReorderToothStatuses(c *gin.Context) {
 		return
 	}
 	httpx.NoContent(c)
+}
+
+/* ------------------------------------------------------------- the chair */
+
+// Chairside handles GET /dental/chairside?provider=&from=&to=.
+//
+// Returns the live chair AND today's finished visits: a dentist needs to see what
+// they have done, and to undo a check-out made by mistake.
+func (h *Handlers) Chairside(c *gin.Context) {
+	var provider *uuid.UUID
+	if raw := c.Query("provider"); raw != "" && raw != "all" {
+		u, err := id.Decode(id.PrefixUser, raw)
+		if err != nil {
+			httpx.Fail(c, apperr.Validation("unknown provider"))
+			return
+		}
+		provider = &u
+	}
+	from := time.Now().Add(-24 * time.Hour)
+	if f, err := time.Parse(time.RFC3339, c.Query("from")); err == nil {
+		from = f
+	}
+	var until *time.Time
+	if t, err := time.Parse(time.RFC3339, c.Query("to")); err == nil {
+		until = &t
+	}
+	out, err := h.svc.Chairside(c.Request.Context(), provider, from, until)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	rows := make([]gin.H, 0, len(out))
+	for _, p := range out {
+		row := gin.H{
+			"queue_id":   id.Encode(id.PrefixQueueEntry, p.QueueID),
+			"patient_id": id.Encode(id.PrefixPatient, p.PatientID),
+			"state":      p.State, "stage": p.Stage, "priority": p.Priority,
+			"enqueued_at":     p.EnqueuedAt,
+			"department_name": p.DepartmentName, "provider_name": p.ProviderName,
+			"patient_name": p.PatientName, "mrn": p.MRN, "age": p.Age, "sex": p.Sex,
+			"allergies": p.Allergies, "owed": p.Owed, "unbilled": p.Unbilled,
+			"recorded_this_visit": p.RecordedThisVisit,
+		}
+		if p.StartedAt != nil {
+			row["started_at"] = *p.StartedAt
+		}
+		if p.EndedAt != nil {
+			row["ended_at"] = *p.EndedAt
+		}
+		if p.ProviderID != nil {
+			row["provider_id"] = id.Encode(id.PrefixUser, *p.ProviderID)
+		}
+		if p.PlanTitle != "" {
+			row["plan_title"] = p.PlanTitle
+			row["plan_done"] = p.PlanDone
+			row["plan_total"] = p.PlanTotal
+		}
+		rows = append(rows, row)
+	}
+	httpx.OK(c, rows)
 }
