@@ -210,6 +210,12 @@ type ReceptionPatient struct {
 	// Where they are once received.
 	Stage        string `json:"stage,omitempty"` // triage | with_doctor
 	WaitingSince string `json:"waiting_since,omitempty"`
+	// Finished is true once the visit is closed. Reception needs the difference:
+	// somebody still in the queue must not be received twice, but somebody the
+	// doctor has finished with may genuinely need sending back — and telling the
+	// desk they are "waiting since 08:09" when they left an hour ago is a lie the
+	// screen has no business telling.
+	Finished bool `json:"finished,omitempty"`
 }
 
 // ReceptionToday is the whole front desk in one request.

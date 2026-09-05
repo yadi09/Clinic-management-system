@@ -200,6 +200,8 @@ export interface ReceptionPatient {
   owed_agreed?: boolean;
   stage?: string;
   waiting_since?: string;
+  /** True once the visit is closed — seen and gone, not still waiting. */
+  finished?: boolean;
 }
 
 export interface ReceptionToday {

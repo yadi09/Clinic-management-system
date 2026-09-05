@@ -148,6 +148,7 @@ func (s *Service) ReceptionToday(ctx context.Context) (*scheduling.ReceptionToda
 			r.PatientID = id.Encode(id.PrefixPatient, pid)
 			r.WaitingSince = enqueuedAt.Format(time.RFC3339)
 			if state == "done" {
+				r.Finished = true
 				out.Seen = append(out.Seen, r)
 			} else {
 				out.Waiting = append(out.Waiting, r)

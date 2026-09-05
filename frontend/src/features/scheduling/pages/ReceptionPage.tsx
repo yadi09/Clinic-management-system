@@ -94,7 +94,8 @@ export function ReceptionPage() {
   // day. The desk was not being careless; the screen said she had not arrived.
   const alreadyHere = (patientId: string): ReceptionPatient | undefined => {
     if (!lists) return undefined;
-    // Waiting and Seen first: what she is doing now beats what she was booked for.
+    // In-progress first: what they are doing now beats what they were booked for,
+    // and a finished visit beats nothing at all — it still carries what they owe.
     return [...lists.waiting, ...lists.seen, ...lists.expected]
       .find((r) => r.patient_id === patientId);
   };
@@ -244,7 +245,11 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
   const qc = useQueryClient();
   const { can } = useAuth();
   const booked = !!p.appointment_id;
-  const received = !!p.waiting_since;
+  // Still in the clinic, as opposed to seen and gone. A finished visit is not an
+  // arrival to be received again, but it is not a reason to refuse a patient who
+  // genuinely has to go back — after a lab result, say — so the panel stays usable.
+  const received = !!p.waiting_since && !p.finished;
+  const seenToday = !!p.waiting_since && !!p.finished;
   const covered = coveredNow(p);
 
   const settings = useQuery({ queryKey: ["settings"], queryFn: getSettings, retry: false });
@@ -381,6 +386,16 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
           </p>
         )}
       </div>
+
+      {seenToday && (
+        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+          {/* waiting_since is when they came in, which is the only time the desk
+              has here — saying "closed at" would be inventing a fact. */}
+          Seen today — came in at {clock(p.waiting_since!)} and the visit is closed.
+          Sending them through again starts a new visit; today's fee is already paid,
+          so there is nothing more to collect for it.
+        </div>
+      )}
 
       {received ? (
         <div className="space-y-3">
