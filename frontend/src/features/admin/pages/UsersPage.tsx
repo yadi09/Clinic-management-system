@@ -14,7 +14,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/app/auth-context";
 import { AppError } from "@/lib/api-client";
-import { assignRoles, deleteUser, inviteUser, listRoles, listUsers, updateUserName, updateUserStatus, type InviteResult, type UserListItem } from "@/features/admin/api";
+import { assignRoles, deleteUser, inviteUser, issueResetLink, listRoles, listUsers, updateUserName, updateUserStatus, type InviteResult, type UserListItem } from "@/features/admin/api";
 
 function statusVariant(s: string): "success" | "warning" | "destructive" | "default" {
   if (s === "active") return "success";
@@ -27,6 +27,7 @@ export function UsersPage() {
   const { can, user: me } = useAuth();
   const qc = useQueryClient();
   const canInvite = can("user.invite");
+  const [reset, setReset] = useState<{ user: UserListItem; link: string } | null>(null);
   const canUpdate = can("user.update");
   const canAssign = can("role.assign");
 
@@ -35,6 +36,12 @@ export function UsersPage() {
   const [editing, setEditing] = useState<UserListItem | null>(null);
   const [renaming, setRenaming] = useState<UserListItem | null>(null);
   const [deleting, setDeleting] = useState<UserListItem | null>(null);
+
+  const resetMut = useMutation({
+    mutationFn: (u: UserListItem) => issueResetLink(u.id).then((r) => ({ u, r })),
+    onSuccess: ({ u, r }) => setReset({ user: u, link: r.invite_link }),
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not create a reset link"),
+  });
 
   const statusMut = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) => updateUserStatus(id, status),
@@ -104,6 +111,14 @@ export function UsersPage() {
                             Edit roles
                           </button>
                         )}
+                        {/* A forgotten password had no way out: the invitation has
+                            been used, and nothing could issue another. */}
+                        {canInvite && u.status !== "suspended" && (
+                          <button className="text-xs text-primary hover:underline"
+                            onClick={() => resetMut.mutate(u)}>
+                            {resetMut.isPending && resetMut.variables?.id === u.id ? "Working…" : "Reset password"}
+                          </button>
+                        )}
                         {canUpdate && u.status === "active" && (
                           <button className="text-xs text-destructive hover:underline" onClick={() => statusMut.mutate({ id: u.id, status: "suspended" })}>
                             Suspend
@@ -131,6 +146,33 @@ export function UsersPage() {
 
       <EditNameDialog user={renaming} onClose={() => setRenaming(null)} onSaved={() => { setRenaming(null); invalidate(); }} />
       <EditRolesDialog user={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); invalidate(); }} />
+
+      {/* The link, once. It is not stored anywhere it can be read again, and the
+          previous one stopped working the moment this was issued. */}
+      <Dialog open={!!reset} onOpenChange={(o) => !o && setReset(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Password reset link</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Give this to <span className="font-medium text-foreground">{reset?.user.full_name}</span>{" "}
+              ({reset?.user.email}). It works once, expires in 12 hours, and any link issued
+              to them before now has stopped working.
+            </p>
+            <Input readOnly value={reset?.link ?? ""} onFocus={(e) => e.currentTarget.select()} />
+            <p className="text-xs text-muted-foreground">
+              When they set the new password they will be signed out of every device and
+              asked to sign in again — so if somebody else had their account open, they lose it.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReset(null)}>Close</Button>
+            <Button onClick={() => {
+              if (reset) void navigator.clipboard?.writeText(reset.link);
+              toast.success("Link copied");
+            }}>Copy link</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
         <DialogContent>

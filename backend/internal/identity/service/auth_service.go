@@ -363,12 +363,24 @@ func (s *AuthService) AcceptInvite(ctx context.Context, token, password, userAge
 	}
 
 	var userID uuid.UUID
+	// A reset must not sign anybody in. An invitation may — the account is new and
+	// has no second factor yet — but a reset opens an account that might, and
+	// issuing tokens straight from the link would walk past it.
+	var isReset bool
 	if err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := identitydb.New(tx)
 		inv, e := q.GetInvitationByToken(ctx, identitydb.GetInvitationByTokenParams{TenantID: tenantID, TokenHash: auth.HashToken(opaque)})
 		if e != nil {
 			return e
 		}
+		// Raw pgx: sqlc cannot be regenerated here, and the column is new.
+		var purpose string
+		if e := tx.QueryRow(ctx,
+			`SELECT purpose FROM user_invitations WHERE tenant_id = $1 AND id = $2`,
+			tenantID, inv.ID).Scan(&purpose); e != nil {
+			return e
+		}
+		isReset = purpose == "reset"
 		if inv.AcceptedAt != nil {
 			return apperr.Conflict("INVITE_USED", "this invitation has already been used")
 		}
@@ -401,6 +413,18 @@ func (s *AuthService) AcceptInvite(ctx context.Context, token, password, userAge
 		}
 		return e
 	})
+	if isReset {
+		// Every other device is signed out: a forgotten password is also how an
+		// account gets taken, and the person who just proved they hold the link is
+		// the one who should still be signed in — which here means nobody, until
+		// they log in with the new password and pass their second factor.
+		_ = s.db.WithTx(ctx, func(tx pgx.Tx) error {
+			return identitydb.New(tx).RevokeAllUserSessions(ctx,
+				identitydb.RevokeAllUserSessionsParams{TenantID: tenantID, UserID: userID})
+		})
+		s.emit(ctx, tenantID, userID, "auth.user.password_reset", nil)
+		return nil, identity.UserProfile{ID: userID, TenantID: tenantID, Email: email, FullName: fullName}, nil
+	}
 	tokens, roles, err := s.issueTokens(ctx, tenantID, userID, email, userAgent, ip, nil, nil)
 	if err != nil {
 		return nil, identity.UserProfile{}, err

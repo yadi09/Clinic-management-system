@@ -169,3 +169,24 @@ func userID(c *gin.Context) (uuid.UUID, bool) {
 	}
 	return u, true
 }
+
+// ResetLink handles POST /users/:id/reset-link.
+//
+// Issuing a credential reset is the same power as creating a member of staff, so it
+// takes the same permission. There is no email or SMS sender in this system: the
+// link is handed back to the admin, who gives it to the person in front of them.
+func (h *Handlers) ResetLink(c *gin.Context) {
+	uid, err := id.Decode(id.PrefixUser, c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("that id is not valid"))
+		return
+	}
+	res, err := h.users.IssueResetLink(c.Request.Context(), uid)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.Created(c, inviteResultDTO{
+		ID: id.Encode(id.PrefixUser, res.UserID), Email: res.Email, InviteLink: res.InviteLink,
+	})
+}

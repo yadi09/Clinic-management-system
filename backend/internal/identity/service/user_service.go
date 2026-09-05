@@ -296,3 +296,71 @@ func isUnique(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "duplicate key") || strings.Contains(msg, "unique constraint")
 }
+
+// resetLinkTTL is deliberately shorter than an invitation's.
+//
+// An invitation is sent to somebody who has nothing yet; a reset link opens an
+// account that already holds patient records, so it should stop working the same
+// day it was issued.
+const resetLinkTTL = 12 * time.Hour
+
+// IssueResetLink gives an admin a fresh single-use link for a member of staff who
+// has forgotten their password.
+//
+// It is the same token an invitation uses, marked as a reset so that accepting it
+// sets the password WITHOUT signing the person in — otherwise anyone holding the
+// link would walk past an enabled second factor.
+//
+// A suspended account is refused rather than reset. The password path activates the
+// user as it sets the password, so resetting a suspended account would quietly
+// restore access that somebody deliberately removed; reactivating is a separate
+// decision, and it belongs to whoever suspended them.
+func (s *UserService) IssueResetLink(ctx context.Context, userID uuid.UUID) (*identity.InviteResult, error) {
+	tenantID, actorID := userActor(ctx)
+	var composite, email, fullName string
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		var status string
+		e := tx.QueryRow(ctx,
+			`SELECT email, coalesce(full_name,''), status FROM users
+			  WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+			tenantID, userID).Scan(&email, &fullName, &status)
+		if errors.Is(e, pgx.ErrNoRows) {
+			return apperr.NotFound("USER_NOT_FOUND", "no such member of staff")
+		}
+		if e != nil {
+			return e
+		}
+		if status == "suspended" {
+			return apperr.Validation("this account is suspended — reactivate it first, then issue a reset link")
+		}
+		// Retire every link still outstanding for this person, so the one just issued
+		// is the only one that works.
+		if _, e := tx.Exec(ctx,
+			`UPDATE user_invitations SET expires_at = now()
+			  WHERE tenant_id = $1 AND user_id = $2 AND accepted_at IS NULL AND expires_at > now()`,
+			tenantID, userID); e != nil {
+			return e
+		}
+		opaque, e := auth.GenerateRefreshToken()
+		if e != nil {
+			return e
+		}
+		composite = id.Encode(id.PrefixTenant, tenantID) + "." + opaque
+		_, e = tx.Exec(ctx,
+			`INSERT INTO user_invitations (tenant_id, user_id, token_hash, expires_at, created_by, purpose)
+			 VALUES ($1, $2, $3, $4, $5, 'reset')`,
+			tenantID, userID, auth.HashToken(opaque), time.Now().Add(resetLinkTTL), actorID)
+		return e
+	})
+	if ae, ok := apperr.As(err); ok {
+		return nil, ae
+	}
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	// Same route the invitation uses: the page it lands on already knows how to take
+	// a token and a new password.
+	link := strings.TrimRight(s.cfg.AppBaseURL, "/") + "/accept-invite?token=" + composite
+	_ = fullName
+	return &identity.InviteResult{UserID: userID, Email: email, InviteLink: link}, nil
+}

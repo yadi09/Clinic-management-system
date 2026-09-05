@@ -132,6 +132,7 @@ type RoleItem struct {
 type UserAdmin interface {
 	InviteUser(ctx context.Context, in InviteInput) (*InviteResult, error)
 	ListUsers(ctx context.Context) ([]UserListItem, error)
+	IssueResetLink(ctx context.Context, userID uuid.UUID) (*InviteResult, error)
 	ListProviders(ctx context.Context) ([]Provider, error)
 	UpdateUserStatus(ctx context.Context, userID uuid.UUID, status string) error
 	UpdateUserName(ctx context.Context, userID uuid.UUID, fullName string) error

@@ -51,6 +51,13 @@ func (h *Handlers) AcceptInvite(c *gin.Context) {
 		httpx.Fail(c, err)
 		return
 	}
+	// A reset sets the password and stops. No cookie, no access token: the person
+	// signs in with the new password, which is also where their second factor is
+	// asked for.
+	if tokens == nil {
+		httpx.OK(c, gin.H{"password_set": true, "sign_in_required": true, "user": toUserDTO(user)})
+		return
+	}
 	h.setRefreshCookie(c, tokens)
 	httpx.OK(c, tokenResponse{
 		AccessToken: tokens.AccessToken,

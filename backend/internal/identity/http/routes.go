@@ -36,6 +36,8 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	u := rg.Group("/users")
 	u.GET("", httpx.RequirePermission("user.read"), h.ListUsers)
 	u.POST("", httpx.RequirePermission("user.invite"), h.InviteUser)
+	// A forgotten password: a fresh single-use link the admin passes on.
+	u.POST("/:id/reset-link", httpx.RequirePermission("user.invite"), h.ResetLink)
 	u.POST("/:id/status", httpx.RequirePermission("user.update"), h.UpdateUserStatus)
 	u.POST("/:id/name", httpx.RequirePermission("user.update"), h.UpdateUserName)
 	u.DELETE("/:id", httpx.RequirePermission("user.update"), h.DeleteUser)

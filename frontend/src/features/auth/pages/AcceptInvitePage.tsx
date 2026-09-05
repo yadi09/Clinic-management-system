@@ -28,6 +28,7 @@ export function AcceptInvitePage() {
   const navigate = useNavigate();
   const { signIn } = useAuth();
   const [formError, setFormError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
 
   const {
     register,
@@ -38,12 +39,18 @@ export function AcceptInvitePage() {
   const onSubmit = async (values: Values) => {
     setFormError(null);
     try {
-      const res = await apiFetch<TokenResponse>("/auth/accept-invite", {
-        method: "POST",
-        body: { token, password: values.password },
-        auth: false,
-        retry: false,
-      });
+      // The same endpoint serves an invitation and a password reset. A reset
+      // deliberately does NOT sign anyone in — it answers with sign_in_required —
+      // because the login screen is where a second factor is asked for, and a link
+      // that walked straight past it would be a way around MFA.
+      const res = await apiFetch<TokenResponse & { sign_in_required?: boolean }>(
+        "/auth/accept-invite",
+        { method: "POST", body: { token, password: values.password }, auth: false, retry: false },
+      );
+      if (res.sign_in_required || !res.access_token) {
+        setDone(true);
+        return;
+      }
       await signIn(res.access_token, res.user);
       navigate("/", { replace: true });
     } catch (err) {
@@ -58,7 +65,19 @@ export function AcceptInvitePage() {
         <CardDescription>Set a password to activate your account</CardDescription>
       </CardHeader>
       <CardContent>
-        {!token ? (
+        {done ? (
+          <div className="space-y-4">
+            <Alert>
+              <AlertDescription>
+                Your password has been changed, and every device that was signed in has
+                been signed out. Sign in with the new password.
+              </AlertDescription>
+            </Alert>
+            <Button className="w-full" onClick={() => navigate("/login", { replace: true })}>
+              Go to sign in
+            </Button>
+          </div>
+        ) : !token ? (
           <Alert variant="destructive">
             <AlertDescription>This invitation link is invalid or incomplete.</AlertDescription>
           </Alert>

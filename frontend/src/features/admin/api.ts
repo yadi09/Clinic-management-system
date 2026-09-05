@@ -160,6 +160,12 @@ export function listProviders() {
 export function listRoles() {
   return apiFetch<Role[]>("/roles");
 }
+/** A fresh single-use link for somebody who has forgotten their password. There is
+ *  no email or SMS sender here — the admin hands the link over. */
+export function issueResetLink(userId: string) {
+  return apiFetch<InviteResult>(`/users/${userId}/reset-link`, { method: "POST" });
+}
+
 export function inviteUser(body: { email: string; full_name: string; roles: string[]; branch_ids?: string[] }) {
   return apiFetch<InviteResult>("/users", { method: "POST", body });
 }
