@@ -21,16 +21,16 @@
 // A finished visit moves aside rather than vanishing. Seen today is on the same
 // page, collapsed, with the check-out time and an Undo — because the correct
 // response to a mis-click is to put it back, not to re-register the patient.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  AlertTriangle, ArmchairIcon, CheckCircle2, ChevronDown, Clock, FileWarning,
+  AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Clock, FileWarning,
   HandHelping, Receipt, RotateCcw, Stethoscope,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Segmented } from "@/components/ui/segmented";
@@ -43,6 +43,25 @@ import { listUsers } from "@/features/admin/api";
 import { assignProvider, transitionQueue } from "@/features/scheduling/api";
 import { chairside, type ChairPatient } from "@/features/dental/api";
 import { windowFor, type DateWindow } from "@/components/ui/date-range-filter";
+
+/** Which list is on screen. */
+type ChairLens = "chair" | "waiting" | "unclaimed" | "seen";
+/** Rows per page. Fifteen fills a screen without a scroll on a laptop. */
+const PER = 15;
+
+/** What each list is, said once under the tabs rather than on every card. */
+const LENS_NOTE: Record<ChairLens, string> = {
+  chair: "Being treated now.",
+  waiting: "Sent through by reception and waiting for you.",
+  unclaimed: "Nobody has taken these — the ones most easily forgotten.",
+  seen: "Finished today. Nothing is deleted; put anyone back if the visit was closed by mistake.",
+};
+const LENS_EMPTY: Record<ChairLens, string> = {
+  chair: "Nobody in the chair. Open a waiting patient's chart to start.",
+  waiting: "Nobody waiting. Reception sends them here.",
+  unclaimed: "Everyone sent through has a dentist.",
+  seen: "Nobody has been checked out yet.",
+};
 
 const num = (s?: string) => Number(s || 0);
 const birr = (s?: string) => `${num(s).toLocaleString(undefined, { maximumFractionDigits: 0 })} ETB`;
@@ -108,7 +127,12 @@ export function ChairsidePage() {
   const [provider, setProvider] = useState(""); // "" = me
   const claimProvider = provider || user?.id;
   const [checkingOut, setCheckingOut] = useState<ChairPatient | null>(null);
-  const [showSeen, setShowSeen] = useState(false);
+  // One list at a time, chosen by tab — the same shape as Reception's Expected /
+  // Waiting / Seen / To settle. Stacked sections meant the dentist scrolled past
+  // three headings to reach the people they had already dealt with, and a
+  // collapsed "Seen" drawer hid the day's work behind a click.
+  const [lens, setLens] = useState<ChairLens>("waiting");
+  const [page, setPage] = useState(0);
 
   const list = useQuery({
     queryKey: ["chairside", provider || user?.id, win.from, win.to],
@@ -122,6 +146,21 @@ export function ChairsidePage() {
   const waiting = rows.filter((r) => (r.state === "waiting" || r.state === "called") && r.provider_id);
   const pool = rows.filter((r) => r.state !== "done" && !r.provider_id);
   const seen = rows.filter((r) => r.state === "done");
+  const byLens: Record<ChairLens, ChairPatient[]> =
+    { chair: inChair, waiting, unclaimed: pool, seen };
+  const current = byLens[lens];
+
+  // A busy day is fifty patients, and fifty cards is a scroll nobody finishes.
+  // Paged in the browser rather than the server: the tab counts need the whole
+  // day anyway, and re-fetching a page every twenty seconds would fight the
+  // refresh.
+  const pages = Math.max(1, Math.ceil(current.length / PER));
+  const safePage = Math.min(page, pages - 1);
+  const shown = current.slice(safePage * PER, safePage * PER + PER);
+  // Landing on an empty page after a check-out moves the last row is worse than
+  // being moved back to one that has rows on it.
+  useEffect(() => { if (page !== safePage) setPage(safePage); }, [page, safePage]);
+  useEffect(() => { setPage(0); }, [lens, range, provider]);
 
   // Opening the chart puts the patient in the chair. The failure used to be
   // swallowed, so a dentist could be treating someone the board still showed as
@@ -170,17 +209,15 @@ export function ChairsidePage() {
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not pick up the patient"),
   });
 
-  const live = inChair.length + waiting.length + pool.length;
-
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1>Chairside</h1>
+          {/* The tabs carry the counts now. Repeating them here said "46 waiting"
+              beside tabs reading 38 and 8 — the same day, described two ways. */}
           <p className="text-sm text-muted-foreground">
-            {list.isLoading ? "Loading…" : live === 0
-              ? "Nobody at the chair. Reception sends them here."
-              : `${inChair.length} in the chair · ${waiting.length + pool.length} waiting${seen.length ? ` · ${seen.length} seen` : ""}`}
+            {list.isLoading ? "Loading…" : "Patients reception has sent to your chair."}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -207,91 +244,57 @@ export function ChairsidePage() {
         </div>
       </div>
 
-      {inChair.length > 0 && (
-        <Group title="In the chair" note="being treated now">
-          {inChair.map((p) => (
-            <ChairCard key={p.queue_id} p={p} tone="amber"
-              onOpen={() => openChart(p)} onCheckOut={() => setCheckingOut(p)} />
-          ))}
-        </Group>
-      )}
+      <Card>
+        <CardContent className="space-y-3 p-4">
+          {/* Sub-pages, not stacked sections: the dentist picks the list they are
+              working from and sees only that. Stacked headings meant scrolling past
+              three groups to reach the people already dealt with, and a collapsed
+              "Seen" drawer hid the day's work behind a click. */}
+          <div className="-mx-1 overflow-x-auto px-1">
+            <Segmented
+            ariaLabel="Which patients"
+            value={lens}
+            onChange={(v) => setLens(v as ChairLens)}
+            options={[
+              { value: "chair", label: "In the chair", badge: inChair.length },
+              { value: "waiting", label: "Waiting", badge: waiting.length },
+              { value: "unclaimed", label: "Unclaimed", badge: pool.length },
+              { value: "seen", label: "Seen", badge: seen.length },
+            ]}
+            />
+          </div>
 
-      {waiting.length > 0 && (
-        <Group title="Waiting for you" note="sent through by reception">
-          {waiting.map((p) => (
-            <ChairCard key={p.queue_id} p={p} tone="brand"
-              onOpen={() => openChart(p)} onCheckOut={() => setCheckingOut(p)} />
-          ))}
-        </Group>
-      )}
+          <p className="text-xs text-muted-foreground">{LENS_NOTE[lens]}</p>
 
-      {pool.length > 0 && (
-        <Group title="Not yet claimed" note="nobody has taken these — the ones most easily forgotten">
-          {pool.map((p) => (
-            <ChairCard key={p.queue_id} p={p} tone="slate" dashed
-              onPickUp={claimProvider ? () => pickUp.mutate(p) : undefined}
-              picking={pickUp.isPending && pickUp.variables?.queue_id === p.queue_id} />
-          ))}
-        </Group>
-      )}
-
-      {live === 0 && !list.isLoading && (
-        <Card className="p-12 text-center text-sm text-muted-foreground">
-          <ArmchairIcon className="mx-auto mb-2 h-6 w-6 opacity-40" />
-          No patients at the chair. Reception sends them here.
-        </Card>
-      )}
-
-      {/* Finished, kept to one side rather than thrown away. */}
-      {seen.length > 0 && (
-        <div>
-          <button onClick={() => setShowSeen((s) => !s)}
-            className="flex w-full items-center gap-2 rounded-md px-1 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground">
-            <ChevronDown className={cn("h-4 w-4 transition-transform", !showSeen && "-rotate-90")} />
-            Seen {range === "today" ? "today" : "in this period"} · {seen.length}
-            {seen.some((p) => p.recorded_this_visit === 0) && (
-              <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium normal-case text-amber-800">
-                {seen.filter((p) => p.recorded_this_visit === 0).length} with nothing recorded
-              </span>
-            )}
-          </button>
-          {showSeen && (
+          {list.isLoading ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">Loading…</p>
+          ) : shown.length === 0 ? (
+            <p className="py-12 text-center text-sm text-muted-foreground">{LENS_EMPTY[lens]}</p>
+          ) : (
             <div className="space-y-2">
-              {seen.map((p) => (
-                <Card key={p.queue_id} className="flex flex-wrap items-center gap-x-4 gap-y-2 border-l-4 border-l-emerald-500/40 p-3">
-                  <div className="min-w-[12rem] flex-1">
-                    <p className="flex flex-wrap items-center gap-2 font-medium">
-                      {p.patient_name}
-                      {p.recorded_this_visit === 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
-                          <FileWarning className="h-3 w-3" /> nothing recorded
-                        </span>
-                      )}
-                      {num(p.unbilled) > 0.005 && (
-                        <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">
-                          {birr(p.unbilled)} unbilled
-                        </span>
-                      )}
-                    </p>
-                    <p className="font-mono text-xs text-muted-foreground">
-                      {p.mrn} · seen {clock(p.ended_at ?? p.enqueued_at)}
-                      {p.provider_name ? ` · ${p.provider_name}` : ""}
-                    </p>
-                  </div>
-                  <Button size="sm" variant="ghost" onClick={() => navigate(`/patients/${p.patient_id}`)}>
-                    <Stethoscope className="h-3.5 w-3.5" /> Open chart
-                  </Button>
-                  <Button size="sm" variant="outline"
-                    loading={undo.isPending && undo.variables?.queue_id === p.queue_id}
-                    onClick={() => undo.mutate(p)}>
-                    <RotateCcw className="h-3.5 w-3.5" /> Put back
-                  </Button>
-                </Card>
-              ))}
+              {shown.map((p) =>
+                lens === "seen" ? (
+                  <SeenRow key={p.queue_id} p={p}
+                    onOpen={() => navigate(`/patients/${p.patient_id}`)}
+                    onPutBack={() => undo.mutate(p)}
+                    pending={undo.isPending && undo.variables?.queue_id === p.queue_id} />
+                ) : lens === "unclaimed" ? (
+                  <ChairCard key={p.queue_id} p={p} tone="slate" dashed
+                    onPickUp={claimProvider ? () => pickUp.mutate(p) : undefined}
+                    picking={pickUp.isPending && pickUp.variables?.queue_id === p.queue_id} />
+                ) : (
+                  <ChairCard key={p.queue_id} p={p} tone={lens === "chair" ? "amber" : "brand"}
+                    onOpen={() => openChart(p)} onCheckOut={() => setCheckingOut(p)} />
+                ),
+              )}
             </div>
           )}
-        </div>
-      )}
+
+          {current.length > PER && (
+            <Pager page={safePage} pages={pages} total={current.length} per={PER} onPage={setPage} />
+          )}
+        </CardContent>
+      </Card>
 
       {checkingOut && (
         <CheckOutDialog p={checkingOut} onClose={() => setCheckingOut(null)}
@@ -299,18 +302,6 @@ export function ChairsidePage() {
           onConfirm={() => checkOut.mutate(checkingOut)} />
       )}
     </div>
-  );
-}
-
-function Group({ title, note, children }: { title: string; note: string; children: React.ReactNode }) {
-  return (
-    <section className="space-y-2">
-      <div className="px-1">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h2>
-        <p className="text-[11px] text-muted-foreground/80">{note}</p>
-      </div>
-      {children}
-    </section>
   );
 }
 
@@ -327,7 +318,10 @@ function ChairCard({ p, tone, dashed, onOpen, onCheckOut, onPickUp, picking }: {
   const r = risks(p, true);
   return (
     <Card className={cn("border-l-4 p-4", TONE[tone], dashed && "border-dashed")}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      {/* Stacked on a phone. Side by side, the action buttons kept their width and
+          the name was squeezed to one word a line — a card you cannot read is worse
+          than a card you have to scroll. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-2">
             <span className="font-semibold text-brand">{p.patient_name}</span>
@@ -365,24 +359,24 @@ function ChairCard({ p, tone, dashed, onOpen, onCheckOut, onPickUp, picking }: {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           {onPickUp ? (
             <>
               <Badge variant="warning">Unassigned</Badge>
-              <Button size="sm" variant="outline" loading={picking} onClick={onPickUp}>
+              <Button size="sm" variant="outline" className="flex-1 sm:flex-none" loading={picking} onClick={onPickUp}>
                 <HandHelping className="h-3.5 w-3.5" /> Pick up
               </Button>
             </>
           ) : (
             <>
               {onOpen && (
-                <Button size="sm" onClick={onOpen}>
+                <Button size="sm" className="flex-1 sm:flex-none" onClick={onOpen}>
                   <Stethoscope className="h-3.5 w-3.5" />
                   {p.state === "in_consult" ? "Continue" : "Open chart"}
                 </Button>
               )}
               {onCheckOut && (
-                <Button size="sm" variant="outline" onClick={onCheckOut}>
+                <Button size="sm" variant="outline" className="flex-1 sm:flex-none" onClick={onCheckOut}>
                   <CheckCircle2 className="h-3.5 w-3.5" /> Check out
                 </Button>
               )}
@@ -454,5 +448,71 @@ function CheckOutDialog({ p, pending, onConfirm, onClose }: {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** A finished visit: what happened, and the way back. */
+function SeenRow({ p, onOpen, onPutBack, pending }: {
+  p: ChairPatient; onOpen: () => void; onPutBack: () => void; pending: boolean;
+}) {
+  return (
+    <Card className="flex flex-col gap-2 border-l-4 border-l-emerald-500/40 p-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4">
+      <div className="min-w-0 sm:min-w-[12rem] sm:flex-1">
+        <p className="flex flex-wrap items-center gap-2 font-medium">
+          {p.patient_name}
+          {p.recorded_this_visit === 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
+              <FileWarning className="h-3 w-3" /> nothing recorded
+            </span>
+          )}
+          {num(p.unbilled) > 0.005 && (
+            <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">
+              {birr(p.unbilled)} unbilled
+            </span>
+          )}
+        </p>
+        <p className="font-mono text-xs text-muted-foreground">
+          {p.mrn} · seen {clock(p.ended_at ?? p.enqueued_at)}
+          {p.provider_name ? ` · ${p.provider_name}` : ""}
+        </p>
+      </div>
+      <div className="flex w-full gap-2 sm:w-auto">
+        <Button size="sm" variant="ghost" className="flex-1 sm:flex-none" onClick={onOpen}>
+          <Stethoscope className="h-3.5 w-3.5" /> Open chart
+        </Button>
+        <Button size="sm" variant="outline" className="flex-1 sm:flex-none" loading={pending} onClick={onPutBack}>
+          <RotateCcw className="h-3.5 w-3.5" /> Put back
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * Paging, stated in patients rather than page numbers.
+ *
+ * "16–30 of 47" is what a dentist wants to know at the end of a long day; "page 2
+ * of 4" makes them do the arithmetic to find out whether anyone is left.
+ */
+function Pager({ page, pages, total, per, onPage }: {
+  page: number; pages: number; total: number; per: number; onPage: (p: number) => void;
+}) {
+  const first = page * per + 1;
+  const last = Math.min(total, (page + 1) * per);
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+      <p className="text-xs text-muted-foreground tabular-nums">
+        Showing {first}–{last} of {total}
+      </p>
+      <div className="flex items-center gap-1">
+        <Button size="sm" variant="outline" disabled={page === 0} onClick={() => onPage(page - 1)}>
+          <ChevronLeft className="h-4 w-4" /> Previous
+        </Button>
+        <span className="px-2 text-xs text-muted-foreground tabular-nums">{page + 1} / {pages}</span>
+        <Button size="sm" variant="outline" disabled={page >= pages - 1} onClick={() => onPage(page + 1)}>
+          Next <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
   );
 }
