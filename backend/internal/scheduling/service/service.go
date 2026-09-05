@@ -452,6 +452,25 @@ func (s *Service) EnqueueWalkIn(ctx context.Context, in scheduling.WalkInInput) 
 		if out.Gated {
 			return nil
 		}
+		// Already at the chair today? Then this is the desk pressing again, not a
+		// second arrival. Nothing to raise (the fee is settled) and nothing to add.
+		//
+		// This became reachable the moment an already-paid intake stopped being
+		// re-raised: before that, a repeat press was always "gated" and returned
+		// early, so the duplicate it would otherwise have created never appeared.
+		var live int
+		if e := tx.QueryRow(ctx, `
+			SELECT count(*)::int FROM queue_entries
+			 WHERE tenant_id = $1 AND patient_id = $2 AND deleted_at IS NULL
+			   AND state NOT IN ('done','no_show')
+			   AND (enqueued_at AT TIME ZONE '`+addisTZ+`')::date
+			     = (now()       AT TIME ZONE '`+addisTZ+`')::date`,
+			tenantID, in.PatientID).Scan(&live); e != nil {
+			return e
+		}
+		if live > 0 {
+			return nil
+		}
 		qe, e := q.CreateQueueEntry(ctx, schedulingdb.CreateQueueEntryParams{
 			TenantID: tenantID, BranchID: in.BranchID, DepartmentID: in.DepartmentID, PatientID: in.PatientID,
 			AppointmentID: nil, Stage: stage, AssignedProviderID: in.ProviderID, Priority: int32(in.Priority), CreatedBy: actor,

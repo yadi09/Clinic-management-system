@@ -478,35 +478,64 @@ func (s *Service) RaiseIntakeChargeIDsTx(ctx context.Context, tx pgx.Tx, in bill
 	// day-boundary rule that has bitten the Z-report, deposit ageing and the finance
 	// chart.
 	if len(defaults) > 0 {
-		ids := make([]uuid.UUID, 0, len(defaults))
 		svc := make([]uuid.UUID, 0, len(defaults))
 		for _, d := range defaults {
 			svc = append(svc, d.ID)
 		}
-		rows, e := tx.Query(ctx,
-			`SELECT id FROM charges
-			  WHERE tenant_id = $1 AND patient_id = $2 AND status = 'pending' AND deleted_at IS NULL
-			    AND service_item_id = ANY($3::uuid[])
-			    AND created_at >= (((now() AT TIME ZONE 'Africa/Addis_Ababa')::date) AT TIME ZONE 'Africa/Addis_Ababa')
-			  ORDER BY created_at`,
-			tenantID, in.PatientID, svc)
-		if e != nil {
+		// Today's intake fee, in ANY live state, is the answer.
+		//
+		// This looked only for a PENDING charge, which quietly limited the fix to the
+		// window before payment. The moment the fee was paid there was nothing pending
+		// to find, so pressing Collect again raised a second registration fee, and a
+		// third: one patient at Cure Dental was charged 200 ETB seven times over —
+		// 1,400 ETB and seven receipts for a single visit — while the chair correctly
+		// showed her once.
+		//
+		// A fee already paid, waived, or agreed to be paid later is a fee dealt with.
+		// Pending ones are handed back to be collected; settled ones mean there is
+		// nothing left to raise and nothing left to take.
+		var pending, settled int
+		if e := tx.QueryRow(ctx, `
+			SELECT count(*) FILTER (WHERE status = 'pending' AND deferred_at IS NULL)::int,
+			       count(*) FILTER (WHERE status IN ('paid','waived') OR deferred_at IS NOT NULL)::int
+			  FROM charges
+			 WHERE tenant_id = $1 AND patient_id = $2 AND deleted_at IS NULL
+			   AND service_item_id = ANY($3::uuid[])
+			   AND created_at >= (((now() AT TIME ZONE 'Africa/Addis_Ababa')::date) AT TIME ZONE 'Africa/Addis_Ababa')`,
+			tenantID, in.PatientID, svc).Scan(&pending, &settled); e != nil {
 			return nil, e
 		}
-		for rows.Next() {
-			var cid uuid.UUID
-			if e := rows.Scan(&cid); e != nil {
-				rows.Close()
+		if pending > 0 {
+			ids := make([]uuid.UUID, 0, pending)
+			rows, e := tx.Query(ctx,
+				`SELECT id FROM charges
+				  WHERE tenant_id = $1 AND patient_id = $2 AND status = 'pending' AND deleted_at IS NULL
+				    AND deferred_at IS NULL
+				    AND service_item_id = ANY($3::uuid[])
+				    AND created_at >= (((now() AT TIME ZONE 'Africa/Addis_Ababa')::date) AT TIME ZONE 'Africa/Addis_Ababa')
+				  ORDER BY created_at`,
+				tenantID, in.PatientID, svc)
+			if e != nil {
 				return nil, e
 			}
-			ids = append(ids, cid)
-		}
-		rows.Close()
-		if e := rows.Err(); e != nil {
-			return nil, e
-		}
-		if len(ids) > 0 {
+			for rows.Next() {
+				var cid uuid.UUID
+				if e := rows.Scan(&cid); e != nil {
+					rows.Close()
+					return nil, e
+				}
+				ids = append(ids, cid)
+			}
+			rows.Close()
+			if e := rows.Err(); e != nil {
+				return nil, e
+			}
 			return ids, nil
+		}
+		if settled > 0 {
+			// Already paid for today. Nothing to raise, nothing to collect — the
+			// caller enqueues the patient if they are not already at the chair.
+			return nil, nil
 		}
 	}
 	branch, dept := in.BranchID, in.DepartmentID

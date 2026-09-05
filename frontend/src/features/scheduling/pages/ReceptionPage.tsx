@@ -85,6 +85,20 @@ export function ReceptionPage() {
   const rows = (lens === "settle" ? settling : (lists?.[lens] ?? [])) as ReceptionPatient[];
   const searching = debounced.trim().length >= 2;
 
+  // Someone found by search may already be in today's clinic.
+  //
+  // The reconciliation below only fires when the lists CHANGE, so a patient picked
+  // out of search was shown as a fresh arrival even while she was sitting at the
+  // chair — with the fee and the Collect button live. Pressing it took the money
+  // again, and again: one patient was charged the registration fee seven times in a
+  // day. The desk was not being careless; the screen said she had not arrived.
+  const alreadyHere = (patientId: string): ReceptionPatient | undefined => {
+    if (!lists) return undefined;
+    // Waiting and Seen first: what she is doing now beats what she was booked for.
+    return [...lists.waiting, ...lists.seen, ...lists.expected]
+      .find((r) => r.patient_id === patientId);
+  };
+
   // Keep the selected person in step with fresh data (their owed figure may change,
   // and once received they move from Expected to Waiting).
   useEffect(() => {
@@ -145,7 +159,7 @@ export function ReceptionPage() {
                 </p>
                 {(found.data?.items ?? []).map((p) => (
                   <button key={p.id} type="button"
-                    onClick={() => { setPicked(asWalkIn(p)); setSearch(""); }}
+                    onClick={() => { setPicked(alreadyHere(p.id) ?? asWalkIn(p)); setSearch(""); }}
                     className="w-full rounded-lg border p-3 text-left transition-colors hover:border-brand/40 hover:bg-accent/40 max-md:min-h-14">
                     <div className="flex flex-wrap items-baseline gap-x-2">
                       <span className="min-w-0 flex-1 truncate font-medium">{fullName(p)}</span>
