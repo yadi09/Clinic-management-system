@@ -169,6 +169,14 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
   const elapsed = useElapsed(ws.started_at);
   const active = useActiveSection(SECTION_TONES.map((t) => t.id));
   const [pane, setPane] = useState<"note" | "history" | "assist">("note");
+  // Assist is a plan feature. A doctor cannot buy it, so a clinic without it gets
+  // no tab at all rather than a button that always fails.
+  const assistOn = flagOn("ai_assist");
+  const panes: { k: typeof pane; label: string; Icon: typeof ClipboardList }[] = [
+    { k: "note", label: "Note", Icon: ClipboardList },
+    { k: "history", label: "History", Icon: HistoryIcon },
+    ...(assistOn ? [{ k: "assist" as const, label: "Assist", Icon: Sparkles }] : []),
+  ];
   const paneCls = (p: typeof pane) => cn(pane === p ? "" : "hidden", "lg:block");
 
   return (
@@ -205,11 +213,7 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
           stacked — the doctor scrolled past the whole consultation to reach the last
           visit. They become three panes of the same screen instead. */}
       <div className="flex gap-1 rounded-lg border bg-card p-1 lg:hidden">
-        {([
-          { k: "note", label: "Note", Icon: ClipboardList },
-          { k: "history", label: "History", Icon: HistoryIcon },
-          { k: "assist", label: "Assist", Icon: Sparkles },
-        ] as const).map(({ k, label, Icon }) => (
+        {panes.map(({ k, label, Icon }) => (
           <button key={k} type="button" onClick={() => setPane(k)}
             className={cn("touch-hit flex flex-1 items-center justify-center gap-1.5 rounded-md py-2 text-sm font-medium transition-colors",
               pane === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}>
@@ -286,7 +290,7 @@ function Workspace3b({ ws, queueEntryId, onChanged, onClosed }: { ws: Workspace;
 
         {/* Right rail — AI co-pilot + patient history timeline */}
         <div className={cn("space-y-4", pane === "note" && "hidden", "lg:block")}>
-          <div className={paneCls("assist")}><AssistPanel encounterId={ws.encounter_id} /></div>
+          {assistOn && <div className={paneCls("assist")}><AssistPanel encounterId={ws.encounter_id} /></div>}
           <div className={paneCls("history")}><PatientStoryPanel patientId={ws.patient.patient_id} /></div>
         </div>
       </div>

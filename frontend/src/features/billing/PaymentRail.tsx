@@ -55,10 +55,22 @@ export function usePaymentRails() {
   return useQuery({ queryKey: ["payment-rails"], queryFn: () => listPaymentRails() });
 }
 
-/** Whether this deployment can check receipts with the bank at all. */
+/**
+ * Whether this clinic can check receipts with the bank at all.
+ *
+ * Two conditions, in this order. The plan has to include it — verification is
+ * sold from Practice upward — and the deployment has to hold a Verify.ET key.
+ * Asking the plan first matters: without that check the cashier fires a request
+ * the server now refuses for every clinic below Practice, on every till, all day.
+ */
 export function useVerification() {
-  const q = useQuery({ queryKey: ["verify-available"], queryFn: verificationAvailable, staleTime: 5 * 60_000 });
-  return q.data?.available ?? false;
+  const { flagOn } = useAuth();
+  const onPlan = flagOn("payment_verification");
+  const q = useQuery({
+    queryKey: ["verify-available"], queryFn: verificationAvailable,
+    staleTime: 5 * 60_000, enabled: onPlan,
+  });
+  return onPlan && (q.data?.available ?? false);
 }
 
 /** A payment the bank has contradicted must not quietly become a paid bill. */

@@ -91,6 +91,20 @@ TK=$(login)
 t "withdrawing it shuts them out" "$(code -X POST $B/encounters/enc_0000000000000000000000000/assist)" "403"
 X "DELETE FROM tenant_entitlements WHERE tenant_id='$TID';"
 
+echo "=== the flag map the UI reads matches the plan ==="
+# Every control that hides itself — the Assist tab, the bank-check button —
+# reads these. If they were right on the server but wrong here, staff would see
+# buttons that always fail.
+plan dental-chair
+me(){ C -H "$CT" -H "Authorization: Bearer $TK" $B/auth/me | py "print(d['data']['flags'].get('$1', False))"; }
+t "Chair: assist is off in the token"        "$(me ai_assist)" "False"
+t "Chair: verification is off in the token"  "$(me payment_verification)" "False"
+t "Chair: SMS is off in the token"           "$(me messaging)" "False"
+plan dental-group
+t "Group: assist is on"                      "$(me ai_assist)" "True"
+t "Group: verification is on"                "$(me payment_verification)" "True"
+t "Group: SMS is on"                         "$(me messaging)" "True"
+
 echo "=== the recall list ==="
 plan dental-group
 t "asking who has not been in works"  "$(code "$B/messaging/audience?not_seen_days=180")" "200"
