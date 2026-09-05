@@ -19,6 +19,7 @@ import (
 	"github.com/reicb/clinicsaas/internal/kernel/auth"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
 	"github.com/reicb/clinicsaas/internal/kernel/limits"
+	"github.com/reicb/clinicsaas/internal/kernel/phone"
 	"github.com/reicb/clinicsaas/internal/platform"
 	"github.com/reicb/clinicsaas/internal/platform/provision"
 )
@@ -89,6 +90,13 @@ func (s *Service) ProvisionClinic(ctx context.Context, in platform.ProvisionInpu
 	if name == "" || slug == "" || email == "" || owner == "" {
 		return nil, apperr.Validation("clinic name, workspace slug, owner name and owner email are required")
 	}
+	// Optional here — the vendor is often provisioning from a signed contract and
+	// may not have the number to hand — but stored in the same form as everywhere
+	// else when it is given, so it is dialable and textable without a second pass.
+	ownerPhone, ok := phone.Normalise(in.OwnerPhone)
+	if !ok {
+		return nil, apperr.Validation("that owner phone number doesn't look right").WithField("owner_phone", "invalid")
+	}
 	clinicType := strings.ToLower(strings.TrimSpace(in.ClinicType))
 	if clinicType == "" {
 		clinicType = "general"
@@ -120,7 +128,7 @@ func (s *Service) ProvisionClinic(ctx context.Context, in platform.ProvisionInpu
 	err = s.db.WithTenantTx(ctx, uuid.Nil, func(tx pgx.Tx) error {
 		var e error
 		res, e = provision.BootstrapTenant(ctx, tx, provision.Params{
-			Name: name, Slug: slug, OwnerEmail: email, OwnerName: owner, OwnerPasswordHash: hash,
+			Name: name, Slug: slug, OwnerEmail: email, OwnerName: owner, OwnerPhone: ownerPhone, OwnerPasswordHash: hash,
 			ClinicType: clinicType, PlanCode: strings.ToLower(strings.TrimSpace(in.PlanCode)), Flags: in.Modules,
 		})
 		return e
@@ -143,11 +151,26 @@ func (s *Service) ProvisionClinic(ctx context.Context, in platform.ProvisionInpu
 
 func (s *Service) ListClinics(ctx context.Context) ([]platform.ClinicSummary, error) {
 	rows, err := s.db.Pool.Query(ctx,
-		`SELECT t.id, t.name, t.slug, t.status, t.clinic_type, t.created_at,
+		`WITH owner AS (
+		   -- Who to contact about this clinic: the tenant_owner account, oldest
+		   -- first because that is the one provisioning created. The list has
+		   -- always had a place to show this and never filled it in.
+		   SELECT DISTINCT ON (u.tenant_id) u.tenant_id, u.email, coalesce(u.phone, '') AS phone
+		     FROM users u
+		     JOIN user_role_scopes urs ON urs.user_id = u.id AND urs.tenant_id = u.tenant_id
+		     JOIN roles r ON r.id = urs.role_id AND r.tenant_id = u.tenant_id
+		    WHERE r.code = 'tenant_owner' AND u.deleted_at IS NULL
+		    ORDER BY u.tenant_id, u.created_at
+		 )
+		 SELECT t.id, t.name, t.slug, t.status, t.clinic_type, t.created_at,
 		   (SELECT count(*) FROM users u WHERE u.tenant_id = t.id)::int,
 		   (SELECT count(*) FROM patients p WHERE p.tenant_id = t.id)::int,
-		   pl.code, pl.name
-		 FROM tenants t JOIN plans pl ON pl.id = t.plan_id
+		   pl.code, pl.name,
+		   coalesce(o.email, ba.billing_email, ''), coalesce(o.phone, '')
+		 FROM tenants t
+		 JOIN plans pl ON pl.id = t.plan_id
+		 LEFT JOIN owner o ON o.tenant_id = t.id
+		 LEFT JOIN billing_accounts ba ON ba.tenant_id = t.id
 		 WHERE t.deleted_at IS NULL ORDER BY t.created_at DESC`)
 	if err != nil {
 		return nil, apperr.Internal(err)
@@ -156,7 +179,7 @@ func (s *Service) ListClinics(ctx context.Context) ([]platform.ClinicSummary, er
 	out := []platform.ClinicSummary{}
 	for rows.Next() {
 		var c platform.ClinicSummary
-		if err := rows.Scan(&c.TenantID, &c.Name, &c.Slug, &c.Status, &c.ClinicType, &c.CreatedAt, &c.Users, &c.Patients, &c.PlanCode, &c.PlanName); err != nil {
+		if err := rows.Scan(&c.TenantID, &c.Name, &c.Slug, &c.Status, &c.ClinicType, &c.CreatedAt, &c.Users, &c.Patients, &c.PlanCode, &c.PlanName, &c.OwnerEmail, &c.OwnerPhone); err != nil {
 			return nil, apperr.Internal(err)
 		}
 		out = append(out, c)

@@ -14,7 +14,33 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/app/auth-context";
 import { AppError } from "@/lib/api-client";
-import { assignRoles, deleteUser, inviteUser, issueResetLink, listRoles, listUsers, updateUserName, updateUserStatus, type InviteResult, type UserListItem } from "@/features/admin/api";
+import { assignRoles, deleteUser, inviteUser, issueResetLink, listRoles, listUsers, updateUserProfile, updateUserStatus, type InviteResult, type UserListItem } from "@/features/admin/api";
+
+/** The server is the authority (kernel/phone); this only catches an obvious slip
+ *  before a round-trip. Empty is allowed — the field is optional. */
+function phoneProblem(raw: string): string | null {
+  const t = raw.trim();
+  if (!t) return null;
+  const d = t.replace(/\D/g, "");
+  if (d.length < 7) return "That looks too short for a phone number.";
+  return null;
+}
+
+/** Whether an SMS could actually reach this number today. Safaricom (07…) and
+ *  landlines are real numbers our gateway will not carry, so say so rather than
+ *  letting someone assume a code could be texted there later. */
+function smsNote(raw: string): string | null {
+  const d = raw.replace(/\D/g, "").replace(/^251/, "0").replace(/^(9|7)(?=\d{8}$)/, "0$1");
+  if (d.length !== 10 || !d.startsWith("0")) return null;
+  if (d.startsWith("09")) return null;
+  if (d.startsWith("07")) return "Safaricom numbers can be called but can't receive our texts yet.";
+  return "This looks like a landline — fine for calling, but it can't receive texts.";
+}
+
+/** A stored number, shown the way staff read it: 0911 22 33 44. */
+function prettyPhone(p: string): string {
+  return /^0\d{9}$/.test(p) ? `${p.slice(0, 4)} ${p.slice(4, 6)} ${p.slice(6, 8)} ${p.slice(8)}` : p;
+}
 
 function statusVariant(s: string): "success" | "warning" | "destructive" | "default" {
   if (s === "active") return "success";
@@ -84,6 +110,7 @@ export function UsersPage() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
+                <TableHead>Phone</TableHead>
                 <TableHead>Roles</TableHead>
                 <TableHead>Status</TableHead>
                 {(canUpdate || canAssign) && <TableHead>Actions</TableHead>}
@@ -93,7 +120,15 @@ export function UsersPage() {
               {(users.data ?? []).map((u) => (
                 <TableRow key={u.id}>
                   <TableCell className="font-medium text-brand">{u.full_name}</TableCell>
-                  <TableCell className="text-muted-foreground">{u.email}</TableCell>
+                  <TableCell className="whitespace-nowrap text-muted-foreground">
+                    {u.phone ? (
+                      <a className="hover:underline" href={`tel:${u.phone}`}>{prettyPhone(u.phone)}</a>
+                    ) : canUpdate ? (
+                      <button className="text-xs text-primary hover:underline" onClick={() => setRenaming(u)}>Add</button>
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
                   <TableCell className="capitalize">{u.roles.map((r) => r.replace(/_/g, " ")).join(", ") || "—"}</TableCell>
                   <TableCell>
                     <Badge variant={statusVariant(u.status)}>{u.status}</Badge>
@@ -103,7 +138,7 @@ export function UsersPage() {
                       <div className="flex items-center gap-3">
                         {canUpdate && (
                           <button className="text-xs text-primary hover:underline" onClick={() => setRenaming(u)}>
-                            Edit name
+                            Edit details
                           </button>
                         )}
                         {canAssign && (
@@ -144,7 +179,7 @@ export function UsersPage() {
         )}
       </Card>
 
-      <EditNameDialog user={renaming} onClose={() => setRenaming(null)} onSaved={() => { setRenaming(null); invalidate(); }} />
+      <EditDetailsDialog user={renaming} onClose={() => setRenaming(null)} onSaved={() => { setRenaming(null); invalidate(); }} />
       <EditRolesDialog user={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); invalidate(); }} />
 
       {/* The link, once. It is not stored anywhere it can be read again, and the
@@ -158,6 +193,20 @@ export function UsersPage() {
               ({reset?.user.email}). It works once, expires in 12 hours, and any link issued
               to them before now has stopped working.
             </p>
+            {/* Whoever you hand it to can set this password, so check you are
+                handing it to the right person before you send it anywhere. */}
+            {reset?.user.phone ? (
+              <p className="text-sm">
+                Reach them on{" "}
+                <a className="font-medium hover:underline" href={`tel:${reset.user.phone}`}>{prettyPhone(reset.user.phone)}</a>
+                <span className="text-muted-foreground"> — confirm it's them before sending it.</span>
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No phone on their record, so there is no way to check it is really them asking. Hand it
+                over in person, and add their number while you are at it.
+              </p>
+            )}
             <Input readOnly value={reset?.link ?? ""} onFocus={(e) => e.currentTarget.select()} />
             <p className="text-xs text-muted-foreground">
               When they set the new password they will be signed out of every device and
@@ -190,30 +239,49 @@ export function UsersPage() {
   );
 }
 
-function EditNameDialog({ user, onClose, onSaved }: { user: UserListItem | null; onClose: () => void; onSaved: () => void }) {
+function EditDetailsDialog({ user, onClose, onSaved }: { user: UserListItem | null; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState("");
+  const [tel, setTel] = useState("");
   const [forUser, setForUser] = useState<string | null>(null);
-  // Seed the field whenever a different user is opened.
+  // Seed the fields whenever a different user is opened.
   if (user && forUser !== user.id) {
     setForUser(user.id);
     setName(user.full_name);
+    setTel(user.phone ?? "");
   }
+  const problem = phoneProblem(tel);
+  const note = problem ? null : smsNote(tel);
+  const changed = !!user && (name.trim() !== user.full_name || tel.trim() !== (user.phone ?? ""));
   const mut = useMutation({
-    mutationFn: () => updateUserName(user!.id, name.trim()),
-    onSuccess: () => { toast.success("Name updated"); onSaved(); },
-    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not update the name"),
+    mutationFn: () => updateUserProfile(user!.id, name.trim(), tel.trim()),
+    onSuccess: () => { toast.success("Staff details updated"); onSaved(); },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not save the changes"),
   });
+  const save = () => { if (changed && name.trim() && !problem) mut.mutate(); };
   return (
     <Dialog open={!!user} onOpenChange={(o) => { if (!o) { setForUser(null); onClose(); } }}>
       <DialogContent>
-        <DialogHeader><DialogTitle>Edit name{user ? ` — ${user.email}` : ""}</DialogTitle></DialogHeader>
-        <div className="space-y-1.5">
-          <Label>Full name</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && name.trim() && mut.mutate()} />
+        <DialogHeader><DialogTitle>Edit details{user ? ` — ${user.email}` : ""}</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label>Full name</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Phone</Label>
+            <Input value={tel} onChange={(e) => setTel(e.target.value)} placeholder="09…" onKeyDown={(e) => e.key === "Enter" && save()} />
+            {problem ? (
+              <p className="text-xs text-destructive">{problem}</p>
+            ) : note ? (
+              <p className="text-xs text-warning">{note}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">How the clinic reaches this person. Clearing it is allowed.</p>
+            )}
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => { setForUser(null); onClose(); }}>Cancel</Button>
-          <Button disabled={!name.trim() || name.trim() === user?.full_name} loading={mut.isPending} onClick={() => mut.mutate()}>Save</Button>
+          <Button disabled={!name.trim() || !!problem || !changed} loading={mut.isPending} onClick={save}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -296,6 +364,7 @@ function InviteDialog({ onInvited }: { onInvited: () => void }) {
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
+  const [tel, setTel] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [result, setResult] = useState<InviteResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -309,11 +378,12 @@ function InviteDialog({ onInvited }: { onInvited: () => void }) {
   }, [open]);
 
   const mut = useMutation({
-    mutationFn: () => inviteUser({ email, full_name: fullName, roles: selected, branch_ids: branchSel }),
+    mutationFn: () => inviteUser({ email, full_name: fullName, phone: tel.trim(), roles: selected, branch_ids: branchSel }),
     onSuccess: (res) => {
       setResult(res);
       setEmail("");
       setFullName("");
+      setTel("");
       setSelected([]);
       setBranchSel([]);
       onInvited();
@@ -323,6 +393,8 @@ function InviteDialog({ onInvited }: { onInvited: () => void }) {
 
   const toggle = (code: string) => setSelected((s) => (s.includes(code) ? s.filter((c) => c !== code) : [...s, code]));
   const toggleBranch = (id: string) => setBranchSel((s) => (s.includes(id) ? s.filter((b) => b !== id) : [...s, id]));
+  const invitePhoneProblem = phoneProblem(tel);
+  const inviteSmsNote = invitePhoneProblem ? null : smsNote(tel);
   const close = () => {
     setResult(null);
     setError(null);
@@ -380,6 +452,20 @@ function InviteDialog({ onInvited }: { onInvited: () => void }) {
               <Input value={fullName} onChange={(e) => setFullName(e.target.value)} />
             </div>
             <div className="space-y-1.5">
+              <Label>Phone</Label>
+              <Input value={tel} onChange={(e) => setTel(e.target.value)} placeholder="09…" />
+              {/* Asked for here because filling it in later never happens, and
+                  without it a forgotten password can only be answered by handing
+                  over a link in person. */}
+              {invitePhoneProblem ? (
+                <p className="text-xs text-destructive">{invitePhoneProblem}</p>
+              ) : inviteSmsNote ? (
+                <p className="text-xs text-warning">{inviteSmsNote}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">How the clinic reaches this person off email.</p>
+              )}
+            </div>
+            <div className="space-y-1.5">
               <Label>Roles</Label>
               <div className="flex flex-wrap gap-2">
                 {(roles.data ?? []).map((r) => (
@@ -419,7 +505,7 @@ function InviteDialog({ onInvited }: { onInvited: () => void }) {
               <Button variant="outline" onClick={close}>
                 Cancel
               </Button>
-              <Button disabled={!email || !fullName} loading={mut.isPending} onClick={() => mut.mutate()}>
+              <Button disabled={!email || !fullName || !!invitePhoneProblem} loading={mut.isPending} onClick={() => mut.mutate()}>
                 Send invite
               </Button>
             </DialogFooter>

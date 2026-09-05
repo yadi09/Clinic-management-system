@@ -91,6 +91,7 @@ type Service interface {
 type InviteInput struct {
 	Email     string
 	FullName  string
+	Phone     string // local 09… form; the only way to reach this person off email
 	RoleCodes []string
 	BranchIDs []uuid.UUID
 }
@@ -108,6 +109,7 @@ type UserListItem struct {
 	ID          uuid.UUID  `json:"-"`
 	Email       string     `json:"email"`
 	FullName    string     `json:"full_name"`
+	Phone       string     `json:"phone"`
 	Status      string     `json:"status"`
 	Roles       []string   `json:"roles"`
 	LastLoginAt *time.Time `json:"last_login_at,omitempty"`
@@ -135,7 +137,9 @@ type UserAdmin interface {
 	IssueResetLink(ctx context.Context, userID uuid.UUID) (*InviteResult, error)
 	ListProviders(ctx context.Context) ([]Provider, error)
 	UpdateUserStatus(ctx context.Context, userID uuid.UUID, status string) error
-	UpdateUserName(ctx context.Context, userID uuid.UUID, fullName string) error
+	// UpdateUserProfile edits the details an admin maintains. A nil phone leaves
+	// the stored number alone; an empty one clears it.
+	UpdateUserProfile(ctx context.Context, userID uuid.UUID, fullName string, phone *string) error
 	DeleteUser(ctx context.Context, userID uuid.UUID) error
 	// AssignRoles replaces a user's role assignments. branchIDs scopes them to
 	// those branches; empty means tenant-wide (all branches).

@@ -16,6 +16,7 @@ type ProvisionInput struct {
 	Slug          string
 	OwnerEmail    string
 	OwnerName     string
+	OwnerPhone    string // optional; the number the owner is reachable on
 	OwnerPassword string          // optional; a temp password is generated when empty
 	ClinicType    string          // "general" (default) | "dental" — applies a flag preset
 	PlanCode      string          // subscription plan code (default "business")
@@ -113,6 +114,7 @@ type ClinicSummary struct {
 	Slug       string    `json:"slug"`
 	Status     string    `json:"status"`
 	OwnerEmail string    `json:"owner_email,omitempty"`
+	OwnerPhone string    `json:"owner_phone,omitempty"`
 	Users      int       `json:"users"`
 	Patients   int       `json:"patients"`
 	ClinicType string    `json:"clinic_type,omitempty"`

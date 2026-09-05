@@ -26,6 +26,7 @@ type acceptInviteRequest struct {
 type inviteRequest struct {
 	Email     string   `json:"email" binding:"required,email"`
 	FullName  string   `json:"full_name" binding:"required"`
+	Phone     string   `json:"phone"`
 	RoleCodes []string `json:"roles"`
 	Branches  []string `json:"branch_ids"` // encoded brn_… ids; empty = all branches
 }

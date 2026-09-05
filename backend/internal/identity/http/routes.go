@@ -39,7 +39,9 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	// A forgotten password: a fresh single-use link the admin passes on.
 	u.POST("/:id/reset-link", httpx.RequirePermission("user.invite"), h.ResetLink)
 	u.POST("/:id/status", httpx.RequirePermission("user.update"), h.UpdateUserStatus)
-	u.POST("/:id/name", httpx.RequirePermission("user.update"), h.UpdateUserName)
+	u.POST("/:id/profile", httpx.RequirePermission("user.update"), h.UpdateUserProfile)
+	// Kept so a console left open across a deploy can still save a name change.
+	u.POST("/:id/name", httpx.RequirePermission("user.update"), h.UpdateUserProfile)
 	u.DELETE("/:id", httpx.RequirePermission("user.update"), h.DeleteUser)
 	u.PUT("/:id/roles", httpx.RequirePermission("role.assign"), h.AssignRoles)
 }

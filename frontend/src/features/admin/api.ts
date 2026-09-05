@@ -129,6 +129,7 @@ export interface UserListItem {
   id: string;
   email: string;
   full_name: string;
+  phone: string;
   status: string;
   roles: string[];
   last_login_at?: string;
@@ -166,14 +167,16 @@ export function issueResetLink(userId: string) {
   return apiFetch<InviteResult>(`/users/${userId}/reset-link`, { method: "POST" });
 }
 
-export function inviteUser(body: { email: string; full_name: string; roles: string[]; branch_ids?: string[] }) {
+export function inviteUser(body: { email: string; full_name: string; phone?: string; roles: string[]; branch_ids?: string[] }) {
   return apiFetch<InviteResult>("/users", { method: "POST", body });
 }
 export function updateUserStatus(id: string, status: string) {
   return apiFetch<void>(`/users/${id}/status`, { method: "POST", body: { status } });
 }
-export function updateUserName(id: string, full_name: string) {
-  return apiFetch<void>(`/users/${id}/name`, { method: "POST", body: { full_name } });
+/** Edits the details an admin maintains. Omitting phone leaves the stored number
+ *  alone; passing "" clears it. */
+export function updateUserProfile(id: string, full_name: string, phone?: string) {
+  return apiFetch<void>(`/users/${id}/profile`, { method: "POST", body: { full_name, phone } });
 }
 export function deleteUser(id: string) {
   return apiFetch<void>(`/users/${id}`, { method: "DELETE" });

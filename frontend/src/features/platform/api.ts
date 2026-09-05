@@ -34,6 +34,7 @@ export interface Clinic {
   slug: string;
   status: string;
   owner_email?: string;
+  owner_phone?: string;
   users: number;
   patients: number;
   clinic_type?: string;
@@ -58,7 +59,7 @@ export async function platformLogin(email: string, password: string) {
 export function listClinics() {
   return pfetch<Clinic[]>("/clinics");
 }
-export function provisionClinic(body: { clinic_name: string; slug: string; owner_name: string; owner_email: string; clinic_type: string; plan_code: string; modules: Record<string, boolean> }) {
+export function provisionClinic(body: { clinic_name: string; slug: string; owner_name: string; owner_email: string; owner_phone?: string; clinic_type: string; plan_code: string; modules: Record<string, boolean> }) {
   return pfetch<ProvisionResult>("/clinics", { method: "POST", body });
 }
 

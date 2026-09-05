@@ -118,6 +118,7 @@ type Params struct {
 	Slug              string // workspace identifier (login)
 	OwnerEmail        string
 	OwnerName         string
+	OwnerPhone        string // local 09… form; blank leaves it unset
 	OwnerPasswordHash string          // pre-hashed (Argon2id)
 	OwnerStatus       string          // "active" (seed/provision) — invited owners may differ later
 	ClinicType        string          // "general" (default) | "dental" — applies a flag preset
@@ -294,10 +295,11 @@ func BootstrapTenant(ctx context.Context, tx pgx.Tx, p Params) (Result, error) {
 
 	// Owner user + tenant-wide role.
 	if err := tx.QueryRow(ctx,
-		`INSERT INTO users (tenant_id, email, password_hash, full_name, status)
-		 VALUES ($1,$2,$3,$4,$5)
-		 ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, status = EXCLUDED.status
-		 RETURNING id`, res.TenantID, p.OwnerEmail, p.OwnerPasswordHash, p.OwnerName, p.OwnerStatus).Scan(&res.OwnerUserID); err != nil {
+		`INSERT INTO users (tenant_id, email, password_hash, full_name, status, phone)
+		 VALUES ($1,$2,$3,$4,$5,nullif($6,''))
+		 ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, status = EXCLUDED.status,
+		     phone = coalesce(EXCLUDED.phone, users.phone)
+		 RETURNING id`, res.TenantID, p.OwnerEmail, p.OwnerPasswordHash, p.OwnerName, p.OwnerStatus, p.OwnerPhone).Scan(&res.OwnerUserID); err != nil {
 		return res, fmt.Errorf("owner user: %w", err)
 	}
 	if _, err := tx.Exec(ctx,

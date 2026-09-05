@@ -55,6 +55,7 @@ func (h *Handlers) ProvisionClinic(c *gin.Context) {
 		Slug          string          `json:"slug"`
 		OwnerEmail    string          `json:"owner_email"`
 		OwnerName     string          `json:"owner_name"`
+		OwnerPhone    string          `json:"owner_phone"`
 		OwnerPassword string          `json:"owner_password"`
 		ClinicType    string          `json:"clinic_type"`
 		PlanCode      string          `json:"plan_code"`
@@ -65,7 +66,7 @@ func (h *Handlers) ProvisionClinic(c *gin.Context) {
 		return
 	}
 	out, err := h.svc.ProvisionClinic(c.Request.Context(), platform.ProvisionInput{
-		ClinicName: req.ClinicName, Slug: req.Slug, OwnerEmail: req.OwnerEmail, OwnerName: req.OwnerName, OwnerPassword: req.OwnerPassword, ClinicType: req.ClinicType, PlanCode: req.PlanCode, Modules: req.Modules,
+		ClinicName: req.ClinicName, Slug: req.Slug, OwnerEmail: req.OwnerEmail, OwnerName: req.OwnerName, OwnerPhone: req.OwnerPhone, OwnerPassword: req.OwnerPassword, ClinicType: req.ClinicType, PlanCode: req.PlanCode, Modules: req.Modules,
 	})
 	if err != nil {
 		httpx.Fail(c, err)
@@ -282,6 +283,7 @@ func clinicDTO(cl platform.ClinicSummary) gin.H {
 		"slug":        cl.Slug,
 		"status":      cl.Status,
 		"owner_email": cl.OwnerEmail,
+		"owner_phone": cl.OwnerPhone,
 		"users":       cl.Users,
 		"patients":    cl.Patients,
 		"clinic_type": cl.ClinicType,

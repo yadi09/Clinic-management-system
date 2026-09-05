@@ -50,7 +50,7 @@ func (h *Handlers) InviteUser(c *gin.Context) {
 		httpx.Fail(c, err)
 		return
 	}
-	res, err := h.users.InviteUser(c.Request.Context(), identity.InviteInput{Email: req.Email, FullName: req.FullName, RoleCodes: req.RoleCodes, BranchIDs: branchIDs})
+	res, err := h.users.InviteUser(c.Request.Context(), identity.InviteInput{Email: req.Email, FullName: req.FullName, Phone: req.Phone, RoleCodes: req.RoleCodes, BranchIDs: branchIDs})
 	if err != nil {
 		httpx.Fail(c, err)
 		return
@@ -76,26 +76,30 @@ func (h *Handlers) UpdateUserStatus(c *gin.Context) {
 	httpx.NoContent(c)
 }
 
-// DeleteUser handles DELETE /users/:id (soft-delete + session revoke).
-func (h *Handlers) UpdateUserName(c *gin.Context) {
+// UpdateUserProfile handles POST /users/:id/profile (and the older /name path).
+// Phone is a pointer so that omitting it leaves the stored number alone, while
+// sending "" clears it.
+func (h *Handlers) UpdateUserProfile(c *gin.Context) {
 	uid, ok := userID(c)
 	if !ok {
 		return
 	}
 	var req struct {
-		FullName string `json:"full_name"`
+		FullName string  `json:"full_name"`
+		Phone    *string `json:"phone"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.Fail(c, apperr.Validation("a name is required"))
 		return
 	}
-	if err := h.users.UpdateUserName(c.Request.Context(), uid, req.FullName); err != nil {
+	if err := h.users.UpdateUserProfile(c.Request.Context(), uid, req.FullName, req.Phone); err != nil {
 		httpx.Fail(c, err)
 		return
 	}
 	httpx.NoContent(c)
 }
 
+// DeleteUser handles DELETE /users/:id (soft-delete + session revoke).
 func (h *Handlers) DeleteUser(c *gin.Context) {
 	uid, ok := userID(c)
 	if !ok {

@@ -18,6 +18,7 @@ import (
 	"github.com/reicb/clinicsaas/internal/kernel/id"
 	"github.com/reicb/clinicsaas/internal/kernel/limits"
 	"github.com/reicb/clinicsaas/internal/kernel/notify"
+	"github.com/reicb/clinicsaas/internal/kernel/phone"
 	"github.com/reicb/clinicsaas/internal/kernel/tenancy"
 )
 
@@ -53,6 +54,14 @@ func (s *UserService) InviteUser(ctx context.Context, in identity.InviteInput) (
 	if strings.TrimSpace(in.FullName) == "" {
 		return nil, apperr.Validation("full name is required")
 	}
+	// A number that cannot be dialled is worse than none: it looks like a way to
+	// reach this person. Anything kernel/phone can read is accepted, including a
+	// foreign or Safaricom number the SMS gateway will not carry — the record is
+	// still correct, and the UI is where "we can't text this one" belongs.
+	tel, ok := phone.Normalise(in.Phone)
+	if !ok {
+		return nil, apperr.Validation("that phone number doesn't look right").WithField("phone", "invalid")
+	}
 
 	var userID uuid.UUID
 	var composite string
@@ -66,6 +75,13 @@ func (s *UserService) InviteUser(ctx context.Context, in identity.InviteInput) (
 			return e
 		}
 		userID = uid
+		// users.phone arrived in 00076 and sqlc is not available here, so the
+		// generated insert does not carry it — set it in the same transaction.
+		if tel != "" {
+			if _, e := tx.Exec(ctx, `UPDATE users SET phone = $3 WHERE tenant_id = $1 AND id = $2`, tenantID, uid, tel); e != nil {
+				return e
+			}
+		}
 		if e := assignRoleScopes(ctx, q, tenantID, uid, in.RoleCodes, in.BranchIDs); e != nil {
 			return e
 		}
@@ -99,14 +115,31 @@ func (s *UserService) ListUsers(ctx context.Context) ([]identity.UserListItem, e
 	tenantID, _ := userActor(ctx)
 	var out []identity.UserListItem
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		rows, e := identitydb.New(tx).ListUsers(ctx, tenantID)
+		// Raw rather than the generated ListUsers because that one predates
+		// users.phone (00076) and sqlc is not available here to regenerate it.
+		// Otherwise identical: one row per staff member with their role codes.
+		rows, e := tx.Query(ctx, `
+			SELECT u.id, u.email, u.full_name, coalesce(u.phone, ''), u.status,
+			       u.last_login_at, u.created_at,
+			       coalesce(array_agg(DISTINCT r.code) FILTER (WHERE r.code IS NOT NULL), '{}')::text[] AS roles
+			  FROM users u
+			  LEFT JOIN user_role_scopes urs ON urs.user_id = u.id AND urs.tenant_id = u.tenant_id
+			  LEFT JOIN roles r ON r.id = urs.role_id AND r.tenant_id = u.tenant_id
+			 WHERE u.tenant_id = $1 AND u.deleted_at IS NULL
+			 GROUP BY u.id
+			 ORDER BY u.created_at DESC`, tenantID)
 		if e != nil {
 			return e
 		}
-		for _, r := range rows {
-			out = append(out, identity.UserListItem{ID: r.ID, Email: r.Email, FullName: r.FullName, Status: r.Status, Roles: r.Roles, LastLoginAt: r.LastLoginAt, CreatedAt: r.CreatedAt})
+		defer rows.Close()
+		for rows.Next() {
+			var it identity.UserListItem
+			if e := rows.Scan(&it.ID, &it.Email, &it.FullName, &it.Phone, &it.Status, &it.LastLoginAt, &it.CreatedAt, &it.Roles); e != nil {
+				return e
+			}
+			out = append(out, it)
 		}
-		return nil
+		return rows.Err()
 	})
 	if err != nil {
 		return nil, apperr.Internal(err)
@@ -153,17 +186,35 @@ func (s *UserService) UpdateUserStatus(ctx context.Context, userID uuid.UUID, st
 	})
 }
 
-// UpdateUserName corrects a staff member's display name (e.g. a typo at invite).
-func (s *UserService) UpdateUserName(ctx context.Context, userID uuid.UUID, fullName string) error {
+// UpdateUserProfile corrects the details an admin maintains for a staff member:
+// the display name (e.g. a typo at invite) and the phone number to reach them on.
+func (s *UserService) UpdateUserProfile(ctx context.Context, userID uuid.UUID, fullName string, tel *string) error {
 	tenantID, _ := userActor(ctx)
 	name := strings.TrimSpace(fullName)
 	if name == "" {
 		return apperr.Validation("a name is required")
 	}
+	// nil means the caller is not touching the number; "" means clear it. Both
+	// have to be expressible, or an older client that sends only a name would
+	// silently wipe a phone somebody typed in.
+	var stored *string
+	if tel != nil {
+		norm, ok := phone.Normalise(*tel)
+		if !ok {
+			return apperr.Validation("that phone number doesn't look right").WithField("phone", "invalid")
+		}
+		stored = &norm
+		if norm == "" {
+			stored = nil
+		}
+	}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		ct, e := tx.Exec(ctx,
-			`UPDATE users SET full_name = $3, updated_at = now() WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
-			tenantID, userID, name)
+			`UPDATE users SET full_name = $3,
+			        phone = CASE WHEN $5::bool THEN $4 ELSE phone END,
+			        updated_at = now()
+			  WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+			tenantID, userID, name, stored, tel != nil)
 		if e != nil {
 			return e
 		}

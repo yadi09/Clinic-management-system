@@ -169,7 +169,10 @@ export function PlatformConsolePage() {
                   <tr key={c.id} className="border-b border-zinc-800 last:border-0">
                     <td className="p-3">
                       <div className="flex items-center gap-2"><Building2 className="h-4 w-4 text-zinc-500" /><span className="font-medium">{c.name}</span></div>
-                      <div className="ml-6 text-xs text-zinc-500">{c.owner_email}</div>
+                      <div className="ml-6 text-xs text-zinc-500">
+                        {c.owner_email || "—"}
+                        {c.owner_phone && <span className="ml-2 text-zinc-400">{c.owner_phone}</span>}
+                      </div>
                     </td>
                     <td className="font-mono text-xs text-zinc-400">{c.slug}</td>
                     <td><Badge variant="outline" className="border-zinc-700 text-zinc-300">{c.plan_name ?? "—"}</Badge></td>
@@ -535,7 +538,7 @@ function ClinicPlanDialog({ clinic, onClose, onSaved }: { clinic: Clinic | null;
 }
 
 function CreateClinicDialog({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (r: ProvisionResult) => void }) {
-  const [form, setForm] = useState({ clinic_name: "", slug: "", owner_name: "", owner_email: "" });
+  const [form, setForm] = useState({ clinic_name: "", slug: "", owner_name: "", owner_email: "", owner_phone: "" });
   const [clinicType, setClinicType] = useState("general");
   // For a general clinic the operator can toggle the individual medical modules;
   // a dental clinic's modules are fixed by its preset (dental on, lab/pharmacy off).
@@ -559,7 +562,7 @@ function CreateClinicDialog({ open, onClose, onCreated }: { open: boolean; onClo
     setModules(Object.fromEntries(MODULES.map((m) => [m.key, preset[m.key] ?? false])));
   };
   const slugHint = form.slug || form.clinic_name.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "");
-  const reset = () => { setForm({ clinic_name: "", slug: "", owner_name: "", owner_email: "" }); setClinicType("general"); setPlanCode(""); setModules(Object.fromEntries(MODULES.map((m) => [m.key, true]))); };
+  const reset = () => { setForm({ clinic_name: "", slug: "", owner_name: "", owner_email: "", owner_phone: "" }); setClinicType("general"); setPlanCode(""); setModules(Object.fromEntries(MODULES.map((m) => [m.key, true]))); };
   const mut = useMutation({
     mutationFn: () => {
       // A dental clinic sends its preset verbatim (incl. dental:true); a general
@@ -588,6 +591,9 @@ function CreateClinicDialog({ open, onClose, onCreated }: { open: boolean; onClo
           <div className="space-y-1.5"><Label>Workspace (login slug)</Label><Input value={form.slug} onChange={(e) => set("slug", e.target.value)} placeholder={slugHint || "bole-family"} /><p className="text-xs text-muted-foreground">Staff sign in with this workspace. Lowercase, no spaces.</p></div>
           <div className="space-y-1.5"><Label>Owner name</Label><Input value={form.owner_name} onChange={(e) => set("owner_name", e.target.value)} placeholder="Dr. Sara Ahmed" /></div>
           <div className="space-y-1.5"><Label>Owner email</Label><Input type="email" value={form.owner_email} onChange={(e) => set("owner_email", e.target.value)} placeholder="owner@bolefamily.clinic" /></div>
+          {/* The number support calls when this clinic has a problem, and the one
+              their own password reset will use once that goes by SMS. */}
+          <div className="space-y-1.5"><Label>Owner phone <span className="text-xs font-normal text-zinc-500">— optional</span></Label><Input value={form.owner_phone} onChange={(e) => set("owner_phone", e.target.value)} placeholder="09…" /></div>
           <div className="space-y-1.5">
             <Label>Plan</Label>
             <Select value={planCode} onValueChange={setPlanCode}>
