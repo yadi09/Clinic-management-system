@@ -11,7 +11,7 @@ import { toast } from "@/components/ui/sonner";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import {
   closePromo, deletePromoPrize, deletePromoQuestion, listPromos, openPromo, promoEntries,
-  promoMissed, promoPrizes, promoQuestions, savePromo, savePromoPrize, savePromoQuestion,
+  promoMissed, promoPrizes, promoQuestions, resetPromo, savePromo, savePromoPrize, savePromoQuestion,
   type PromoCampaign, type PromoChoice, type PromoPrize, type PromoQuestion,
 } from "@/features/platform/api";
 
@@ -44,6 +44,11 @@ function CampaignCard({ c, open, onToggle }: { c: PromoCampaign; open: boolean; 
     onSuccess: () => { toast.success("Sealed and open — the link works now"); invalidate(); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Could not open it"),
   });
+  const resetMut = useMutation({
+    mutationFn: () => resetPromo(c.id),
+    onSuccess: () => { toast.success("Wiped — back to draft, ready to seal again"); invalidate(); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not reset it"),
+  });
   const closeMut = useMutation({
     mutationFn: () => closePromo(c.id),
     onSuccess: () => { toast.success("Closed — the seed is published and any unclaimed gift has been drawn"); invalidate(); },
@@ -75,6 +80,15 @@ function CampaignCard({ c, open, onToggle }: { c: PromoCampaign; open: boolean; 
                 confirmLabel: "Close and draw",
                 destructive: true,
               }, () => closeMut.mutate())}>Close & draw</Button>
+          )}
+          {c.status !== "draft" && (
+            <Button size="sm" variant="ghost" className="text-rose-400" loading={resetMut.isPending}
+              onClick={() => ask({
+                title: "Wipe this campaign and start again",
+                description: `All ${c.entries} registered clinic${c.entries === 1 ? "" : "s"}, every answer and every spin are deleted, and a new secret is generated when you seal it again. Use this to clear a rehearsal — not after clinics have really played.`,
+                confirmLabel: "Wipe it",
+                destructive: true,
+              }, () => resetMut.mutate())}>Reset</Button>
           )}
           <Button size="sm" variant="ghost" onClick={onToggle}>{open ? "Hide" : "Manage"}</Button>
         </div>
@@ -118,6 +132,7 @@ function Settings({ c, onSaved }: { c: PromoCampaign; onSaved: () => void }) {
     title: c.title, subtitle: c.subtitle, gift_label: c.gift_label, gift_detail: c.gift_detail,
     telegram: c.telegram, phone: c.phone,
     chances: String(c.chances), gifts: String(c.gifts),
+    auto_extend: c.auto_extend ? "1" : "", extend_block: String(c.extend_block || 10),
     closes_at: c.closes_at ? c.closes_at.slice(0, 10) : "",
   });
   const set = (k: keyof typeof f, v: string) => setF((s) => ({ ...s, [k]: v }));
@@ -126,6 +141,7 @@ function Settings({ c, onSaved }: { c: PromoCampaign; onSaved: () => void }) {
     mutationFn: () => savePromo(c.id, {
       title: f.title, subtitle: f.subtitle, gift_label: f.gift_label, gift_detail: f.gift_detail,
       telegram: f.telegram, phone: f.phone, chances: num(f.chances), gifts: num(f.gifts),
+      auto_extend: f.auto_extend === "1", extend_block: Math.max(1, num(f.extend_block)),
       closes_at: f.closes_at ? new Date(`${f.closes_at}T20:00:00+03:00`).toISOString() : undefined,
     }),
     onSuccess: () => { toast.success("Saved"); onSaved(); },
@@ -149,6 +165,26 @@ function Settings({ c, onSaved }: { c: PromoCampaign; onSaved: () => void }) {
           <Input type="number" min={0} value={f.gifts} onChange={(e) => set("gifts", e.target.value)} disabled={live} />
         </L>
       </div>
+      <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm">
+        <input type="checkbox" className="mt-1" checked={f.auto_extend === "1"}
+          onChange={(e) => set("auto_extend", e.target.checked ? "1" : "")} />
+        <span>
+          Grow the wheel when it fills
+          <span className="block text-xs text-zinc-500">
+            You cannot know how many clinics will come. With this on, the {c.gifts_left === 0 ? c.gifts : c.gifts_left} gift
+            {(c.gifts_left === 0 ? c.gifts : c.gifts_left) === 1 ? "" : "s"} still to be won are simply spread across more
+            positions as more clinics arrive — nobody is turned away, and three is still three. With it off, clinic
+            number {c.chances + 1} is told to wait.
+          </span>
+        </span>
+      </label>
+      {f.auto_extend === "1" && (
+        <div className="mt-2 flex items-center gap-2">
+          <Label className="text-xs text-zinc-400">Add this many at a time</Label>
+          <Input type="number" min={1} className="w-24" value={f.extend_block}
+            onChange={(e) => set("extend_block", e.target.value)} />
+        </div>
+      )}
       {live && (
         <p className="mt-2 text-xs text-zinc-500">
           The campaign is sealed. You can add chances — new positions are appended and the unclaimed

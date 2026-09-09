@@ -29,6 +29,7 @@ func adminDTO(a campaign.Admin) gin.H {
 		"telegram": a.Telegram, "phone": a.Phone, "seed_hash": a.SeedHash, "seed": a.Seed,
 		"entries": a.Entries, "played": a.Played, "winners": a.Winners,
 		"gifts_left": a.GiftsLeft, "chances_left": a.ChancesLeft, "waiting": a.Waiting,
+		"auto_extend": a.AutoExtend, "extend_block": a.ExtendBlock,
 	}
 }
 
@@ -75,7 +76,9 @@ func (h *Handlers) AdminSave(c *gin.Context) {
 		GiftDetail string     `json:"gift_detail"`
 		Telegram   string     `json:"telegram"`
 		Phone      string     `json:"phone"`
-		ClosesAt   *time.Time `json:"closes_at"`
+		ClosesAt    *time.Time `json:"closes_at"`
+		AutoExtend  bool       `json:"auto_extend"`
+		ExtendBlock int        `json:"extend_block"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.Fail(c, apperr.Validation("check the campaign settings"))
@@ -85,6 +88,7 @@ func (h *Handlers) AdminSave(c *gin.Context) {
 		Title: req.Title, Subtitle: req.Subtitle, Chances: req.Chances, Gifts: req.Gifts,
 		GiftLabel: req.GiftLabel, GiftDetail: req.GiftDetail,
 		Telegram: req.Telegram, Phone: req.Phone, ClosesAt: req.ClosesAt,
+		AutoExtend: req.AutoExtend, ExtendBlock: req.ExtendBlock,
 	}); err != nil {
 		httpx.Fail(c, err)
 		return
@@ -113,6 +117,19 @@ func (h *Handlers) AdminClose(c *gin.Context) {
 		return
 	}
 	if err := h.svc.Close(c.Request.Context(), cid); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+// AdminReset handles POST /platform/campaigns/:id/reset.
+func (h *Handlers) AdminReset(c *gin.Context) {
+	cid, ok := campaignID(c)
+	if !ok {
+		return
+	}
+	if err := h.svc.Reset(c.Request.Context(), cid); err != nil {
 		httpx.Fail(c, err)
 		return
 	}

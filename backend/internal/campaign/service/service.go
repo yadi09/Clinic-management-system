@@ -44,6 +44,8 @@ type row struct {
 	seedHash   string
 	telegram   string
 	tel        string
+	autoExtend bool
+	block      int
 }
 
 func (s *Service) byCode(ctx context.Context, code string) (*row, error) {
@@ -51,10 +53,10 @@ func (s *Service) byCode(ctx context.Context, code string) (*row, error) {
 	err := s.db.Pool.QueryRow(ctx,
 		`SELECT id, code, title, coalesce(subtitle,''), status, closes_at, chances, gifts,
 		        gift_label, coalesce(gift_detail,''), coalesce(seed,''), coalesce(seed_hash,''),
-		        coalesce(contact_telegram,''), coalesce(contact_phone,'')
+		        coalesce(contact_telegram,''), coalesce(contact_phone,''), auto_extend, extend_block
 		   FROM campaigns WHERE code = $1`, strings.TrimSpace(code)).
 		Scan(&r.id, &r.code, &r.title, &r.subtitle, &r.status, &r.closesAt, &r.chances, &r.gifts,
-			&r.giftLabel, &r.giftDetail, &r.seed, &r.seedHash, &r.telegram, &r.tel)
+			&r.giftLabel, &r.giftDetail, &r.seed, &r.seedHash, &r.telegram, &r.tel, &r.autoExtend, &r.block)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, apperr.NotFound("CAMPAIGN_NOT_FOUND", "that campaign link is not valid")
 	}
@@ -387,13 +389,35 @@ func (s *Service) Spin(ctx context.Context, code, token string) (*campaign.SpinR
 		var idx int
 		var isGift bool
 		var prizeID *uuid.UUID
-		e2 := tx.QueryRow(ctx,
-			`SELECT idx, is_gift, prize_id FROM campaign_slots
-			  WHERE campaign_id = $1 AND entry_id IS NULL
-			  ORDER BY idx LIMIT 1 FOR UPDATE SKIP LOCKED`, r.id).Scan(&idx, &isGift, &prizeID)
+		claim := func() error {
+			return tx.QueryRow(ctx,
+				`SELECT idx, is_gift, prize_id FROM campaign_slots
+				  WHERE campaign_id = $1 AND entry_id IS NULL
+				  ORDER BY idx LIMIT 1 FOR UPDATE SKIP LOCKED`, r.id).Scan(&idx, &isGift, &prizeID)
+		}
+		e2 := claim()
+		if errors.Is(e2, pgx.ErrNoRows) && r.autoExtend {
+			// The wheel filled. Grow it rather than turn a clinic away: another
+			// block of positions, and the unclaimed ones re-sealed around exactly
+			// the gifts still outstanding — so a late clinic has a real chance at
+			// them, and three is still three.
+			var chances int
+			if e3 := tx.QueryRow(ctx, `SELECT chances FROM campaigns WHERE id=$1 FOR UPDATE`, r.id).Scan(&chances); e3 != nil {
+				return e3
+			}
+			grown := chances + r.block
+			if e3 := extendPool(ctx, tx, r.id, chances, grown); e3 != nil {
+				return e3
+			}
+			if _, e3 := tx.Exec(ctx, `UPDATE campaigns SET chances=$2, updated_at=now() WHERE id=$1`, r.id, grown); e3 != nil {
+				return e3
+			}
+			e2 = claim()
+		}
 		if errors.Is(e2, pgx.ErrNoRows) {
-			// Every chance is taken. The clinic stays registered and stays on the
-			// list — losing the lead over a full wheel would be the real mistake.
+			// Growing is switched off and every chance is taken. The clinic stays
+			// registered and stays on the list — losing the lead over a full wheel
+			// would be the real mistake.
 			out = campaign.SpinResult{Waiting: true}
 			return nil
 		}

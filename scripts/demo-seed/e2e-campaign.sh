@@ -110,6 +110,29 @@ t "exactly 3 clinics won the gift" "$(P "SELECT count(*) FROM campaign_entries W
 t "nobody was left with nothing"   "$(P "SELECT count(*) FROM campaign_entries WHERE campaign_id='$CID' AND coalesce(prize_label,'')='';")" "0"
 t "the winners sit on the sealed positions" "$(P "SELECT string_agg(slot_idx::text, ',' ORDER BY slot_idx) FROM campaign_entries WHERE campaign_id='$CID' AND won;")" "$CALC"
 
+echo "=== the wheel grows rather than turning a clinic away ==="
+# Nobody knows how many clinics will come, so the pool is not a promise about
+# turnout: it grows, and the gifts still outstanding spread across it.
+X "UPDATE campaigns SET auto_extend=true, extend_block=5 WHERE id='$CID';"
+GROW=$(P "SELECT chances FROM campaigns WHERE id='$CID';")
+TG=$(C -H "$CT" -X POST $B/campaigns/$CODE/enter -d '{"full_name":"Grow Clinic","phone":"0911228888","clinic_name":"Grow Dental"}' | py "print(d['data']['token'])")
+HG=(-H "$CT" -H "X-Campaign-Token: $TG")
+QG=$(C "${HG[@]}" $B/campaigns/$CODE/questions)
+for i in 0 1 2 3 4 5 6; do
+  QI=$(echo "$QG" | py "print(d['data'][$i]['id'])")
+  C "${HG[@]}" -X POST $B/campaigns/$CODE/answer -d "{\"question\":\"$QI\",\"choice\":0}" >/dev/null
+done
+SG=$(C "${HG[@]}" -X POST $B/campaigns/$CODE/spin)
+t "the 21st clinic spins, it does not wait" "$(echo "$SG" | py "print(d['data']['waiting'])")" "False"
+t "and wins something"                      "$(echo "$SG" | py "print('yes' if d['data']['prize_label'] else 'no')")" "yes"
+t "the wheel grew by one block"             "$(P "SELECT chances FROM campaigns WHERE id='$CID';")" "$((GROW+5))"
+t "there are still only 3 gifts in total"   "$(P "SELECT count(*) FROM campaign_slots WHERE campaign_id='$CID' AND is_gift;")" "3"
+t "the 3 already won are untouched"         "$(P "SELECT count(*) FROM campaign_entries WHERE campaign_id='$CID' AND won;")" "3"
+
+echo "=== with growing off, a clinic is told the wheel is full ==="
+X "UPDATE campaigns SET auto_extend=false WHERE id='$CID';"
+# fill whatever the growth left free
+X "UPDATE campaign_slots SET entry_id='00000000-0000-0000-0000-000000000000', claimed_at=now() WHERE campaign_id='$CID' AND entry_id IS NULL;"
 echo "=== a 21st clinic is kept, not lost ==="
 T21=$(C -H "$CT" -X POST $B/campaigns/$CODE/enter -d '{"full_name":"Late Clinic","phone":"0911229999","clinic_name":"Late Dental"}' | py "print(d['data']['token'])")
 H21=(-H "$CT" -H "X-Campaign-Token: $T21")
@@ -122,9 +145,12 @@ t "they are told the wheel is full, not turned away" "$(C "${H21[@]}" -X POST $B
 t "and they are still on the list" "$(P "SELECT count(*) FROM campaign_entries WHERE campaign_id='$CID' AND phone='0911229999';")" "1"
 t "the console flags them as waiting" "$(C "${A[@]}" $B/platform/campaigns/$PID | py "print(d['data']['waiting'])")" "1"
 
-echo "=== adding chances keeps the gifts already won, and gives the late clinic a turn ==="
-C "${A[@]}" -X PUT $B/platform/campaigns/$PID -d '{"title":"መልካም አዲስ ዓመት","subtitle":"Three dental clinics start 2019 with the whole system installed, free.","chances":24,"gifts":3,"gift_label":"Complete dental clinic system — implemented free","gift_detail":"Installed at your clinic, your records brought across, your team trained. Yours to keep.","telegram":"clinicos","phone":"0911223344"}' >/dev/null
-t "there are now 24 positions"  "$(P "SELECT count(*) FROM campaign_slots WHERE campaign_id='$CID';")" "24"
+echo "=== adding chances by hand keeps the gifts already won, and frees the waiting clinic ==="
+# The wheel already grew by a block above, so raise from wherever it now stands.
+NOWN=$(P "SELECT chances FROM campaigns WHERE id='$CID';")
+WANT=$((NOWN+4))
+C "${A[@]}" -X PUT $B/platform/campaigns/$PID -d '{"title":"መልካም አዲስ ዓመት","subtitle":"Three dental clinics start 2019 with the whole system installed, free.","chances":'"$WANT"',"gifts":3,"gift_label":"Complete dental clinic system — implemented free","gift_detail":"Installed at your clinic, your records brought across, your team trained. Yours to keep.","telegram":"clinicos","phone":"0911223344"}' >/dev/null
+t "the positions were appended" "$(P "SELECT count(*) FROM campaign_slots WHERE campaign_id='$CID';")" "$WANT"
 t "still exactly 3 gifts in all" "$(P "SELECT count(*) FROM campaign_slots WHERE campaign_id='$CID' AND is_gift;")" "3"
 t "and the 3 winners keep theirs" "$(P "SELECT count(*) FROM campaign_entries WHERE campaign_id='$CID' AND won;")" "3"
 t "the late clinic can now spin" "$(C "${H21[@]}" -X POST $B/campaigns/$CODE/spin | py "print(d['data']['waiting'])")" "False"
@@ -138,6 +164,16 @@ t "close succeeds"              "$(C "${A[@]}" -o /dev/null -w '%{http_code}' -X
 t "the seed is now public"      "$(C $B/campaigns/$CODE | py "print(len(d['data'].get('seed','')))")" "64"
 t "three clinics hold the gift" "$(P "SELECT count(*) FROM campaign_entries WHERE campaign_id='$CID' AND won;")" "3"
 t "a closed campaign takes no more entries" "$(C -H "$CT" -o /dev/null -w '%{http_code}' -X POST $B/campaigns/$CODE/enter -d '{"full_name":"Z","phone":"0911220000","clinic_name":"Z"}')" "400"
+
+echo "=== reset clears a rehearsal completely ==="
+t "reset succeeds"              "$(C "${A[@]}" -o /dev/null -w '%{http_code}' -X POST $B/platform/campaigns/$PID/reset)" "204"
+t "every entry is gone"         "$(P "SELECT count(*) FROM campaign_entries WHERE campaign_id='$CID';")" "0"
+t "every position is gone"      "$(P "SELECT count(*) FROM campaign_slots WHERE campaign_id='$CID';")" "0"
+t "it is back to draft"         "$(P "SELECT status FROM campaigns WHERE id='$CID';")" "draft"
+t "the old commitment is void"  "$(P "SELECT coalesce(seed_hash,'none') FROM campaigns WHERE id='$CID';")" "none"
+t "the questions survive"       "$(P "SELECT count(*) FROM campaign_questions WHERE campaign_id='$CID';")" "7"
+t "and so do the offers"        "$(P "SELECT count(*) FROM campaign_prizes WHERE campaign_id='$CID';")" "6"
+t "sealing again gives a NEW secret" "$([ "$(C "${A[@]}" -o /dev/null -w '%{http_code}' -X POST $B/platform/campaigns/$PID/open)" = "204" ] && [ "$(P "SELECT seed_hash FROM campaigns WHERE id='$CID';")" != "$SEEDHASH" ] && echo yes || echo no)" "yes"
 
 echo; echo "  $pass passed, $fail failed"
 [ "$fail" = 0 ]

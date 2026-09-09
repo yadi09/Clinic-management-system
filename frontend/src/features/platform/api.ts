@@ -362,6 +362,9 @@ export interface PromoCampaign {
   chances_left: number;
   /** Clinics that finished the questions and found the wheel full. */
   waiting: number;
+  /** Grow the wheel when it fills instead of turning a clinic away. */
+  auto_extend: boolean;
+  extend_block: number;
 }
 export interface PromoChoice { label: string; correct: boolean; explain: string }
 export interface PromoQuestion { id: string; prompt: string; teaches: string; choices: PromoChoice[]; sort: number; active: boolean }
@@ -378,6 +381,8 @@ export const savePromo = (id: string, body: Partial<PromoCampaign>) =>
   pfetch<void>(`/campaigns/${id}`, { method: "PUT", body });
 export const openPromo = (id: string) => pfetch<void>(`/campaigns/${id}/open`, { method: "POST" });
 export const closePromo = (id: string) => pfetch<void>(`/campaigns/${id}/close`, { method: "POST" });
+/** Wipes every entry and unseals the campaign — for clearing a rehearsal. */
+export const resetPromo = (id: string) => pfetch<void>(`/campaigns/${id}/reset`, { method: "POST" });
 export const promoQuestions = (id: string) => pfetch<PromoQuestion[]>(`/campaigns/${id}/questions`);
 export const savePromoQuestion = (id: string, qid: string | null, body: Omit<PromoQuestion, "id">) =>
   qid ? pfetch<void>(`/campaigns/${id}/questions/${qid}`, { method: "PUT", body })

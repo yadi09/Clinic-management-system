@@ -113,6 +113,8 @@ type Admin struct {
 	GiftsLeft   int        `json:"gifts_left"`
 	ChancesLeft int        `json:"chances_left"`
 	Waiting     int        `json:"waiting"`
+	AutoExtend  bool       `json:"auto_extend"`
+	ExtendBlock int        `json:"extend_block"`
 }
 
 // AdminInput edits a campaign's settings.
@@ -124,8 +126,10 @@ type AdminInput struct {
 	GiftLabel  string
 	GiftDetail string
 	Telegram   string
-	Phone      string
-	ClosesAt   *time.Time
+	Phone       string
+	ClosesAt    *time.Time
+	AutoExtend  bool
+	ExtendBlock int
 }
 
 // AdminQuestion carries the answers too — the console is where they are written.
@@ -192,6 +196,9 @@ type Service interface {
 	Save(ctx context.Context, id uuid.UUID, in AdminInput) error
 	Open(ctx context.Context, id uuid.UUID) error
 	Close(ctx context.Context, id uuid.UUID) error
+	// Reset throws away every entry and unseals the campaign, so a rehearsal can
+	// be wiped before the real thing starts.
+	Reset(ctx context.Context, id uuid.UUID) error
 	ListQuestions(ctx context.Context, id uuid.UUID) ([]AdminQuestion, error)
 	SaveQuestion(ctx context.Context, campaignID uuid.UUID, questionID *uuid.UUID, q AdminQuestion) error
 	DeleteQuestion(ctx context.Context, questionID uuid.UUID) error

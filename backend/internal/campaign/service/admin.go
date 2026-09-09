@@ -36,7 +36,7 @@ func (s *Service) List(ctx context.Context) ([]campaign.Admin, error) {
 const adminSelect = `
 SELECT c.id, c.code, c.title, coalesce(c.subtitle,''), c.status, c.opens_at, c.closes_at,
        c.chances, c.gifts, c.gift_label, coalesce(c.gift_detail,''),
-       coalesce(c.contact_telegram,''), coalesce(c.contact_phone,''),
+       coalesce(c.contact_telegram,''), coalesce(c.contact_phone,''), c.auto_extend, c.extend_block,
        coalesce(c.seed_hash,''), CASE WHEN c.status = 'closed' THEN coalesce(c.seed,'') ELSE '' END,
        (SELECT count(*) FROM campaign_entries e WHERE e.campaign_id = c.id)::int,
        (SELECT count(*) FROM campaign_entries e WHERE e.campaign_id = c.id AND e.spun_at IS NOT NULL)::int,
@@ -52,7 +52,7 @@ SELECT c.id, c.code, c.title, coalesce(c.subtitle,''), c.status, c.opens_at, c.c
 func scanAdmin(r pgx.Row) (*campaign.Admin, error) {
 	var a campaign.Admin
 	err := r.Scan(&a.ID, &a.Code, &a.Title, &a.Subtitle, &a.Status, &a.OpensAt, &a.ClosesAt,
-		&a.Chances, &a.Gifts, &a.GiftLabel, &a.GiftDetail, &a.Telegram, &a.Phone,
+		&a.Chances, &a.Gifts, &a.GiftLabel, &a.GiftDetail, &a.Telegram, &a.Phone, &a.AutoExtend, &a.ExtendBlock,
 		&a.SeedHash, &a.Seed, &a.Entries, &a.Played, &a.Winners, &a.GiftsLeft, &a.ChancesLeft, &a.Waiting)
 	return &a, err
 }
@@ -106,11 +106,13 @@ func (s *Service) Save(ctx context.Context, cid uuid.UUID, in campaign.AdminInpu
 		if _, e := tx.Exec(ctx,
 			`UPDATE campaigns SET title=$2, subtitle=nullif($3,''), chances=$4, gifts=$5,
 			        gift_label=$6, gift_detail=nullif($7,''), contact_telegram=nullif($8,''),
-			        contact_phone=nullif($9,''), closes_at=$10, updated_at=now()
+			        contact_phone=nullif($9,''), closes_at=$10,
+			        auto_extend=$11, extend_block=greatest(1,$12), updated_at=now()
 			  WHERE id=$1`,
 			cid, strings.TrimSpace(in.Title), strings.TrimSpace(in.Subtitle), in.Chances, in.Gifts,
 			strings.TrimSpace(in.GiftLabel), strings.TrimSpace(in.GiftDetail),
-			strings.TrimSpace(in.Telegram), strings.TrimSpace(in.Phone), in.ClosesAt); e != nil {
+			strings.TrimSpace(in.Telegram), strings.TrimSpace(in.Phone), in.ClosesAt,
+			in.AutoExtend, in.ExtendBlock); e != nil {
 			return e
 		}
 		if status == "open" && in.Chances > oldChances {
@@ -298,6 +300,37 @@ func (s *Service) Close(ctx context.Context, cid uuid.UUID) error {
 			}
 		}
 		_, e := tx.Exec(ctx, `UPDATE campaigns SET status='closed', updated_at=now() WHERE id=$1`, cid)
+		return e
+	})
+}
+
+// Reset throws the campaign back to where it started: every entry gone, every
+// position gone, the seal broken.
+//
+// It exists because the only way to be sure this works is to play it yourself,
+// and a rehearsal that cannot be cleared away would either sit in the real
+// results forever or have to be picked out of the database by hand. Destructive
+// on purpose, and the console asks first.
+func (s *Service) Reset(ctx context.Context, cid uuid.UUID) error {
+	return s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		var exists bool
+		if e := tx.QueryRow(ctx, `SELECT true FROM campaigns WHERE id=$1 FOR UPDATE`, cid).Scan(&exists); e != nil {
+			if errors.Is(e, pgx.ErrNoRows) {
+				return apperr.NotFound("CAMPAIGN_NOT_FOUND", "campaign not found")
+			}
+			return e
+		}
+		if _, e := tx.Exec(ctx, `DELETE FROM campaign_slots WHERE campaign_id=$1`, cid); e != nil {
+			return e
+		}
+		if _, e := tx.Exec(ctx, `DELETE FROM campaign_entries WHERE campaign_id=$1`, cid); e != nil {
+			return e
+		}
+		// A new seal means a new secret. The old commitment is void, which is
+		// correct: the wheel it described no longer exists.
+		_, e := tx.Exec(ctx,
+			`UPDATE campaigns SET status='draft', seed=NULL, seed_hash=NULL, sealed_at=NULL, updated_at=now()
+			  WHERE id=$1`, cid)
 		return e
 	})
 }

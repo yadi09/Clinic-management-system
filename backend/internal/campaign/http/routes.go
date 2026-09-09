@@ -30,6 +30,7 @@ func (h *Handlers) Register(v1 *gin.RouterGroup, tokens *auth.TokenService) {
 	adm.PUT("/:id", h.AdminSave)
 	adm.POST("/:id/open", h.AdminOpen)
 	adm.POST("/:id/close", h.AdminClose)
+	adm.POST("/:id/reset", h.AdminReset)
 	adm.GET("/:id/questions", h.AdminQuestions)
 	adm.POST("/:id/questions", h.AdminSaveQuestion)
 	adm.PUT("/:id/questions/:qid", h.AdminSaveQuestion)
