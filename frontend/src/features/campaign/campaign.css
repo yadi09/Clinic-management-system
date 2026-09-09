@@ -1,0 +1,171 @@
+/* The Enkutatash page has its own world.
+ *
+ * Everything is scoped under .enk and defines its own colours, so the clinic
+ * app's theme — light or dark, and the dentist's own preference — cannot reach
+ * in and repaint a page whose whole job is to look like a holiday.
+ *
+ * The palette is the holiday's own: the yellow of the Adey Abeba that covers the
+ * highlands when the rains stop, the green of the fields underneath it, and the
+ * white of a netela. The red and blue appear in one place only — the tibeb, the
+ * woven border of that shawl — which is also the page's progress bar. */
+.enk {
+  --ink: #10261c;
+  --field: #0e5c3f;
+  --field-deep: #093524;
+  --adey: #f5c518;
+  --sun: #ff9e1b;
+  --cotton: #fffdf7;
+  --cotton-dim: #f4efe2;
+  --tibeb-red: #c1272d;
+  --tibeb-blue: #1b4f9c;
+  --line: rgba(16, 38, 28, 0.12);
+
+  color: var(--ink);
+  background: var(--cotton);
+  min-height: 100dvh;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Amharic is the display face here, not an ornament: the greeting is the largest
+ * thing on the page and it is set in Ethiopic. */
+.enk .am {
+  font-family: "Noto Serif Ethiopic", "Noto Sans Ethiopic", Nyala, "Abyssinica SIL", serif;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.enk-hero {
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(120% 90% at 50% -20%, var(--field) 0%, var(--field-deep) 60%, #06251a 100%);
+  color: var(--cotton);
+  padding: clamp(2.5rem, 8vw, 5.5rem) 1.25rem clamp(3rem, 9vw, 6rem);
+  text-align: center;
+}
+/* Explicit: the app's global h1 rule would otherwise repaint the greeting in the
+   clinic brand colour, which on this dark green is close to unreadable. */
+/* Once a clinic is answering questions the greeting has done its work; leaving it
+   at full height puts five hundred pixels of celebration above every question on
+   a phone. It shrinks to a band instead of disappearing, so the page still feels
+   like the same page. */
+.enk-hero.small { padding: 1.1rem 1.25rem 1.3rem; }
+.enk-hero.small h1 { font-size: clamp(1.3rem, 6vw, 1.7rem); }
+.enk-hero.small .enk-year { margin-bottom: .5rem; font-size: .7rem; padding: .25rem .7rem; }
+.enk-hero h1 { font-size: clamp(2.2rem, 10vw, 4.4rem); margin: 0; letter-spacing: -0.01em; color: var(--cotton); }
+.enk-hero .sub { color: #cfe6da; max-width: 34rem; margin: 1rem auto 0; font-size: clamp(1rem, 3.4vw, 1.2rem); line-height: 1.55; }
+.enk-year {
+  display: inline-block; font-size: 0.78rem; letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--adey); border: 1px solid rgba(245, 197, 24, 0.4); border-radius: 999px;
+  padding: 0.4rem 0.9rem; margin-bottom: 1.4rem;
+}
+
+/* The tibeb: the woven band on a netela's edge. Used as a divider and, on the
+ * quiz, as the progress bar — it weaves itself one question at a time, which is
+ * the one place a progress bar can carry meaning instead of just a percentage. */
+.enk-tibeb {
+  height: 14px;
+  background-image:
+    repeating-linear-gradient(90deg, var(--tibeb-red) 0 6px, transparent 6px 12px),
+    repeating-linear-gradient(90deg, transparent 0 6px, var(--adey) 6px 12px),
+    repeating-linear-gradient(90deg, var(--tibeb-blue) 0 3px, transparent 3px 24px);
+  background-size: 24px 6px, 24px 6px, 24px 14px;
+  background-position: 0 0, 0 8px, 0 0;
+  background-repeat: repeat-x;
+  opacity: 0.95;
+}
+/* One woven segment per question. A single filled bar cannot show the tibeb at
+   all until it is a quarter full — at question one it was a two-pixel speck that
+   read as a rendering fault. Segments also answer the question a progress bar is
+   actually asked here: how many left. */
+.enk-progress { display: flex; gap: 4px; }
+.enk-progress > i {
+  flex: 1; height: 12px; border-radius: 3px; background: var(--cotton-dim);
+  transition: opacity 300ms ease, background 300ms ease;
+}
+.enk-progress > i.on { background: none; }
+
+.enk-wrap { max-width: 44rem; margin: 0 auto; padding: 0 1.25rem; }
+.enk-card {
+  background: #fff; border: 1px solid var(--line); border-radius: 18px;
+  padding: clamp(1.1rem, 4vw, 1.9rem); box-shadow: 0 1px 2px rgba(16,38,28,.04), 0 12px 32px -18px rgba(16,38,28,.28);
+}
+.enk-gift {
+  border: 2px solid var(--adey); border-radius: 18px; background: linear-gradient(180deg, #fffbe9, #fff);
+  padding: clamp(1.1rem, 4vw, 1.9rem);
+}
+
+.enk ol { list-style: decimal; }
+.enk ol li::marker { color: var(--field); font-weight: 700; }
+.enk h2 { font-size: clamp(1.35rem, 5vw, 1.9rem); margin: 0 0 .5rem; letter-spacing: -0.01em; }
+.enk p { line-height: 1.6; }
+.enk .muted { color: #55665d; }
+.enk .tiny { font-size: .78rem; }
+
+.enk-btn {
+  appearance: none; border: 0; cursor: pointer; width: 100%;
+  background: var(--field); color: #fff; font-weight: 650; font-size: 1.02rem;
+  padding: 0.95rem 1.2rem; border-radius: 12px; min-height: 48px;
+  transition: transform 120ms ease, background 160ms ease;
+}
+.enk-btn:hover:not(:disabled) { background: #0b4a33; }
+.enk-btn:active:not(:disabled) { transform: translateY(1px); }
+.enk-btn:disabled { opacity: .45; cursor: not-allowed; }
+.enk-btn.gold { background: var(--adey); color: var(--ink); }
+.enk-btn.gold:hover:not(:disabled) { background: #e6b70f; }
+.enk-btn.ghost { background: transparent; color: var(--field); border: 1px solid var(--line); }
+
+.enk-field { display: block; margin-bottom: 1rem; }
+.enk-field span { display: block; font-size: .84rem; font-weight: 600; margin-bottom: .35rem; }
+.enk-field input {
+  width: 100%; box-sizing: border-box; font: inherit; color: var(--ink);
+  padding: 0.8rem 0.9rem; min-height: 48px;
+  border: 1px solid var(--line); border-radius: 11px; background: var(--cotton);
+}
+.enk-field input:focus-visible { outline: 2px solid var(--field); outline-offset: 1px; }
+
+/* One choice. The whole row is the target — this is answered with a thumb. */
+.enk-choice {
+  display: flex; gap: .7rem; align-items: flex-start; width: 100%; text-align: left;
+  font: inherit; color: inherit; cursor: pointer; margin-bottom: .6rem;
+  background: var(--cotton); border: 1.5px solid var(--line); border-radius: 13px;
+  padding: 0.85rem 0.95rem; min-height: 48px; transition: border-color 140ms ease, background 140ms ease;
+}
+.enk-choice:hover:not(:disabled) { border-color: var(--field); background: #fff; }
+.enk-choice .k {
+  flex: 0 0 auto; width: 1.6rem; height: 1.6rem; border-radius: 50%;
+  background: var(--cotton-dim); color: var(--ink); font-size: .8rem; font-weight: 700;
+  display: grid; place-items: center;
+}
+.enk-choice.right { border-color: var(--field); background: #eef7f1; }
+.enk-choice.right .k { background: var(--field); color: #fff; }
+.enk-choice.wrong { border-color: var(--tibeb-red); background: #fdf1f1; }
+.enk-choice.wrong .k { background: var(--tibeb-red); color: #fff; }
+.enk-choice:disabled { cursor: default; }
+
+.enk-explain {
+  border-left: 3px solid var(--sun); background: #fff8ec;
+  padding: .85rem 1rem; border-radius: 0 11px 11px 0; margin: .2rem 0 1rem;
+}
+.enk-teaches { border-left-color: var(--field); background: #eef7f1; }
+
+/* Adey Abeba drifting through the hero — and only the hero. Loose over the whole
+ * page they landed on top of the offer and the buttons, which is a sticker, not a
+ * holiday. Small, faint, slow, and gone the moment the viewer asks for less motion. */
+.enk-petals { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.enk-petal { position: absolute; top: -14%; opacity: .3; animation: enk-fall linear infinite; pointer-events: none; }
+@keyframes enk-fall {
+  0%   { transform: translateY(-20%) rotate(0deg); opacity: 0; }
+  12%  { opacity: .3; }
+  100% { transform: translateY(560px) rotate(300deg); opacity: 0; }
+}
+
+.enk-wheel-wrap { position: relative; display: grid; place-items: center; padding: .5rem 0 0; }
+.enk-wheel { transition: transform 5.4s cubic-bezier(.12,.68,.12,1); transform-origin: 50% 50%; }
+.enk-needle { position: absolute; top: -2px; left: 50%; transform: translateX(-50%); z-index: 2; filter: drop-shadow(0 2px 3px rgba(0,0,0,.25)); }
+
+@media (prefers-reduced-motion: reduce) {
+  .enk-petal { display: none; }
+  .enk-wheel { transition-duration: 900ms; }
+  .enk-progress > i { transition: none; }
+}

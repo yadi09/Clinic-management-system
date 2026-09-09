@@ -29,6 +29,9 @@ interface RequestOptions {
   body?: unknown;
   auth?: boolean; // attach access token (default true)
   retry?: boolean; // attempt one refresh on 401 (default true)
+  /** Extra request headers. Used by the public campaign page, whose caller is a
+   *  dental clinic with no account and its own one-off token. */
+  headers?: Record<string, string>;
 }
 
 // Coalesce concurrent refreshes so a burst of 401s triggers a single refresh.
@@ -57,7 +60,7 @@ async function refreshOnce(): Promise<boolean> {
 
 async function request<T>(path: string, opts: RequestOptions = {}): Promise<{ data: T; meta?: Meta }> {
   const { method = "GET", body, auth = true, retry = true } = opts;
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = { "Content-Type": "application/json", ...(opts.headers ?? {}) };
   const token = tokenStore.get();
   if (auth && token) headers.Authorization = `Bearer ${token}`;
 

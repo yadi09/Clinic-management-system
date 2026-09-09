@@ -48,11 +48,16 @@ import { FinancePage } from "@/features/billing/pages/FinancePage";
 import { NotFoundPage } from "@/features/misc/NotFoundPage";
 import { PlatformLoginPage } from "@/features/platform/pages/PlatformLoginPage";
 import { PlatformConsolePage } from "@/features/platform/pages/PlatformConsolePage";
+import { CampaignPage } from "@/features/campaign/CampaignPage";
 
 export function AppRoutes() {
   return (
     <Routes>
       {/* Platform (vendor super-admin) — standalone, its own auth, outside the tenant shell. */}
+      {/* The campaign page: public by an unguessable code, outside every shell —
+          a dental clinic opening this from Telegram has no account and no theme. */}
+      <Route path="/c/:code" element={<CampaignPage />} />
+
       <Route path="/platform/login" element={<PlatformLoginPage />} />
       <Route path="/platform" element={<PlatformConsolePage />} />
 

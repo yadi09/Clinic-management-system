@@ -336,3 +336,59 @@ export const setRepStatus = (id: string, status: string) =>
   pfetch<void>(`/crm/reps/${id}/status`, { method: "POST", body: { status } });
 export const importInbound = (campaign_id?: string) =>
   pfetch<{ imported: number }>("/crm/inbound/import", { method: "POST", body: { campaign_id } });
+
+// --- outreach campaigns (Enkutatash and whatever follows) ---
+
+export interface PromoCampaign {
+  id: string;
+  code: string;
+  title: string;
+  subtitle: string;
+  status: "draft" | "open" | "closed";
+  opens_at?: string;
+  closes_at?: string;
+  chances: number;
+  gifts: number;
+  gift_label: string;
+  gift_detail: string;
+  telegram: string;
+  phone: string;
+  seed_hash?: string;
+  seed?: string;
+  entries: number;
+  played: number;
+  winners: number;
+  gifts_left: number;
+  chances_left: number;
+  /** Clinics that finished the questions and found the wheel full. */
+  waiting: number;
+}
+export interface PromoChoice { label: string; correct: boolean; explain: string }
+export interface PromoQuestion { id: string; prompt: string; teaches: string; choices: PromoChoice[]; sort: number; active: boolean }
+export interface PromoPrize { id: string; label: string; detail: string; weight: number; sort: number }
+export interface PromoEntry {
+  id: string; full_name: string; phone: string; clinic_name: string;
+  quiz_done: boolean; spun: boolean; won: boolean; prize_label?: string;
+  wrong: number; created_at: string; spun_at?: string;
+}
+export interface PromoMissed { prompt: string; wrong: number; asked: number }
+
+export const listPromos = () => pfetch<PromoCampaign[]>("/campaigns");
+export const savePromo = (id: string, body: Partial<PromoCampaign>) =>
+  pfetch<void>(`/campaigns/${id}`, { method: "PUT", body });
+export const openPromo = (id: string) => pfetch<void>(`/campaigns/${id}/open`, { method: "POST" });
+export const closePromo = (id: string) => pfetch<void>(`/campaigns/${id}/close`, { method: "POST" });
+export const promoQuestions = (id: string) => pfetch<PromoQuestion[]>(`/campaigns/${id}/questions`);
+export const savePromoQuestion = (id: string, qid: string | null, body: Omit<PromoQuestion, "id">) =>
+  qid ? pfetch<void>(`/campaigns/${id}/questions/${qid}`, { method: "PUT", body })
+      : pfetch<void>(`/campaigns/${id}/questions`, { method: "POST", body });
+export const deletePromoQuestion = (id: string, qid: string) =>
+  pfetch<void>(`/campaigns/${id}/questions/${qid}`, { method: "DELETE" });
+export const promoPrizes = (id: string) => pfetch<PromoPrize[]>(`/campaigns/${id}/prizes`);
+export const savePromoPrize = (id: string, pid: string | null, body: Omit<PromoPrize, "id">) =>
+  pid ? pfetch<void>(`/campaigns/${id}/prizes/${pid}`, { method: "PUT", body })
+      : pfetch<void>(`/campaigns/${id}/prizes`, { method: "POST", body });
+export const deletePromoPrize = (id: string, pid: string) =>
+  pfetch<void>(`/campaigns/${id}/prizes/${pid}`, { method: "DELETE" });
+export const promoEntries = (id: string) => pfetch<PromoEntry[]>(`/campaigns/${id}/entries`);
+export const promoMissed = (id: string) => pfetch<PromoMissed[]>(`/campaigns/${id}/missed`);
