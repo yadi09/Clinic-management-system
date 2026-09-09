@@ -1,6 +1,9 @@
 package service
 
-import "testing"
+import (
+	"strconv"
+	"testing"
+)
 
 // The seal has to be deterministic, or "here is the seed, check it yourself"
 // is a lie; and it has to be uniform, or the draw is not fair however checkable.
@@ -51,5 +54,51 @@ func TestHashMatchesSeed(t *testing.T) {
 	}
 	if hashOf(seed) != hash {
 		t.Fatal("the published hash does not match the seed it commits to")
+	}
+}
+
+// The order a clinic sees must be stable — otherwise the answers move under
+// their thumb when they get one wrong and try again — and it must actually
+// differ between clinics, or the right answer sits in the same place for
+// everyone and the shuffle achieves nothing.
+func TestChoiceOrderIsStablePerClinicAndQuestion(t *testing.T) {
+	a := choiceOrder("pme_one", "pmq_x", 3)
+	if len(a) != 3 {
+		t.Fatalf("want 3 positions, got %d", len(a))
+	}
+	b := choiceOrder("pme_one", "pmq_x", 3)
+	for i := range a {
+		if a[i] != b[i] {
+			t.Fatalf("the same clinic saw two different orders: %v then %v", a, b)
+		}
+	}
+	seen := map[int]bool{}
+	for _, v := range a {
+		if v < 0 || v >= 3 || seen[v] {
+			t.Fatalf("not a permutation: %v", a)
+		}
+		seen[v] = true
+	}
+}
+
+func TestChoiceOrderDiffersAcrossClinics(t *testing.T) {
+	// Across many clinics the correct answer must not sit in one place.
+	first := map[int]int{}
+	for i := 0; i < 600; i++ {
+		o := choiceOrder("pme_"+strconv.Itoa(i), "pmq_x", 3)
+		// where did the admin's first choice (index 0) end up for this clinic?
+		for pos, orig := range o {
+			if orig == 0 {
+				first[pos]++
+			}
+		}
+	}
+	for pos, n := range first {
+		if n < 120 || n > 280 {
+			t.Errorf("the first answer landed in position %d %d times of 600 — expected about 200", pos, n)
+		}
+	}
+	if len(first) != 3 {
+		t.Errorf("the first answer only ever appeared in %d of 3 positions", len(first))
 	}
 }

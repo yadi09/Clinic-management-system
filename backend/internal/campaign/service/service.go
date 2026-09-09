@@ -274,15 +274,18 @@ func (s *Service) Questions(ctx context.Context, code, token string) ([]campaign
 	if err != nil {
 		return nil, err
 	}
+	entryCode := id.Encode(id.PrefixPromoEntry, e.id)
 	out := make([]campaign.Question, 0, len(qs))
 	for _, q := range qs {
+		qCode := id.Encode(id.PrefixPromoQuestion, q.id)
 		labels := make([]string, 0, len(q.choices))
-		for _, c := range q.choices {
-			labels = append(labels, c.Label)
+		// Shown in this clinic's own order, so the right answer is not always the
+		// first one on the list.
+		for _, orig := range choiceOrder(entryCode, qCode, len(q.choices)) {
+			labels = append(labels, q.choices[orig].Label)
 		}
 		out = append(out, campaign.Question{
-			ID: id.Encode(id.PrefixPromoQuestion, q.id), Prompt: q.prompt,
-			Choices: labels, Answered: done[id.Encode(id.PrefixPromoQuestion, q.id)],
+			ID: qCode, Prompt: q.prompt, Choices: labels, Answered: done[qCode],
 		})
 	}
 	return out, nil
@@ -317,7 +320,10 @@ func (s *Service) Answer(ctx context.Context, code, token, questionID string, ch
 	if choice < 0 || choice >= len(found.choices) {
 		return nil, apperr.Validation("please choose one of the answers")
 	}
-	picked := found.choices[choice]
+	// The clinic answers with the position it was shown, which is not the position
+	// the admin wrote. Same derivation as the serve, so the two cannot drift.
+	order := choiceOrder(id.Encode(id.PrefixPromoEntry, e.id), questionID, len(found.choices))
+	picked := found.choices[order[choice]]
 	res := campaign.AnswerResult{Correct: picked.Correct}
 	if picked.Correct {
 		res.Teaches = found.teaches

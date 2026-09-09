@@ -65,3 +65,33 @@ func giftPositions(seed string, chances, gifts int) []int {
 	sort.Ints(out)
 	return out
 }
+
+// choiceOrder is the order one clinic sees one question's answers in.
+//
+// The seeded questions all had the right answer first, so a clinic could tap A
+// seven times, finish, and learn nothing — which is the only thing this campaign
+// was for. Shuffling per clinic and per question fixes that without making the
+// quiz a memory test: the same clinic always sees the same order, so a refresh
+// mid-question, or a second attempt after getting it wrong, does not move the
+// answers around under their thumb.
+//
+// Derived rather than stored: the pair (entry, question) is enough to reproduce
+// it anywhere, including when the answer comes back and has to be mapped to the
+// choice the admin actually wrote.
+func choiceOrder(entryID, questionID string, n int) []int {
+	type ranked struct {
+		idx int
+		key string
+	}
+	rs := make([]ranked, n)
+	for i := 0; i < n; i++ {
+		sum := sha256.Sum256([]byte(entryID + "|" + questionID + "|" + strconv.Itoa(i)))
+		rs[i] = ranked{idx: i, key: hex.EncodeToString(sum[:])}
+	}
+	sort.Slice(rs, func(a, b int) bool { return rs[a].key < rs[b].key })
+	out := make([]int, n)
+	for i, r := range rs {
+		out[i] = r.idx
+	}
+	return out
+}

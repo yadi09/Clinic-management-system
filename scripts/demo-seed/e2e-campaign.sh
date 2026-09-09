@@ -11,22 +11,51 @@ P(){ docker exec clinicos-postgres-1 psql -U clinic -d clinic -At -c "$1" 2>/dev
 X(){ docker exec clinicos-postgres-1 psql -U clinic -d clinic -c "$1" >/dev/null 2>&1; }
 py(){ python3 -c "import sys,json;d=json.load(sys.stdin);$1" 2>/dev/null; }
 C(){ curl -k -sS -H "$HOST" "$@"; }
+# The answers are shuffled per clinic, so the test cannot know which is right —
+# it tries them, exactly as a clinic does, and the retry path gets exercised too.
+solve(){ # $1 = token, $2 = question id ; echoes the winning response
+  for ch in 0 1 2 3; do
+    R=$(C -H "$CT" -H "X-Campaign-Token: $1" -X POST $B/campaigns/$CODE/answer -d "{\"question\":\"$2\",\"choice\":$ch}")
+    [ "$(echo "$R" | py "print(d['data']['correct'])")" = "True" ] && { echo "$R"; return 0; }
+  done
+  return 1
+}
+finish(){ # $1 = token : answer every question correctly
+  local QQ; QQ=$(C -H "$CT" -H "X-Campaign-Token: $1" $B/campaigns/$CODE/questions)
+  local n; n=$(echo "$QQ" | py "print(len(d['data']))")
+  for i in $(seq 0 $((n-1))); do
+    solve "$1" "$(echo "$QQ" | py "print(d['data'][$i]['id'])")" >/dev/null
+  done
+}
 
-CODE=$(P "SELECT code FROM campaigns WHERE code LIKE 'enkutatash-%';")
-CID=$(P "SELECT id FROM campaigns WHERE code='$CODE';")
-WAS=$(P "SELECT status FROM campaigns WHERE code='$CODE';")
+# This test runs against a campaign of its own, created here and deleted at the
+# end. It must never touch the live Enkutatash one: that is open, real dental
+# clinics are registering on it, and an earlier version of this script reset it.
+CODE="e2e-campaign-$$"
+CID=$(P "INSERT INTO campaigns (code, title, subtitle, chances, gifts, gift_label, gift_detail, contact_telegram, contact_phone)
+         VALUES ('$CODE','E2E Test','E2E subtitle',20,3,'E2E gift','E2E gift detail','e2e','0911000000') RETURNING id;")
+# Same questions and offers as the real campaign, so the test exercises real content.
+X "INSERT INTO campaign_questions (campaign_id, prompt, teaches, choices, sort)
+     SELECT '$CID', prompt, teaches, choices, sort FROM campaign_questions
+      WHERE campaign_id = (SELECT id FROM campaigns WHERE code LIKE 'enkutatash-%' LIMIT 1);"
+X "INSERT INTO campaign_prizes (campaign_id, label, detail, weight, sort)
+     SELECT '$CID', label, detail, weight, sort FROM campaign_prizes
+      WHERE campaign_id = (SELECT id FROM campaigns WHERE code LIKE 'enkutatash-%' LIMIT 1);"
+LIVE_BEFORE=$(P "SELECT status||'/'||chances||'/'||coalesce((SELECT count(*)::text FROM campaign_entries e JOIN campaigns c2 ON c2.id=e.campaign_id WHERE c2.code LIKE 'enkutatash-%'),'0') FROM campaigns WHERE code LIKE 'enkutatash-%';")
+
 drop(){
   X "DELETE FROM campaign_slots WHERE campaign_id='$CID';"
   X "DELETE FROM campaign_entries WHERE campaign_id='$CID';"
-  X "UPDATE campaigns SET status='$WAS', seed=NULL, seed_hash=NULL, sealed_at=NULL, chances=20 WHERE id='$CID';"
+  X "DELETE FROM campaign_questions WHERE campaign_id='$CID';"
+  X "DELETE FROM campaign_prizes WHERE campaign_id='$CID';"
+  X "DELETE FROM campaigns WHERE id='$CID';"
   X "DELETE FROM platform_admins WHERE email='$ADM';"
 }
 trap drop EXIT
-drop
 X "INSERT INTO platform_admins (email, full_name, role, password_hash, status) VALUES ('$ADM','Promo Boss','admin','$HASH','active');"
 TA=$(C -H "$CT" -X POST $B/platform/auth/login -d "{\"email\":\"$ADM\",\"password\":\"BranchTest#2026\"}" | py "print(d['data']['access_token'])")
 A=(-H "$CT" -H "Authorization: Bearer $TA")
-PID=$(C "${A[@]}" $B/platform/campaigns | py "print(d['data'][0]['id'])")
+PID=$(C "${A[@]}" $B/platform/campaigns | py "print([c['id'] for c in d['data'] if c['code']=='$CODE'][0])")
 
 echo "=== a draft campaign is not playable ==="
 t "the page says draft"        "$(C $B/campaigns/$CODE | py "print(d['data']['status'])")" "draft"
@@ -62,22 +91,36 @@ Q=$(C "${H[@]}" $B/campaigns/$CODE/questions)
 t "7 questions are served"      "$(echo "$Q" | py "print(len(d['data']))")" "7"
 t "the answers are NOT sent to the browser" "$(echo "$Q" | grep -c 'correct' | tr -d ' ')" "0"
 t "no explanation leaks either" "$(echo "$Q" | grep -c 'explain' | tr -d ' ')" "0"
+# Tap A seven times and you should not sail through: the answers are ordered per
+# clinic, so the right one is not in the same place for everybody.
+FIRSTS=""
+for n in 91 92 93 94 95 96; do
+  TS=$(C -H "$CT" -X POST $B/campaigns/$CODE/enter -d "{\"full_name\":\"Shuf $n\",\"phone\":\"09112277$n\",\"clinic_name\":\"Shuf $n\"}" | py "print(d['data']['token'])")
+  QS=$(C -H "$CT" -H "X-Campaign-Token: $TS" $B/campaigns/$CODE/questions)
+  Q0=$(echo "$QS" | py "print(d['data'][0]['id'])")
+  RS=$(C -H "$CT" -H "X-Campaign-Token: $TS" -X POST $B/campaigns/$CODE/answer -d "{\"question\":\"$Q0\",\"choice\":0}")
+  FIRSTS="$FIRSTS$(echo "$RS" | py "print(1 if d['data']['correct'] else 0)")"
+done
+t "answer A is not always the right one" "$([ "$FIRSTS" = "111111" ] && echo always || echo mixed)" "mixed"
+t "the same clinic sees a stable order"  "$(C "${H[@]}" $B/campaigns/$CODE/questions | py "print(d['data'][0]['choices'][0])")" "$(C "${H[@]}" $B/campaigns/$CODE/questions | py "print(d['data'][0]['choices'][0])")"
 t "spinning before the quiz is refused" "$(C "${H[@]}" -o /dev/null -w '%{http_code}' -X POST $B/campaigns/$CODE/spin)" "400"
 
 echo "=== a wrong answer teaches, and can be retried ==="
 Q1=$(echo "$Q" | py "print(d['data'][0]['id'])")
-WRONG=$(C "${H[@]}" -X POST $B/campaigns/$CODE/answer -d "{\"question\":\"$Q1\",\"choice\":1}")
+# find a wrong one for this clinic's own ordering
+for ch in 0 1 2; do
+  WRONG=$(C "${H[@]}" -X POST $B/campaigns/$CODE/answer -d "{\"question\":\"$Q1\",\"choice\":$ch}")
+  [ "$(echo "$WRONG" | py "print(d['data']['correct'])")" = "False" ] && break
+done
 t "it says wrong"               "$(echo "$WRONG" | py "print(d['data']['correct'])")" "False"
 t "and explains why"            "$(echo "$WRONG" | py "print('yes' if len(d['data'].get('explain',''))>40 else 'no')")" "yes"
-RIGHT=$(C "${H[@]}" -X POST $B/campaigns/$CODE/answer -d "{\"question\":\"$Q1\",\"choice\":0}")
+RIGHT=$(solve "$TOK" "$Q1")
 t "the retry is accepted"       "$(echo "$RIGHT" | py "print(d['data']['correct'])")" "True"
 t "and says what it teaches"    "$(echo "$RIGHT" | py "print('yes' if len(d['data'].get('teaches',''))>20 else 'no')")" "yes"
 t "the quiz is not done yet"    "$(echo "$RIGHT" | py "print(d['data']['quiz_done'])")" "False"
 
-# finish the rest, always picking the first choice (the seed data's correct one)
 for i in 1 2 3 4 5 6; do
-  QI=$(echo "$Q" | py "print(d['data'][$i]['id'])")
-  LAST=$(C "${H[@]}" -X POST $B/campaigns/$CODE/answer -d "{\"question\":\"$QI\",\"choice\":0}")
+  LAST=$(solve "$TOK" "$(echo "$Q" | py "print(d['data'][$i]['id'])")")
 done
 t "finishing the last one completes it" "$(echo "$LAST" | py "print(d['data']['quiz_done'])")" "True"
 
@@ -98,16 +141,12 @@ for n in $(seq 1 19); do
   sleep 1
   TN=$(C -H "$CT" -X POST $B/campaigns/$CODE/enter -d "{\"full_name\":\"Clinic $n\",\"phone\":\"09112234$(printf '%02d' $n)\",\"clinic_name\":\"Clinic $n\"}" | py "print(d['data']['token'])")
   HN=(-H "$CT" -H "X-Campaign-Token: $TN")
-  QN=$(C "${HN[@]}" $B/campaigns/$CODE/questions)
-  for i in 0 1 2 3 4 5 6; do
-    QI=$(echo "$QN" | py "print(d['data'][$i]['id'])")
-    C "${HN[@]}" -X POST $B/campaigns/$CODE/answer -d "{\"question\":\"$QI\",\"choice\":0}" >/dev/null
-  done
+  finish "$TN"
   C "${HN[@]}" -X POST $B/campaigns/$CODE/spin >/dev/null
 done
 t "all 20 chances are taken"    "$(P "SELECT count(*) FROM campaign_slots WHERE campaign_id='$CID' AND entry_id IS NOT NULL;")" "20"
 t "exactly 3 clinics won the gift" "$(P "SELECT count(*) FROM campaign_entries WHERE campaign_id='$CID' AND won;")" "3"
-t "nobody was left with nothing"   "$(P "SELECT count(*) FROM campaign_entries WHERE campaign_id='$CID' AND coalesce(prize_label,'')='';")" "0"
+t "nobody who spun was left with nothing" "$(P "SELECT count(*) FROM campaign_entries WHERE campaign_id='$CID' AND spun_at IS NOT NULL AND coalesce(prize_label,'')='';")" "0"
 t "the winners sit on the sealed positions" "$(P "SELECT string_agg(slot_idx::text, ',' ORDER BY slot_idx) FROM campaign_entries WHERE campaign_id='$CID' AND won;")" "$CALC"
 
 echo "=== the wheel grows rather than turning a clinic away ==="
@@ -117,11 +156,7 @@ X "UPDATE campaigns SET auto_extend=true, extend_block=5 WHERE id='$CID';"
 GROW=$(P "SELECT chances FROM campaigns WHERE id='$CID';")
 TG=$(C -H "$CT" -X POST $B/campaigns/$CODE/enter -d '{"full_name":"Grow Clinic","phone":"0911228888","clinic_name":"Grow Dental"}' | py "print(d['data']['token'])")
 HG=(-H "$CT" -H "X-Campaign-Token: $TG")
-QG=$(C "${HG[@]}" $B/campaigns/$CODE/questions)
-for i in 0 1 2 3 4 5 6; do
-  QI=$(echo "$QG" | py "print(d['data'][$i]['id'])")
-  C "${HG[@]}" -X POST $B/campaigns/$CODE/answer -d "{\"question\":\"$QI\",\"choice\":0}" >/dev/null
-done
+finish "$TG"
 SG=$(C "${HG[@]}" -X POST $B/campaigns/$CODE/spin)
 t "the 21st clinic spins, it does not wait" "$(echo "$SG" | py "print(d['data']['waiting'])")" "False"
 t "and wins something"                      "$(echo "$SG" | py "print('yes' if d['data']['prize_label'] else 'no')")" "yes"
@@ -136,11 +171,7 @@ X "UPDATE campaign_slots SET entry_id='00000000-0000-0000-0000-000000000000', cl
 echo "=== a 21st clinic is kept, not lost ==="
 T21=$(C -H "$CT" -X POST $B/campaigns/$CODE/enter -d '{"full_name":"Late Clinic","phone":"0911229999","clinic_name":"Late Dental"}' | py "print(d['data']['token'])")
 H21=(-H "$CT" -H "X-Campaign-Token: $T21")
-Q21=$(C "${H21[@]}" $B/campaigns/$CODE/questions)
-for i in 0 1 2 3 4 5 6; do
-  QI=$(echo "$Q21" | py "print(d['data'][$i]['id'])")
-  C "${H21[@]}" -X POST $B/campaigns/$CODE/answer -d "{\"question\":\"$QI\",\"choice\":0}" >/dev/null
-done
+finish "$T21"
 t "they are told the wheel is full, not turned away" "$(C "${H21[@]}" -X POST $B/campaigns/$CODE/spin | py "print(d['data']['waiting'])")" "True"
 t "and they are still on the list" "$(P "SELECT count(*) FROM campaign_entries WHERE campaign_id='$CID' AND phone='0911229999';")" "1"
 t "the console flags them as waiting" "$(C "${A[@]}" $B/platform/campaigns/$PID | py "print(d['data']['waiting'])")" "1"
@@ -174,6 +205,9 @@ t "the old commitment is void"  "$(P "SELECT coalesce(seed_hash,'none') FROM cam
 t "the questions survive"       "$(P "SELECT count(*) FROM campaign_questions WHERE campaign_id='$CID';")" "7"
 t "and so do the offers"        "$(P "SELECT count(*) FROM campaign_prizes WHERE campaign_id='$CID';")" "6"
 t "sealing again gives a NEW secret" "$([ "$(C "${A[@]}" -o /dev/null -w '%{http_code}' -X POST $B/platform/campaigns/$PID/open)" = "204" ] && [ "$(P "SELECT seed_hash FROM campaigns WHERE id='$CID';")" != "$SEEDHASH" ] && echo yes || echo no)" "yes"
+
+echo "=== the live campaign was never touched ==="
+t "Enkutatash is exactly as it was" "$(P "SELECT status||'/'||chances||'/'||coalesce((SELECT count(*)::text FROM campaign_entries e JOIN campaigns c2 ON c2.id=e.campaign_id WHERE c2.code LIKE 'enkutatash-%'),'0') FROM campaigns WHERE code LIKE 'enkutatash-%';")" "$LIVE_BEFORE"
 
 echo; echo "  $pass passed, $fail failed"
 [ "$fail" = 0 ]

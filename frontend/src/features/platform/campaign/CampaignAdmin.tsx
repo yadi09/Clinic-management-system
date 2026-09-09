@@ -185,6 +185,17 @@ function Settings({ c, onSaved }: { c: PromoCampaign; onSaved: () => void }) {
             onChange={(e) => set("extend_block", e.target.value)} />
         </div>
       )}
+      <p className="mt-3 rounded-md bg-zinc-950 px-3 py-2 text-xs text-zinc-300">
+        <b>How the spin works right now:</b> {num(f.gifts)} gift{num(f.gifts) === 1 ? "" : "s"} spread across{" "}
+        {num(f.chances)} position{num(f.chances) === 1 ? "" : "s"} — each clinic has a{" "}
+        <b className="text-amber-300">
+          {num(f.chances) > 0 ? `${num(f.gifts)} in ${num(f.chances)} (${Math.round((num(f.gifts) / num(f.chances)) * 100)}%)`
+            : "—"}
+        </b>{" "}
+        chance of the gift, and every other position is one of the offers below, so nobody spins a
+        losing wheel. Positions are decided by a secret number before anyone plays and handed out in
+        the order clinics finish, so arriving late does not change the odds.
+      </p>
       {live && (
         <p className="mt-2 text-xs text-zinc-500">
           The campaign is sealed. You can add chances — new positions are appended and the unclaimed
@@ -274,6 +285,10 @@ function QuestionEditor({ campaignId, id, draft, onClose, onSaved }:
       </L>
       <div className="space-y-2">
         <Label className="text-xs text-zinc-400">Answers — tick the right one; every wrong one needs an explanation</Label>
+        <p className="text-xs text-zinc-500">
+          The order does not matter: every clinic sees these shuffled into its own order, so the
+          right answer is never in the same place twice.
+        </p>
         {d.choices.map((ch, i) => (
           <div key={i} className="space-y-1 rounded-md bg-zinc-900 p-2">
             <div className="flex items-center gap-2">
