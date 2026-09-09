@@ -34,6 +34,8 @@ import (
 	billingservice "github.com/reicb/clinicsaas/internal/billing/service"
 	clinicalhttp "github.com/reicb/clinicsaas/internal/clinical/http"
 	clinicalservice "github.com/reicb/clinicsaas/internal/clinical/service"
+	campaignhttp "github.com/reicb/clinicsaas/internal/campaign/http"
+	campaignservice "github.com/reicb/clinicsaas/internal/campaign/service"
 	crmhttp "github.com/reicb/clinicsaas/internal/crm/http"
 	crmservice "github.com/reicb/clinicsaas/internal/crm/service"
 	dashboardhttp "github.com/reicb/clinicsaas/internal/dashboard/http"
@@ -179,7 +181,9 @@ func main() {
 		}
 	}
 
-	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, reportingHandlers, dashboardHandlers, maternityHandlers, inpatientHandlers, dentalHandlers, messagingHandlers, pharmacyHandlers, labHandlers, financeHandlers, platformHandlers, crmHandlers)
+	campaignHandlers := campaignhttp.New(campaignservice.New(db))
+
+	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, reportingHandlers, dashboardHandlers, maternityHandlers, inpatientHandlers, dentalHandlers, messagingHandlers, pharmacyHandlers, labHandlers, financeHandlers, platformHandlers, crmHandlers, campaignHandlers)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -227,6 +231,7 @@ func newRouter(
 	financeHandlers *financehttp.Handlers,
 	platformHandlers *platformhttp.Handlers,
 	crmHandlers *crmhttp.Handlers,
+	campaignHandlers *campaignhttp.Handlers,
 ) *gin.Engine {
 	if cfg.IsProd() {
 		gin.SetMode(gin.ReleaseMode)
@@ -260,6 +265,7 @@ func newRouter(
 	if platformHandlers != nil {
 		platformHandlers.Register(v1, tokens) // /platform/auth/login (public) + /platform/clinics (platform.admin)
 	}
+	campaignHandlers.Register(v1, tokens) // public /campaigns/:code/... + /platform/campaigns/...
 	if crmHandlers != nil {
 		crmHandlers.Register(v1, tokens) // /platform/crm/... (crm.work; campaigns + accounts need platform.admin)
 	}

@@ -43,6 +43,12 @@ const (
 	PrefixPrescription     = "rx"
 	PrefixDrug             = "drg"
 	PrefixAllergen         = "aln" // allergen library (distinct from patient allergy "alg")
+	// The outreach campaign (Enkutatash and whatever follows it) — distinct from
+	// PrefixCampaign below, which is a message sent to patients.
+	PrefixPromo         = "pmo"
+	PrefixPromoQuestion = "pmq"
+	PrefixPromoPrize    = "pmp"
+	PrefixPromoEntry    = "pme"
 	PrefixLabReferral      = "lrf" // external lab referral
 	PrefixBatch            = "bat"
 	PrefixSale             = "sal"
