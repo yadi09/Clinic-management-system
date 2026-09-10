@@ -5,6 +5,7 @@ import { AppError } from "@/lib/api-client";
 import { toEthiopian } from "@/lib/ethiopian";
 import { Wheel, segmentsFor, type Segment } from "@/features/campaign/Wheel";
 import {
+  dialHref, dialLabel,
   answerQuestion, campaignQuestions, enterCampaign, getCampaign, resumeCampaign, spinWheel,
   type AnswerResult, type CampaignQuestion, type CampaignView, type SpinResult,
 } from "@/features/campaign/api";
@@ -458,7 +459,7 @@ function Contact({ view }: { view: CampaignView }) {
         )}
         {view.phone && (
           <a className="enk-btn ghost" style={{ width: "auto", padding: ".7rem 1.1rem", textDecoration: "none", display: "inline-block" }}
-            href={`tel:${view.phone}`}>Call {view.phone}</a>
+            href={dialHref(view.phone)}>Call {dialLabel(view.phone)}</a>
         )}
       </div>
     </div>

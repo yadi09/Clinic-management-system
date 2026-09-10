@@ -89,3 +89,18 @@ export interface SignupBody {
 /** The interest form. No token: the clinic has nothing yet. */
 export const signUp = (code: string, body: SignupBody) =>
   apiFetch<{ ok: boolean }>(`/campaigns/${code}/signup`, { method: "POST", body, auth: false });
+
+/**
+ * How a phone number should read, and how it should dial.
+ *
+ * The two are not the same: "+251 95 500 8081" is what a person recognises, and
+ * "+251955008081" is what belongs in a tel: link. Storing the readable form and
+ * hoping the browser copes is how you get a number that cannot be tapped.
+ */
+export function dialLabel(raw: string): string {
+  const d = raw.replace(/[^\d+]/g, "");
+  if (/^\+251\d{9}$/.test(d)) return `+251 ${d.slice(4, 6)} ${d.slice(6, 9)} ${d.slice(9)}`;
+  if (/^0\d{9}$/.test(d)) return `${d.slice(0, 4)} ${d.slice(4, 6)} ${d.slice(6, 8)} ${d.slice(8)}`;
+  return raw;
+}
+export const dialHref = (raw: string) => `tel:${raw.replace(/[^\d+]/g, "")}`;

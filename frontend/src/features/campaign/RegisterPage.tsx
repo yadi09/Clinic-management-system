@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 
 import { AppError } from "@/lib/api-client";
 import { toEthiopian } from "@/lib/ethiopian";
-import { getCampaign, signUp, type CampaignView } from "@/features/campaign/api";
+import { dialHref, dialLabel, getCampaign, signUp, type CampaignView } from "@/features/campaign/api";
 import "@/features/campaign/campaign.css";
 
 /**
@@ -198,7 +198,7 @@ export function CampaignRegisterPage() {
                 )}
                 {view.phone && (
                   <a className="enk-btn ghost" style={{ width: "auto", padding: ".7rem 1.1rem", textDecoration: "none", display: "inline-block" }}
-                    href={`tel:${view.phone}`}>Call {view.phone}</a>
+                    href={dialHref(view.phone)}>Call {dialLabel(view.phone)}</a>
                 )}
               </div>
             </div>
