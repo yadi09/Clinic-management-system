@@ -106,3 +106,30 @@ func (h *Handlers) Spin(c *gin.Context) {
 	}
 	httpx.OK(c, out)
 }
+
+// SignUp handles POST /campaigns/:code/signup — the interest form, before any
+// of the quiz. No token: the clinic has nothing yet.
+func (h *Handlers) SignUp(c *gin.Context) {
+	var req struct {
+		OwnerName  string   `json:"owner_name"`
+		Phone      string   `json:"phone"`
+		ClinicName string   `json:"clinic_name"`
+		Location   string   `json:"location"`
+		Structure  string   `json:"structure"`
+		Facilities []string `json:"facilities"`
+		Website    string   `json:"website"` // honeypot
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("please fill in the form"))
+		return
+	}
+	if err := h.svc.SignUp(c.Request.Context(), c.Param("code"), campaign.SignupInput{
+		OwnerName: req.OwnerName, Phone: req.Phone, ClinicName: req.ClinicName,
+		Location: req.Location, Structure: req.Structure, Facilities: req.Facilities,
+		Honeypot: req.Website,
+	}); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.Created(c, gin.H{"ok": true})
+}

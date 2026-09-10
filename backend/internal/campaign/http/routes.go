@@ -17,6 +17,7 @@ import (
 func (h *Handlers) Register(v1 *gin.RouterGroup, tokens *auth.TokenService) {
 	pub := v1.Group("/campaigns/:code")
 	pub.GET("", h.Public)
+	pub.POST("/signup", h.SignUp)
 	pub.POST("/enter", h.Enter)
 	pub.GET("/me", h.Resume)
 	pub.GET("/questions", h.Questions)
@@ -40,5 +41,7 @@ func (h *Handlers) Register(v1 *gin.RouterGroup, tokens *auth.TokenService) {
 	adm.PUT("/:id/prizes/:pid", h.AdminSavePrize)
 	adm.DELETE("/:id/prizes/:pid", h.AdminDeletePrize)
 	adm.GET("/:id/entries", h.AdminEntries)
+	adm.GET("/:id/signups", h.AdminSignups)
+	adm.POST("/:id/signups/:sid", h.AdminSetSignupStatus)
 	adm.GET("/:id/missed", h.AdminMissed)
 }

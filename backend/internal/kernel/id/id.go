@@ -49,6 +49,7 @@ const (
 	PrefixPromoQuestion = "pmq"
 	PrefixPromoPrize    = "pmp"
 	PrefixPromoEntry    = "pme"
+	PrefixPromoSignup   = "pms"
 	PrefixLabReferral      = "lrf" // external lab referral
 	PrefixBatch            = "bat"
 	PrefixSale             = "sal"

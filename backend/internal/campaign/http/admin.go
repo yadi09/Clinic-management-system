@@ -312,3 +312,48 @@ func (h *Handlers) AdminMissed(c *gin.Context) {
 	}
 	httpx.OK(c, out)
 }
+
+// AdminSignups handles GET /platform/campaigns/:id/signups.
+func (h *Handlers) AdminSignups(c *gin.Context) {
+	cid, ok := campaignID(c)
+	if !ok {
+		return
+	}
+	gs, err := h.svc.Signups(c.Request.Context(), cid)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out := make([]gin.H, 0, len(gs))
+	for _, g := range gs {
+		out = append(out, gin.H{
+			"id": id.Encode(id.PrefixPromoSignup, g.ID), "owner_name": g.OwnerName, "phone": g.Phone,
+			"clinic_name": g.ClinicName, "location": g.Location, "structure": g.Structure,
+			"facilities": g.Facilities, "status": g.Status, "note": g.Note,
+			"created_at": g.CreatedAt, "played": g.Played, "won": g.Won,
+		})
+	}
+	httpx.OK(c, out)
+}
+
+// AdminSetSignupStatus handles POST /platform/campaigns/:id/signups/:sid.
+func (h *Handlers) AdminSetSignupStatus(c *gin.Context) {
+	sid, err := id.Decode(id.PrefixPromoSignup, c.Param("sid"))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("invalid id"))
+		return
+	}
+	var req struct {
+		Status string `json:"status"`
+		Note   string `json:"note"`
+	}
+	if e := c.ShouldBindJSON(&req); e != nil {
+		httpx.Fail(c, apperr.Validation("a status is required"))
+		return
+	}
+	if e := h.svc.SetSignupStatus(c.Request.Context(), sid, req.Status, req.Note); e != nil {
+		httpx.Fail(c, e)
+		return
+	}
+	httpx.NoContent(c)
+}

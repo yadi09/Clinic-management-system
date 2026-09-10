@@ -88,6 +88,36 @@ type SpinResult struct {
 	Waiting bool `json:"waiting"`
 }
 
+// SignupInput is the interest form: who they are, where they are, and what the
+// clinic is made of.
+type SignupInput struct {
+	OwnerName  string
+	Phone      string
+	ClinicName string
+	Location   string
+	Structure  string
+	Facilities []string
+	Honeypot   string
+}
+
+// Signup is one clinic that has put its hand up.
+type Signup struct {
+	ID         uuid.UUID `json:"-"`
+	OwnerName  string    `json:"owner_name"`
+	Phone      string    `json:"phone"`
+	ClinicName string    `json:"clinic_name"`
+	Location   string    `json:"location"`
+	Structure  string    `json:"structure"`
+	Facilities []string  `json:"facilities"`
+	Status     string    `json:"status"`
+	Note       string    `json:"note"`
+	CreatedAt  time.Time `json:"created_at"`
+	// Played is true once this number has actually taken the quiz, so the console
+	// can see who accepted the invitation without matching two lists by hand.
+	Played bool `json:"played"`
+	Won    bool `json:"won"`
+}
+
 // --- vendor console ---
 
 // Admin is one campaign as the super-admin sees it.
@@ -190,6 +220,7 @@ type Service interface {
 	Questions(ctx context.Context, code, token string) ([]Question, error)
 	Answer(ctx context.Context, code, token, questionID string, choice int) (*AnswerResult, error)
 	Spin(ctx context.Context, code, token string) (*SpinResult, error)
+	SignUp(ctx context.Context, code string, in SignupInput) error
 
 	List(ctx context.Context) ([]Admin, error)
 	Get(ctx context.Context, id uuid.UUID) (*Admin, error)
@@ -206,5 +237,7 @@ type Service interface {
 	SavePrize(ctx context.Context, campaignID uuid.UUID, prizeID *uuid.UUID, p AdminPrize) error
 	DeletePrize(ctx context.Context, prizeID uuid.UUID) error
 	Entries(ctx context.Context, id uuid.UUID) ([]AdminEntry, error)
+	Signups(ctx context.Context, id uuid.UUID) ([]Signup, error)
+	SetSignupStatus(ctx context.Context, signupID uuid.UUID, status, note string) error
 	MostMissed(ctx context.Context, id uuid.UUID) ([]Missed, error)
 }

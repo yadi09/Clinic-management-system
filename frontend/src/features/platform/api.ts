@@ -397,3 +397,13 @@ export const deletePromoPrize = (id: string, pid: string) =>
   pfetch<void>(`/campaigns/${id}/prizes/${pid}`, { method: "DELETE" });
 export const promoEntries = (id: string) => pfetch<PromoEntry[]>(`/campaigns/${id}/entries`);
 export const promoMissed = (id: string) => pfetch<PromoMissed[]>(`/campaigns/${id}/missed`);
+
+export interface PromoSignup {
+  id: string; owner_name: string; phone: string; clinic_name: string;
+  location: string; structure: string; facilities: string[];
+  status: "new" | "contacted" | "invited" | "joined" | "declined";
+  note: string; created_at: string; played: boolean; won: boolean;
+}
+export const promoSignups = (id: string) => pfetch<PromoSignup[]>(`/campaigns/${id}/signups`);
+export const setPromoSignupStatus = (id: string, sid: string, status: string, note?: string) =>
+  pfetch<void>(`/campaigns/${id}/signups/${sid}`, { method: "POST", body: { status, note } });

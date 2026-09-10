@@ -49,6 +49,7 @@ import { NotFoundPage } from "@/features/misc/NotFoundPage";
 import { PlatformLoginPage } from "@/features/platform/pages/PlatformLoginPage";
 import { PlatformConsolePage } from "@/features/platform/pages/PlatformConsolePage";
 import { CampaignPage } from "@/features/campaign/CampaignPage";
+import { CampaignRegisterPage } from "@/features/campaign/RegisterPage";
 
 export function AppRoutes() {
   return (
@@ -57,6 +58,8 @@ export function AppRoutes() {
       {/* The campaign page: public by an unguessable code, outside every shell —
           a dental clinic opening this from Telegram has no account and no theme. */}
       <Route path="/c/:code" element={<CampaignPage />} />
+      {/* The wide net: sent to every clinic, before anyone is invited to play. */}
+      <Route path="/c/:code/register" element={<CampaignRegisterPage />} />
 
       <Route path="/platform/login" element={<PlatformLoginPage />} />
       <Route path="/platform" element={<PlatformConsolePage />} />

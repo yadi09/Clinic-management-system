@@ -11,7 +11,8 @@ import { toast } from "@/components/ui/sonner";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import {
   closePromo, deletePromoPrize, deletePromoQuestion, listPromos, openPromo, promoEntries,
-  promoMissed, promoPrizes, promoQuestions, resetPromo, savePromo, savePromoPrize, savePromoQuestion,
+  promoMissed, promoPrizes, promoQuestions, promoSignups, resetPromo, savePromo, savePromoPrize,
+  savePromoQuestion, setPromoSignupStatus,
   type PromoCampaign, type PromoChoice, type PromoPrize, type PromoQuestion,
 } from "@/features/platform/api";
 
@@ -64,11 +65,18 @@ function CampaignCard({ c, open, onToggle }: { c: PromoCampaign; open: boolean; 
             <span className="font-medium">{c.title}</span>
             <Badge variant={c.status === "open" ? "success" : c.status === "closed" ? "outline" : "warning"}>{c.status}</Badge>
           </div>
-          <button
-            className="mt-1 flex items-center gap-1.5 font-mono text-xs text-sky-300 hover:underline"
-            onClick={() => { void navigator.clipboard?.writeText(link); toast.success("Link copied — this is what you send on Telegram"); }}>
-            <Copy className="h-3 w-3" /> {link}
-          </button>
+          <div className="mt-1 space-y-0.5">
+            {/* Two links, two jobs: the first goes to everyone, the second only to
+                the clinics you invite after talking to them. */}
+            <button className="flex items-center gap-1.5 font-mono text-xs text-emerald-300 hover:underline"
+              onClick={() => { void navigator.clipboard?.writeText(`${link}/register`); toast.success("Sign-up link copied — send this one first, to everybody"); }}>
+              <Copy className="h-3 w-3" /> {link}/register <span className="font-sans text-zinc-500">· sign-up</span>
+            </button>
+            <button className="flex items-center gap-1.5 font-mono text-xs text-sky-300 hover:underline"
+              onClick={() => { void navigator.clipboard?.writeText(link); toast.success("Quiz link copied — send this only to clinics you have invited"); }}>
+              <Copy className="h-3 w-3" /> {link} <span className="font-sans text-zinc-500">· quiz & wheel</span>
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {c.status === "draft" && <Button size="sm" loading={openMut.isPending} onClick={() => openMut.mutate()}>Seal & open</Button>}
@@ -110,6 +118,7 @@ function CampaignCard({ c, open, onToggle }: { c: PromoCampaign; open: boolean; 
 
       {open && (
         <div className="space-y-5 border-t border-zinc-800 p-4">
+          <Signups c={c} />
           <Settings c={c} onSaved={invalidate} />
           <Questions c={c} />
           <Prizes c={c} />
@@ -126,6 +135,100 @@ const Stat = ({ label, value, warn }: { label: string; value: string | number; w
     <div className="text-[11px] uppercase tracking-wide text-zinc-500">{label}</div>
   </div>
 );
+
+
+const SIGNUP_STATES = ["new", "contacted", "invited", "joined", "declined"] as const;
+const STATE_TONE: Record<string, string> = {
+  new: "text-sky-300", contacted: "text-amber-300", invited: "text-violet-300",
+  joined: "text-emerald-300", declined: "text-zinc-500",
+};
+
+/** The outreach list: clinics that put their hand up, before anybody plays. */
+function Signups({ c }: { c: PromoCampaign }) {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["promo-signups", c.id], queryFn: () => promoSignups(c.id) });
+  const [open, setOpen] = useState<string | null>(null);
+  const mut = useMutation({
+    mutationFn: (v: { sid: string; status: string }) => setPromoSignupStatus(c.id, v.sid, v.status),
+    onSuccess: () => { toast.success("Saved"); qc.invalidateQueries({ queryKey: ["promo-signups", c.id] }); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not save it"),
+  });
+  const rows = q.data ?? [];
+  const csv = () => {
+    const head = "clinic,owner,phone,location,status,played,won,facilities,structure\n";
+    const body = rows.map((r) => [r.clinic_name, r.owner_name, r.phone, r.location, r.status,
+      r.played, r.won, r.facilities.join("; "), r.structure]
+      .map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([head + body], { type: "text/csv" }));
+    a.download = `${c.code}-signups.csv`;
+    a.click();
+  };
+  const count = (s: string) => rows.filter((r) => r.status === s).length;
+
+  return (
+    <div className={box}>
+      <div className="mb-3 flex items-center justify-between">
+        <Label>
+          Registered clinics <span className="text-xs font-normal text-zinc-500">— the list to reach out to</span>
+        </Label>
+        {rows.length > 0 && <Button size="sm" variant="outline" onClick={csv}>Download CSV</Button>}
+      </div>
+      {q.isLoading ? <Skeleton className="h-16 w-full" /> : rows.length === 0 ? (
+        <p className="text-sm text-zinc-500">
+          Nobody has registered yet. Send the sign-up link above.
+        </p>
+      ) : (
+        <>
+          <div className="mb-3 flex flex-wrap gap-3 text-xs text-zinc-400">
+            <span><b className="text-zinc-100">{rows.length}</b> registered</span>
+            {SIGNUP_STATES.map((s) => count(s) > 0 && (
+              <span key={s}><b className={STATE_TONE[s]}>{count(s)}</b> {s}</span>
+            ))}
+            <span><b className="text-emerald-300">{rows.filter((r) => r.played).length}</b> have played</span>
+          </div>
+          <div className="space-y-2">
+            {rows.map((r) => (
+              <div key={r.id} className="rounded-md bg-zinc-900 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">
+                      {r.clinic_name}
+                      {r.played && <Badge variant="success" className="ml-2">played</Badge>}
+                      {r.won && <Badge className="ml-1 bg-amber-500 text-zinc-950">won</Badge>}
+                    </p>
+                    <p className="text-xs text-zinc-400">
+                      {r.owner_name} · <a className="hover:underline" href={`tel:${r.phone}`}>{r.phone}</a> · {r.location}
+                    </p>
+                  </div>
+                  <select
+                    className="h-8 shrink-0 rounded-md border border-zinc-700 bg-zinc-950 px-2 text-xs"
+                    value={r.status}
+                    onChange={(e) => mut.mutate({ sid: r.id, status: e.target.value })}>
+                    {SIGNUP_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                {r.facilities.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {r.facilities.map((f) => (
+                      <span key={f} className="rounded-full bg-zinc-800 px-2 py-0.5 text-[11px] text-zinc-300">{f}</span>
+                    ))}
+                  </div>
+                )}
+                {r.structure && (
+                  <button className="mt-2 text-left text-xs text-zinc-400 hover:text-zinc-200"
+                    onClick={() => setOpen(open === r.id ? null : r.id)}>
+                    {open === r.id ? r.structure : `${r.structure.slice(0, 90)}${r.structure.length > 90 ? "…" : ""}`}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 function Settings({ c, onSaved }: { c: PromoCampaign; onSaved: () => void }) {
   const [f, setF] = useState({

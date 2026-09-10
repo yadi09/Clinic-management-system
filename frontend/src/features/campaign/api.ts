@@ -75,3 +75,17 @@ export const answerQuestion = (code: string, token: string, question: string, ch
 
 export const spinWheel = (code: string, token: string) =>
   apiFetch<SpinResult>(`/campaigns/${code}/spin`, { method: "POST", ...as(token) });
+
+export interface SignupBody {
+  owner_name: string;
+  phone: string;
+  clinic_name: string;
+  location: string;
+  structure: string;
+  facilities: string[];
+  website?: string;
+}
+
+/** The interest form. No token: the clinic has nothing yet. */
+export const signUp = (code: string, body: SignupBody) =>
+  apiFetch<{ ok: boolean }>(`/campaigns/${code}/signup`, { method: "POST", body, auth: false });
