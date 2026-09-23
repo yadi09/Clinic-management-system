@@ -29,5 +29,12 @@ frontend/reference/
 infra/data/
 pgdata/
 
+# VPS-only TLS material. These live on the server and exist nowhere else: the
+# origin certificate and key Caddy serves with. They must never be committed,
+# and — more importantly — must never be treated as stale files to be cleaned
+# away during a deploy. Losing them takes the site down until they are reissued.
+infra/origin.crt
+infra/origin.key
+
 # Logs
 *.log
