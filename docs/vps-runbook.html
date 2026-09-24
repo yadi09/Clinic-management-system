@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VPS runbook — operating the server yourself</title>
+<style>
+  :root{--ink:#11161c;--dim:#5b6874;--line:#e2e6ea;--bg:#fbfcfd;--card:#fff;
+    --danger:#c1272d;--warn:#c9821b;--ok:#0e7a52;--info:#1b4f9c;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:62rem;margin:0 auto;padding:0 1.5rem 5rem}
+  header{background:linear-gradient(160deg,#16222c,#0d151b);color:#eef3f7;padding:2.8rem 1.5rem 2.2rem;margin-bottom:1.5rem}
+  header .wrap{padding-bottom:0}
+  h1{font-size:clamp(1.5rem,4.5vw,2.1rem);margin:0 0 .4rem;letter-spacing:-.02em}
+  .sub{color:#9fb1c0;margin:0}
+  nav{background:#fff;border:1px solid var(--line);border-radius:12px;padding:1rem 1.2rem;margin:1.5rem 0}
+  nav b{display:block;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-bottom:.5rem}
+  nav a{display:inline-block;margin:.15rem .9rem .15rem 0;color:var(--info);text-decoration:none;font-size:.92rem}
+  nav a:hover{text-decoration:underline}
+  h2{font-size:1.2rem;margin:2.4rem 0 .2rem;letter-spacing:-.01em;scroll-margin-top:1rem}
+  h2 .n{color:var(--dim);font-variant-numeric:tabular-nums;margin-right:.5rem;font-weight:500}
+  h3{font-size:.98rem;margin:1.5rem 0 .3rem}
+  .lede{color:var(--dim);margin:.2rem 0 1rem}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.2rem 1.3rem;margin:1rem 0}
+  .card.danger{border-left:4px solid var(--danger);background:#fffafa}
+  .card.warn{border-left:4px solid var(--warn)}
+  .card.ok{border-left:4px solid var(--ok)}
+  pre{background:#0f1720;color:#d8e2ea;padding:.8rem 1rem;border-radius:8px;overflow-x:auto;
+    font:13px/1.55 var(--mono);margin:.6rem 0;position:relative}
+  pre .c{color:#7d93a5}
+  code{font:.88em var(--mono);background:#eef2f5;padding:.1rem .35rem;border-radius:4px}
+  pre code{background:none;padding:0;color:inherit;font-size:13px}
+  table{width:100%;border-collapse:collapse;margin:.8rem 0;font-size:.92rem}
+  th{text-align:left;font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;color:var(--dim);
+    border-bottom:1px solid var(--line);padding:.45rem .5rem}
+  td{padding:.55rem .5rem;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  .tag{display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+    padding:.18rem .5rem;border-radius:999px}
+  .t-danger{background:#fdeaea;color:var(--danger)} .t-ok{background:#e7f5ef;color:var(--ok)}
+  .t-warn{background:#fdf3e3;color:#8a5a08}
+  ol li,ul li{margin:.35rem 0}
+  .step{background:#f4f7fa;border-radius:9px;padding:.9rem 1.1rem;margin:.7rem 0}
+  .step b{color:var(--info)}
+  footer{margin-top:3rem;padding-top:1.2rem;border-top:1px solid var(--line);color:var(--dim);font-size:.85rem}
+  @media(max-width:640px){table,thead,tbody,th,td,tr{display:block}th{display:none}
+    td{border:0;padding:.2rem .5rem}tr{border-bottom:1px solid var(--line);padding:.5rem 0}
+    td::before{content:attr(data-l);display:block;font-size:.68rem;text-transform:uppercase;
+      letter-spacing:.07em;color:var(--dim)}}
+</style>
+</head>
+<body>
+
+<header><div class="wrap">
+  <h1>VPS runbook</h1>
+  <p class="sub">Operating 77.68.116.240 yourself — The Millions and ClinicOS</p>
+</div></header>
+
+<div class="wrap">
+
+<nav>
+  <b>Jump to</b>
+  <a href="#connect">Connect</a>
+  <a href="#whats-there">What's on the box</a>
+  <a href="#down">Site is down</a>
+  <a href="#cert">Certificates</a>
+  <a href="#deploy">Deploy ClinicOS</a>
+  <a href="#restart">Restart &amp; logs</a>
+  <a href="#db">Databases</a>
+  <a href="#disk">Disk space</a>
+  <a href="#danger">Never do this</a>
+</nav>
+
+<h2 id="connect"><span class="n">01</span>Connecting</h2>
+<p class="lede">One key, one account. Run this from your own laptop.</p>
+<div class="card">
+<pre><code>ssh -i ~/.ssh/The-millions themillions@77.68.116.240</code></pre>
+<p>The <code>-i</code> matters. Without it SSH offers your default key, the server refuses it, and you
+get <code>Permission denied (publickey)</code> — which looks exactly like your access has been revoked
+but means only that the wrong key was offered.</p>
+<h3>Make it one word instead</h3>
+<p>Add this to <code>~/.ssh/config</code> on your laptop, and from then on <code>ssh vps</code> is enough:</p>
+<pre><code>Host vps
+  HostName 77.68.116.240
+  User themillions
+  IdentityFile ~/.ssh/The-millions
+  IdentitiesOnly yes</code></pre>
+<p>That account is in the <code>sudo</code> and <code>docker</code> groups with passwordless sudo, so it
+is effectively root. Everything below assumes you are logged in as it.</p>
+</div>
+
+<h2 id="whats-there"><span class="n">02</span>What is on the box</h2>
+<div class="card">
+<table>
+  <tr><th>Stack</th><th>Lives in</th><th>Containers</th><th>Reached on</th></tr>
+  <tr>
+    <td data-l="Stack"><b>The Millions</b></td>
+    <td data-l="Lives in"><code>~/The-Millions/deploy</code></td>
+    <td data-l="Containers">themillions-nginx / backend / postgres</td>
+    <td data-l="Reached on">ports <b>80, 443</b> — direct, no Cloudflare</td>
+  </tr>
+  <tr>
+    <td data-l="Stack"><b>ClinicOS</b></td>
+    <td data-l="Lives in"><code>~/clinicos</code></td>
+    <td data-l="Containers">clinicos-web / api / worker / postgres</td>
+    <td data-l="Reached on">port <b>8443</b> — behind Cloudflare</td>
+  </tr>
+</table>
+<p>The Millions' nginx owns 80 and 443. ClinicOS sits on 8443 and 8444 behind Cloudflare, which is why
+the two can share one machine.</p>
+<h3>Is everything running?</h3>
+<pre><code>docker ps --format "table {{.Names}}\t{{.Status}}"</code></pre>
+<p>You should see seven containers up. <span class="tag t-warn">note</span> <code>clinicos-migrate-1</code>
+showing <b>Exited (0)</b> is correct — it runs once per deploy and stops.</p>
+</div>
+
+<h2 id="down"><span class="n">03</span>A site is down — work through this in order</h2>
+<p class="lede">Each step tells you whether the problem is above or below it. Do not skip ahead.</p>
+
+<div class="card">
+<div class="step"><b>Step 1 — is it just you?</b>
+<pre><code>curl -sS -o /dev/null -w "%{http_code}\n" https://www.the-millions.co.uk/</code></pre>
+<p><b>200</b> = the site is fine, the problem is your browser or your network. Stop here.<br>
+A <b>certificate error</b> = jump to <a href="#cert">Certificates</a>, that is the most likely cause.<br>
+<b>000</b> or a hang = keep going.</p></div>
+
+<div class="step"><b>Step 2 — is the server itself alive?</b>
+<pre><code>ssh vps 'uptime'</code></pre>
+<p>If this fails too, the machine or the network is down — that is a hosting-provider problem, not
+something you fix from here.</p></div>
+
+<div class="step"><b>Step 3 — is it working on the box but not outside?</b>
+<pre><code>ssh vps 'curl -k -s -o /dev/null -w "%{http_code}\n" -H "Host: www.the-millions.co.uk" https://localhost/'</code></pre>
+<p><b>200 here but broken outside</b> means the application is healthy and the problem is between the
+internet and the box — nearly always the certificate. <i>This is exactly what the September outage
+looked like.</i></p></div>
+
+<div class="step"><b>Step 4 — are the containers up?</b>
+<pre><code>ssh vps 'docker ps --format "{{.Names}} {{.Status}}"'</code></pre>
+<p>Something missing or restarting → see <a href="#restart">Restart &amp; logs</a>.</p></div>
+
+<div class="step"><b>Step 5 — is the disk full?</b>
+<pre><code>ssh vps 'df -h /'</code></pre>
+<p>At <b>100%</b> everything fails in confusing ways at once. Go to <a href="#disk">Disk space</a>.</p></div>
+</div>
+
+<h2 id="cert"><span class="n">04</span>Certificates</h2>
+<p class="lede">The most likely cause of a total outage on The Millions.</p>
+<div class="card">
+<h3>Check the expiry date</h3>
+<pre><code>echo | openssl s_client -connect www.the-millions.co.uk:443 \
+  -servername www.the-millions.co.uk 2>/dev/null | openssl x509 -noout -dates</code></pre>
+<p>Read <code>notAfter</code>. Certificates last 90 days. <b>Current one expires 23 December 2026.</b></p>
+
+<h3>Renew it</h3>
+<pre><code>ssh vps 'cd ~/The-Millions/deploy &amp;&amp; ./issue-cert.sh'</code></pre>
+<p>Takes about a minute and ends with <code>✅ Let's Encrypt cert issued</code>. It does nothing if the
+current certificate still has more than 30 days left, so running it when unsure is safe.</p>
+<p><span class="tag t-warn">expect</span> The script stops nginx for a few seconds to free port 80.
+The site is briefly down during renewal — which is why it is better done deliberately than at 3pm on a
+Tuesday.</p>
+<p><span class="tag t-warn">limit</span> Let's Encrypt allows 5 certificates per domain per week.
+Normal use never approaches this; repeatedly re-running the script in one afternoon would.</p>
+</div>
+
+<h2 id="deploy"><span class="n">05</span>Deploying ClinicOS</h2>
+<div class="card">
+<p>Code is pushed to GitHub from your laptop, then pulled on the server. One command does the rest:</p>
+<pre><code><span class="c"># on your laptop, first</span>
+git push origin refine/clinic-ops
+
+<span class="c"># then deploy</span>
+ssh vps '~/clinicos/scripts/deploy/deploy.sh'</code></pre>
+<p>It fetches the branch, resets to it, rebuilds, runs migrations, restarts, and checks the app answers
+before reporting success. It refuses to start if <code>.env</code> or the TLS files are missing, rather
+than leaving you with a server that builds and then cannot boot.</p>
+<p>Ends with <code>==> Deployed &lt;commit&gt;</code>. Anything else means it stopped deliberately — read
+the last line, it names the reason.</p>
+</div>
+
+<h2 id="restart"><span class="n">06</span>Restarting things, and reading logs</h2>
+<div class="card">
+<p>Each stack has its own compose command. They are long; the aliases below save typing.</p>
+<pre><code><span class="c"># put these in ~/.bashrc on the server, once</span>
+alias tm='cd ~/The-Millions/deploy &amp;&amp; docker compose -f docker-compose.prod.yml'
+alias cos='cd ~/clinicos &amp;&amp; docker compose -p clinicos -f compose.yml -f compose.cohost.yml -f compose.standalone.yml'</code></pre>
+<table>
+  <tr><th>Want</th><th>The Millions</th><th>ClinicOS</th></tr>
+  <tr><td data-l="Want">Status</td><td data-l="TM"><code>tm ps</code></td><td data-l="ClinicOS"><code>cos ps</code></td></tr>
+  <tr><td data-l="Want">Restart one thing</td><td data-l="TM"><code>tm restart nginx</code></td><td data-l="ClinicOS"><code>cos restart api</code></td></tr>
+  <tr><td data-l="Want">Restart everything</td><td data-l="TM"><code>tm up -d</code></td><td data-l="ClinicOS"><code>cos up -d</code></td></tr>
+  <tr><td data-l="Want">Live logs</td><td data-l="TM"><code>tm logs -f nginx</code></td><td data-l="ClinicOS"><code>cos logs -f api</code></td></tr>
+  <tr><td data-l="Want">Last 100 lines</td><td data-l="TM"><code>tm logs --tail 100 backend</code></td><td data-l="ClinicOS"><code>cos logs --tail 100 api</code></td></tr>
+</table>
+<p><code>Ctrl-C</code> leaves a <code>-f</code> log view without affecting anything.</p>
+<p><span class="tag t-warn">ignore this one</span> The nginx container reports <b>unhealthy</b>
+permanently. Its healthcheck is misconfigured and has been failing since June while the site served
+normally. It is not a signal — judge nginx by whether the site loads.</p>
+</div>
+
+<h2 id="db"><span class="n">07</span>Looking at the databases</h2>
+<div class="card">
+<pre><code><span class="c"># ClinicOS</span>
+docker exec -it clinicos-postgres-1 psql -U clinic -d clinic
+
+<span class="c"># The Millions</span>
+docker exec -it themillions-postgres-1 psql -U themillions -d themillions</code></pre>
+<p>Inside psql: <code>\dt</code> lists tables, <code>\q</code> quits. A one-off query without the
+interactive prompt:</p>
+<pre><code>docker exec clinicos-postgres-1 psql -U clinic -d clinic -c "SELECT count(*) FROM patients;"</code></pre>
+<h3>Take a manual backup before anything risky</h3>
+<pre><code>docker exec clinicos-postgres-1 pg_dump -U clinic clinic | gzip &gt; ~/clinicos-$(date +%F).sql.gz
+docker exec themillions-postgres-1 pg_dump -U themillions themillions | gzip &gt; ~/millions-$(date +%F).sql.gz</code></pre>
+<p><span class="tag t-danger">important</span> There are <b>no automatic backups</b>. These two commands
+are currently the only copies that will ever exist, and a file on the same server is not really a
+backup — copy it to your laptop afterwards with <code>scp</code>.</p>
+</div>
+
+<h2 id="disk"><span class="n">08</span>Disk space</h2>
+<div class="card">
+<pre><code>df -h /</code></pre>
+<p>At the last audit: <b>81% used, 23 GB free</b>. It climbs with every ClinicOS deploy because Docker
+keeps build caches. When it reaches 100%, PostgreSQL cannot write and <i>both</i> businesses fail at
+once.</p>
+<h3>Reclaim space safely</h3>
+<pre><code>docker builder prune -af</code></pre>
+<p>Frees roughly 30 GB in under a minute. Safe: build cache is regenerated automatically on the next
+deploy and holds nothing unique. Run it whenever <code>df</code> shows 85% or more.</p>
+<p>To see where space has gone:</p>
+<pre><code>docker system df
+sudo du -h --max-depth=1 /var/lib | sort -rh | head</code></pre>
+</div>
+
+<h2 id="danger"><span class="n">09</span>Never do this</h2>
+<div class="card danger">
+<table>
+  <tr><th>Command</th><th>What it destroys</th></tr>
+  <tr><td data-l="Command"><code>docker compose down -v</code></td>
+      <td data-l="Destroys"><b>Deletes the database volume.</b> Every patient record, permanently, with no backup to restore from. The <code>-v</code> is the whole difference.</td></tr>
+  <tr><td data-l="Command"><code>docker system prune -a --volumes</code></td>
+      <td data-l="Destroys">Same outcome by a different route — the <code>--volumes</code> takes the databases with it.</td></tr>
+  <tr><td data-l="Command"><code>git clean -fd</code> in <code>~/clinicos</code></td>
+      <td data-l="Destroys">Removes <code>.env</code> and the TLS certificate and key, which exist only on this server. The site stops and cannot restart until they are reissued.</td></tr>
+  <tr><td data-l="Command"><code>rsync --delete</code> into <code>infra/</code></td>
+      <td data-l="Destroys">Same files, same outcome.</td></tr>
+</table>
+<p style="margin-bottom:0"><b>The pattern worth remembering:</b> anything with <code>-v</code>,
+<code>--volumes</code> or <code>--delete</code> deserves a pause. Everything else on this page is
+recoverable; these are not.</p>
+</div>
+
+<h2 id="secrets"><span class="n">10</span>Where the important files are</h2>
+<div class="card">
+<table>
+  <tr><th>File</th><th>Holds</th><th>In git?</th></tr>
+  <tr><td data-l="File"><code>~/clinicos/.env</code></td><td data-l="Holds">ClinicOS database password and API keys</td><td data-l="Git">No — exists only here</td></tr>
+  <tr><td data-l="File"><code>~/clinicos/infra/origin.crt</code> &amp; <code>.key</code></td><td data-l="Holds">Cloudflare origin certificate (valid to 2036)</td><td data-l="Git">No — exists only here</td></tr>
+  <tr><td data-l="File"><code>~/The-Millions/deploy/.env</code></td><td data-l="Holds">The Millions database password, cert email</td><td data-l="Git">No — exists only here</td></tr>
+  <tr><td data-l="File"><code>~/The-Millions/deploy/certs/</code></td><td data-l="Holds">The live Let's Encrypt certificate</td><td data-l="Git">No — reissued by the script</td></tr>
+</table>
+<p style="margin-bottom:0">If you ever rebuild this server from scratch, these are the files that
+cannot be recovered from GitHub and must be restored or reissued by hand.</p>
+</div>
+
+<h2 id="known"><span class="n">11</span>Known quirks, so they do not alarm you</h2>
+<div class="card ok">
+<ul>
+  <li><b>nginx is permanently "unhealthy".</b> Broken healthcheck, not a broken server. Ignore it.</li>
+  <li><b><code>clinicos-migrate-1</code> shows Exited (0).</b> Correct — it runs once per deploy and stops.</li>
+  <li><b>nginx logs a "conflicting server name" warning</b> on every start. Harmless duplicate config block.</li>
+  <li><b><code>postgres — Up 2 months</code> after a deploy.</b> Correct and good: deploys rebuild the
+      app and deliberately leave the database alone.</li>
+</ul>
+</div>
+
+<footer>
+  Written 24 September 2026. Every command here was run against this server before being written down.<br>
+  Companion document: <b>vps-infrastructure-audit.html</b> — what is currently wrong with this machine
+  and what it would take to fix it permanently.
+</footer>
+
+</div>
+</body>
+</html>
