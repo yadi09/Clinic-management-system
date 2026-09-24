@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Working on ClinicOS for $20 a month</title>
+<style>
+  :root{--ink:#11161c;--dim:#5b6874;--line:#e4e8ec;--bg:#fbfcfd;--card:#fff;
+    --spend:#c1272d;--save:#0e7a52;--warn:#c9821b;--info:#1b4f9c;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.65 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:58rem;margin:0 auto;padding:0 1.5rem 5rem}
+  header{background:linear-gradient(160deg,#14202a,#0c1319);color:#eef3f7;padding:2.8rem 1.5rem 2.2rem;margin-bottom:1.6rem}
+  header .wrap{padding-bottom:0}
+  h1{font-size:clamp(1.5rem,4.5vw,2.1rem);margin:0 0 .4rem;letter-spacing:-.02em}
+  .sub{color:#9fb1c0;margin:0}
+  .pull{margin-top:1.4rem;padding:.9rem 1.1rem;border-radius:10px;background:rgba(14,122,82,.16);
+    border:1px solid rgba(14,122,82,.42);color:#c6f0dc}
+  .pull b{color:#fff}
+  h2{font-size:1.18rem;margin:2.4rem 0 .25rem;letter-spacing:-.01em}
+  h2 .n{color:var(--dim);font-variant-numeric:tabular-nums;margin-right:.5rem;font-weight:500}
+  h3{font-size:.97rem;margin:1.4rem 0 .3rem}
+  .lede{color:var(--dim);margin:.2rem 0 1rem}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.2rem 1.35rem;margin:1rem 0}
+  .rank{border-left:4px solid var(--save)}
+  .rank.two{border-left-color:#2c9e6f} .rank.three{border-left-color:#5bb394}
+  .rank.four{border-left-color:#8cc9b2} .rank.five{border-left-color:#b9ddd0}
+  .card.warn{border-left:4px solid var(--warn);background:#fffdf7}
+  .card.stop{border-left:4px solid var(--spend);background:#fffafa}
+  pre{background:#0f1720;color:#d8e2ea;padding:.8rem 1rem;border-radius:8px;overflow-x:auto;
+    font:13px/1.55 var(--mono);margin:.6rem 0}
+  code{font:.88em var(--mono);background:#eef2f5;padding:.1rem .35rem;border-radius:4px}
+  pre code{background:none;padding:0;color:inherit;font-size:13px}
+  table{width:100%;border-collapse:collapse;margin:.8rem 0;font-size:.92rem}
+  th{text-align:left;font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;color:var(--dim);
+    border-bottom:1px solid var(--line);padding:.45rem .5rem}
+  td{padding:.55rem .5rem;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  .bad{color:var(--spend);font-weight:600} .good{color:var(--save);font-weight:600}
+  .say{background:#f2f7fb;border-left:3px solid var(--info);padding:.7rem .95rem;border-radius:0 8px 8px 0;margin:.6rem 0}
+  .say em{color:var(--dim);font-style:normal;font-size:.82rem;display:block;margin-bottom:.15rem;
+    text-transform:uppercase;letter-spacing:.07em}
+  ul,ol{padding-left:1.2rem} li{margin:.35rem 0}
+  .impact{display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+    padding:.18rem .5rem;border-radius:999px;background:#e7f5ef;color:var(--save);vertical-align:middle}
+  footer{margin-top:3rem;padding-top:1.2rem;border-top:1px solid var(--line);color:var(--dim);font-size:.85rem}
+  @media(max-width:640px){table,thead,tbody,th,td,tr{display:block}th{display:none}
+    td{border:0;padding:.2rem .5rem}tr{border-bottom:1px solid var(--line);padding:.5rem 0}
+    td::before{content:attr(data-l);display:block;font-size:.68rem;text-transform:uppercase;
+      letter-spacing:.07em;color:var(--dim)}}
+</style>
+</head>
+<body>
+
+<header><div class="wrap">
+  <h1>Working on ClinicOS for $20 a month</h1>
+  <p class="sub">How to make the Pro plan enough — and what it costs you if you don't</p>
+  <div class="pull">
+    <b>The single biggest change is not the model you pick.</b> It is that one session ran from
+    5 to 24 September. Every message in a long session re-sends everything before it, so by the end
+    a one-line question costs more than a whole task did on day one. Short sessions are worth more
+    than every other habit on this page combined.
+  </div>
+</div></header>
+
+<div class="wrap">
+
+<h2><span class="n">01</span>Where the money actually went</h2>
+<p class="lede">Measured from this project, not guessed.</p>
+<div class="card">
+<pre><code>this project       317 MB of transcripts
+  └─ one session   220 MB    5 – 24 September, never closed
+your other work    138 MB    four Rei-search projects</code></pre>
+<p>Four things drove that, in order of size:</p>
+<table>
+  <tr><th>What</th><th>Why it costs</th></tr>
+  <tr><td data-l="What"><b>Context piling up</b></td>
+      <td data-l="Why">A conversation carries its whole history on every turn. At the end of a three-week session, asking "is it deployed?" costs more than building the entire campaign page did on day one.</td></tr>
+  <tr><td data-l="What"><b>Opus for everything</b></td>
+      <td data-l="Why">Opus is the expensive model. Editing a file, running a build and fixing a type error do not need it — and that was most of the work.</td></tr>
+  <tr><td data-l="What"><b>Screenshots</b></td>
+      <td data-l="Why">Every browser screenshot is an image, and images are among the most expensive things you can put in a conversation. I took a dozen driving the campaign page.</td></tr>
+  <tr><td data-l="What"><b>Exploring instead of being told</b></td>
+      <td data-l="Why">628 files, 97,000 lines. "Why is this failing?" makes me search. "Line 240 of limits.go is failing" does not.</td></tr>
+</table>
+</div>
+
+<h2><span class="n">02</span>The five habits, in order of what they save</h2>
+
+<div class="card rank">
+<span class="impact">Biggest</span> <b>1 — One session per task. Then close it.</b>
+<p>Finish a task, then <code>/clear</code> or quit. Start the next one fresh. This is worth more than
+everything else here put together.</p>
+<p>You lose almost nothing by doing it: your <b>39 memory files</b> in <code>~/.claude/</code> carry the
+important things across — the deploy key, the Addis timezone rule, the commit-author rule. A fresh
+session already knows them.</p>
+<p><b>A rough guide:</b> if you have been in the same session more than a couple of hours, or you have
+moved on to an unrelated task, close it.</p>
+</div>
+
+<div class="card rank two">
+<span class="impact">Large</span> <b>2 — Sonnet by default. Opus when it is genuinely hard.</b>
+<p><code>/model</code> switches mid-session. Start on Sonnet and move up only when you hit something
+that needs real thought.</p>
+<table>
+  <tr><th>Worth Opus</th><th>Sonnet is fine</th></tr>
+  <tr>
+    <td data-l="Opus">Designing the draw fairness · finding why money is wrong · a bug that survived two fixes · auditing something you are about to publish · architecture decisions</td>
+    <td data-l="Sonnet">Adding a field to a form · writing a migration from your description · fixing a type error · running a deploy · writing tests from a spec · renaming things · CSS</td>
+  </tr>
+</table>
+<p>Honestly: in this project, the fairness algorithm, the money-projection bug and the plan-entitlement
+model needed Opus. Most of the rest did not.</p>
+</div>
+
+<div class="card rank three">
+<span class="impact">Large</span> <b>3 — Tell me where to look</b>
+<div class="say"><em>costs a lot</em>"The unbilled report is broken, can you check?"</div>
+<div class="say"><em>costs a little</em>"The unbilled report 500s. It's in <code>backend/internal/dental/service/</code>. Probably the SQL."</div>
+<p>You know this codebase. Every file path you give me is a search I do not run and a file I do not
+read to find out it was the wrong one.</p>
+</div>
+
+<div class="card rank four">
+<span class="impact">Medium</span> <b>4 — Create a CLAUDE.md once</b>
+<p>There isn't one. That means every new session rediscovers the same facts: that sqlc is not
+installed so queries must be raw pgx, that RLS needs <code>WithTx</code>, that the clinic's day is
+Addis and not UTC, that migrations are goose and numbered.</p>
+<p>Written down once, those stop costing anything. It is a twenty-minute job that pays back every
+session for the life of the project — and it is the reason habit 1 works so well, because a fresh
+session starts already knowing the rules.</p>
+</div>
+
+<div class="card rank five">
+<span class="impact">Medium</span> <b>5 — Say when you don't need proof</b>
+<p>By default I verify: run the tests, check the deployed page, screenshot the result. That is right for
+money and patient data. It is overkill for a CSS change.</p>
+<div class="say"><em>say this for small things</em>"Just make the change, I'll check it myself."</div>
+<p>And when something does need checking, prefer <b>"run the campaign e2e"</b> over
+<b>"make sure everything still works"</b> — one is a command, the other is an open invitation.</p>
+</div>
+
+<h2><span class="n">03</span>What not to economise on</h2>
+<div class="card warn">
+<p>Being too frugal costs more than it saves. Two real examples from this project:</p>
+<ul>
+  <li><b>The staff table lost its email column.</b> Build passed, types passed, all 30 API tests passed.
+      Only opening the actual page in a browser caught it — six headers over five cells, every column
+      under the wrong heading.</li>
+  <li><b>Every quiz answer was A.</b> Nothing automated would ever have flagged it. The campaign would
+      have taught dental clinics nothing, which was its entire purpose.</li>
+</ul>
+<p><b>So: keep the verification for money, patient data, and anything a customer sees.</b> Skip it for
+internal tools, styling, and work you will look at yourself in a minute anyway.</p>
+</div>
+
+<h2><span class="n">04</span>A week that fits in $20</h2>
+<div class="card">
+<table>
+  <tr><th>Session</th><th>Model</th><th>Shape</th></tr>
+  <tr><td data-l="Session"><b>A feature</b></td><td data-l="Model">Sonnet, Opus if the design is unclear</td>
+      <td data-l="Shape">Describe it, name the files, let it build, close the session.</td></tr>
+  <tr><td data-l="Session"><b>A bug</b></td><td data-l="Model">Sonnet first</td>
+      <td data-l="Shape">Paste the error and the file. Move to Opus only if Sonnet's second attempt misses.</td></tr>
+  <tr><td data-l="Session"><b>A deploy</b></td><td data-l="Model">Sonnet</td>
+      <td data-l="Shape">It is one command now. This needs no thinking at all.</td></tr>
+  <tr><td data-l="Session"><b>A decision</b></td><td data-l="Model">Opus</td>
+      <td data-l="Shape">Pricing, architecture, anything you will live with for a year. Short session, worth every token.</td></tr>
+</table>
+<p style="margin-bottom:0">Four or five short sessions a day at this shape is comfortable on Pro. One
+session left open all week is not.</p>
+</div>
+
+<h2><span class="n">05</span>Signs you are burning it</h2>
+<div class="card stop">
+<ul>
+  <li>The same session has been open since yesterday</li>
+  <li>You are on Opus and the task is "change the button colour"</li>
+  <li>I am reading files you could have named</li>
+  <li>I am taking screenshots of something you can see on your own screen</li>
+  <li>I am re-running a full test suite to confirm something I already confirmed</li>
+</ul>
+<p style="margin-bottom:0">Any of those: say <b>"switch to Sonnet"</b>, or <b>"/clear and start
+fresh"</b>, or <b>"stop verifying, I'll check"</b>. All three are fair, and none of them offend me.</p>
+</div>
+
+<h2><span class="n">06</span>When $20 stops being enough</h2>
+<div class="card">
+<p>Be honest with yourself about the signal. Upgrade when you are <b>repeatedly stopped mid-task</b> —
+not when you are merely aware of the limit. Being cut off halfway through a deploy on a system holding
+677 patient records costs more than the difference in plans.</p>
+<p style="margin-bottom:0">Until then, Pro genuinely works for this project. The habits above are not
+a compromise — short sessions and the right model produce better work anyway, because a fresh session
+with good standing context is sharper than a three-week-old one carrying everything that ever happened.</p>
+</div>
+
+<footer>
+  Written 24 September 2026, from measurements of this project's own sessions.<br>
+  Companion documents: <b>vps-runbook.html</b> (operating the server) ·
+  <b>vps-infrastructure-audit.html</b> (what needs fixing on it).
+</footer>
+
+</div>
+</body>
+</html>
