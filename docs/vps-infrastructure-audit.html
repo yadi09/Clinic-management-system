@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VPS infrastructure audit — 24 September 2026</title>
+<style>
+  :root{
+    --ink:#11161c; --dim:#5b6874; --line:#e2e6ea; --bg:#fbfcfd; --card:#fff;
+    --crit:#c1272d; --warn:#c9821b; --ok:#0e7a52; --info:#1b4f9c;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.65 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:60rem;margin:0 auto;padding:0 1.5rem 5rem}
+  header{background:linear-gradient(160deg,#16222c,#0d151b);color:#eef3f7;padding:3rem 1.5rem 2.5rem;margin-bottom:2rem}
+  header .wrap{padding-bottom:0}
+  h1{font-size:clamp(1.6rem,4.5vw,2.3rem);margin:0 0 .5rem;letter-spacing:-.02em}
+  .sub{color:#9fb1c0;margin:0;font-size:1rem}
+  .verdict{margin-top:1.6rem;padding:1rem 1.2rem;border-radius:10px;
+    background:rgba(193,39,45,.14);border:1px solid rgba(193,39,45,.4);color:#ffd9da}
+  .verdict b{color:#fff}
+  h2{font-size:1.25rem;margin:2.6rem 0 .3rem;letter-spacing:-.01em}
+  h2 .n{color:var(--dim);font-variant-numeric:tabular-nums;margin-right:.5rem;font-weight:500}
+  .lede{color:var(--dim);margin:.2rem 0 1.2rem}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.3rem 1.4rem;margin:1rem 0}
+  .card.crit{border-left:4px solid var(--crit)}
+  .card.warn{border-left:4px solid var(--warn)}
+  .card.info{border-left:4px solid var(--info)}
+  .card.ok{border-left:4px solid var(--ok)}
+  .tag{display:inline-block;font-size:.7rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+    padding:.2rem .55rem;border-radius:999px;vertical-align:middle}
+  .t-crit{background:#fdeaea;color:var(--crit)} .t-warn{background:#fdf3e3;color:#8a5a08}
+  .t-ok{background:#e7f5ef;color:var(--ok)} .t-info{background:#eaf1fb;color:var(--info)}
+  pre{background:#0f1720;color:#d8e2ea;padding:.85rem 1rem;border-radius:8px;overflow-x:auto;
+    font:13px/1.5 var(--mono);margin:.8rem 0}
+  code{font:.88em var(--mono);background:#eef2f5;padding:.1rem .35rem;border-radius:4px}
+  pre code{background:none;padding:0;color:inherit;font-size:13px}
+  table{width:100%;border-collapse:collapse;margin:1rem 0;font-size:.93rem}
+  th{text-align:left;font-size:.74rem;text-transform:uppercase;letter-spacing:.07em;color:var(--dim);
+    border-bottom:1px solid var(--line);padding:.5rem .6rem}
+  td{padding:.6rem;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  .perm{font-weight:650}
+  .perm.no{color:var(--crit)} .perm.yes{color:var(--ok)} .perm.part{color:var(--warn)}
+  .fix{background:#f3f7f4;border:1px solid #d7e5dd;border-radius:9px;padding:.9rem 1.1rem;margin-top:1rem}
+  .fix h4{margin:0 0 .4rem;font-size:.82rem;text-transform:uppercase;letter-spacing:.07em;color:var(--ok)}
+  ul{padding-left:1.2rem} li{margin:.3rem 0}
+  .meta{display:flex;flex-wrap:wrap;gap:.5rem 1.6rem;color:var(--dim);font-size:.85rem;margin-top:.8rem}
+  footer{margin-top:3.5rem;padding-top:1.4rem;border-top:1px solid var(--line);color:var(--dim);font-size:.85rem}
+  @media(max-width:640px){ table,thead,tbody,th,td,tr{display:block} th{display:none}
+    td{border:0;padding:.25rem .6rem} tr{border-bottom:1px solid var(--line);padding:.6rem 0}
+    td::before{content:attr(data-l);display:block;font-size:.7rem;text-transform:uppercase;
+      letter-spacing:.07em;color:var(--dim)} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <h1>VPS infrastructure audit</h1>
+    <p class="sub">77.68.116.240 — hosting The Millions and ClinicOS · 24 September 2026</p>
+    <div class="verdict">
+      <b>The expired certificate was not the problem. It was the symptom.</b>
+      The site was unreachable for seven days and the way it was discovered was the owner
+      looking at it. Nothing on this machine watches anything, nothing backs anything up, and
+      nothing renews anything. The certificate is fixed until 23 December; the reason it
+      expired is not.
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<h2><span class="n">01</span>What actually happened</h2>
+<p class="lede">Diagnosed in order, discarding two plausible causes that were not it.</p>
+
+<div class="card">
+<table>
+  <tr><td data-l="Checked"><b>DNS</b></td><td data-l="Result">All three hostnames resolve to 77.68.116.240. Correct.</td></tr>
+  <tr><td data-l="Checked"><b>Ports 80/443</b></td><td data-l="Result">Open from the public internet. Correct.</td></tr>
+  <tr><td data-l="Checked"><b>nginx</b></td><td data-l="Result">Serving <code>200</code> on the box the entire time. Working.</td></tr>
+  <tr><td data-l="Checked"><b>TLS certificate</b></td><td data-l="Result"><b style="color:var(--crit)">Expired 17 September.</b> Browsers refused to connect.</td></tr>
+</table>
+<pre><code>subject = CN = the-millions.co.uk
+issuer  = Let's Encrypt
+notAfter= Sep 17 10:16:09 2026 GMT     ← seven days before this audit</code></pre>
+<p><b>Two things looked guilty and were not:</b></p>
+<ul>
+  <li>The nginx container reports <b>unhealthy</b> — but it has failed its healthcheck
+      <b>259,656 times</b>, for months, while serving the site perfectly. The healthcheck is broken,
+      not nginx.</li>
+  <li>The ACME challenge path returns <code>404</code>, because the compose file mounts a Docker
+      <i>named volume</i> at <code>/var/www/certbot</code> while <code>issue-cert.sh</code> writes to a
+      <i>host directory</i> of the same name. Harmless today only because the script uses
+      <code>certbot --standalone</code>.</li>
+</ul>
+<div class="fix">
+  <h4>Fixed</h4>
+  Ran <code>deploy/issue-cert.sh</code>. New certificate valid <b>24 Sep → 23 Dec 2026</b>, covering
+  <code>the-millions.co.uk</code>, <code>www</code> and <code>staging</code>. Site returns 200 with full
+  certificate validation. ClinicOS untouched.
+</div>
+</div>
+
+<h2><span class="n">02</span>The issues, and whether the fix is permanent</h2>
+<p class="lede">Ordered by what will cause the next outage, not by how interesting it is.</p>
+
+<div class="card crit">
+  <span class="tag t-crit">Critical</span> &nbsp;<b>1 — The disk is 81% full and every deploy makes it worse</b>
+  <p>86 GB of the 116 GB disk is Docker build cache inside <code>/var/lib/containerd</code>. It grows
+  with every ClinicOS deployment and nothing ever clears it.</p>
+<pre><code>/dev/vda1   116G   93G   23G   81%  /
+/var/lib/containerd              86G
+docker build cache         90.59GB   (30.1GB reclaimable immediately)</code></pre>
+  <p><b>Why this is the top item:</b> PostgreSQL for <i>both</i> businesses lives on this disk. When it
+  fills, writes fail — that is not a slow degradation, it is both companies down at once, with a real
+  risk of database corruption rather than a clean stop.</p>
+  <div class="fix">
+    <h4>Solution</h4>
+    Immediate: <code>docker builder prune -af</code> reclaims roughly 30 GB in under a minute, safely —
+    build cache is regenerated on the next build and holds nothing unique.<br>
+    Permanent: a weekly scheduled prune, plus a disk-usage alert at 80%.
+  </div>
+  <p class="meta"><span>Permanent after fix? <b class="perm part">Only with the schedule.</b> A one-off
+  prune buys months and then the same wall.</span></p>
+</div>
+
+<div class="card crit">
+  <span class="tag t-crit">Critical</span> &nbsp;<b>2 — Neither database has ever been backed up</b>
+  <p>No dump exists anywhere on this machine. <code>deploy/pg-backup.sh</code> and
+  <code>restore-backup.sh</code> were written and nothing has ever called them.</p>
+<pre><code>find /home/themillions -name "*.sql*" -o -name "*.dump"   →   (nothing)
+cron jobs: 0        systemd backup timers: 0</code></pre>
+  <p>What is at stake: <b>677 patient records</b> across eight clinics, including Cure Dental's 604 —
+  a real dental practice whose clinical history exists in exactly one place, on one disk, on one
+  machine, with no copy. Plus The Millions' own database.</p>
+  <div class="fix">
+    <h4>Solution</h4>
+    Nightly <code>pg_dump</code> of both databases, written offsite. Cloudflare R2 is already
+    configured and paid for on this box, so this costs nothing new. Then — and this is the part
+    people skip — a restore rehearsal, because a backup nobody has restored is a hypothesis.
+  </div>
+  <p class="meta"><span>Permanent after fix? <b class="perm yes">Yes</b>, once scheduled and verified.</span></p>
+</div>
+
+<div class="card crit">
+  <span class="tag t-crit">Critical</span> &nbsp;<b>3 — Nothing watches either site</b>
+  <p>The site was down for seven days. The detection mechanism was a human noticing. There is no
+  uptime check, no certificate-expiry warning, no alert of any kind.</p>
+  <p>This is the issue that produced the other ones. A machine nobody is watching accumulates silent
+  failures — and this audit found three more that are currently invisible in exactly the same way.</p>
+  <div class="fix">
+    <h4>Solution</h4>
+    An external uptime monitor on both domains — one that checks from outside the box, because a
+    check running on the server cannot tell you the server is unreachable. It must alert on
+    <b>certificate expiry ≥ 14 days ahead</b>, which alone would have prevented this outage.
+  </div>
+  <p class="meta"><span>Permanent after fix? <b class="perm yes">Yes.</b> This is the single highest-value hour on the list.</span></p>
+</div>
+
+<div class="card warn">
+  <span class="tag t-warn">High</span> &nbsp;<b>4 — Certificate renewal is still manual</b>
+  <p>No cron job, no systemd timer, no certbot container. The June certificate was issued by hand and
+  nothing was ever going to renew it. Today's fix has the same property.</p>
+  <div class="fix">
+    <h4>Solution</h4>
+<pre><code>0 4 * * 1  cd /home/themillions/The-Millions/deploy &amp;&amp; ./issue-cert.sh &gt;&gt; /var/log/cert-renew.log 2&gt;&amp;1</code></pre>
+    The script already no-ops when more than 30 days remain, so weekly is safe. Note it stops nginx
+    for a few seconds to free port 80 — acceptable at 4am Monday, and removable by fixing the webroot
+    mount (item 8).
+  </div>
+  <p class="meta"><span>Permanent after fix? <b class="perm no">No — not yet.</b> Today it expires again on
+  <b>23 December 2026</b> unless the schedule is added.</span></p>
+</div>
+
+<div class="card warn">
+  <span class="tag t-warn">High</span> &nbsp;<b>5 — 130 days uptime, 7 security updates pending, reboot required</b>
+<pre><code>uptime:                  130 days
+pending security updates: 7
+/var/run/reboot-required: YES</code></pre>
+  <p>Unattended-upgrades is running, so packages are patched — but a kernel update only takes effect
+  after a reboot, and this machine has not rebooted in over four months.</p>
+  <div class="fix">
+    <h4>Solution</h4>
+    Reboot during a quiet window. Every container is set to <code>always</code> or
+    <code>unless-stopped</code>, so the stack comes back on its own — I verified the restart policies
+    rather than assuming them.
+  </div>
+  <p class="meta"><span>Permanent after fix? <b class="perm part">Recurring by nature</b> — needs a
+  quarterly habit, not a one-off.</span></p>
+</div>
+
+<div class="card info">
+  <span class="tag t-info">Medium</span> &nbsp;<b>6 — Container logs grow without limit</b>
+  <p>224 MB today and no <code>max-size</code> configured on any container. Slow, but it only ever
+  goes one way, and it shares the disk with item 1.</p>
+  <div class="fix"><h4>Solution</h4> Set <code>max-size: 10m</code> / <code>max-file: 3</code> in the
+  Docker daemon config — one file, applies to everything, survives redeploys.</div>
+  <p class="meta"><span>Permanent after fix? <b class="perm yes">Yes.</b></span></p>
+</div>
+
+<div class="card info">
+  <span class="tag t-info">Medium</span> &nbsp;<b>7 — The nginx healthcheck has never worked</b>
+  <p>259,656 consecutive failures — <code>wget: can't connect to remote host</code>. The container has
+  reported <b>unhealthy</b> for three months while serving perfectly.</p>
+  <p>The cost is not cosmetic: a genuinely broken nginx would look <i>identical</i> to today. The one
+  signal that could have told you something was wrong has been crying wolf since June.</p>
+  <div class="fix"><h4>Solution</h4> Point the healthcheck at a port nginx actually listens on, or
+  remove it. A check that is always red is worse than no check.</div>
+  <p class="meta"><span>Permanent after fix? <b class="perm yes">Yes.</b></span></p>
+</div>
+
+<div class="card info">
+  <span class="tag t-info">Low</span> &nbsp;<b>8 — Webroot mount mismatch forces downtime to renew</b>
+  <p><code>docker-compose.prod.yml</code> mounts the named volume <code>certbot-webroot</code> at
+  <code>/var/www/certbot</code>; <code>issue-cert.sh</code> writes to the host directory
+  <code>deploy/certbot-webroot</code>. Different places, so HTTP-01 webroot validation can never
+  succeed and renewal must stop nginx instead.</p>
+  <div class="fix"><h4>Solution</h4> Change the mount to a bind on the same host directory, then renew
+  with <code>--webroot</code> and no downtime at all.</div>
+  <p class="meta"><span>Permanent after fix? <b class="perm yes">Yes.</b></span></p>
+</div>
+
+<div class="card info">
+  <span class="tag t-info">Low</span> &nbsp;<b>9 — Duplicate nginx server block</b>
+<pre><code>[warn] conflicting server name "the-millions.co.uk" on 0.0.0.0:443, ignored</code></pre>
+  <p>Emitted on every start. Harmless now — one block silently wins — but it means the config does not
+  say what its author thinks it says, which is how a future edit lands in the block that is ignored.</p>
+  <p class="meta"><span>Permanent after fix? <b class="perm yes">Yes.</b></span></p>
+</div>
+
+<div class="card info">
+  <span class="tag t-info">Low</span> &nbsp;<b>10 — Historical secrets left on disk</b>
+  <p>Eleven <code>.env</code> snapshots sit in <code>clinicos/.history/</code>, written by an editor
+  extension, each containing the database password and API keys as they were on that date. Rotated
+  credentials are still readable there.</p>
+  <div class="fix"><h4>Solution</h4> Delete the directory and add <code>.history/</code> to
+  <code>.gitignore</code> so it never reaches the repository.</div>
+  <p class="meta"><span>Permanent after fix? <b class="perm yes">Yes.</b></span></p>
+</div>
+
+<h2><span class="n">03</span>What is already sound</h2>
+<p class="lede">Checked and found correct — worth recording so effort goes where it is needed.</p>
+<div class="card ok">
+<table>
+  <tr><td data-l="Item"><b>Restart policies</b></td><td data-l="State">All containers <code>always</code> / <code>unless-stopped</code> — the stack survives a reboot.</td></tr>
+  <tr><td data-l="Item"><b>SSH</b></td><td data-l="State"><code>PasswordAuthentication no</code> — key-only.</td></tr>
+  <tr><td data-l="Item"><b>Firewall</b></td><td data-l="State">ufw active.</td></tr>
+  <tr><td data-l="Item"><b>Patching</b></td><td data-l="State">unattended-upgrades active (reboot still owed).</td></tr>
+  <tr><td data-l="Item"><b>ClinicOS origin cert</b></td><td data-l="State">Valid to <b>July 2036</b> — a 10-year Cloudflare origin certificate. No time bomb.</td></tr>
+  <tr><td data-l="Item"><b>Memory / load</b></td><td data-l="State">2.3 GB available, load 0.01. The machine is not under strain.</td></tr>
+  <tr><td data-l="Item"><b>ClinicOS deployment</b></td><td data-l="State">Now deploys from the git repository, traceable to a commit.</td></tr>
+</table>
+</div>
+
+<h2><span class="n">04</span>The order I would do it in</h2>
+<div class="card">
+<table>
+  <tr><th>When</th><th>What</th><th>Why then</th></tr>
+  <tr><td data-l="When"><b>Today</b></td><td data-l="What">Prune the build cache; add the cert-renewal cron</td><td data-l="Why">Both are minutes. One prevents the next outage, the other prevents this one repeating on 23 December.</td></tr>
+  <tr><td data-l="When"><b>This week</b></td><td data-l="What">Nightly backups to R2, with one rehearsed restore</td><td data-l="Why">The only item on this list where the damage is permanent and unrecoverable.</td></tr>
+  <tr><td data-l="When"><b>This week</b></td><td data-l="What">External uptime + certificate-expiry monitoring</td><td data-l="Why">Stops the next problem being found seven days late by a person.</td></tr>
+  <tr><td data-l="When"><b>Next quiet window</b></td><td data-l="What">Reboot for the kernel; cap container logs</td><td data-l="Why">Needs a chosen moment, not an emergency.</td></tr>
+  <tr><td data-l="When"><b>When convenient</b></td><td data-l="What">Healthcheck, webroot mount, duplicate server block, old .env files</td><td data-l="Why">Correctness and hygiene. None will take a site down this quarter.</td></tr>
+</table>
+</div>
+
+<footer>
+  Audit performed 24 September 2026 against 77.68.116.240. Every figure quoted was read from the
+  live machine at the time of writing; nothing here is inferred from configuration alone.
+  The certificate fix is deployed and verified. Everything else in section 02 is unfixed at the time
+  of writing.
+</footer>
+
+</div>
+</body>
+</html>
