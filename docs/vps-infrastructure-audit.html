@@ -90,8 +90,8 @@ notAfter= Sep 17 10:16:09 2026 GMT     ← seven days before this audit</code></
 <p><b>Two things looked guilty and were not:</b></p>
 <ul>
   <li>The nginx container reports <b>unhealthy</b> — but it has failed its healthcheck
-      <b>259,656 times</b>, for months, while serving the site perfectly. The healthcheck is broken,
-      not nginx.</li>
+      <b>259,656 times</b> at the moment of diagnosis — months of continuous failure while serving
+      the site perfectly. The healthcheck is broken, not nginx.</li>
   <li>The ACME challenge path returns <code>404</code>, because the compose file mounts a Docker
       <i>named volume</i> at <code>/var/www/certbot</code> while <code>issue-cert.sh</code> writes to a
       <i>host directory</i> of the same name. Harmless today only because the script uses
@@ -204,8 +204,10 @@ pending security updates: 7
 
 <div class="card info">
   <span class="tag t-info">Medium</span> &nbsp;<b>7 — The nginx healthcheck has never worked</b>
-  <p>259,656 consecutive failures — <code>wget: can't connect to remote host</code>. The container has
-  reported <b>unhealthy</b> for three months while serving perfectly.</p>
+  <p><code>wget: can't connect to remote host</code>, continuously. The counter stood at
+  <b>259,656 consecutive failures</b> when this audit began; restarting nginx to install the new
+  certificate reset it, and it was back to <b>28 and climbing</b> within the hour — so the check is
+  still broken, it has simply lost its evidence.</p>
   <p>The cost is not cosmetic: a genuinely broken nginx would look <i>identical</i> to today. The one
   signal that could have told you something was wrong has been crying wolf since June.</p>
   <div class="fix"><h4>Solution</h4> Point the healthcheck at a port nginx actually listens on, or
