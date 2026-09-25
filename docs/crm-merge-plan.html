@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRM merge plan — taking the best of both into ClinicOS</title>
+<style>
+  :root{--ink:#11161c;--dim:#5b6874;--line:#e4e8ec;--bg:#fbfcfd;--card:#fff;
+    --keep:#0e7a52;--take:#1b4f9c;--drop:#c1272d;--warn:#c9821b;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.62 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:64rem;margin:0 auto;padding:0 1.5rem 5rem}
+  header{background:linear-gradient(160deg,#16222c,#0d151b);color:#eef3f7;padding:2.8rem 1.5rem 2.2rem;margin-bottom:1.6rem}
+  header .wrap{padding-bottom:0}
+  h1{font-size:clamp(1.5rem,4.5vw,2.1rem);margin:0 0 .4rem;letter-spacing:-.02em}
+  .sub{color:#9fb1c0;margin:0}
+  .verdict{margin-top:1.4rem;padding:1rem 1.2rem;border-radius:10px;background:rgba(27,79,156,.2);
+    border:1px solid rgba(90,150,230,.45);color:#d5e6ff}
+  .verdict b{color:#fff}
+  h2{font-size:1.2rem;margin:2.5rem 0 .25rem;letter-spacing:-.01em}
+  h2 .n{color:var(--dim);font-variant-numeric:tabular-nums;margin-right:.5rem;font-weight:500}
+  h3{font-size:1rem;margin:1.5rem 0 .35rem}
+  .lede{color:var(--dim);margin:.2rem 0 1rem}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.15rem 1.3rem;margin:1rem 0}
+  .card.keep{border-left:4px solid var(--keep)} .card.take{border-left:4px solid var(--take)}
+  .card.drop{border-left:4px solid var(--drop)} .card.warn{border-left:4px solid var(--warn);background:#fffdf7}
+  table{width:100%;border-collapse:collapse;margin:.8rem 0;font-size:.9rem}
+  th{text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;color:var(--dim);
+    border-bottom:1px solid var(--line);padding:.45rem .5rem}
+  td{padding:.5rem;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  code{font:.87em var(--mono);background:#eef2f5;padding:.1rem .34rem;border-radius:4px}
+  pre{background:#0f1720;color:#d8e2ea;padding:.8rem 1rem;border-radius:8px;overflow-x:auto;
+    font:12.5px/1.5 var(--mono);margin:.6rem 0}
+  pre code{background:none;padding:0;color:inherit}
+  .yes{color:var(--keep);font-weight:700} .no{color:var(--drop);font-weight:700} .part{color:var(--warn);font-weight:700}
+  .pill{display:inline-block;font-size:.67rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+    padding:.16rem .5rem;border-radius:999px}
+  .p-take{background:#eaf1fb;color:var(--take)} .p-keep{background:#e7f5ef;color:var(--keep)}
+  .p-drop{background:#fdeaea;color:var(--drop)}
+  .phase{border:1px solid var(--line);border-radius:12px;margin:1rem 0;overflow:hidden;background:#fff}
+  .phase > .hd{background:#f4f7fa;padding:.8rem 1.2rem;border-bottom:1px solid var(--line);
+    display:flex;flex-wrap:wrap;gap:.5rem 1rem;align-items:baseline}
+  .phase .hd b{font-size:1.02rem} .phase .hd .eff{color:var(--dim);font-size:.83rem;margin-left:auto}
+  .phase .bd{padding:1rem 1.2rem}
+  ul,ol{padding-left:1.15rem} li{margin:.3rem 0}
+  footer{margin-top:3rem;padding-top:1.2rem;border-top:1px solid var(--line);color:var(--dim);font-size:.85rem}
+  @media(max-width:680px){table,thead,tbody,th,td,tr{display:block}th{display:none}
+    td{border:0;padding:.2rem .5rem}tr{border-bottom:1px solid var(--line);padding:.5rem 0}
+    td::before{content:attr(data-l);display:block;font-size:.67rem;text-transform:uppercase;
+      letter-spacing:.07em;color:var(--dim)}}
+</style>
+</head>
+<body>
+
+<header><div class="wrap">
+  <h1>CRM merge plan</h1>
+  <p class="sub">Taking the best of the Vercel prototype into the ClinicOS CRM · 25 September 2026</p>
+  <div class="verdict">
+    <b>Yes — ClinicOS is the one to keep, and it is stronger than it looks.</b>
+    The prototype is a better <i>shop window</i>; ClinicOS is a better <i>shop</i>. Its prospect record
+    already carries 24 fields including priority, next action, source and map URL, and it has things the
+    prototype structurally cannot have: real multi-user data, duplicate detection, and a link from a
+    prospect to the clinic workspace it becomes. Port the prototype's <b>interface and its three
+    genuinely new ideas</b> onto that spine. Do not rebuild.
+  </div>
+</div></header>
+
+<div class="wrap">
+
+<h2><span class="n">01</span>What each one actually is</h2>
+<div class="card">
+<table>
+  <tr><th></th><th>Vercel prototype</th><th>ClinicOS CRM</th></tr>
+  <tr><td data-l="">Stack</td><td data-l="Prototype">Vite + React, 505 KB bundle</td><td data-l="ClinicOS">React + TS + Tailwind + shadcn, Go API</td></tr>
+  <tr><td data-l="">Storage</td><td data-l="Prototype"><span class="no">localStorage</span> — 9 keys, one browser</td><td data-l="ClinicOS"><span class="yes">Postgres</span> — 6 tables, RLS, audit</td></tr>
+  <tr><td data-l="">Multi-user</td><td data-l="Prototype"><span class="no">Simulated</span> — reps are seed data</td><td data-l="ClinicOS"><span class="yes">Real</span> — platform_admins, crm.work</td></tr>
+  <tr><td data-l="">Auth</td><td data-l="Prototype"><span class="no">Cosmetic</span> — password printed on the page</td><td data-l="ClinicOS"><span class="yes">Real</span> — argon2, MFA, sessions</td></tr>
+  <tr><td data-l="">Data</td><td data-l="Prototype">100 fabricated clinics</td><td data-l="ClinicOS">7 real prospects, 1 campaign</td></tr>
+  <tr><td data-l="">API</td><td data-l="Prototype">none</td><td data-l="ClinicOS">23 endpoints</td></tr>
+</table>
+<p style="margin-bottom:0">The prototype is what a v0-style tool produces and it is a genuinely good
+specification. It is not a system: clear the browser and the pipeline is gone, and two reps on two
+laptops would never see the same board.</p>
+</div>
+
+<h2><span class="n">02</span>Data model, field by field</h2>
+<p class="lede">The reason this is a port and not a rebuild.</p>
+<div class="card">
+<p><b>ClinicOS <code>crm_prospects</code> already holds:</b></p>
+<pre><code>clinic_name  contact_name  contact_role  phone  phone_alt  email
+address      map_url       note          source partner_lead_id
+owner_id     status        priority      next_action  next_action_at
+ready_on     outcome_note  tenant_id     created_by   … + timestamps</code></pre>
+<p>That covers most of the prototype's lead table already — including <code>contact_role</code>
+(Owner / Doctor / Manager / Receptionist), <code>source</code>, <code>priority</code>, and
+<code>map_url</code> for the Google Maps origin.</p>
+
+<h3>Genuinely missing, and worth adding</h3>
+<table>
+  <tr><th>Field</th><th>Why it earns its place</th></tr>
+  <tr><td data-l="Field"><code>subcity</code></td><td data-l="Why">The prototype filters on 33 named Addis subcities. Today ClinicOS has free-text <code>address</code>, which cannot be filtered, grouped or used for territory. This is the single most Ethiopian-specific idea in the prototype.</td></tr>
+  <tr><td data-l="Field"><code>rating</code>, <code>reviews_count</code></td><td data-l="Why">Leads come from Google Maps, which gives both for free. A 4.8-star clinic with 104 reviews is a different prospect from a 3.8 with 12 — real qualification signal at zero cost.</td></tr>
+  <tr><td data-l="Field"><code>score</code></td><td data-l="Why">Computed, not typed. See phase 3.</td></tr>
+</table>
+
+<h3>What ClinicOS has that the prototype cannot</h3>
+<div class="card keep" style="margin:.8rem 0">
+<ul style="margin:0">
+  <li><b><code>tenant_id</code> on a prospect</b> — the link from "clinic we are courting" to "clinic
+      running ClinicOS". That closes the loop from sale to customer, and a localStorage app has nothing
+      to close it to.</li>
+  <li><b>Duplicate detection</b> (<code>/prospects/duplicates</code>) — four reps sourcing from Google
+      Maps <i>will</i> collect the same clinic twice.</li>
+  <li><b>Configurable phases per campaign</b> — the prototype hardcodes 11 stages; ClinicOS lets a
+      campaign define its own, which is strictly more flexible.</li>
+  <li><b>Outcome / reopen lifecycle</b> and an inbound importer from <code>partner_leads</code>.</li>
+</ul>
+</div>
+</div>
+
+<h2><span class="n">03</span>Verdict on every prototype feature</h2>
+<div class="card">
+<table>
+  <tr><th>Feature</th><th>Verdict</th><th>Reasoning</th></tr>
+  <tr><td data-l="Feature"><b>Dense lead table</b><br>pills, ratings, sortable</td><td data-l="Verdict"><span class="pill p-take">Take</span></td>
+      <td data-l="Why">The strongest single thing in the prototype. Colour-coded stage and priority pills make 100 rows scannable; ClinicOS's list is thinner.</td></tr>
+  <tr><td data-l="Feature"><b>Saved views</b><br>My Leads · Hot · Overdue · Uncontacted · Demos · Won</td><td data-l="Verdict"><span class="pill p-take">Take</span></td>
+      <td data-l="Why">Highest value for least work. <code>ListProspects</code> already filters on status, owner and priority — these are presets over an API that exists.</td></tr>
+  <tr><td data-l="Feature"><b>Follow-up task queue</b><br>Overdue/Today/Upcoming + snooze</td><td data-l="Verdict"><span class="pill p-take">Take</span></td>
+      <td data-l="Why">ClinicOS has <i>one</i> <code>next_action</code> per prospect. A rep needs many tasks against one clinic and a queue to work down. This is the daily driver.</td></tr>
+  <tr><td data-l="Feature"><b>Lead scoring engine</b></td><td data-l="Verdict"><span class="pill p-take">Take</span></td>
+      <td data-l="Why">With 100+ leads and four reps, ordering the list is the difference between working it and drowning. Rules configurable in settings.</td></tr>
+  <tr><td data-l="Feature"><b>Subcity + density map</b></td><td data-l="Verdict"><span class="pill p-take">Take</span></td>
+      <td data-l="Why">Territory assignment and route planning in Addis. Needs the new column.</td></tr>
+  <tr><td data-l="Feature"><b>Rep leaderboard + win rate</b></td><td data-l="Verdict"><span class="pill p-take">Take</span></td>
+      <td data-l="Why">Pure query over data already recorded. Management visibility for nothing.</td></tr>
+  <tr><td data-l="Feature"><b>Funnel drop-off</b></td><td data-l="Verdict"><span class="pill p-take">Take</span></td>
+      <td data-l="Why">Same — <code>crm_phase_events</code> already records every transition.</td></tr>
+  <tr><td data-l="Feature"><b>Excel import</b></td><td data-l="Verdict"><span class="pill p-take">Take</span></td>
+      <td data-l="Why">Genuinely missing. The existing <code>/inbound/import</code> only pulls partner leads — it does not read a spreadsheet, and Google Maps scraping lands in a spreadsheet.</td></tr>
+  <tr><td data-l="Feature"><b>Activity channels</b><br>Call · WhatsApp · Telegram · Demo · Meeting · Email</td><td data-l="Verdict"><span class="pill p-take">Take</span></td>
+      <td data-l="Why"><code>crm_touches.kind</code> exists; this is a vocabulary and a filter, not a schema change.</td></tr>
+  <tr><td data-l="Feature"><b>Calendar</b></td><td data-l="Verdict"><span class="pill p-take">Take</span> <small>late</small></td>
+      <td data-l="Why">Useful once tasks exist, and a view over them rather than its own data. Cheap after phase 2, pointless before.</td></tr>
+  <tr><td data-l="Feature"><b>Ctrl-K palette</b></td><td data-l="Verdict"><span class="pill p-take">Take</span> <small>late</small></td>
+      <td data-l="Why">ClinicOS already has a command palette component. Wiring prospects into it is small.</td></tr>
+  <tr><td data-l="Feature"><b>11 fixed stages</b></td><td data-l="Verdict"><span class="pill p-drop">Leave</span></td>
+      <td data-l="Why">ClinicOS's configurable phases are better. Seed a campaign with these eleven as a <i>default</i> — do not hardcode them. Four reps will not maintain eleven columns honestly; expect to cut to six.</td></tr>
+  <tr><td data-l="Feature"><b>Invite links, RBAC matrix</b></td><td data-l="Verdict"><span class="pill p-drop">Leave</span></td>
+      <td data-l="Why">Already solved properly — real accounts, argon2, the reset-link flow built this month. The prototype's version is a picture of one.</td></tr>
+  <tr><td data-l="Feature"><b>Clear Database / Reload Sample Data</b></td><td data-l="Verdict"><span class="pill p-drop">Leave</span></td>
+      <td data-l="Why">Coherent for a toy. On production data it is a loaded gun with no safety.</td></tr>
+</table>
+</div>
+
+<h2><span class="n">04</span>The interface — how to port the look without the architecture</h2>
+<div class="card">
+<p>Both are React with Tailwind, so this is a re-skin, not a rewrite. The prototype's visual language
+maps onto components ClinicOS already owns:</p>
+<table>
+  <tr><th>Prototype</th><th>Built in ClinicOS from</th></tr>
+  <tr><td data-l="Prototype">Left sidebar with counts and an OVERDUE badge</td><td data-l="From">Existing console nav + the <code>Segmented</code> badge pattern already used on Reception and Chairside</td></tr>
+  <tr><td data-l="Prototype">Saved-view tab strip</td><td data-l="From"><code>Segmented</code> — the same component as Chairside's lenses</td></tr>
+  <tr><td data-l="Prototype">Stage / priority pills</td><td data-l="From"><code>Badge</code> with variants</td></tr>
+  <tr><td data-l="Prototype">Dense sortable table</td><td data-l="From"><code>Table</code> + the column pattern from the Staff page</td></tr>
+  <tr><td data-l="Prototype">Filter row of selects</td><td data-l="From"><code>Select</code></td></tr>
+  <tr><td data-l="Prototype">Lead detail drawer</td><td data-l="From">Existing <code>ProspectDialog</code>, widened</td></tr>
+</table>
+<div class="card warn" style="margin-top:1rem">
+  <b>One deliberate departure.</b> The prototype is a light-on-white admin app; the ClinicOS platform
+  console is dark. Porting the layout wholesale into the dark console will look wrong. Take the
+  <i>structure</i> — sidebar, view tabs, filter row, dense table, pills — and keep the console's own
+  palette. Copying the colours as well is the quickest way to make it look like two products stitched
+  together.
+</div>
+</div>
+
+<h2><span class="n">05</span>Implementation plan</h2>
+<p class="lede">Ordered so a rep gets something useful at the end of every phase, not only at the end.</p>
+
+<div class="phase">
+  <div class="hd"><b>Phase 1 — The list becomes workable</b><span class="pill p-take">no schema change</span><span class="eff">~1 session</span></div>
+  <div class="bd">
+    <ul>
+      <li>Dense prospect table: stage and priority pills, contact, rep, last touch, next action</li>
+      <li>Saved-view tabs: All · My Leads · Hot · Overdue · Uncontacted · Demos · Won · Lost</li>
+      <li>Filter row: status · priority · owner · source</li>
+      <li>Sorting and pagination</li>
+    </ul>
+    <p style="margin:.4rem 0 0"><b>Why first:</b> it is the screen a rep lives in, it needs no migration,
+    and <code>ListProspects</code> already accepts status, owner and priority. Highest value per hour on
+    the whole list.</p>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="hd"><b>Phase 2 — Follow-ups become a real queue</b><span class="pill p-take">new table</span><span class="eff">~1–2 sessions</span></div>
+  <div class="bd">
+    <pre><code>crm_tasks(id, prospect_id, title, due_at, done_at, owner_id,
+          kind, note, created_by, created_at)</code></pre>
+    <ul>
+      <li>Queue with Overdue / Today / Upcoming / Completed</li>
+      <li>Snooze +1 day / +3 days; complete; reassign</li>
+      <li>Keep <code>next_action_at</code> on the prospect as a derived convenience so nothing breaks</li>
+    </ul>
+    <p style="margin:.4rem 0 0"><b>Why second:</b> 68 overdue follow-ups in the prototype is the number
+    that shows what this screen is for. One <code>next_action</code> per prospect cannot express a rep's day.</p>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="hd"><b>Phase 3 — Lead quality</b><span class="pill p-take">3 columns</span><span class="eff">~1 session</span></div>
+  <div class="bd">
+    <ul>
+      <li>Add <code>subcity</code>, <code>rating</code>, <code>reviews_count</code> to prospects</li>
+      <li><b>Score</b> computed server-side from configurable weights — rating, review count, stage age,
+          touch count, source — so the number is explainable rather than magic</li>
+      <li>Subcity filter and territory grouping</li>
+    </ul>
+    <p style="margin:.4rem 0 0"><b>Decision needed:</b> scoring rules fixed in code, or editable in the
+    console? Editable is what the prototype shows and it is more work. My view: start fixed, expose later
+    once you know which weights you actually argue about.</p>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="hd"><b>Phase 4 — Analytics</b><span class="pill p-keep">queries only</span><span class="eff">~1 session</span></div>
+  <div class="bd">
+    <ul>
+      <li>Funnel drop-off from <code>crm_phase_events</code></li>
+      <li>Rep leaderboard: assigned · contacted · demos · activities · won · win rate</li>
+      <li>Source ROI and subcity density (needs phase 3)</li>
+    </ul>
+    <p style="margin:.4rem 0 0">No new tables. Every figure already exists in the data; it has simply
+    never been asked for.</p>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="hd"><b>Phase 5 — Getting leads in</b><span class="eff">~1 session</span></div>
+  <div class="bd">
+    <ul>
+      <li>Excel / CSV import with column mapping, a dry run, and duplicate detection against the existing
+          <code>/prospects/duplicates</code></li>
+      <li>Reuse the patient CSV importer's patterns — that work is already done and proven</li>
+    </ul>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="hd"><b>Phase 6 — Polish</b><span class="eff">~1 session</span></div>
+  <div class="bd">
+    <ul><li>Calendar over tasks · activity-channel filters · prospects in the Ctrl-K palette</li></ul>
+  </div>
+</div>
+
+<h2><span class="n">06</span>What I would not do</h2>
+<div class="card drop">
+<ul style="margin:0">
+  <li><b>Do not migrate the prototype's data.</b> 100 fabricated clinics with invented doctors and
+      ratings would pollute a real pipeline that currently holds 7 genuine prospects. Start from the real
+      seven.</li>
+  <li><b>Do not port all 11 stages as fixed.</b> Seed them as one campaign's phases and expect to cut to
+      five or six once four reps have to keep them honest.</li>
+  <li><b>Do not rebuild auth or team management.</b> That is the one area where ClinicOS is
+      overwhelmingly ahead and the prototype is a drawing.</li>
+  <li><b>Do not do this before the backups.</b> Adding tables to a database with no backup increases
+      what there is to lose. That job is still outstanding.</li>
+</ul>
+</div>
+
+<h2><span class="n">07</span>Decisions I need from you</h2>
+<div class="card">
+<ol>
+  <li><b>Stages:</b> keep all 11, or cut to a shorter ladder? I would propose New → Contacted →
+      Interested → Demo → Trial → Negotiation → Won/Lost.</li>
+  <li><b>Scoring:</b> fixed weights in code first, or configurable from day one?</li>
+  <li><b>Scope:</b> all six phases, or stop after 1–3 and see whether the reps use it?</li>
+  <li><b>Where it lives:</b> stay inside the platform console (vendor-side, where it is now), or become
+      its own app at <code>/crm</code>? The prototype's full-screen sidebar layout implies the latter.</li>
+</ol>
+</div>
+
+<footer>
+  Prepared 25 September 2026. The prototype was examined by reading its bundle and driving it in a
+  browser; the ClinicOS CRM by reading its schema, its 23 endpoints and its frontend. No code has been
+  changed — this is a plan, not an implementation.
+</footer>
+
+</div>
+</body>
+</html>
