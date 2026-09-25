@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClinicOS CRM — implementation plan</title>
+<style>
+  :root{--ink:#11161c;--dim:#5b6874;--line:#e4e8ec;--bg:#fbfcfd;--card:#fff;
+    --new:#1b4f9c;--have:#0e7a52;--plus:#7c3aed;--drop:#c1272d;--warn:#c9821b;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.62 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:68rem;margin:0 auto;padding:0 1.5rem 5rem}
+  header{background:linear-gradient(160deg,#16222c,#0d151b);color:#eef3f7;padding:2.8rem 1.5rem 2.2rem;margin-bottom:1.6rem}
+  header .wrap{padding-bottom:0}
+  h1{font-size:clamp(1.5rem,4.5vw,2.1rem);margin:0 0 .4rem;letter-spacing:-.02em}
+  .sub{color:#9fb1c0;margin:0}
+  .verdict{margin-top:1.4rem;padding:1rem 1.2rem;border-radius:10px;background:rgba(124,58,237,.2);
+    border:1px solid rgba(160,110,250,.45);color:#e6dcff}
+  .verdict b{color:#fff}
+  h2{font-size:1.22rem;margin:2.6rem 0 .25rem;letter-spacing:-.01em}
+  h2 .n{color:var(--dim);font-variant-numeric:tabular-nums;margin-right:.5rem;font-weight:500}
+  h3{font-size:1rem;margin:1.5rem 0 .35rem}
+  h4{font-size:.9rem;margin:1.1rem 0 .25rem;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
+  .lede{color:var(--dim);margin:.2rem 0 1rem}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.15rem 1.3rem;margin:1rem 0}
+  .card.plus{border-left:4px solid var(--plus)}
+  .card.warn{border-left:4px solid var(--warn);background:#fffdf7}
+  .card.drop{border-left:4px solid var(--drop)}
+  table{width:100%;border-collapse:collapse;margin:.8rem 0;font-size:.88rem}
+  th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--dim);
+    border-bottom:1px solid var(--line);padding:.42rem .5rem}
+  td{padding:.48rem .5rem;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  code{font:.86em var(--mono);background:#eef2f5;padding:.1rem .34rem;border-radius:4px}
+  pre{background:#0f1720;color:#d8e2ea;padding:.85rem 1rem;border-radius:8px;overflow-x:auto;
+    font:12.5px/1.55 var(--mono);margin:.6rem 0}
+  pre code{background:none;padding:0;color:inherit}
+  .tag{display:inline-block;font-size:.65rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+    padding:.14rem .45rem;border-radius:999px;white-space:nowrap}
+  .t-new{background:#eaf1fb;color:var(--new)} .t-have{background:#e7f5ef;color:var(--have)}
+  .t-plus{background:#f2e9fe;color:var(--plus)} .t-drop{background:#fdeaea;color:var(--drop)}
+  .phase{border:1px solid var(--line);border-radius:12px;margin:1rem 0;overflow:hidden;background:#fff}
+  .phase>.hd{background:#f4f7fa;padding:.75rem 1.2rem;border-bottom:1px solid var(--line);
+    display:flex;flex-wrap:wrap;gap:.5rem 1rem;align-items:baseline}
+  .phase .hd b{font-size:1.02rem} .phase .hd .eff{color:var(--dim);font-size:.82rem;margin-left:auto}
+  .phase .bd{padding:.95rem 1.2rem}
+  ul,ol{padding-left:1.15rem} li{margin:.3rem 0}
+  .flow{background:#f7f9fb;border:1px solid var(--line);border-radius:10px;padding:1rem 1.2rem;margin:.8rem 0;
+    font:13px/1.7 var(--mono);white-space:pre;overflow-x:auto}
+  footer{margin-top:3rem;padding-top:1.2rem;border-top:1px solid var(--line);color:var(--dim);font-size:.85rem}
+  @media(max-width:680px){table,thead,tbody,th,td,tr{display:block}th{display:none}
+    td{border:0;padding:.18rem .5rem}tr{border-bottom:1px solid var(--line);padding:.45rem 0}
+    td::before{content:attr(data-l);display:block;font-size:.66rem;text-transform:uppercase;
+      letter-spacing:.07em;color:var(--dim)}}
+</style>
+</head>
+<body>
+
+<header><div class="wrap">
+  <h1>ClinicOS CRM — implementation plan</h1>
+  <p class="sub">Leads, campaigns and phases · 25 September 2026</p>
+  <div class="verdict">
+    <b>The prototype's simplicity and ClinicOS's campaign model are not in conflict — one is the
+    default case of the other.</b> A lead's visible stage is simply its phase in whichever campaign it
+    is currently in. Seed one house campaign and day one looks exactly like the prototype; create a
+    second and you have something the prototype could never do. Everything below follows from that.
+  </div>
+</div></header>
+
+<div class="wrap">
+
+<h2><span class="n">01</span>The shape of it</h2>
+<p class="lede">Four objects. Everything else is a view over them.</p>
+
+<div class="card">
+<div class="flow">LEAD  (a dental clinic we want as a customer)
+ ├ lifecycle   open · won · lost · dormant        ← the whole relationship
+ ├ score       0–100, computed
+ ├ owner       the rep responsible
+ ├ priority    hot · high · medium · low
+ │
+ ├ ENROLMENT ──→ CAMPAIGN ──→ PHASES (ordered)
+ │   one active      "Addis dental       New → Contacted → Interested
+ │   + history        blitz Q4"          → Demo → Trial → Negotiation
+ │                                        → Won / Lost
+ │        └ current phase  ← THIS is the "Stage" a rep sees on the lead
+ │        └ phase events   ← who moved it, when, and the note
+ │
+ ├ TASKS       follow-ups with a due date and a snooze
+ └ ACTIVITIES  calls, WhatsApp, demos, meetings, notes, and stage changes</div>
+
+<h3>Why this reconciles the two</h3>
+<table>
+  <tr><th></th><th>Prototype</th><th>ClinicOS today</th><th>This plan</th></tr>
+  <tr><td data-l="">Stage lives on</td><td data-l="Prototype">the lead, fixed list of 11</td><td data-l="ClinicOS">the enrolment, per campaign</td><td data-l="Plan"><b>the enrolment</b>, shown on the lead</td></tr>
+  <tr><td data-l="">Boards</td><td data-l="Prototype">one, always</td><td data-l="ClinicOS">one per campaign</td><td data-l="Plan">one per campaign, <b>house campaign by default</b></td></tr>
+  <tr><td data-l="">Feels like</td><td data-l="Prototype">simple</td><td data-l="ClinicOS">abstract</td><td data-l="Plan"><b>simple until you need more</b></td></tr>
+</table>
+<p style="margin-bottom:0">A rep who never creates a second campaign never learns the word "campaign".
+They see a Leads list and a Pipeline board, exactly as in the prototype. The flexibility is there for
+whoever needs it — the Enkutatash push is not the same journey as cold outreach in Bole.</p>
+</div>
+
+<h2><span class="n">02</span>Managing leads</h2>
+
+<div class="card">
+<h4>Getting them in</h4>
+<table>
+  <tr><th>Route</th><th>How</th><th>Status</th></tr>
+  <tr><td data-l="Route"><b>Excel / CSV import</b></td><td data-l="How">Google Maps scraping lands in a spreadsheet. Column mapping, dry run, duplicate check before anything is written.</td><td data-l="Status"><span class="tag t-new">build</span></td></tr>
+  <tr><td data-l="Route"><b>Add by hand</b></td><td data-l="How">One clinic, from a phone call or a walk-past.</td><td data-l="Status"><span class="tag t-have">exists</span></td></tr>
+  <tr><td data-l="Route"><b>Campaign sign-ups</b></td><td data-l="How">Every clinic that fills in the Enkutatash form becomes a lead automatically — name, phone, clinic, location and what their clinic is made of, already captured.</td><td data-l="Status"><span class="tag t-plus">new idea</span></td></tr>
+  <tr><td data-l="Route"><b>Partner leads</b></td><td data-l="How">Referral form on the marketing site.</td><td data-l="Status"><span class="tag t-have">exists</span></td></tr>
+</table>
+<p class="lede" style="margin:.3rem 0 0">The third one matters: you are about to send a registration
+link to dozens of dental clinics. Every submission is a qualified lead that has already told you its
+location and whether it has a reception desk, a lab and how many chairs. That should land in the CRM,
+not in a separate table nobody looks at.</p>
+
+<h4>Working them — the Leads screen</h4>
+<p>The prototype's table, adapted. Eleven columns:</p>
+<pre><code>Clinic ★4.8 (55)  │ Subcity + landmark │ Phone · WhatsApp · email
+Doctor + role     │ Campaign · Phase   │ Priority │ Rep
+Last contact      │ Next action (OVERDUE) │ Score │ ⋯</code></pre>
+<p><b>Ten saved views</b>, one tap each:</p>
+<table>
+  <tr><td data-l="View">All clinics</td><td data-l="View">My leads</td><td data-l="View">Hot</td><td data-l="View">Today's follow-ups</td><td data-l="View">Overdue</td></tr>
+  <tr><td data-l="View">Uncontacted</td><td data-l="View">Stalled <span class="tag t-plus">new</span></td><td data-l="View">In demo</td><td data-l="View">Won</td><td data-l="View">Lost</td></tr>
+</table>
+<p><b>Filters:</b> campaign · phase · priority · subcity · rep · source · score range.</p>
+
+<h4>Acting on one</h4>
+<ul>
+  <li><b>Log</b> a touch — call, WhatsApp, demo, meeting, note. One click from the row.</li>
+  <li><b>Move</b> to the next phase, with a note recorded against the move.</li>
+  <li><b>Schedule</b> a follow-up — or let it be created automatically (see §04).</li>
+  <li><b>Reassign</b> to another rep; <b>reprioritise</b>; <b>enrol</b> in another campaign.</li>
+  <li><b>Close</b> as won → links to the clinic's workspace; or lost → <b>with a reason</b>.</li>
+</ul>
+</div>
+
+<h2><span class="n">03</span>Campaigns and phases</h2>
+<p class="lede">What you asked for specifically: a campaign per push, with phases leads must pass.</p>
+
+<div class="card">
+<h4>Creating a campaign</h4>
+<ol>
+  <li><b>Name and goal</b> — "Enkutatash 2019 dental push", <i>win 20 clinics before Meskel</i>.</li>
+  <li><b>Phases, in order.</b> Each has a name, an <i>intent</i> (what has to be true to leave it) and an
+      <b>expected duration</b> — the last being new, and the thing that turns a phase from a label into
+      a commitment.</li>
+  <li><b>Enrol leads</b> — by filter ("all Hot in Bole"), by tick-box, or by rule ("every new lead from
+      the sign-up form").</li>
+</ol>
+
+<h4>A phase is defined by</h4>
+<pre><code>name            "Demo Scheduled"
+intent          "A date is agreed with the decision-maker"
+expected_days   5          ← breach after this flags the lead as stalled
+entry_rule      optional   e.g. requires contact_name to be set</code></pre>
+
+<h4>How a lead moves</h4>
+<div class="flow">enrol ──→ phase 1 ──→ phase 2 ──→ … ──→ won
+                │           │
+                │           └─ every move writes a phase_event:
+                │              who moved it, when, and why
+                └─ sits too long → STALLED (expected_days breached)</div>
+<p>Moving is the only way the board changes, and every move is recorded. That gives the funnel
+drop-off report for free, because the data is the same data.</p>
+
+<h4>Multiple campaigns on one lead</h4>
+<p>Permitted — there is no constraint preventing it, and it is genuinely useful: a clinic that went cold
+on cold-outreach can be enrolled in the Enkutatash push without losing its history. But <b>one
+enrolment is marked active</b>, and that is the one whose phase shows as the lead's stage. Otherwise
+"what stage is this clinic at?" has no answer.</p>
+
+<div class="card warn" style="margin-top:1rem">
+<b>On the eleven stages.</b> The prototype's ladder — New, Researched, Contacted, Responded, Interested,
+Demo Scheduled, Demo Completed, Trial, Negotiation, Won, Lost — is well thought out but long. Four reps
+will not keep eleven columns honest; in practice Researched and Responded get skipped and the board
+lies. I would seed the house campaign with <b>seven</b>:
+<code>New → Contacted → Interested → Demo → Trial → Negotiation → Won/Lost</code>
+and let anyone who wants the longer ladder build it as their own campaign. Being able to disagree with
+me on this, per campaign, is exactly the point of the model.
+</div>
+</div>
+
+<h2><span class="n">04</span>Improvements on both</h2>
+<p class="lede">Neither system has these. Ordered by what I think they are worth.</p>
+
+<div class="card plus">
+<h3>1 · The conversion loop <span class="tag t-plus">only ClinicOS can do this</span></h3>
+<p>A won prospect already carries <code>tenant_id</code> — the workspace it became. So the CRM can show
+what no standalone CRM ever can:</p>
+<pre><code>Won 12 Sept  →  workspace "bole-dental"  →  registered 41 patients,
+                 3 staff signed in, last activity 2 days ago</code></pre>
+<p>Which turns "we closed it" into "they are actually using it", and makes churn visible before the
+renewal conversation rather than at it. It also feeds the campaign: a clinic that won a free
+implementation and never logged in needs a phone call.</p>
+</div>
+
+<div class="card plus">
+<h3>2 · Stalled, not just overdue</h3>
+<p>The prototype flags leads whose <i>task</i> is overdue. The more dangerous lead is the one with no
+task at all — sitting in "Demo Scheduled" for 21 days, invisible, because nobody ever set a
+reminder. <b>Phase age against the phase's expected duration</b> catches those. This is the single
+biggest gap in the prototype's logic.</p>
+</div>
+
+<div class="card plus">
+<h3>3 · Loss reasons</h3>
+<p>The prototype has "Lost". It does not ask why. Capture a reason — <i>price · chose a competitor ·
+not ready · no response · closed down</i> — and within a month you know whether you have a pricing
+problem or a product problem. Given the conversation we have been having about plan pricing, this is
+the field that would settle it with evidence instead of instinct.</p>
+</div>
+
+<div class="card plus">
+<h3>4 · Next best action</h3>
+<p>The score already knows what is missing. Turn that into an instruction on the row:</p>
+<pre><code>Score 55  ·  Next: get the doctor's name  (+15)</code></pre>
+<p>Same data, but it tells a rep what to do rather than how they are being judged.</p>
+</div>
+
+<div class="card plus">
+<h3>5 · One-tap WhatsApp and Telegram</h3>
+<p>Ethiopia runs on both, and the prototype scores WhatsApp but does not use it. A link that opens the
+chat with an appropriate opening message, and logs the touch when it is used — that is minutes saved on
+every lead, every day.</p>
+</div>
+
+<div class="card plus">
+<h3>6 · Activity creates the next task</h3>
+<p>Log "demo held" and the follow-up is created three days out automatically. The prototype's 68
+overdue follow-ups exist partly because creating them is a separate act of discipline. Make the
+discipline automatic and the queue stays honest.</p>
+</div>
+
+<div class="card plus">
+<h3>7 · Territory by subcity</h3>
+<p>Assign a rep to a set of subcities and let new leads route themselves. With 33 named subcities and
+four reps, this removes a weekly admin job and stops two reps calling the same clinic on the same day.</p>
+</div>
+
+<div class="card plus">
+<h3>8 · Merge duplicates, not just detect them</h3>
+<p>ClinicOS finds duplicates; it cannot yet combine them. Four reps scraping Google Maps will create
+them constantly, and a duplicate you cannot merge is a duplicate you keep.</p>
+</div>
+
+<h2><span class="n">05</span>Data model</h2>
+<div class="card">
+<h4>crm_prospects — add</h4>
+<table>
+  <tr><th>Column</th><th>Type</th><th>For</th></tr>
+  <tr><td data-l="Col"><code>subcity</code></td><td data-l="Type">text</td><td data-l="For">filter · territory · density</td></tr>
+  <tr><td data-l="Col"><code>rating</code> · <code>reviews_count</code></td><td data-l="Type">numeric · int</td><td data-l="For">Google signal, scored</td></tr>
+  <tr><td data-l="Col"><code>chairs</code></td><td data-l="Type">int</td><td data-l="For">scored — and the axis the subscription plans should meter on</td></tr>
+  <tr><td data-l="Col"><code>whatsapp</code></td><td data-l="Type">text</td><td data-l="For">scored · one-tap chat</td></tr>
+  <tr><td data-l="Col"><code>score</code></td><td data-l="Type">int</td><td data-l="For">sortable, recomputed on write</td></tr>
+  <tr><td data-l="Col"><code>lifecycle</code></td><td data-l="Type">text</td><td data-l="For">open · won · lost · dormant</td></tr>
+  <tr><td data-l="Col"><code>lost_reason</code></td><td data-l="Type">text</td><td data-l="For">price · competitor · not ready · no response · closed</td></tr>
+</table>
+
+<h4>crm_phases — add</h4>
+<pre><code>expected_days  int    -- breach ⇒ stalled</code></pre>
+
+<h4>crm_tasks — new</h4>
+<pre><code>id · prospect_id · title · kind · due_at · done_at
+owner_id · note · snoozed_count · created_by · created_at</code></pre>
+
+<h4>Scoring</h4>
+<pre><code>score = min(100,
+    15×(valid Ethiopian mobile)   + 15×(contact name AND role)
+  + 10×(whatsapp set)             + 10×(rating > 4.0)
+  + 15×(chairs >= 3)
+  + highest_stage_bonus)          -- 25 demo · 30 trial · 35 negotiation</code></pre>
+<p style="margin-bottom:0"><b>Note the last line.</b> The prototype adds the stage bonuses together, so
+anything in negotiation is pinned at 100 and the score stops sorting exactly where it matters most.
+Take the highest reached, not the sum.</p>
+</div>
+
+<h2><span class="n">06</span>Plan</h2>
+
+<div class="phase"><div class="hd"><b>Phase 1 — The list a rep lives in</b><span class="tag t-have">no migration</span><span class="eff">~1 session</span></div>
+<div class="bd">Dense table · saved views · filters · sort · pagination · one-click log.
+<code>ListProspects</code> already filters status, owner and priority. Mostly frontend, biggest daily win.</div></div>
+
+<div class="phase"><div class="hd"><b>Phase 2 — Campaigns and phases, properly</b><span class="tag t-new">expected_days</span><span class="eff">~1–2 sessions</span></div>
+<div class="bd">Campaign builder with ordered phases and durations · enrol by filter or selection ·
+Kanban per campaign · phase move with note · <b>stalled</b> detection. Seed the seven-phase house campaign.</div></div>
+
+<div class="phase"><div class="hd"><b>Phase 3 — Follow-ups</b><span class="tag t-new">crm_tasks</span><span class="eff">~1–2 sessions</span></div>
+<div class="bd">Queue with Overdue/Today/Upcoming/Completed · snooze · add task · <b>auto-create on
+activity</b>.</div></div>
+
+<div class="phase"><div class="hd"><b>Phase 4 — Lead quality</b><span class="tag t-new">7 columns</span><span class="eff">~1 session</span></div>
+<div class="bd">The new fields · scoring engine with breakdown on hover · next-best-action · subcity
+filter · one-tap WhatsApp.</div></div>
+
+<div class="phase"><div class="hd"><b>Phase 5 — Getting leads in</b><span class="eff">~1 session</span></div>
+<div class="bd">Excel/CSV import with mapping and dry run · <b>campaign sign-ups flow into leads</b> ·
+duplicate merge.</div></div>
+
+<div class="phase"><div class="hd"><b>Phase 6 — Seeing the whole thing</b><span class="tag t-have">queries only</span><span class="eff">~1 session</span></div>
+<div class="bd">Funnel drop-off · rep leaderboard with win rate · subcity density · source ROI ·
+<b>loss-reason breakdown</b> · the conversion loop showing whether won clinics actually onboarded.</div></div>
+
+<div class="phase"><div class="hd"><b>Phase 7 — Polish</b><span class="eff">~1 session</span></div>
+<div class="bd">Calendar over tasks · territory auto-assignment · prospects in the Ctrl-K palette.</div></div>
+
+<h2><span class="n">07</span>Not doing</h2>
+<div class="card drop">
+<ul style="margin:0">
+  <li><b>Not importing the prototype's 100 fabricated clinics</b> — they would pollute a pipeline that
+      holds 7 real prospects.</li>
+  <li><b>Not rebuilding auth, invites or the RBAC matrix</b> — ClinicOS is far ahead; the prototype
+      prints its password on the login page.</li>
+  <li><b>Not building Clear Database or Reload Sample Data</b> — coherent in a toy, a loaded gun on real data.</li>
+  <li><b>Not starting before backups exist.</b> Seven new columns and a new table on a database with no
+      backup increases what there is to lose.</li>
+</ul>
+</div>
+
+<h2><span class="n">08</span>Decide before phase 1</h2>
+<div class="card">
+<ol>
+  <li><b>Phases in the house campaign</b> — my seven, or the prototype's eleven?</li>
+  <li><b>Where it lives</b> — inside the platform console, or its own app at <code>/crm</code>? If reps
+      who are not vendor admins will use it, it needs to be its own app with its own login.</li>
+  <li><b>How far</b> — all seven phases, or stop after three and watch whether the reps use it?</li>
+  <li><b>The sign-up feed</b> — should Enkutatash registrations become leads automatically, or wait for
+      someone to approve each one?</li>
+</ol>
+</div>
+
+<footer>
+  Prepared 25 September 2026. The prototype was read from its JavaScript bundle and driven in a browser;
+  the ClinicOS CRM from its schema, constraints, 23 endpoints and frontend. No code changed.<br>
+  Companion: <b>crm-merge-plan.html</b> — the underlying feature-by-feature analysis.
+</footer>
+
+</div>
+</body>
+</html>
