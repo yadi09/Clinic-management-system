@@ -38,3 +38,4 @@ infra/origin.key
 
 # Logs
 *.log
+.deploy-prev
