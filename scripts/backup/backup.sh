@@ -38,6 +38,8 @@ DAY=$(date -u +%Y%m%d)
 
 log() { echo "$(date -u +%FT%TZ) $*"; }
 fail() { log "FAILED: $*"; exit 1; }
+# Anything else that stops the run must say so in the log, never stop silently.
+trap 'rc=$?; [ $rc -eq 0 ] || log "FAILED: line $LINENO exited $rc"' EXIT
 
 umask 077
 mkdir -p "$BACKUP_ROOT"/{nightly,weekly,secrets}
@@ -58,7 +60,13 @@ tar czf "$SECRETS" -C "$APP_DIR" .env infra/origin.crt infra/origin.key || fail 
 [ "$(date -u +%u)" = "7" ] && cp "$DUMP" "$BACKUP_ROOT/weekly/clinic-$DAY.dump"
 
 # prune DIR PATTERN KEEP — delete all but the newest KEEP files matching PATTERN.
-prune() { ls -1t "$1"/$2 2>/dev/null | tail -n +"$(( $3 + 1 ))" | xargs -r rm -f; }
+# An empty directory is not an error: `ls` would exit 2 and, under pipefail, end
+# the whole run silently before it ever reached the upload.
+prune() {
+  local files
+  files=$(ls -1t "$1"/$2 2>/dev/null) || return 0
+  tail -n +"$(( $3 + 1 ))" <<<"$files" | xargs -r rm -f
+}
 prune "$BACKUP_ROOT/nightly" 'clinic-*.dump' 14
 prune "$BACKUP_ROOT/weekly"  'clinic-*.dump' 8
 prune "$BACKUP_ROOT/secrets" 'secrets-*.tgz' 14
