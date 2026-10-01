@@ -22,6 +22,7 @@ import { useAuth } from "@/app/auth-context";
 import { compressImage } from "@/lib/image";
 import { getPatient } from "@/features/patients/api";
 import { PatientAllergyLine } from "@/features/dental/SafetyStrip";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptySlot, RecordSection } from "@/features/dental/shared/RecordSection";
 import { getClinic, listBranches } from "@/features/admin/api";
 import { type Drug } from "@/features/clinical/api";
@@ -49,9 +50,10 @@ export function PrescriptionSection({ patientId, session, editable, onChanged }:
   const patient = useQuery({ queryKey: ["patient", patientId], queryFn: () => getPatient(patientId) });
   const [adding, setAdding] = useState(false);
 
+  const { ask, dialog } = useConfirmDialog();
   const del = useMutation({
-    mutationFn: (rxId: string) => deletePrescription(patientId, rxId),
-    onSuccess: () => { toast.success("Prescription removed"); onChanged(); },
+    mutationFn: ({ rxId, reason }: { rxId: string; reason: string }) => deletePrescription(patientId, rxId, reason),
+    onSuccess: () => { toast.success("Prescription withdrawn"); onChanged(); },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not remove"),
   });
 
@@ -69,7 +71,11 @@ export function PrescriptionSection({ patientId, session, editable, onChanged }:
       mrn: p?.mrn,
       age: p ? ageYears(p.dob) : undefined,
       gender: p?.gender,
-      prescriber: user?.full_name,
+      // The author, not whoever is printing it (audit D17). Older prescriptions
+      // without a recorded author fall back to the person printing.
+      prescriber: rx.prescribed_by || user?.full_name,
+      note: rx.note,
+      allergies: (p?.allergies ?? []).map((a) => a.substance),
       when: rx.created_at,
       diagnoses: session.procedure ? [{ description: session.procedure + (session.tooth ? ` (${session.tooth})` : "") }] : [],
       meds: rx.items,
@@ -125,13 +131,20 @@ export function PrescriptionSection({ patientId, session, editable, onChanged }:
                 </ol>
                 <div className="flex shrink-0 items-center gap-1">
                   <Button size="sm" variant="outline" onClick={() => print(rx)}><Printer className="h-3.5 w-3.5" /> Print</Button>
-                  {editable && <Button size="sm" variant="ghost" className="text-destructive" title="Remove" onClick={() => del.mutate(rx.id)}><Trash2 className="h-3.5 w-3.5" /></Button>}
+                  {editable && <Button size="sm" variant="ghost" className="text-destructive" title="Withdraw" onClick={() => ask({
+                    title: "Withdraw this prescription?",
+                    description: "It disappears from this visit but is kept on the record, with your name and the reason — a printed copy may already be at a pharmacy.",
+                    reason: { label: "Why?", placeholder: "Wrong drug · patient allergic · replaced", required: true },
+                    confirmLabel: "Withdraw",
+                    destructive: true,
+                  }, (reason) => del.mutateAsync({ rxId: rx.id, reason }))}><Trash2 className="h-3.5 w-3.5" /></Button>}
                 </div>
               </div>
             </div>
           ))}
         </div>
       )}
+      {dialog}
       {adding && <PrescriptionDialog patientId={patientId} sessionId={session.id} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); onChanged(); }} />}
     </RecordSection>
   );

@@ -67,6 +67,10 @@ export interface PrescriptionDoc {
   when: string;
   diagnoses: { code?: string; description: string }[];
   meds: { drug_name: string; dose?: string; frequency?: string; duration?: string; instructions?: string }[];
+  /** The prescriber's note to the patient or pharmacist. */
+  note?: string;
+  /** Known allergies, printed so the pharmacist sees them too. Absent = not stated. */
+  allergies?: string[];
 }
 
 export interface LabRequestDoc {
@@ -198,6 +202,8 @@ export async function printPrescription(o: PrescriptionDoc) {
       ${dx ? `<div class="dx"><span class="k">Diagnosis</span> ${dx}</div>` : ""}
 
       <ol class="meds">${meds || `<li class="muted">No medication prescribed.</li>`}</ol>
+      ${o.note ? `<div class="dx"><span class="k">Note</span> ${esc(o.note)}</div>` : ""}
+      ${o.allergies && o.allergies.length > 0 ? `<div class="dx"><span class="k">Allergies</span> <b>${o.allergies.map(esc).join(", ")}</b></div>` : ""}
 
       <div class="foot-grid">
         <div class="note">

@@ -56,6 +56,8 @@ export interface Prescription {
   note?: string;
   created_at: string;
   items: RxItem[];
+  /** Who wrote it — printed as the prescriber, not whoever presses Print. */
+  prescribed_by?: string;
 }
 
 interface UploadTarget {
@@ -236,8 +238,9 @@ export function setPayLater(patientId: string, sessionId: string, body: { on?: b
 export function addPrescription(patientId: string, sessionId: string, body: { note?: string; items: RxItem[]; override_reason?: string }) {
   return apiFetch<Prescription>(`/dental/patients/${patientId}/sessions/${sessionId}/prescriptions`, { method: "POST", body });
 }
-export function deletePrescription(patientId: string, prescriptionId: string) {
-  return apiFetch<void>(`/dental/patients/${patientId}/prescriptions/${prescriptionId}`, { method: "DELETE" });
+/** Withdraws a prescription. It is voided, not erased: kept with who and why. */
+export function deletePrescription(patientId: string, prescriptionId: string, reason: string) {
+  return apiFetch<void>(`/dental/patients/${patientId}/prescriptions/${prescriptionId}`, { method: "DELETE", body: { reason } });
 }
 
 export function dentalOutstanding() {

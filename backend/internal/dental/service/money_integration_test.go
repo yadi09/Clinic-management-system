@@ -25,8 +25,8 @@ import (
 	migrations "github.com/reicb/clinicsaas/db/migrations"
 	"github.com/reicb/clinicsaas/internal/billing"
 	billingsvc "github.com/reicb/clinicsaas/internal/billing/service"
-	financesvc "github.com/reicb/clinicsaas/internal/finance/service"
 	"github.com/reicb/clinicsaas/internal/dental"
+	financesvc "github.com/reicb/clinicsaas/internal/finance/service"
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
 	"github.com/reicb/clinicsaas/internal/kernel/audit"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
@@ -703,5 +703,42 @@ func TestD21_FinanceCountsWhatTheReportCounts(t *testing.T) {
 		 WHERE sm.alive AND sm.owed_now AND sm.pay_state IN ('unpaid','refunded')`, f.tenant).Scan(&chased))
 	if chased != "1800.00" {
 		t.Fatalf("SMS planner's set = %s, want 1800.00 (the cancelled course excluded)", chased)
+	}
+}
+
+// --- D17: a prescription is withdrawn, not erased, and names who wrote it ---
+
+func TestD17_PrescriptionIsVoidedAndKeepsItsAuthor(t *testing.T) {
+	f := newFixture(t)
+	v := f.course(2, "1000", "").Sessions[0].ID
+	f.record(f.dentist, v)
+	rx, err := f.svc.AddPrescription(f.as(f.dentist), f.patient, v, dental.PrescriptionInput{
+		Items: []dental.RxItemInput{{DrugName: "Amoxicillin 500mg"}}, Note: "after meals"})
+	must(t, err)
+	plans, err := f.svc.ListPlans(f.as(f.other), f.patient)
+	must(t, err)
+	if got := plans[0].Sessions[0].Prescriptions; len(got) != 1 || got[0].PrescribedBy != "Staff" {
+		t.Fatalf("prescriptions = %+v, want one written by the dentist", got)
+	}
+	if err := f.svc.DeletePrescription(f.as(f.other), f.patient, rx.ID, ""); code(err) != validation {
+		t.Fatalf("withdraw without reason: got %q", code(err))
+	}
+	must(t, f.svc.DeletePrescription(f.as(f.other), f.patient, rx.ID, "wrong drug"))
+	var kept int
+	must(t, f.db.Pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM dental_prescriptions WHERE id = $1 AND voided_at IS NOT NULL AND void_reason = 'wrong drug'`, rx.ID).Scan(&kept))
+	if kept != 1 {
+		t.Fatal("the withdrawn prescription is not kept on the record")
+	}
+	plans, _ = f.svc.ListPlans(f.as(f.other), f.patient)
+	if n := len(plans[0].Sessions[0].Prescriptions); n != 0 {
+		t.Fatalf("withdrawn prescription still shown on the visit (%d)", n)
+	}
+	// Not on a cancelled visit.
+	c := f.course(2, "1000", "").Sessions[1].ID
+	must(t, f.svc.UpdateSession(f.as(f.dentist), f.patient, c, dental.SessionUpdate{Status: "cancelled"}))
+	if _, err := f.svc.AddPrescription(f.as(f.dentist), f.patient, c, dental.PrescriptionInput{
+		Items: []dental.RxItemInput{{DrugName: "Ibuprofen"}}}); code(err) != "SESSION_CANCELLED" {
+		t.Fatalf("Rx on a cancelled visit: got %q", code(err))
 	}
 }

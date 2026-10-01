@@ -61,7 +61,8 @@ func prescriptionDTO(rx dental.Prescription) gin.H {
 			"allergens": it.Allergens, "allergy_override": it.AllergyOverride,
 		})
 	}
-	return gin.H{"id": id.Encode(id.PrefixDentalRx, rx.ID), "note": rx.Note, "created_at": rx.CreatedAt, "items": items}
+	return gin.H{"id": id.Encode(id.PrefixDentalRx, rx.ID), "note": rx.Note, "created_at": rx.CreatedAt, "items": items,
+		"prescribed_by": rx.PrescribedBy}
 }
 
 // clinical reports whether this caller may see the clinical record, as opposed to
@@ -703,7 +704,11 @@ func (h *Handlers) DeletePrescription(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.svc.DeletePrescription(c.Request.Context(), pid, rxid); err != nil {
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	_ = c.ShouldBindJSON(&req) // an empty body falls through to the service's "say why"
+	if err := h.svc.DeletePrescription(c.Request.Context(), pid, rxid, req.Reason); err != nil {
 		httpx.Fail(c, err)
 		return
 	}

@@ -532,8 +532,11 @@ func (s *Service) loadPlansTx(ctx context.Context, tx pgx.Tx, tid, patientID uui
 	// per-session prescriptions (+ their medication lines)
 	pidx := map[uuid.UUID][3]int{} // prescription id → (plan idx, session idx, prescription idx)
 	rxrows, e := tx.Query(ctx,
-		`SELECT id, session_id, coalesce(note,''), created_at
-		 FROM dental_prescriptions WHERE tenant_id = $1 AND patient_id = $2 ORDER BY created_at`, tid, patientID)
+		`SELECT rx.id, rx.session_id, coalesce(rx.note,''), rx.created_at, coalesce(u.full_name, '')
+		   FROM dental_prescriptions rx
+		   LEFT JOIN users u ON u.id = rx.created_by AND u.tenant_id = rx.tenant_id
+		  WHERE rx.tenant_id = $1 AND rx.patient_id = $2 AND rx.voided_at IS NULL
+		  ORDER BY rx.created_at`, tid, patientID)
 	if e != nil {
 		return nil, e
 	}
@@ -542,7 +545,7 @@ func (s *Service) loadPlansTx(ctx context.Context, tx pgx.Tx, tid, patientID uui
 		var rx dental.Prescription
 		var id, sess uuid.UUID
 		var created time.Time
-		if e := rxrows.Scan(&id, &sess, &rx.Note, &created); e != nil {
+		if e := rxrows.Scan(&id, &sess, &rx.Note, &created, &rx.PrescribedBy); e != nil {
 			return nil, e
 		}
 		loc, ok := sidx[sess]
@@ -1925,12 +1928,18 @@ func (s *Service) AddPrescription(ctx context.Context, patientID, sessionID uuid
 			return e
 		}
 		// Confirm the session belongs to this patient/tenant (RLS enforces tenant).
-		var exists bool
-		if e := tx.QueryRow(ctx, `SELECT true FROM treatment_sessions WHERE tenant_id = $1 AND patient_id = $2 AND id = $3`, tid, patientID, sessionID).Scan(&exists); e != nil {
+		var cancelled bool
+		if e := tx.QueryRow(ctx,
+			`SELECT se.status = 'cancelled' OR p.status = 'cancelled'
+			   FROM treatment_sessions se JOIN treatment_plans p ON p.id = se.plan_id AND p.tenant_id = se.tenant_id
+			  WHERE se.tenant_id = $1 AND se.patient_id = $2 AND se.id = $3`, tid, patientID, sessionID).Scan(&cancelled); e != nil {
 			if errors.Is(e, pgx.ErrNoRows) {
 				return apperr.NotFound("SESSION_NOT_FOUND", "session not found")
 			}
 			return e
+		}
+		if cancelled {
+			return apperr.Conflict("SESSION_CANCELLED", "this visit, or its course, was cancelled — write the prescription on a visit that is happening")
 		}
 		// The allergy check, on the same terms as the general encounter: the drug's
 		// library allergen tags (or, for a free-typed drug, its name) against every
@@ -2018,17 +2027,28 @@ func (s *Service) AddPrescription(ctx context.Context, patientID, sessionID uuid
 	return out, nil
 }
 
-func (s *Service) DeletePrescription(ctx context.Context, patientID, prescriptionID uuid.UUID) error {
-	tid, _ := actorOf(ctx)
+// DeletePrescription voids a prescription: it disappears from the visit but is
+// kept, with who, when and why, because a printed one may already be at a pharmacy
+// (audit D17). It used to be a hard DELETE with no event.
+func (s *Service) DeletePrescription(ctx context.Context, patientID, prescriptionID uuid.UUID, reason string) error {
+	tid, actor := actorOf(ctx)
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return apperr.Validation("say why the prescription is being withdrawn — it is kept on the record")
+	}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		ct, e := tx.Exec(ctx, `DELETE FROM dental_prescriptions WHERE tenant_id = $1 AND patient_id = $2 AND id = $3`, tid, patientID, prescriptionID)
+		ct, e := tx.Exec(ctx,
+			`UPDATE dental_prescriptions SET voided_at = now(), voided_by = $4, void_reason = $5
+			  WHERE tenant_id = $1 AND patient_id = $2 AND id = $3 AND voided_at IS NULL`,
+			tid, patientID, prescriptionID, actor, reason)
 		if e != nil {
 			return e
 		}
 		if ct.RowsAffected() == 0 {
 			return apperr.NotFound("PRESCRIPTION_NOT_FOUND", "prescription not found")
 		}
-		return nil
+		return s.publisher.Publish(ctx, tx, &tid, "dental_prescription", prescriptionID, "dental.prescription.voided",
+			map[string]any{"patient_id": patientID, "prescription_id": prescriptionID, "reason": reason})
 	})
 	if ae, ok := apperr.As(err); ok {
 		return ae

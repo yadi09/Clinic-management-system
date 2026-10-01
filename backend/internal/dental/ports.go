@@ -66,6 +66,9 @@ type Prescription struct {
 	Note      string    `json:"note,omitempty"`
 	CreatedAt string    `json:"created_at"`
 	Items     []RxItem  `json:"items"`
+	// PrescribedBy is who wrote it. The printout used to name whoever pressed
+	// Print (audit D17).
+	PrescribedBy string `json:"prescribed_by,omitempty"`
 }
 
 // RxItemInput / PrescriptionInput create a prescription with its lines.
@@ -423,7 +426,7 @@ type Service interface {
 
 	// Prescriptions (printable) attached to a session.
 	AddPrescription(ctx context.Context, patientID, sessionID uuid.UUID, in PrescriptionInput) (*Prescription, error)
-	DeletePrescription(ctx context.Context, patientID, prescriptionID uuid.UUID) error
+	DeletePrescription(ctx context.Context, patientID, prescriptionID uuid.UUID, reason string) error
 
 	Outstanding(ctx context.Context) ([]Outstanding, error)
 	// UnbilledTreatment lists delivered treatment that nobody has billed — the
