@@ -503,7 +503,10 @@ func (h *Handlers) CollectSessions(c *gin.Context) {
 	var req struct {
 		SessionIDs []string `json:"session_ids"`
 	}
-	_ = c.ShouldBindJSON(&req) // absent body = collect everything outstanding
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("send the visits to collect as session_ids"))
+		return
+	}
 	ids := make([]uuid.UUID, 0, len(req.SessionIDs))
 	for _, raw := range req.SessionIDs {
 		u, e := id.Decode(id.PrefixTreatmentSession, raw)

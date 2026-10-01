@@ -503,3 +503,36 @@ func TestD4_DayCloseExpectsCashNetOfCashRefunds(t *testing.T) {
 		t.Fatalf("an exact drawer closed with variance %s", rec.Variance)
 	}
 }
+
+// --- D8: collect refuses what nobody should be billed for ---
+
+func TestD8_CollectRefusesCancelledVisitsAndEmptyBulk(t *testing.T) {
+	f := newFixture(t)
+	p := f.course(3, "1000", "")
+	v := p.Sessions[1].ID
+	must(t, f.svc.UpdateSession(f.as(f.dentist), f.patient, v, dental.SessionUpdate{Status: "cancelled"}))
+	if err := f.svc.CollectSession(f.as(f.owner), f.patient, v); code(err) != "SESSION_CANCELLED" {
+		t.Fatalf("collect cancelled visit: got %q", code(err))
+	}
+	if _, _, err := f.svc.CollectSessions(f.as(f.owner), f.patient, nil); code(err) != validation {
+		t.Fatalf("bulk with no ids: got %q, want validation", code(err))
+	}
+	if n, _ := f.liveDentalCharges(); n != 0 {
+		t.Fatalf("%d charges raised", n)
+	}
+}
+
+func TestD8_CreatePlanRefusesUnreadableMoney(t *testing.T) {
+	f := newFixture(t)
+	for _, in := range []dental.PlanInput{
+		{TotalAmount: "12,000", SessionCount: 3},
+		{TotalAmount: "12000", Deposit: "2000 ETB", SessionCount: 3},
+		{TotalAmount: "-5", SessionCount: 3},
+		{TotalAmount: "3000", Sessions: []dental.SessionSeed{{ScheduledDate: "2030-01-01", AmountDue: "-1000"}}},
+	} {
+		in.Title, in.StartDate, in.IntervalUnit, in.IntervalCount = "X", "2030-01-01", "week", 1
+		if _, err := f.svc.CreatePlan(f.as(f.dentist), f.patient, in); code(err) != validation {
+			t.Fatalf("plan %+v: got %q, want validation", in, code(err))
+		}
+	}
+}

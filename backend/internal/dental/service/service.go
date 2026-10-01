@@ -113,6 +113,14 @@ func lockSession(ctx context.Context, tx pgx.Tx, tid, patientID, sessionID uuid.
 	return e
 }
 
+// optMoney is parseMoney for an optional field: empty means 0.
+func optMoney(s string) (float64, error) {
+	if strings.TrimSpace(s) == "" {
+		return 0, nil
+	}
+	return parseMoney(s)
+}
+
 // hasPermission reports whether the signed-in user holds perm. Routes gate whole
 // endpoints; this is for the rules inside one, where the same request is allowed
 // or refused depending on what it would do to money.
@@ -609,11 +617,15 @@ func (s *Service) CreatePlan(ctx context.Context, patientID uuid.UUID, in dental
 	// The down payment comes off the top: the patient pays it to start the work and
 	// the balance is what gets divided. Taking it out of the first session instead
 	// would price that visit wrong on every report that reads a session's fee.
-	deposit := money(in.Deposit)
-	if deposit < 0 {
-		return nil, apperr.Validation("the down payment cannot be negative")
+	deposit, e := optMoney(in.Deposit)
+	if e != nil {
+		return nil, apperr.Validation("the down payment must be a plain number, like 5000")
 	}
-	if t := money(in.TotalAmount); t > 0 && deposit > t {
+	totalIn, e := optMoney(in.TotalAmount)
+	if e != nil {
+		return nil, apperr.Validation("the course price must be a plain number, like 12000")
+	}
+	if t := totalIn; t > 0 && deposit > t {
 		return nil, apperr.Validation("the down payment cannot be more than the total cost")
 	}
 
@@ -630,7 +642,11 @@ func (s *Service) CreatePlan(ctx context.Context, patientID uuid.UUID, in dental
 			if e != nil {
 				return nil, apperr.Validation("session date must be YYYY-MM-DD")
 			}
-			seeds = append(seeds, seed{date: d, amt: money(ss.AmountDue)})
+			a, e := optMoney(ss.AmountDue)
+			if e != nil {
+				return nil, apperr.Validation("each visit's fee must be a plain, non-negative number")
+			}
+			seeds = append(seeds, seed{date: d, amt: a})
 		}
 	} else {
 		n := in.SessionCount
@@ -638,7 +654,7 @@ func (s *Service) CreatePlan(ctx context.Context, patientID uuid.UUID, in dental
 			n = 1
 		}
 		dates := genDates(start, unit, interval, n)
-		amts := splitAmount(money(in.TotalAmount)-deposit, n)
+		amts := splitAmount(totalIn-deposit, n)
 		for i := 0; i < n; i++ {
 			seeds = append(seeds, seed{date: dates[i], amt: amts[i]})
 		}
@@ -651,8 +667,8 @@ func (s *Service) CreatePlan(ctx context.Context, patientID uuid.UUID, in dental
 	for _, sd := range seeds {
 		total += sd.amt
 	}
-	if money(in.TotalAmount) > 0 && len(in.Sessions) == 0 {
-		total = money(in.TotalAmount)
+	if totalIn > 0 && len(in.Sessions) == 0 {
+		total = totalIn
 	}
 
 	var planID uuid.UUID
@@ -818,7 +834,11 @@ func (s *Service) AddExtra(ctx context.Context, patientID, sessionID uuid.UUID, 
 		// "included in the course" is an answer the dentist is allowed to give.
 		amt := money(list)
 		if strings.TrimSpace(in.Amount) != "" {
-			amt = money(in.Amount)
+			a, e := parseMoney(in.Amount)
+			if e != nil {
+				return e
+			}
+			amt = a
 		}
 		if amt < 0 {
 			return apperr.Validation("an extra cannot cost less than nothing")
@@ -889,9 +909,9 @@ func (s *Service) AddSession(ctx context.Context, patientID, planID uuid.UUID, i
 	if _, e := time.Parse("2006-01-02", in.ScheduledDate); e != nil {
 		return nil, apperr.Validation("date must be YYYY-MM-DD")
 	}
-	amt := money(in.AmountDue)
-	if amt < 0 {
-		return nil, apperr.Validation("amount cannot be negative")
+	amt, perr := optMoney(in.AmountDue)
+	if perr != nil {
+		return nil, perr
 	}
 	out := &dental.Session{Images: []dental.Image{}, Prescriptions: []dental.Prescription{}}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
@@ -1345,24 +1365,30 @@ func (s *Service) collectInTx(ctx context.Context, tx pgx.Tx, patientID, session
 		var svcItem *uuid.UUID
 		var svcName string
 		var oldCharge *uuid.UUID
+		var sessStatus, planStatus string
 		e := tx.QueryRow(ctx,
 			`SELECT se.amount_due::text, se.seq, p.title, p.session_count, c.status,
 			        (SELECT sum(-r.amount)::text FROM charges r
 			          WHERE r.tenant_id = c.tenant_id AND r.reverses_charge_id = c.id AND r.deleted_at IS NULL),
 			        se.branch_id, se.kind, coalesce(se.service_item_id, p.service_item_id),
-			        coalesce(si.name, ''), se.charge_id
+			        coalesce(si.name, ''), se.charge_id, se.status, p.status
 			 FROM treatment_sessions se
 			 JOIN treatment_plans p ON p.id = se.plan_id AND p.tenant_id = se.tenant_id
 			 LEFT JOIN service_items si ON si.id = se.service_item_id AND si.tenant_id = se.tenant_id
 			 LEFT JOIN charges c ON c.id = se.charge_id AND c.tenant_id = se.tenant_id AND c.deleted_at IS NULL
 			 WHERE se.tenant_id = $1 AND se.patient_id = $2 AND se.id = $3
 			 FOR UPDATE OF se`,
-			tid, patientID, sessionID).Scan(&amount, &seq, &planTitle, &count, &chargeStatus, &refunded, &treatedAt, &kind, &svcItem, &svcName, &oldCharge)
+			tid, patientID, sessionID).Scan(&amount, &seq, &planTitle, &count, &chargeStatus, &refunded, &treatedAt, &kind, &svcItem, &svcName, &oldCharge, &sessStatus, &planStatus)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return apperr.NotFound("SESSION_NOT_FOUND", "session not found")
 		}
 		if e != nil {
 			return e
+		}
+		// Bulk collect already skipped these; a single collect did not (audit D8/W29),
+		// so a direct request could bill a visit nobody will ever have.
+		if sessStatus == "cancelled" || planStatus == "cancelled" {
+			return apperr.Conflict("SESSION_CANCELLED", "this visit, or its course, was cancelled — there is nothing to bill")
 		}
 		// A refunded charge stays 'paid' forever — that is the audit trail. Judging by
 		// status alone made a refunded session permanently un-billable while every
@@ -1432,6 +1458,12 @@ func (s *Service) collectInTx(ctx context.Context, tx pgx.Tx, patientID, session
 // means "everything still outstanding".
 func (s *Service) CollectSessions(ctx context.Context, patientID uuid.UUID, sessionIDs []uuid.UUID) (int, string, error) {
 	tid, _ := actorOf(ctx)
+	// An empty list used to mean "everything outstanding" — the whole future course
+	// included — and a malformed body decoded to empty (audit D8). The desk always
+	// sends what it ticked; ticking a future visit is a deliberate prepayment.
+	if len(sessionIDs) == 0 {
+		return 0, "0.00", apperr.Validation("choose the visits to send to the cashier")
+	}
 	var targets []uuid.UUID
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		// Only sessions that are live, unbilled and actually worth money.
@@ -1476,7 +1508,12 @@ func (s *Service) CollectSessions(ctx context.Context, patientID uuid.UUID, sess
 	for _, id := range targets {
 		amt, e := s.collectOne(ctx, patientID, id)
 		if e != nil {
-			continue // already billed by someone else mid-run, or a bad row — keep going
+			// Someone else billed it mid-run, or it is not billable: skip it. Anything
+			// else is a real failure and must not be reported as a partial success.
+			if ae, ok := apperr.As(e); ok && ae.HTTPStatus < 500 {
+				continue
+			}
+			return billed, fmtMoney(total), e
 		}
 		billed++
 		total += amt
