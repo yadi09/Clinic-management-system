@@ -24,11 +24,41 @@ import { MoveSessionDialog } from "@/features/dental/shared/MoveSessionDialog";
 import { birr, isBillable, sessionMoneyState } from "@/features/dental/money";
 import { collectSessions, type Plan, type Session } from "@/features/dental/api";
 
-interface Row { plan: Plan; s: Session }
+/** The parts of a visit, down payment or extra the desk needs to bill it. */
+interface Line { id: string; amount_due: string; payment: Session["payment"]; status: string; scheduled_date: string; seq: number; pay_later?: boolean }
+interface Row { plan: Plan; s: Line; label: string; kind: "visit" | "deposit" | "extra" }
 
+// Everything that can be billed: the visits, the down payment and the extras. The
+// server hands the deposit and extras out separately from plan.sessions, so reading
+// only plan.sessions showed "Nothing owed yet" over an unpaid 20,000 ETB down
+// payment, with no way to bill it from the desk (audit D10/W8).
 const rowsOf = (plans: Plan[]): Row[] =>
-  plans.filter((p) => p.status !== "cancelled")
-    .flatMap((plan) => plan.sessions.filter((s) => s.status !== "cancelled").map((s) => ({ plan, s })));
+  plans.filter((p) => p.status !== "cancelled").flatMap((plan) => {
+    const out: Row[] = [];
+    const d = plan.deposit;
+    if (d) {
+      // A deposit has no status of its own on the wire: it is always 'planned'.
+      out.push({ plan, s: { ...d, status: "planned", seq: 0 }, label: `${plan.title} · down payment`, kind: "deposit" });
+    }
+    for (const s of plan.sessions.filter((x) => x.status !== "cancelled")) {
+      out.push({ plan, s, label: `${plan.title} · visit ${s.seq}`, kind: "visit" });
+      for (const x of (s.extras ?? []).filter((e) => e.status !== "cancelled")) {
+        out.push({
+          plan, s: { ...x, scheduled_date: s.scheduled_date, seq: s.seq },
+          label: `${x.service_name || "Extra"} · at visit ${s.seq} of ${plan.title}`, kind: "extra",
+        });
+      }
+    }
+    return out;
+  });
+
+/** Owed now, by the server's rule: a visit or extra once given; a down payment from
+ *  the day the course was agreed — it is never "done", there is nothing to deliver. */
+const owesNow = (r: Row) => {
+  const st = sessionMoneyState(r.s);
+  if (r.kind === "deposit") return st !== "paid" && st !== "atCashier" && st !== "waived" && st !== "cancelled";
+  return st === "owedNow" || st === "refunded";
+};
 
 export function DeskActions({ patientId, plans, todayISO, canCollect, canReschedule, onChanged }: {
   patientId: string;
@@ -43,9 +73,9 @@ export function DeskActions({ patientId, plans, todayISO, canCollect, canResched
 
   const rows = rowsOf(plans);
   const billable = rows.filter((r) => isBillable(r.s));
-  const owed = rows.filter((r) => sessionMoneyState(r.s) === "owedNow");
+  const owed = billable.filter(owesNow);
   // Booked, the day has passed, and nobody recorded anything: the patient did not come.
-  const missed = rows.filter((r) => r.s.status === "planned" && r.s.scheduled_date < todayISO);
+  const missed = rows.filter((r) => r.kind === "visit" && r.s.status === "planned" && r.s.scheduled_date < todayISO);
 
   if (!canCollect && !canReschedule) return null;
   if (billable.length === 0 && missed.length === 0) return null;
@@ -60,10 +90,10 @@ export function DeskActions({ patientId, plans, todayISO, canCollect, canResched
               {owed.length > 0 ? (
                 <>
                   <span className="font-medium text-destructive">
-                    {birr(owed.reduce((a, r) => a + Number(r.s.amount_due || 0), 0))} owed for treatment already given
+                    {birr(owed.reduce((a, r) => a + Number(r.s.amount_due || 0), 0))} owed now
                   </span>
                   <span className="text-muted-foreground">
-                    {" "}· {owed.length} visit{owed.length === 1 ? "" : "s"}
+                    {" "}· {owed.map((r) => r.kind === "deposit" ? "down payment" : r.kind === "extra" ? "extra" : `visit ${r.s.seq}`).join(", ")}
                   </span>
                 </>
               ) : (
@@ -91,7 +121,7 @@ export function DeskActions({ patientId, plans, todayISO, canCollect, canResched
             {missed.map((r) => (
               <div key={r.s.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-2 py-1.5 text-sm hover:bg-muted/60">
                 <span className="min-w-0 flex-1 truncate">
-                  {r.plan.title} · visit {r.s.seq}
+                  {r.label}
                   <span className="ml-2 text-xs text-muted-foreground"><DualDate iso={r.s.scheduled_date} relative /></span>
                 </span>
                 <span className="tabular-nums text-muted-foreground">{birr(r.s.amount_due)}</span>
@@ -131,7 +161,7 @@ function CollectDialog({ patientId, rows, onClose, onDone }: {
   // Default to what is actually owed. Prepaying a future visit is a real thing
   // patients do, but it should be a deliberate tick rather than the default.
   const [picked, setPicked] = useState<string[]>(
-    () => rows.filter((r) => sessionMoneyState(r.s) === "owedNow").map((r) => r.s.id),
+    () => rows.filter(owesNow).map((r) => r.s.id),
   );
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   const total = rows.filter((r) => picked.includes(r.s.id)).reduce((a, r) => a + Number(r.s.amount_due || 0), 0);
@@ -165,10 +195,11 @@ function CollectDialog({ patientId, rows, onClose, onDone }: {
                   {on && <CheckCircle2 className="h-3 w-3" />}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate">{r.plan.title} · visit {r.s.seq}</span>
-                  <span className="text-xs text-muted-foreground"><DualDate iso={r.s.scheduled_date} /></span>
+                  <span className="block truncate">{r.label}</span>
+                  {/* A course's start date is not when its down payment fell due. */}
+                  {r.kind !== "deposit" && <span className="text-xs text-muted-foreground"><DualDate iso={r.s.scheduled_date} /></span>}
                 </span>
-                {st === "owedNow" && <Badge variant="destructive">Owed now</Badge>}
+                {owesNow(r) && st !== "refunded" && <Badge variant="destructive">Owed now</Badge>}
                 {st === "refunded" && <Badge variant="destructive">Refunded</Badge>}
                 <span className="w-24 text-right font-mono tabular-nums">{birr(r.s.amount_due)}</span>
               </button>

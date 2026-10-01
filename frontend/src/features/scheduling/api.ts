@@ -198,6 +198,9 @@ export interface ReceptionPatient {
   owed_oldest_days?: number;
   /** Every pending charge was deliberately deferred, rather than never collected. */
   owed_agreed?: boolean;
+  /** Dental treatment given (or a down payment agreed) not yet sent to the cashier.
+   *  Not part of `owed`, which is only what is already at the cashier. */
+  unbilled?: string;
   stage?: string;
   waiting_since?: string;
   /** True once the visit is closed — seen and gone, not still waiting. */

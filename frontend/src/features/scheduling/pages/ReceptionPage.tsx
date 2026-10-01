@@ -82,7 +82,9 @@ export function ReceptionPage() {
   // no list of who had been treated and not yet settled: the patient simply left, and
   // the charge became a debt nobody had decided to carry. "Seen" answers who was
   // treated; this answers who still owes for it.
-  const settling = (lists?.seen ?? []).filter((r) => Number(r.owed || 0) > 0);
+  // Unbilled dental treatment counts too: it is not at the cashier yet, so "owed"
+  // alone let a patient leave with it unbilled (audit D10).
+  const settling = (lists?.seen ?? []).filter((r) => Number(r.owed || 0) > 0 || Number(r.unbilled || 0) > 0.005);
   const rows = (lens === "settle" ? settling : (lists?.[lens] ?? [])) as ReceptionPatient[];
   const searching = debounced.trim().length >= 2;
 
@@ -404,6 +406,17 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
           Seen today — came in at {clock(p.waiting_since!)} and the visit is closed.
           Sending them through again starts a new visit; today's fee is already paid,
           so there is nothing more to collect for it.
+        </div>
+      )}
+
+      {Number(p.unbilled || 0) > 0.005 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm">
+          <span className="min-w-0 flex-1">
+            <b>{etb(p.unbilled!)}</b> of treatment has not been sent to the cashier yet.
+          </span>
+          <Button asChild size="sm" variant="outline">
+            <Link to={`/patients/${p.patient_id}`}>Open to bill it</Link>
+          </Button>
         </div>
       )}
 

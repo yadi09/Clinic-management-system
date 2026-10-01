@@ -23,6 +23,7 @@ export function ArrivalRow({ p, selected, onPick, lens }: {
 }) {
   const covered = coveredNow(p);
   const owes = Number(p.owed || 0) > 0;
+  const unbilled = Number(p.unbilled || 0) > 0.005;
   const late = p.late_minutes > 0;
 
   return (
@@ -59,7 +60,7 @@ export function ArrivalRow({ p, selected, onPick, lens }: {
       </p>
 
       {/* The two facts that change what happens next, and that the old page hid. */}
-      {(covered || owes) && (
+      {(covered || owes || unbilled) && (
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           {covered && <Badge variant="success">Free follow-up · until {day(p.free_until!)}</Badge>}
           {owes && (
@@ -71,6 +72,9 @@ export function ArrivalRow({ p, selected, onPick, lens }: {
               {lens !== "settle" && p.owed_oldest_days ? ` · ${p.owed_oldest_days}d` : ""}
             </Badge>
           )}
+          {/* Treatment given but never sent to the cashier: invisible to "Owes",
+              so a patient could walk out with it unbilled (audit D10). */}
+          {unbilled && <Badge variant="destructive">Not yet billed {etb(p.unbilled!)}</Badge>}
         </div>
       )}
     </button>

@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/reicb/clinicsaas/internal/dental"
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
 	"github.com/reicb/clinicsaas/internal/kernel/id"
 	"github.com/reicb/clinicsaas/internal/scheduling"
@@ -31,13 +32,17 @@ const receptionCols = `
 	p.id, trim(coalesce(p.first_name,'') || ' ' || coalesce(p.last_name,'')),
 	coalesce(p.mrn,''),
 	coalesce(date_part('year', age(p.dob))::int, 0), coalesce(p.gender,''), coalesce(p.phone,''),
-	coalesce(owed.amt, 0)::text, coalesce(owed.oldest, 0)::int, coalesce(owed.all_agreed, false)`
+	coalesce(owed.amt, 0)::text, coalesce(owed.oldest, 0)::int, coalesce(owed.all_agreed, false),
+	coalesce(unbilled.amt, 0)::text`
 
 // owedCTE is the same definition Finance uses for "Owed to you" — charges raised and
 // still pending — so the number on a reception row and the number on the Finance page
 // cannot disagree. Ageing is counted in the clinic's day.
-const owedCTE = `
-WITH owed AS (
+//
+// It is appended to dental.SessionMoneySQL, which opens the WITH and takes the same
+// $1 (tenant), so "unbilled" here is the dental report's own definition.
+var owedCTE = dental.SessionMoneySQL + `,
+owed AS (
   SELECT c.patient_id,
          sum(c.amount) AS amt,
          max((now() AT TIME ZONE $2)::date - (c.created_at AT TIME ZONE $2)::date) AS oldest,
@@ -48,6 +53,14 @@ WITH owed AS (
     FROM charges c
    WHERE c.tenant_id = $1 AND c.status = 'pending' AND c.deleted_at IS NULL
    GROUP BY c.patient_id
+),
+unbilled AS (
+  SELECT sm.patient_id, sum(sm.owed_amount) AS amt
+    FROM session_money sm
+    JOIN treatment_plans pl ON pl.id = sm.plan_id AND pl.tenant_id = sm.tenant_id
+   WHERE sm.owed_now AND pl.status <> 'cancelled' AND sm.session_status <> 'cancelled'
+     AND sm.pay_state IN ('unpaid','refunded') AND sm.owed_amount > 0.005
+   GROUP BY sm.patient_id
 )`
 
 func (s *Service) ReceptionToday(ctx context.Context) (*scheduling.ReceptionToday, error) {
@@ -71,6 +84,7 @@ func (s *Service) ReceptionToday(ctx context.Context) (*scheduling.ReceptionToda
 			  LEFT JOIN users u ON u.id = a.provider_id AND u.tenant_id = a.tenant_id
 			  LEFT JOIN departments d ON d.id = a.department_id AND d.tenant_id = a.tenant_id
 			  LEFT JOIN owed ON owed.patient_id = p.id
+			  LEFT JOIN unbilled ON unbilled.patient_id = p.id
 			 WHERE a.tenant_id = $1
 			   AND a.status IN ('booked','confirmed')
 			   AND (a.starts_at AT TIME ZONE $2)::date = (now() AT TIME ZONE $2)::date
@@ -86,7 +100,7 @@ func (s *Service) ReceptionToday(ctx context.Context) (*scheduling.ReceptionToda
 			var provID, deptID *uuid.UUID
 			var startsAt time.Time
 			var freeUntil *time.Time
-			if e := rows.Scan(&pid, &r.Name, &r.MRN, &r.Age, &r.Sex, &r.Phone, &r.Owed, &r.OwedOldestDays, &r.OwedAgreed,
+			if e := rows.Scan(&pid, &r.Name, &r.MRN, &r.Age, &r.Sex, &r.Phone, &r.Owed, &r.OwedOldestDays, &r.OwedAgreed, &r.Unbilled,
 				&apptID, &startsAt, &provID, &r.ProviderName, &deptID, &r.DepartmentName,
 				&r.Reason, &r.IsFollowup, &freeUntil); e != nil {
 				rows.Close()
@@ -126,6 +140,7 @@ func (s *Service) ReceptionToday(ctx context.Context) (*scheduling.ReceptionToda
 			  LEFT JOIN departments d ON d.id = q.department_id AND d.tenant_id = q.tenant_id
 			  LEFT JOIN users u ON u.id = q.assigned_provider_id AND u.tenant_id = q.tenant_id
 			  LEFT JOIN owed ON owed.patient_id = p.id
+			  LEFT JOIN unbilled ON unbilled.patient_id = p.id
 			 WHERE q.tenant_id = $1
 			   AND (q.enqueued_at AT TIME ZONE $2)::date = (now() AT TIME ZONE $2)::date
 			   AND q.state IN ('waiting','called','in_consult','done')
@@ -141,7 +156,7 @@ func (s *Service) ReceptionToday(ctx context.Context) (*scheduling.ReceptionToda
 			var pid uuid.UUID
 			var state string
 			var enqueuedAt time.Time
-			if e := qrows.Scan(&pid, &r.Name, &r.MRN, &r.Age, &r.Sex, &r.Phone, &r.Owed, &r.OwedOldestDays, &r.OwedAgreed,
+			if e := qrows.Scan(&pid, &r.Name, &r.MRN, &r.Age, &r.Sex, &r.Phone, &r.Owed, &r.OwedOldestDays, &r.OwedAgreed, &r.Unbilled,
 				&state, &r.Stage, &enqueuedAt, &r.DepartmentName, &r.ProviderName); e != nil {
 				return e
 			}

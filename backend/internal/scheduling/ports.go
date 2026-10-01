@@ -206,6 +206,12 @@ type ReceptionPatient struct {
 	// OwedAgreed is true when every pending charge was deliberately deferred —
 	// treat-now-pay-later — rather than simply never collected.
 	OwedAgreed bool `json:"owed_agreed,omitempty"`
+	// Unbilled is dental treatment given (or a down payment agreed) that nobody has
+	// sent to the cashier yet — not part of Owed, because "Take payment" settles
+	// only what is at the cashier. Without it the desk saw a patient who owed
+	// nothing walk out with treatment unbilled (audit D10). Same predicate as the
+	// dental Unbilled report, on the shared dental.SessionMoneySQL.
+	Unbilled string `json:"unbilled,omitempty"`
 
 	// Where they are once received.
 	Stage        string `json:"stage,omitempty"` // triage | with_doctor
