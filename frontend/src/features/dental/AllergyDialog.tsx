@@ -9,6 +9,7 @@
 // Substance is backed by the shared allergen library (the same one drugs are tagged
 // with), so "Penicillin" typed here matches "Penicillin" on a prescription rather
 // than becoming a second spelling of it.
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
@@ -72,6 +73,8 @@ export function AllergyDialog({ patientId, allergies, onClose, onSaved }: {
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not record the allergy"),
   });
 
+  // Safety information: removing an allergy is never one stray tap (audit D27).
+  const { ask, dialog: confirmDialog } = useConfirmDialog();
   const del = useMutation({
     mutationFn: (id: string) => removeAllergy(patientId, id),
     onSuccess: () => { toast.success("Allergy removed"); onSaved(); },
@@ -101,13 +104,19 @@ export function AllergyDialog({ patientId, allergies, onClose, onSaved }: {
                   {a.severity}
                 </span>
                 <Button variant="ghost" size="icon" aria-label={`Remove ${a.substance}`}
-                  disabled={del.isPending} onClick={() => del.mutate(a.id)}>
+                  disabled={del.isPending} onClick={() => ask({
+                    title: `Remove the ${a.substance} allergy?`,
+                    description: "The dentist and the prescription check will no longer be warned about it. Only remove it if it was recorded by mistake.",
+                    confirmLabel: "Remove allergy",
+                    destructive: true,
+                  }, () => del.mutateAsync(a.id))}>
                   <Trash2 className="h-4 w-4 text-muted-foreground" />
                 </Button>
               </li>
             ))}
           </ul>
         )}
+        {confirmDialog}
 
         <div className="space-y-3 rounded-md border border-dashed p-3">
           <div className="space-y-1.5">

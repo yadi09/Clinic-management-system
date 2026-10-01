@@ -21,6 +21,7 @@
 // A finished visit moves aside rather than vanishing. Seen today is on the same
 // page, collapsed, with the check-out time and an Undo — because the correct
 // response to a mis-click is to put it back, not to re-register the patient.
+import { LoadError } from "@/components/LoadError";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -268,6 +269,8 @@ export function ChairsidePage() {
 
           {list.isLoading ? (
             <p className="py-10 text-center text-sm text-muted-foreground">Loading…</p>
+          ) : list.isError ? (
+            <LoadError what="the chair list" onRetry={() => list.refetch()} />
           ) : shown.length === 0 ? (
             <p className="py-12 text-center text-sm text-muted-foreground">{LENS_EMPTY[lens]}</p>
           ) : (

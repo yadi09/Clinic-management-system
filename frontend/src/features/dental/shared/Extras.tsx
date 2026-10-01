@@ -10,6 +10,7 @@
 // So an extra is its own row, priced from the clinic's list, sitting under the visit
 // it happened at. A price of 0 is a real answer — "included in the course" — and it
 // says so, because a blank and a decision must not look the same.
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { HandCoins, Plus, Sparkles, X } from "lucide-react";
@@ -82,15 +83,20 @@ export function ExtrasSection({ patientId, session, editable, canCollect }: {
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not send it to the cashier"),
   });
 
+  // Removing an unbilled extra deletes money owed; it used to be one unconfirmed
+  // click on a 14px ✕ beside "Send to cashier", with no toast (audit D27/W9).
+  const { ask, dialog } = useConfirmDialog();
   const drop = useMutation({
     mutationFn: (id: string) => removeExtra(patientId, id),
-    onSuccess: () => invalidateDental(qc, patientId),
+    onSuccess: () => { toast.success("Extra removed"); invalidateDental(qc, patientId); },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not remove it"),
   });
 
   if (!editable && extras.length === 0) return null;
 
   return (
+    <>
+    {dialog}
     <RecordSection
       icon={Sparkles} tone="media" title="Also done at this visit"
       hint="Anything the course did not plan for — an X-ray, a filling on another tooth."
@@ -121,7 +127,12 @@ export function ExtrasSection({ patientId, session, editable, canCollect }: {
               )}
               {editable && ex.payment === "unpaid" && (
                 <button
-                  onClick={() => drop.mutate(ex.id)}
+                  onClick={() => ask({
+                    title: `Remove ${ex.service_name || "this extra"}?`,
+                    description: <>It will no longer be owed{num(ex.amount_due) > 0 ? <> — <b>{birr(ex.amount_due)}</b></> : null}. Use this only if it was added by mistake.</>,
+                    confirmLabel: "Remove",
+                    destructive: true,
+                  }, () => drop.mutateAsync(ex.id))}
                   disabled={drop.isPending}
                   title="Remove this extra"
                   className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
@@ -175,5 +186,6 @@ export function ExtrasSection({ patientId, session, editable, canCollect }: {
         )}
       </div>
     </RecordSection>
+    </>
   );
 }

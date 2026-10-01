@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { LoadError } from "@/components/LoadError";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, BadgeDollarSign, CalendarCheck, Check, ChevronDown, HandCoins, Inbox, Lock, MoreVertical } from "lucide-react";
 
@@ -112,7 +113,9 @@ export function CashierPage() {
       {tab === "days" ? (
         <DayCloseList q={days} clinicName={clinicName} cashierName={cashierName} onClose={setClosingDate} />
       ) : tab === "pending" ? (
-        groups.length === 0 ? (
+        q.isError ? (
+          <LoadError what="the pending payments" onRetry={() => q.refetch()} />
+        ) : groups.length === 0 ? (
           <Card className="flex flex-col items-center justify-center gap-2 p-12 text-center text-sm text-muted-foreground">
             <Inbox className="h-5 w-5" />
             <p className="font-medium text-foreground">No pending payments</p>

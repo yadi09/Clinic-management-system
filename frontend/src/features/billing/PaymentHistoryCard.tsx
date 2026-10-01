@@ -5,6 +5,7 @@
 // This card translates it — four totals that answer the questions actually asked,
 // a day-grouped timeline in plain language, cancelled noise folded away, and paper
 // (receipt or statement) on demand.
+import { LoadError } from "@/components/LoadError";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, FileText, Printer, RotateCcw } from "lucide-react";
@@ -150,6 +151,8 @@ export function PaymentHistoryCard({ patientId, bare, treatment }: {
       <PanelBody bare={bare} className="space-y-4">
         {q.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : q.isError ? (
+          <LoadError what="this patient's payment history" onRetry={() => q.refetch()} />
         ) : all.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nothing has been billed to this patient yet.</p>
         ) : (
