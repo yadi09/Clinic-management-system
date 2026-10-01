@@ -628,9 +628,14 @@ function FinishCourseDialog({ patientId, plan, onClose, onDone }: {
 }) {
   // Enumerate the effect rather than describing it. "Some sessions will be
   // cancelled" is not something anyone can check before agreeing to it.
+  // The server's rule exactly: every planned visit without a live bill — promised
+  // pay-later visits included (they were missing here, audit D3).
   const willCancel = plan.sessions.filter(
-    (s) => s.status === "planned" && !s.pay_later && s.payment !== "billed" && s.payment !== "paid" && s.payment !== "waived",
+    (s) => s.status === "planned" && s.payment !== "billed" && s.payment !== "paid" && s.payment !== "waived",
   );
+  // The down payment is never cancelled by finishing; say so, so nobody assumes it was.
+  const dep = plan.deposit;
+  const depositOwed = !!dep && dep.payment !== "paid" && dep.payment !== "waived" && num(dep.amount_due) > 0;
   const finish = useMutation({
     mutationFn: () => finishCourse(patientId, plan.id),
     onSuccess: (r) => {
@@ -651,7 +656,7 @@ function FinishCourseDialog({ patientId, plan, onClose, onDone }: {
             <ul className="space-y-1 rounded-md border bg-muted/40 p-2 text-sm">
               {willCancel.map((s) => (
                 <li key={s.id} className="flex items-center justify-between gap-2">
-                  <span>Session {s.seq} · <DualDate iso={s.scheduled_date} /></span>
+                  <span>Session {s.seq} · <DualDate iso={s.scheduled_date} />{s.pay_later && " · promised pay-later"}</span>
                   <span className="tabular-nums text-muted-foreground">{birr(s.amount_due)}</span>
                 </li>
               ))}
@@ -659,6 +664,12 @@ function FinishCourseDialog({ patientId, plan, onClose, onDone }: {
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">Every visit in this course is already done.</p>
+        )}
+        {depositOwed && dep && (
+          <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            The down payment of <b>{birr(dep.amount_due)}</b> is {dep.payment === "billed" ? "at the cashier" : "not paid yet"} and
+            stays owed — finishing the course does not cancel it.
+          </p>
         )}
         <p className="text-xs text-muted-foreground">
           Nothing already collected changes, and any visit that was delivered or billed is left

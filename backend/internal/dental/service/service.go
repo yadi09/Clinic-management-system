@@ -974,9 +974,21 @@ func (s *Service) FinishCourse(ctx context.Context, patientID, planID uuid.UUID)
 			}
 			return e
 		}
+		// Lock the course's rows in their own statement before judging their bills, so
+		// a visit collected at this moment is seen as billed (see lockSession).
+		if _, e := tx.Exec(ctx,
+			`SELECT 1 FROM treatment_sessions WHERE tenant_id = $1 AND plan_id = $2 FOR UPDATE`,
+			tid, planID); e != nil {
+			return e
+		}
 		ct, e := tx.Exec(ctx,
 			`UPDATE treatment_sessions se SET status = 'cancelled', updated_at = now()
 			 WHERE se.tenant_id = $1 AND se.plan_id = $2 AND se.patient_id = $3
+			   -- Visits only. A down payment is permanently 'planned' (there is nothing
+			   -- clinical to deliver), so without this finishing a course quietly
+			   -- forgave an unpaid deposit (audit D3). It stays owed until paid or
+			   -- written off, like any other debt.
+			   AND se.kind = 'visit'
 			   -- 'planned' is the whole test, matching the projection's owed_now flag.
 			   -- pay_later was excluded here, which stranded a promised-but-never-given
 			   -- visit inside a closed course: not cancelled, never delivered, and

@@ -441,3 +441,29 @@ func TestD1_RepriceCannotQuietlyDiscountAGivenVisit(t *testing.T) {
 	// Pricing a visit that has not happened yet is not forgiveness.
 	must(t, f.svc.RepriceSession(f.as(f.other), f.patient, p.Sessions[2].ID, "500", "total", ""))
 }
+
+// --- D3: finishing a course never forgives an unpaid down payment ---
+
+func TestD3_FinishCourseKeepsTheDepositOwed(t *testing.T) {
+	f := newFixture(t)
+	p := f.course(3, "2000", "500")
+	if p.Deposit == nil {
+		t.Fatal("course has no deposit row")
+	}
+	f.record(f.dentist, p.Sessions[0].ID)
+	must(t, f.svc.SetPayLater(f.as(f.dentist), f.patient, p.Sessions[2].ID, true, "next month"))
+
+	n, err := f.svc.FinishCourse(f.as(f.dentist), f.patient, p.ID)
+	must(t, err)
+	if n != 2 { // visits 2 and 3 (the promised one included)
+		t.Fatalf("cancelled %d visits, want 2", n)
+	}
+	if st, amt, _ := f.session(p.Deposit.ID); st != "planned" || amt != "500.00" {
+		t.Fatalf("deposit after finish: %s %s, want planned 500.00", st, amt)
+	}
+	// And it is still billable — owed, not silently gone.
+	must(t, f.svc.CollectSession(f.as(f.owner), f.patient, p.Deposit.ID))
+	if st, _, _ := f.session(p.Sessions[0].ID); st != "done" {
+		t.Fatalf("given visit 1 became %s", st)
+	}
+}
