@@ -155,7 +155,7 @@ export function PatientProfilePage() {
               </button>
           </div>
           <p className="text-sm text-brand-foreground/80 tabular-nums">
-            MRN {data.mrn} · {age(data.dob)} · <span className="capitalize">{data.gender}</span>
+            MRN {data.mrn}{age(data.dob) && ` · ${age(data.dob)}`}{data.gender !== "unknown" && <> · <span className="capitalize">{data.gender}</span></>}
             {data.blood_group ? ` · ${data.blood_group}` : ""}
           </p>
         </div>

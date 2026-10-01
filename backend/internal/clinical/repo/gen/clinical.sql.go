@@ -674,12 +674,12 @@ type GetPatientBannerParams struct {
 }
 
 type GetPatientBannerRow struct {
-	FirstName  string    `json:"first_name"`
-	LastName   string    `json:"last_name"`
-	Mrn        string    `json:"mrn"`
-	Dob        time.Time `json:"dob"`
-	Gender     string    `json:"gender"`
-	BloodGroup *string   `json:"blood_group"`
+	FirstName  string     `json:"first_name"`
+	LastName   string     `json:"last_name"`
+	Mrn        string     `json:"mrn"`
+	Dob        *time.Time `json:"dob"`
+	Gender     string     `json:"gender"`
+	BloodGroup *string    `json:"blood_group"`
 }
 
 func (q *Queries) GetPatientBanner(ctx context.Context, arg GetPatientBannerParams) (GetPatientBannerRow, error) {

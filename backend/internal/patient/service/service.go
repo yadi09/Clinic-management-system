@@ -50,8 +50,10 @@ func (s *Service) Create(ctx context.Context, in patient.PatientInput) (*patient
 	if err != nil {
 		return nil, nil, apperr.Validation("dob must be YYYY-MM-DD").WithField("dob", "invalid date")
 	}
-	if strings.TrimSpace(in.FirstName) == "" || strings.TrimSpace(in.LastName) == "" {
-		return nil, nil, apperr.Validation("first and last name are required")
+	// Only the first name is required (clinic feedback, 2026-10-01): reception often
+	// has a name and a phone number and nothing else, and must not invent the rest.
+	if strings.TrimSpace(in.FirstName) == "" {
+		return nil, nil, apperr.Validation("the first name is required")
 	}
 
 	if !in.Force {
@@ -73,7 +75,7 @@ func (s *Service) Create(ctx context.Context, in patient.PatientInput) (*patient
 					ID:         r.ID,
 					MRN:        r.Mrn,
 					FullName:   r.FirstName + " " + r.LastName,
-					DOB:        r.Dob.Format(dateLayout),
+					DOB:        fmtDOB(r.Dob),
 					Phone:      deref(r.Phone),
 					NationalID: deref(r.NationalID),
 				})
@@ -190,7 +192,7 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*patient.Profile, erro
 		}
 		prof.Patient = patient.Patient{
 			ID: row.ID, MRN: row.Mrn, FirstName: row.FirstName, MiddleName: deref(row.MiddleName),
-			LastName: row.LastName, Gender: row.Gender, DOB: row.Dob.Format(dateLayout),
+			LastName: row.LastName, Gender: row.Gender, DOB: fmtDOB(row.Dob),
 			NationalID: deref(row.NationalID), PassportNo: deref(row.PassportNo),
 			Phone: deref(row.Phone), Email: deref(row.Email), BloodGroup: deref(row.BloodGroup),
 			Address: rawOrNil(row.Address), EmergencyContact: rawOrNil(row.EmergencyContact),
@@ -289,11 +291,11 @@ func (s *Service) Search(ctx context.Context, f patient.SearchFilter, page, page
 		defer rows.Close()
 		for rows.Next() {
 			var it patient.Summary
-			var dob time.Time
+			var dob *time.Time // unknown for a patient registered without an age
 			if e := rows.Scan(&it.ID, &it.MRN, &it.FirstName, &it.MiddleName, &it.LastName, &it.Gender, &dob, &it.Phone, &it.Email); e != nil {
 				return e
 			}
-			it.DOB = dob.Format(dateLayout)
+			it.DOB = fmtDOB(dob)
 			res.Items = append(res.Items, it)
 		}
 		return rows.Err()
@@ -347,7 +349,7 @@ func (s *Service) AddCondition(ctx context.Context, patientID uuid.UUID, in pati
 		if err != nil {
 			return uuid.Nil, apperr.Validation("onset_date must be YYYY-MM-DD")
 		}
-		onset = &t
+		onset = t
 	}
 	var id uuid.UUID
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
@@ -469,7 +471,29 @@ func actor(ctx context.Context) (uuid.UUID, *uuid.UUID) {
 	return tid, nil
 }
 
-func parseDOB(s string) (time.Time, error) { return time.Parse(dateLayout, strings.TrimSpace(s)) }
+// parseDOB reads an optional date of birth: empty means unknown (nil).
+func parseDOB(s string) (*time.Time, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, nil
+	}
+	t, err := time.Parse(dateLayout, s)
+	if err != nil {
+		return nil, err
+	}
+	if t.After(time.Now().AddDate(0, 0, 1)) {
+		return nil, fmt.Errorf("date of birth in the future")
+	}
+	return &t, nil
+}
+
+// fmtDOB writes a date of birth for the API: "" when it is not known.
+func fmtDOB(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.Format(dateLayout)
+}
 
 func deref(p *string) string {
 	if p == nil {

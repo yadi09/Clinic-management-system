@@ -78,9 +78,9 @@ export interface PatientFormValues {
   mrn?: string; // existing card ID on import; blank = auto-generate
   first_name: string;
   middle_name?: string;
-  last_name: string;
+  last_name?: string; // optional: only the first name is required
   gender: string;
-  dob: string;
+  dob: string; // "" when the age is not known
   national_id?: string;
   passport_no?: string;
   phone?: string;

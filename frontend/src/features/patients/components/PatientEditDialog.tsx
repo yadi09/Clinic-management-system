@@ -52,7 +52,8 @@ export function PatientEditDialog({ patient, onClose, onSaved }: {
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not save the changes"),
   });
 
-  const valid = f.first_name.trim() && f.dob;
+  // Only the first name is required, as at registration.
+  const valid = f.first_name.trim();
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -88,7 +89,7 @@ export function PatientEditDialog({ patient, onClose, onSaved }: {
               </Select>
             </div>
           </div>
-          <div className="space-y-1.5"><Label>Date of birth *</Label><EthiopianDateInput value={f.dob} onChange={(v) => set("dob", v)} /></div>
+          <div className="space-y-1.5"><Label>Date of birth</Label><EthiopianDateInput value={f.dob} onChange={(v) => set("dob", v)} /></div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5"><Label>Phone</Label><Input value={f.phone} onChange={(e) => set("phone", e.target.value)} placeholder="09…" /></div>
             <div className="space-y-1.5"><Label>Email</Label><Input type="email" value={f.email} onChange={(e) => set("email", e.target.value)} /></div>

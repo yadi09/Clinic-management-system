@@ -56,7 +56,7 @@ type CreatePatientParams struct {
 	MiddleName       *string    `json:"middle_name"`
 	LastName         string     `json:"last_name"`
 	Gender           string     `json:"gender"`
-	Dob              time.Time  `json:"dob"`
+	Dob              *time.Time `json:"dob"`
 	NationalID       *string    `json:"national_id"`
 	PassportNo       *string    `json:"passport_no"`
 	Phone            *string    `json:"phone"`
@@ -109,22 +109,22 @@ LIMIT 10
 `
 
 type FindDuplicateCandidatesParams struct {
-	TenantID   uuid.UUID `json:"tenant_id"`
-	FirstName  string    `json:"first_name"`
-	LastName   string    `json:"last_name"`
-	Dob        time.Time `json:"dob"`
-	Phone      string    `json:"phone"`
-	NationalID string    `json:"national_id"`
+	TenantID   uuid.UUID  `json:"tenant_id"`
+	FirstName  string     `json:"first_name"`
+	LastName   string     `json:"last_name"`
+	Dob        *time.Time `json:"dob"`
+	Phone      string     `json:"phone"`
+	NationalID string     `json:"national_id"`
 }
 
 type FindDuplicateCandidatesRow struct {
-	ID         uuid.UUID `json:"id"`
-	Mrn        string    `json:"mrn"`
-	FirstName  string    `json:"first_name"`
-	LastName   string    `json:"last_name"`
-	Dob        time.Time `json:"dob"`
-	Phone      *string   `json:"phone"`
-	NationalID *string   `json:"national_id"`
+	ID         uuid.UUID  `json:"id"`
+	Mrn        string     `json:"mrn"`
+	FirstName  string     `json:"first_name"`
+	LastName   string     `json:"last_name"`
+	Dob        *time.Time `json:"dob"`
+	Phone      *string    `json:"phone"`
+	NationalID *string    `json:"national_id"`
 }
 
 // Likely-duplicate detection on create (FR-PAT-03): name+DOB, phone, or national id.
@@ -177,23 +177,23 @@ type GetPatientByIDParams struct {
 }
 
 type GetPatientByIDRow struct {
-	ID               uuid.UUID `json:"id"`
-	TenantID         uuid.UUID `json:"tenant_id"`
-	Mrn              string    `json:"mrn"`
-	FirstName        string    `json:"first_name"`
-	MiddleName       *string   `json:"middle_name"`
-	LastName         string    `json:"last_name"`
-	Gender           string    `json:"gender"`
-	Dob              time.Time `json:"dob"`
-	NationalID       *string   `json:"national_id"`
-	PassportNo       *string   `json:"passport_no"`
-	Phone            *string   `json:"phone"`
-	Email            *string   `json:"email"`
-	Address          *string   `json:"address"`
-	EmergencyContact *string   `json:"emergency_contact"`
-	BloodGroup       *string   `json:"blood_group"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ID               uuid.UUID  `json:"id"`
+	TenantID         uuid.UUID  `json:"tenant_id"`
+	Mrn              string     `json:"mrn"`
+	FirstName        string     `json:"first_name"`
+	MiddleName       *string    `json:"middle_name"`
+	LastName         string     `json:"last_name"`
+	Gender           string     `json:"gender"`
+	Dob              *time.Time `json:"dob"`
+	NationalID       *string    `json:"national_id"`
+	PassportNo       *string    `json:"passport_no"`
+	Phone            *string    `json:"phone"`
+	Email            *string    `json:"email"`
+	Address          *string    `json:"address"`
+	EmergencyContact *string    `json:"emergency_contact"`
+	BloodGroup       *string    `json:"blood_group"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 func (q *Queries) GetPatientByID(ctx context.Context, arg GetPatientByIDParams) (GetPatientByIDRow, error) {
@@ -260,15 +260,15 @@ type SearchPatientsParams struct {
 }
 
 type SearchPatientsRow struct {
-	ID         uuid.UUID `json:"id"`
-	Mrn        string    `json:"mrn"`
-	FirstName  string    `json:"first_name"`
-	MiddleName *string   `json:"middle_name"`
-	LastName   string    `json:"last_name"`
-	Gender     string    `json:"gender"`
-	Dob        time.Time `json:"dob"`
-	Phone      *string   `json:"phone"`
-	Email      *string   `json:"email"`
+	ID         uuid.UUID  `json:"id"`
+	Mrn        string     `json:"mrn"`
+	FirstName  string     `json:"first_name"`
+	MiddleName *string    `json:"middle_name"`
+	LastName   string     `json:"last_name"`
+	Gender     string     `json:"gender"`
+	Dob        *time.Time `json:"dob"`
+	Phone      *string    `json:"phone"`
+	Email      *string    `json:"email"`
 }
 
 func (q *Queries) SearchPatients(ctx context.Context, arg SearchPatientsParams) ([]SearchPatientsRow, error) {
@@ -331,20 +331,20 @@ WHERE tenant_id = $13 AND id = $14 AND deleted_at IS NULL
 `
 
 type UpdatePatientParams struct {
-	FirstName        string    `json:"first_name"`
-	MiddleName       *string   `json:"middle_name"`
-	LastName         string    `json:"last_name"`
-	Gender           string    `json:"gender"`
-	Dob              time.Time `json:"dob"`
-	NationalID       *string   `json:"national_id"`
-	PassportNo       *string   `json:"passport_no"`
-	Phone            *string   `json:"phone"`
-	Email            *string   `json:"email"`
-	Address          string    `json:"address"`
-	EmergencyContact string    `json:"emergency_contact"`
-	BloodGroup       *string   `json:"blood_group"`
-	TenantID         uuid.UUID `json:"tenant_id"`
-	ID               uuid.UUID `json:"id"`
+	FirstName        string     `json:"first_name"`
+	MiddleName       *string    `json:"middle_name"`
+	LastName         string     `json:"last_name"`
+	Gender           string     `json:"gender"`
+	Dob              *time.Time `json:"dob"`
+	NationalID       *string    `json:"national_id"`
+	PassportNo       *string    `json:"passport_no"`
+	Phone            *string    `json:"phone"`
+	Email            *string    `json:"email"`
+	Address          string     `json:"address"`
+	EmergencyContact string     `json:"emergency_contact"`
+	BloodGroup       *string    `json:"blood_group"`
+	TenantID         uuid.UUID  `json:"tenant_id"`
+	ID               uuid.UUID  `json:"id"`
 }
 
 func (q *Queries) UpdatePatient(ctx context.Context, arg UpdatePatientParams) error {

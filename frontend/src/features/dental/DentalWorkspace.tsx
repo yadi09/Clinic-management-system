@@ -368,7 +368,7 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
               </button>
           </div>
           <p className="text-sm text-brand-foreground/80 tabular-nums">
-            MRN {p.mrn} · {age(p.dob)} · <span className="capitalize">{p.gender}</span>
+            MRN {p.mrn}{age(p.dob) && ` · ${age(p.dob)}`}{p.gender !== "unknown" && <> · <span className="capitalize">{p.gender}</span></>}
             {/* The full number, never shortened — and a tel: link at the desk too,
                 for softphones. Hidden below md, where the dedicated tap line below
                 takes over, so the number is never shown twice. */}

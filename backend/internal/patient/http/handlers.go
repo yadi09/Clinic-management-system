@@ -27,7 +27,7 @@ func NewHandlers(svc patient.Service) *Handlers { return &Handlers{svc: svc} }
 func (h *Handlers) Create(c *gin.Context) {
 	var req patientRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		httpx.Fail(c, apperr.Validation("first_name, last_name and dob are required"))
+		httpx.Fail(c, apperr.Validation("first_name is required"))
 		return
 	}
 	p, dups, err := h.svc.Create(c.Request.Context(), toInput(req))
@@ -133,7 +133,7 @@ func (h *Handlers) Update(c *gin.Context) {
 	}
 	var req patientRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		httpx.Fail(c, apperr.Validation("first_name, last_name and dob are required"))
+		httpx.Fail(c, apperr.Validation("first_name is required"))
 		return
 	}
 	p, err := h.svc.Update(c.Request.Context(), pid, toInput(req))

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type AllergenCatalog struct {
@@ -19,6 +20,10 @@ type AllergenCatalog struct {
 	UpdatedAt time.Time  `json:"updated_at"`
 	CreatedBy *uuid.UUID `json:"created_by"`
 	DeletedAt *time.Time `json:"deleted_at"`
+	// The reaction this substance usually causes. Pre-fills the patient allergy form; always editable there.
+	DefaultReaction *string `json:"default_reaction"`
+	// The severity usually recorded for this substance. Pre-fills the patient allergy form; always editable there.
+	DefaultSeverity *string `json:"default_severity"`
 }
 
 type Allergy struct {
@@ -59,19 +64,21 @@ type Appointment struct {
 }
 
 type Attachment struct {
-	ID          uuid.UUID  `json:"id"`
-	TenantID    uuid.UUID  `json:"tenant_id"`
-	PatientID   uuid.UUID  `json:"patient_id"`
-	EncounterID *uuid.UUID `json:"encounter_id"`
-	Type        string     `json:"type"`
-	StorageKey  string     `json:"storage_key"`
-	Filename    string     `json:"filename"`
-	MimeType    string     `json:"mime_type"`
-	SizeBytes   int64      `json:"size_bytes"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	CreatedBy   *uuid.UUID `json:"created_by"`
-	DeletedAt   *time.Time `json:"deleted_at"`
+	ID                 uuid.UUID  `json:"id"`
+	TenantID           uuid.UUID  `json:"tenant_id"`
+	PatientID          uuid.UUID  `json:"patient_id"`
+	EncounterID        *uuid.UUID `json:"encounter_id"`
+	Type               string     `json:"type"`
+	StorageKey         string     `json:"storage_key"`
+	Filename           string     `json:"filename"`
+	MimeType           string     `json:"mime_type"`
+	SizeBytes          int64      `json:"size_bytes"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+	CreatedBy          *uuid.UUID `json:"created_by"`
+	DeletedAt          *time.Time `json:"deleted_at"`
+	TreatmentSessionID *uuid.UUID `json:"treatment_session_id"`
+	ImageCategory      *string    `json:"image_category"`
 }
 
 type AuditLog struct {
@@ -85,6 +92,54 @@ type AuditLog struct {
 	Payload    *string    `json:"payload"`
 	Ip         *string    `json:"ip"`
 	CreatedAt  time.Time  `json:"created_at"`
+}
+
+type Bed struct {
+	ID           uuid.UUID `json:"id"`
+	TenantID     uuid.UUID `json:"tenant_id"`
+	BranchID     uuid.UUID `json:"branch_id"`
+	WardID       uuid.UUID `json:"ward_id"`
+	Label        string    `json:"label"`
+	BedType      string    `json:"bed_type"`
+	DailyRate    string    `json:"daily_rate"`
+	OutOfService bool      `json:"out_of_service"`
+	IsActive     bool      `json:"is_active"`
+	Note         *string   `json:"note"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type BedAdmission struct {
+	ID                uuid.UUID  `json:"id"`
+	TenantID          uuid.UUID  `json:"tenant_id"`
+	BranchID          uuid.UUID  `json:"branch_id"`
+	PatientID         uuid.UUID  `json:"patient_id"`
+	BedID             uuid.UUID  `json:"bed_id"`
+	AdmittedAt        time.Time  `json:"admitted_at"`
+	ExpectedDischarge *time.Time `json:"expected_discharge"`
+	DischargedAt      *time.Time `json:"discharged_at"`
+	Status            string     `json:"status"`
+	DailyRate         string     `json:"daily_rate"`
+	DepositAmount     string     `json:"deposit_amount"`
+	ChargedAmount     string     `json:"charged_amount"`
+	PaymentDueAt      *time.Time `json:"payment_due_at"`
+	DepositChargeID   *uuid.UUID `json:"deposit_charge_id"`
+	AdmittedBy        *uuid.UUID `json:"admitted_by"`
+	DischargedBy      *uuid.UUID `json:"discharged_by"`
+	Note              *string    `json:"note"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+}
+
+type BedAdmissionStay struct {
+	ID          uuid.UUID  `json:"id"`
+	TenantID    uuid.UUID  `json:"tenant_id"`
+	AdmissionID uuid.UUID  `json:"admission_id"`
+	BedID       uuid.UUID  `json:"bed_id"`
+	DailyRate   string     `json:"daily_rate"`
+	FromAt      time.Time  `json:"from_at"`
+	ToAt        *time.Time `json:"to_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 type BillingAccount struct {
@@ -117,6 +172,90 @@ type Branch struct {
 	UpdatedAt    time.Time  `json:"updated_at"`
 	CreatedBy    *uuid.UUID `json:"created_by"`
 	DeletedAt    *time.Time `json:"deleted_at"`
+}
+
+type Campaign struct {
+	ID              uuid.UUID  `json:"id"`
+	Code            string     `json:"code"`
+	Title           string     `json:"title"`
+	Subtitle        *string    `json:"subtitle"`
+	Status          string     `json:"status"`
+	OpensAt         *time.Time `json:"opens_at"`
+	ClosesAt        *time.Time `json:"closes_at"`
+	Chances         int32      `json:"chances"`
+	Gifts           int32      `json:"gifts"`
+	GiftLabel       string     `json:"gift_label"`
+	GiftDetail      *string    `json:"gift_detail"`
+	Seed            *string    `json:"seed"`
+	SeedHash        *string    `json:"seed_hash"`
+	SealedAt        *time.Time `json:"sealed_at"`
+	ContactTelegram *string    `json:"contact_telegram"`
+	ContactPhone    *string    `json:"contact_phone"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	// Grow the wheel when it fills rather than turning a clinic away.
+	AutoExtend  bool  `json:"auto_extend"`
+	ExtendBlock int32 `json:"extend_block"`
+}
+
+type CampaignEntry struct {
+	ID         uuid.UUID  `json:"id"`
+	CampaignID uuid.UUID  `json:"campaign_id"`
+	FullName   string     `json:"full_name"`
+	Phone      string     `json:"phone"`
+	ClinicName string     `json:"clinic_name"`
+	TokenHash  string     `json:"token_hash"`
+	Answers    string     `json:"answers"`
+	QuizDoneAt *time.Time `json:"quiz_done_at"`
+	SlotIdx    *int32     `json:"slot_idx"`
+	SpunAt     *time.Time `json:"spun_at"`
+	Won        bool       `json:"won"`
+	PrizeLabel *string    `json:"prize_label"`
+	DrawnAt    *time.Time `json:"drawn_at"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
+type CampaignPrize struct {
+	ID         uuid.UUID `json:"id"`
+	CampaignID uuid.UUID `json:"campaign_id"`
+	Label      string    `json:"label"`
+	Detail     *string   `json:"detail"`
+	Weight     int32     `json:"weight"`
+	Sort       int32     `json:"sort"`
+}
+
+type CampaignQuestion struct {
+	ID         uuid.UUID `json:"id"`
+	CampaignID uuid.UUID `json:"campaign_id"`
+	Prompt     string    `json:"prompt"`
+	Teaches    *string   `json:"teaches"`
+	Choices    string    `json:"choices"`
+	Sort       int32     `json:"sort"`
+	Active     bool      `json:"active"`
+}
+
+type CampaignSignup struct {
+	ID         uuid.UUID `json:"id"`
+	CampaignID uuid.UUID `json:"campaign_id"`
+	OwnerName  string    `json:"owner_name"`
+	Phone      string    `json:"phone"`
+	ClinicName string    `json:"clinic_name"`
+	Location   string    `json:"location"`
+	Structure  *string   `json:"structure"`
+	Facilities []string  `json:"facilities"`
+	Status     string    `json:"status"`
+	Note       *string   `json:"note"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+type CampaignSlot struct {
+	CampaignID uuid.UUID  `json:"campaign_id"`
+	Idx        int32      `json:"idx"`
+	IsGift     bool       `json:"is_gift"`
+	PrizeID    *uuid.UUID `json:"prize_id"`
+	EntryID    *uuid.UUID `json:"entry_id"`
+	ClaimedAt  *time.Time `json:"claimed_at"`
 }
 
 type CardPayment struct {
@@ -180,25 +319,47 @@ type Charge struct {
 	VoidedAt         *time.Time `json:"voided_at"`
 	ReversesChargeID *uuid.UUID `json:"reverses_charge_id"`
 	ReceiptNo        *int64     `json:"receipt_no"`
+	PaymentRailID    *uuid.UUID `json:"payment_rail_id"`
+	PaymentReference *string    `json:"payment_reference"`
+	DeferredAt       *time.Time `json:"deferred_at"`
+	DeferredBy       *uuid.UUID `json:"deferred_by"`
+	DeferReason      *string    `json:"defer_reason"`
+	AdmissionID      *uuid.UUID `json:"admission_id"`
 }
 
 type Clinic struct {
-	ID               uuid.UUID  `json:"id"`
-	TenantID         uuid.UUID  `json:"tenant_id"`
-	Name             string     `json:"name"`
-	Timezone         string     `json:"timezone"`
-	Locale           string     `json:"locale"`
-	LogoStorageKey   *string    `json:"logo_storage_key"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
-	CreatedBy        *uuid.UUID `json:"created_by"`
-	DeletedAt        *time.Time `json:"deleted_at"`
-	CardFeeEnabled   bool       `json:"card_fee_enabled"`
-	CardFeeAmount    string     `json:"card_fee_amount"`
-	CardCurrency     string     `json:"card_currency"`
-	FreeWindowDays   int32      `json:"free_window_days"`
-	TriageRequired   bool       `json:"triage_required"`
-	DoctorAssignment string     `json:"doctor_assignment"`
+	ID               uuid.UUID   `json:"id"`
+	TenantID         uuid.UUID   `json:"tenant_id"`
+	Name             string      `json:"name"`
+	Timezone         string      `json:"timezone"`
+	Locale           string      `json:"locale"`
+	LogoStorageKey   *string     `json:"logo_storage_key"`
+	CreatedAt        time.Time   `json:"created_at"`
+	UpdatedAt        time.Time   `json:"updated_at"`
+	CreatedBy        *uuid.UUID  `json:"created_by"`
+	DeletedAt        *time.Time  `json:"deleted_at"`
+	CardFeeEnabled   bool        `json:"card_fee_enabled"`
+	CardFeeAmount    string      `json:"card_fee_amount"`
+	CardCurrency     string      `json:"card_currency"`
+	FreeWindowDays   int32       `json:"free_window_days"`
+	TriageRequired   bool        `json:"triage_required"`
+	DoctorAssignment string      `json:"doctor_assignment"`
+	SmsEnabled       bool        `json:"sms_enabled"`
+	SmsLang          string      `json:"sms_lang"`
+	SmsQuietFrom     pgtype.Time `json:"sms_quiet_from"`
+	SmsQuietTo       pgtype.Time `json:"sms_quiet_to"`
+	// Fallback only: prefixed into the message body when the clinic has no approved sender ID, so the patient still knows who is writing. Costs characters on every send.
+	SmsSenderName string `json:"sms_sender_name"`
+	// AES-GCM(base64) of this clinic's SMSEthiopia key. The key is bound to one campaign, which supplies the sender ID and the package that gets debited.
+	SmsApiKeyEnc    *string `json:"sms_api_key_enc"`
+	SmsSenderID     *string `json:"sms_sender_id"`
+	SmsSenderStatus string  `json:"sms_sender_status"`
+}
+
+type ClinicalCounter struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	Name     string    `json:"name"`
+	Value    int64     `json:"value"`
 }
 
 type ClinicalNote struct {
@@ -232,6 +393,172 @@ type Condition struct {
 	DeletedAt   *time.Time `json:"deleted_at"`
 }
 
+type CrmCampaign struct {
+	ID         uuid.UUID  `json:"id"`
+	Name       string     `json:"name"`
+	Goal       *string    `json:"goal"`
+	IsActive   bool       `json:"is_active"`
+	CreatedBy  *uuid.UUID `json:"created_by"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+	ArchivedAt *time.Time `json:"archived_at"`
+}
+
+type CrmEnrollment struct {
+	ID         uuid.UUID  `json:"id"`
+	ProspectID uuid.UUID  `json:"prospect_id"`
+	CampaignID uuid.UUID  `json:"campaign_id"`
+	PhaseID    *uuid.UUID `json:"phase_id"`
+	Status     string     `json:"status"`
+	StartedAt  time.Time  `json:"started_at"`
+	FinishedAt *time.Time `json:"finished_at"`
+	CreatedBy  *uuid.UUID `json:"created_by"`
+}
+
+type CrmPhase struct {
+	ID         uuid.UUID `json:"id"`
+	CampaignID uuid.UUID `json:"campaign_id"`
+	Seq        int32     `json:"seq"`
+	Name       string    `json:"name"`
+	Intent     *string   `json:"intent"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+type CrmPhaseEvent struct {
+	ID           uuid.UUID  `json:"id"`
+	EnrollmentID uuid.UUID  `json:"enrollment_id"`
+	PhaseID      uuid.UUID  `json:"phase_id"`
+	Note         *string    `json:"note"`
+	DoneBy       *uuid.UUID `json:"done_by"`
+	DoneAt       time.Time  `json:"done_at"`
+}
+
+type CrmProspect struct {
+	ID            uuid.UUID  `json:"id"`
+	ClinicName    string     `json:"clinic_name"`
+	ContactName   *string    `json:"contact_name"`
+	ContactRole   *string    `json:"contact_role"`
+	Phone         *string    `json:"phone"`
+	PhoneAlt      *string    `json:"phone_alt"`
+	Email         *string    `json:"email"`
+	Address       *string    `json:"address"`
+	MapUrl        *string    `json:"map_url"`
+	Note          *string    `json:"note"`
+	Source        string     `json:"source"`
+	PartnerLeadID *uuid.UUID `json:"partner_lead_id"`
+	OwnerID       *uuid.UUID `json:"owner_id"`
+	Status        string     `json:"status"`
+	ReadyOn       *time.Time `json:"ready_on"`
+	OutcomeNote   *string    `json:"outcome_note"`
+	TenantID      *uuid.UUID `json:"tenant_id"`
+	CreatedBy     *uuid.UUID `json:"created_by"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	DeletedAt     *time.Time `json:"deleted_at"`
+	Priority      string     `json:"priority"`
+	NextAction    *string    `json:"next_action"`
+	NextActionAt  *time.Time `json:"next_action_at"`
+}
+
+type CrmTouch struct {
+	ID         uuid.UUID  `json:"id"`
+	ProspectID uuid.UUID  `json:"prospect_id"`
+	Kind       string     `json:"kind"`
+	Note       *string    `json:"note"`
+	HappenedAt time.Time  `json:"happened_at"`
+	ByID       *uuid.UUID `json:"by_id"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
+type DentalChart struct {
+	ID        uuid.UUID  `json:"id"`
+	TenantID  uuid.UUID  `json:"tenant_id"`
+	PatientID uuid.UUID  `json:"patient_id"`
+	Teeth     string     `json:"teeth"`
+	UpdatedBy *uuid.UUID `json:"updated_by"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+type DentalPrescription struct {
+	ID         uuid.UUID  `json:"id"`
+	TenantID   uuid.UUID  `json:"tenant_id"`
+	SessionID  uuid.UUID  `json:"session_id"`
+	PatientID  uuid.UUID  `json:"patient_id"`
+	Note       *string    `json:"note"`
+	CreatedBy  *uuid.UUID `json:"created_by"`
+	CreatedAt  time.Time  `json:"created_at"`
+	VoidedAt   *time.Time `json:"voided_at"`
+	VoidedBy   *uuid.UUID `json:"voided_by"`
+	VoidReason *string    `json:"void_reason"`
+}
+
+type DentalPrescriptionItem struct {
+	ID             uuid.UUID  `json:"id"`
+	TenantID       uuid.UUID  `json:"tenant_id"`
+	PrescriptionID uuid.UUID  `json:"prescription_id"`
+	Seq            int32      `json:"seq"`
+	DrugName       string     `json:"drug_name"`
+	Dose           *string    `json:"dose"`
+	Frequency      *string    `json:"frequency"`
+	Duration       *string    `json:"duration"`
+	Instructions   *string    `json:"instructions"`
+	DrugID         *uuid.UUID `json:"drug_id"`
+	// Reason the prescriber gave for writing this drug against a recorded allergy. NULL/empty = no conflict was raised.
+	AllergyOverride *string `json:"allergy_override"`
+}
+
+type DentalProcedure struct {
+	ID        uuid.UUID  `json:"id"`
+	TenantID  uuid.UUID  `json:"tenant_id"`
+	Name      string     `json:"name"`
+	IsActive  bool       `json:"is_active"`
+	SortOrder int32      `json:"sort_order"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	DeletedAt *time.Time `json:"deleted_at"`
+}
+
+type DentalToothStatus struct {
+	ID        uuid.UUID  `json:"id"`
+	TenantID  uuid.UUID  `json:"tenant_id"`
+	Code      string     `json:"code"`
+	Label     string     `json:"label"`
+	Color     string     `json:"color"`
+	SortOrder int32      `json:"sort_order"`
+	IsActive  bool       `json:"is_active"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	DeletedAt *time.Time `json:"deleted_at"`
+}
+
+type DentalVisit struct {
+	ID                   uuid.UUID  `json:"id"`
+	TenantID             uuid.UUID  `json:"tenant_id"`
+	PatientID            uuid.UUID  `json:"patient_id"`
+	SessionID            *uuid.UUID `json:"session_id"`
+	VisitDate            time.Time  `json:"visit_date"`
+	ChiefComplaint       *string    `json:"chief_complaint"`
+	Hpi                  *string    `json:"hpi"`
+	PastDentalHistory    *string    `json:"past_dental_history"`
+	Extraoral            string     `json:"extraoral"`
+	ExtraoralNotes       *string    `json:"extraoral_notes"`
+	Intraoral            string     `json:"intraoral"`
+	IntraoralNotes       *string    `json:"intraoral_notes"`
+	Investigations       string     `json:"investigations"`
+	InvestigationResults *string    `json:"investigation_results"`
+	Diagnosis            *string    `json:"diagnosis"`
+	TreatmentPlan        *string    `json:"treatment_plan"`
+	TreatmentGiven       string     `json:"treatment_given"`
+	Anaesthesia          *string    `json:"anaesthesia"`
+	Complications        *string    `json:"complications"`
+	Procedures           string     `json:"procedures"`
+	Postop               *string    `json:"postop"`
+	CreatedBy            *uuid.UUID `json:"created_by"`
+	CreatedAt            time.Time  `json:"created_at"`
+	UpdatedAt            time.Time  `json:"updated_at"`
+}
+
 type Department struct {
 	ID                    uuid.UUID  `json:"id"`
 	TenantID              uuid.UUID  `json:"tenant_id"`
@@ -245,6 +572,18 @@ type Department struct {
 	DeletedAt             *time.Time `json:"deleted_at"`
 }
 
+type Dhis2Config struct {
+	TenantID       uuid.UUID `json:"tenant_id"`
+	BaseUrl        string    `json:"base_url"`
+	TokenEnc       *string   `json:"token_enc"`
+	OrgUnit        *string   `json:"org_unit"`
+	OrgUnitName    *string   `json:"org_unit_name"`
+	DataSet        string    `json:"data_set"`
+	PeriodCalendar string    `json:"period_calendar"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
 type Dhis2Disease struct {
 	ID          uuid.UUID `json:"id"`
 	TenantID    uuid.UUID `json:"tenant_id"`
@@ -254,6 +593,17 @@ type Dhis2Disease struct {
 	Counts      string    `json:"counts"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type Dhis2DiseaseMap struct {
+	ID              uuid.UUID `json:"id"`
+	TenantID        uuid.UUID `json:"tenant_id"`
+	DiseaseKey      string    `json:"disease_key"`
+	DiseaseName     string    `json:"disease_name"`
+	DataElement     string    `json:"data_element"`
+	DataElementName string    `json:"data_element_name"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 type Diagnosis struct {
@@ -377,6 +727,17 @@ type EventOutbox struct {
 	LastError     *string    `json:"last_error"`
 	CreatedAt     time.Time  `json:"created_at"`
 	DispatchedAt  *time.Time `json:"dispatched_at"`
+	ActorID       *uuid.UUID `json:"actor_id"`
+	BranchID      *uuid.UUID `json:"branch_id"`
+}
+
+type Feature struct {
+	Code       string  `json:"code"`
+	Name       string  `json:"name"`
+	Detail     *string `json:"detail"`
+	Category   string  `json:"category"`
+	ClinicType string  `json:"clinic_type"`
+	Sort       int32   `json:"sort"`
 }
 
 type FeatureFlag struct {
@@ -498,6 +859,115 @@ type LabTest struct {
 	Price     string     `json:"price"`
 }
 
+type MedicalCertificate struct {
+	ID            uuid.UUID  `json:"id"`
+	TenantID      uuid.UUID  `json:"tenant_id"`
+	PatientID     uuid.UUID  `json:"patient_id"`
+	BranchID      *uuid.UUID `json:"branch_id"`
+	Year          int32      `json:"year"`
+	Serial        int32      `json:"serial"`
+	Kind          string     `json:"kind"`
+	Diagnosis     *string    `json:"diagnosis"`
+	ShowDiagnosis bool       `json:"show_diagnosis"`
+	RestDays      *int32     `json:"rest_days"`
+	RestFrom      *time.Time `json:"rest_from"`
+	RestTo        *time.Time `json:"rest_to"`
+	Notes         *string    `json:"notes"`
+	IssuedAt      time.Time  `json:"issued_at"`
+	IssuedBy      *uuid.UUID `json:"issued_by"`
+	Status        string     `json:"status"`
+	VoidReason    *string    `json:"void_reason"`
+	VoidedBy      *uuid.UUID `json:"voided_by"`
+	VoidedAt      *time.Time `json:"voided_at"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+}
+
+type MedicalHistory struct {
+	ID         uuid.UUID  `json:"id"`
+	TenantID   uuid.UUID  `json:"tenant_id"`
+	PatientID  uuid.UUID  `json:"patient_id"`
+	Answers    string     `json:"answers"`
+	Notes      *string    `json:"notes"`
+	ReviewedAt time.Time  `json:"reviewed_at"`
+	ReviewedBy *uuid.UUID `json:"reviewed_by"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+}
+
+type Message struct {
+	ID        uuid.UUID  `json:"id"`
+	TenantID  uuid.UUID  `json:"tenant_id"`
+	BranchID  *uuid.UUID `json:"branch_id"`
+	PatientID *uuid.UUID `json:"patient_id"`
+	Kind      string     `json:"kind"`
+	Lang      string     `json:"lang"`
+	Msisdn    string     `json:"msisdn"`
+	Body      string     `json:"body"`
+	Segments  int32      `json:"segments"`
+	Cost      string     `json:"cost"`
+	// sent = the network accepted it. delivered = the handset confirmed it. The two are different facts and the UI must not blur them.
+	Status       string     `json:"status"`
+	SkipReason   *string    `json:"skip_reason"`
+	ScheduledFor time.Time  `json:"scheduled_for"`
+	SentAt       *time.Time `json:"sent_at"`
+	Attempts     int32      `json:"attempts"`
+	LastError    *string    `json:"last_error"`
+	CampaignID   *uuid.UUID `json:"campaign_id"`
+	DedupeKey    *string    `json:"dedupe_key"`
+	CreatedBy    *uuid.UUID `json:"created_by"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	// SMSEthiopia v2 ULID. The only handle for looking a message up after sending.
+	GatewayID       *string    `json:"gateway_id"`
+	GatewayStatus   *string    `json:"gateway_status"`
+	DeliveredAt     *time.Time `json:"delivered_at"`
+	StatusCheckedAt *time.Time `json:"status_checked_at"`
+	StatusChecks    int32      `json:"status_checks"`
+	// The recipient is waiting on this right now (welcome, test send), so quiet hours do not apply. Planned and bulk messages leave it false.
+	BypassQuietHours bool `json:"bypass_quiet_hours"`
+	// The earlier message this one retries. A resend is a new row so both attempts and both charges stay visible.
+	ResentFrom *uuid.UUID `json:"resent_from"`
+}
+
+type MessageCampaign struct {
+	ID           uuid.UUID  `json:"id"`
+	TenantID     uuid.UUID  `json:"tenant_id"`
+	Title        string     `json:"title"`
+	Body         string     `json:"body"`
+	Lang         string     `json:"lang"`
+	Status       string     `json:"status"`
+	ScheduledFor *time.Time `json:"scheduled_for"`
+	Total        int32      `json:"total"`
+	CreatedBy    *uuid.UUID `json:"created_by"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+type MessageRule struct {
+	ID          uuid.UUID   `json:"id"`
+	TenantID    uuid.UUID   `json:"tenant_id"`
+	Kind        string      `json:"kind"`
+	Enabled     bool        `json:"enabled"`
+	OffsetHours int32       `json:"offset_hours"`
+	SendAt      pgtype.Time `json:"send_at"`
+	RepeatDays  int32       `json:"repeat_days"`
+	MaxRepeats  int32       `json:"max_repeats"`
+	CreatedAt   time.Time   `json:"created_at"`
+	UpdatedAt   time.Time   `json:"updated_at"`
+}
+
+type MessageTemplate struct {
+	ID        uuid.UUID  `json:"id"`
+	TenantID  uuid.UUID  `json:"tenant_id"`
+	Kind      string     `json:"kind"`
+	Lang      string     `json:"lang"`
+	Body      string     `json:"body"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	UpdatedBy *uuid.UUID `json:"updated_by"`
+}
+
 type MrnCounter struct {
 	TenantID  uuid.UUID `json:"tenant_id"`
 	LastValue int64     `json:"last_value"`
@@ -528,7 +998,7 @@ type Patient struct {
 	MiddleName       *string     `json:"middle_name"`
 	LastName         string      `json:"last_name"`
 	Gender           string      `json:"gender"`
-	Dob              time.Time   `json:"dob"`
+	Dob              *time.Time  `json:"dob"`
 	NationalID       *string     `json:"national_id"`
 	PassportNo       *string     `json:"passport_no"`
 	Phone            *string     `json:"phone"`
@@ -541,6 +1011,55 @@ type Patient struct {
 	UpdatedAt        time.Time   `json:"updated_at"`
 	CreatedBy        *uuid.UUID  `json:"created_by"`
 	DeletedAt        *time.Time  `json:"deleted_at"`
+	FirstVisitDate   *time.Time  `json:"first_visit_date"`
+	DobEstimated     bool        `json:"dob_estimated"`
+	SmsOptOut        bool        `json:"sms_opt_out"`
+}
+
+type PaymentRail struct {
+	ID       uuid.UUID `json:"id"`
+	TenantID uuid.UUID `json:"tenant_id"`
+	// Stable value written to charges.payment_method / pharmacy_sales.payment_method. Never rename in place — reports group on it.
+	Key   string `json:"key"`
+	Label string `json:"label"`
+	Kind  string `json:"kind"`
+	// Provider identifier for receipt verification (cbe, boa, telebirr, mpesa, cbebirr, dashen, awash, siinqee, kaafiebirr). NULL for cash and card.
+	BankKey        *string    `json:"bank_key"`
+	AccountName    *string    `json:"account_name"`
+	AccountNumber  *string    `json:"account_number"`
+	NeedsReference bool       `json:"needs_reference"`
+	Active         bool       `json:"active"`
+	SortOrder      int32      `json:"sort_order"`
+	CreatedBy      *uuid.UUID `json:"created_by"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+}
+
+type PaymentReference struct {
+	ID            uuid.UUID  `json:"id"`
+	TenantID      uuid.UUID  `json:"tenant_id"`
+	PaymentRailID uuid.UUID  `json:"payment_rail_id"`
+	Reference     string     `json:"reference"`
+	ReferenceNorm string     `json:"reference_norm"`
+	ReceiptNo     *int64     `json:"receipt_no"`
+	PatientID     *uuid.UUID `json:"patient_id"`
+	Amount        *string    `json:"amount"`
+	SettledBy     *uuid.UUID `json:"settled_by"`
+	SettledAt     time.Time  `json:"settled_at"`
+	// verified | rejected | review | pending | unchecked. NULL = verification was never attempted (no key, or a rail with no provider).
+	VerifyState     *string    `json:"verify_state"`
+	VerifyReason    *string    `json:"verify_reason"`
+	VerifyDetail    *string    `json:"verify_detail"`
+	VerifyRequestID *string    `json:"verify_request_id"`
+	VerifyTraceID   *string    `json:"verify_trace_id"`
+	VerifiedAmount  *string    `json:"verified_amount"`
+	SenderName      *string    `json:"sender_name"`
+	ReceiverAccount *string    `json:"receiver_account"`
+	SettlementMatch *string    `json:"settlement_match"`
+	Confirmation    *string    `json:"confirmation"`
+	CheckedAt       *time.Time `json:"checked_at"`
+	OverrideBy      *uuid.UUID `json:"override_by"`
+	OverrideReason  *string    `json:"override_reason"`
 }
 
 type Permission struct {
@@ -570,6 +1089,8 @@ type PharmacySale struct {
 	Tax              string     `json:"tax"`
 	PaymentMethod    *string    `json:"payment_method"`
 	ChargeID         *uuid.UUID `json:"charge_id"`
+	PaymentRailID    *uuid.UUID `json:"payment_rail_id"`
+	PaymentReference *string    `json:"payment_reference"`
 }
 
 type PharmacySaleItem struct {
@@ -595,6 +1116,17 @@ type Plan struct {
 	PriceMonthly       *string   `json:"price_monthly"`
 	CreatedAt          time.Time `json:"created_at"`
 	UpdatedAt          time.Time `json:"updated_at"`
+	PatientLimit       *int32    `json:"patient_limit"`
+	ClinicType         string    `json:"clinic_type"`
+	ImagesPerPatient   *int32    `json:"images_per_patient"`
+	SmsMonthly         *int32    `json:"sms_monthly"`
+	Status             string    `json:"status"`
+}
+
+type PlanFeature struct {
+	PlanID  uuid.UUID `json:"plan_id"`
+	Feature string    `json:"feature"`
+	Enabled bool      `json:"enabled"`
 }
 
 type PlatformAdmin struct {
@@ -608,6 +1140,16 @@ type PlatformAdmin struct {
 	LastLoginAt  *time.Time `json:"last_login_at"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
+	Role         string     `json:"role"`
+}
+
+// Vendor-owned settings, e.g. the Verify.ET API key. Privileged pool only — no clinic_app grant, no RLS policy, because no tenant may read it.
+type PlatformSetting struct {
+	Key       string     `json:"key"`
+	ValueEnc  string     `json:"value_enc"`
+	Hint      *string    `json:"hint"`
+	UpdatedBy *uuid.UUID `json:"updated_by"`
+	UpdatedAt time.Time  `json:"updated_at"`
 }
 
 type PoItem struct {
@@ -619,6 +1161,33 @@ type PoItem struct {
 	UnitCost  string    `json:"unit_cost"`
 	LineTotal string    `json:"line_total"`
 	Received  bool      `json:"received"`
+}
+
+type PregnancyDating struct {
+	ID                  uuid.UUID `json:"id"`
+	TenantID            uuid.UUID `json:"tenant_id"`
+	PatientID           uuid.UUID `json:"patient_id"`
+	Method              string    `json:"method"`
+	Inputs              string    `json:"inputs"`
+	CalculatedLmp       time.Time `json:"calculated_lmp"`
+	Edd                 time.Time `json:"edd"`
+	EstimatedConception time.Time `json:"estimated_conception"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
+}
+
+type PregnancyDatingHistory struct {
+	ID                  uuid.UUID  `json:"id"`
+	TenantID            uuid.UUID  `json:"tenant_id"`
+	PatientID           uuid.UUID  `json:"patient_id"`
+	Method              string     `json:"method"`
+	Inputs              string     `json:"inputs"`
+	CalculatedLmp       time.Time  `json:"calculated_lmp"`
+	Edd                 time.Time  `json:"edd"`
+	EstimatedConception time.Time  `json:"estimated_conception"`
+	RecordedBy          *uuid.UUID `json:"recorded_by"`
+	RecordedAt          time.Time  `json:"recorded_at"`
+	Note                *string    `json:"note"`
 }
 
 type Prescription struct {
@@ -718,10 +1287,11 @@ type RolePermission struct {
 }
 
 type ServiceItem struct {
-	ID        uuid.UUID  `json:"id"`
-	TenantID  uuid.UUID  `json:"tenant_id"`
-	Code      string     `json:"code"`
-	Name      string     `json:"name"`
+	ID       uuid.UUID `json:"id"`
+	TenantID uuid.UUID `json:"tenant_id"`
+	Code     string    `json:"code"`
+	Name     string    `json:"name"`
+	// general | dental. Scopes the catalog page and decides which staff may create entries in it.
 	Category  string     `json:"category"`
 	Price     string     `json:"price"`
 	Currency  string     `json:"currency"`
@@ -731,6 +1301,8 @@ type ServiceItem struct {
 	CreatedBy *uuid.UUID `json:"created_by"`
 	DeletedAt *time.Time `json:"deleted_at"`
 	IsDefault bool       `json:"is_default"`
+	// reception = front desk only, clinician = clinical staff only, either = both. Enforced wherever a charge is raised.
+	AssignableBy string `json:"assignable_by"`
 }
 
 type ServiceProvider struct {
@@ -815,19 +1387,100 @@ type Supplier struct {
 }
 
 type Tenant struct {
-	ID          uuid.UUID  `json:"id"`
-	Name        string     `json:"name"`
-	Slug        string     `json:"slug"`
-	Status      string     `json:"status"`
-	PlanID      uuid.UUID  `json:"plan_id"`
-	Region      *string    `json:"region"`
-	Timezone    string     `json:"timezone"`
-	Locale      string     `json:"locale"`
-	Currency    string     `json:"currency"`
-	OnboardedAt *time.Time `json:"onboarded_at"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	DeletedAt   *time.Time `json:"deleted_at"`
+	ID                   uuid.UUID  `json:"id"`
+	Name                 string     `json:"name"`
+	Slug                 string     `json:"slug"`
+	Status               string     `json:"status"`
+	PlanID               uuid.UUID  `json:"plan_id"`
+	Region               *string    `json:"region"`
+	Timezone             string     `json:"timezone"`
+	Locale               string     `json:"locale"`
+	Currency             string     `json:"currency"`
+	OnboardedAt          *time.Time `json:"onboarded_at"`
+	CreatedAt            time.Time  `json:"created_at"`
+	UpdatedAt            time.Time  `json:"updated_at"`
+	DeletedAt            *time.Time `json:"deleted_at"`
+	ClinicType           string     `json:"clinic_type"`
+	StorageGbOverride    *int32     `json:"storage_gb_override"`
+	PatientLimitOverride *int32     `json:"patient_limit_override"`
+	UserLimitOverride    *int32     `json:"user_limit_override"`
+	BranchLimitOverride  *int32     `json:"branch_limit_override"`
+	// Grants patient.create to the doctor role for this clinic. Read by provision.BootstrapTenant when reconciling role grants — do not grant the permission directly.
+	DoctorRegistersPatients bool   `json:"doctor_registers_patients"`
+	SmsMonthlyOverride      *int32 `json:"sms_monthly_override"`
+}
+
+type TenantEntitlement struct {
+	TenantID  uuid.UUID `json:"tenant_id"`
+	Feature   string    `json:"feature"`
+	Enabled   bool      `json:"enabled"`
+	Note      *string   `json:"note"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type TreatmentItem struct {
+	ID        uuid.UUID  `json:"id"`
+	TenantID  uuid.UUID  `json:"tenant_id"`
+	PatientID uuid.UUID  `json:"patient_id"`
+	Procedure string     `json:"procedure"`
+	Tooth     *string    `json:"tooth"`
+	Fee       string     `json:"fee"`
+	Status    string     `json:"status"`
+	Paid      bool       `json:"paid"`
+	Note      *string    `json:"note"`
+	CreatedBy *uuid.UUID `json:"created_by"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+}
+
+type TreatmentPlan struct {
+	ID            uuid.UUID  `json:"id"`
+	TenantID      uuid.UUID  `json:"tenant_id"`
+	PatientID     uuid.UUID  `json:"patient_id"`
+	Title         string     `json:"title"`
+	Tooth         *string    `json:"tooth"`
+	TotalAmount   string     `json:"total_amount"`
+	StartDate     time.Time  `json:"start_date"`
+	IntervalUnit  string     `json:"interval_unit"`
+	IntervalCount int32      `json:"interval_count"`
+	SessionCount  int32      `json:"session_count"`
+	Deadline      *time.Time `json:"deadline"`
+	Status        string     `json:"status"`
+	Note          *string    `json:"note"`
+	CreatedBy     *uuid.UUID `json:"created_by"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	ServiceItemID *uuid.UUID `json:"service_item_id"`
+	ListPrice     *string    `json:"list_price"`
+}
+
+type TreatmentSession struct {
+	ID            uuid.UUID  `json:"id"`
+	TenantID      uuid.UUID  `json:"tenant_id"`
+	PlanID        uuid.UUID  `json:"plan_id"`
+	PatientID     uuid.UUID  `json:"patient_id"`
+	Seq           int32      `json:"seq"`
+	ScheduledDate time.Time  `json:"scheduled_date"`
+	AmountDue     string     `json:"amount_due"`
+	Status        string     `json:"status"`
+	ChargeID      *uuid.UUID `json:"charge_id"`
+	Notes         *string    `json:"notes"`
+	Rx            *string    `json:"rx"`
+	CreatedBy     *uuid.UUID `json:"created_by"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	Procedure     *string    `json:"procedure"`
+	Tooth         *string    `json:"tooth"`
+	PayLater      bool       `json:"pay_later"`
+	PayLaterNote  *string    `json:"pay_later_note"`
+	CompletedAt   *time.Time `json:"completed_at"`
+	CompletedBy   *uuid.UUID `json:"completed_by"`
+	BranchID      *uuid.UUID `json:"branch_id"`
+	// visit = a dated appointment in the course. deposit = the up-front payment, seq 0, carries money but is never delivered clinically.
+	Kind          string     `json:"kind"`
+	ServiceItemID *uuid.UUID `json:"service_item_id"`
+	// The visit an extra was performed at. NULL for visits and deposits.
+	ParentSessionID *uuid.UUID `json:"parent_session_id"`
 }
 
 type User struct {
@@ -846,6 +1499,7 @@ type User struct {
 	UpdatedAt      time.Time  `json:"updated_at"`
 	CreatedBy      *uuid.UUID `json:"created_by"`
 	DeletedAt      *time.Time `json:"deleted_at"`
+	Phone          *string    `json:"phone"`
 }
 
 type UserInvitation struct {
@@ -857,6 +1511,7 @@ type UserInvitation struct {
 	AcceptedAt *time.Time `json:"accepted_at"`
 	CreatedAt  time.Time  `json:"created_at"`
 	CreatedBy  *uuid.UUID `json:"created_by"`
+	Purpose    string     `json:"purpose"`
 }
 
 type UserRoleScope struct {
@@ -902,6 +1557,16 @@ type VitalFieldDef struct {
 	LowVal    *string   `json:"low_val"`
 	HighVal   *string   `json:"high_val"`
 	MaxVal    *string   `json:"max_val"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type Ward struct {
+	ID        uuid.UUID `json:"id"`
+	TenantID  uuid.UUID `json:"tenant_id"`
+	BranchID  uuid.UUID `json:"branch_id"`
+	Name      string    `json:"name"`
+	IsActive  bool      `json:"is_active"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

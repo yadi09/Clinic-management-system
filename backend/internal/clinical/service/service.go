@@ -670,7 +670,7 @@ func loadWorkspace(ctx context.Context, q *clinicaldb.Queries, tenantID, encID u
 	}
 	ws.Patient = clinical.PatientBanner{
 		PatientID: enc.PatientID, Name: b.FirstName + " " + b.LastName, MRN: b.Mrn,
-		Age: ageOf(b.Dob), Gender: b.Gender, BloodGroup: deref(b.BloodGroup),
+		Age: ageOfPtr(b.Dob), Gender: b.Gender, BloodGroup: deref(b.BloodGroup),
 	}
 
 	al, e := q.ListPatientAllergies(ctx, clinicaldb.ListPatientAllergiesParams{TenantID: tenantID, PatientID: enc.PatientID})
@@ -761,6 +761,14 @@ func allergyConflicts(drugName string, drugAllergens []string, allergies []clini
 		subs = append(subs, a.Substance)
 	}
 	return allergy.Conflicts(drugName, drugAllergens, subs)
+}
+
+// ageOfPtr is ageOf for a date of birth that may be unknown (0 = not known).
+func ageOfPtr(dob *time.Time) int {
+	if dob == nil {
+		return 0
+	}
+	return ageOf(*dob)
 }
 
 func ageOf(dob time.Time) int {
@@ -935,7 +943,7 @@ func scanCert(row interface{ Scan(...any) error }) (clinical.Certificate, error)
 	var year, serial int
 	var restFrom, restTo *time.Time
 	var issued time.Time
-	var dob time.Time
+	var dob *time.Time
 	if err := row.Scan(&c.ID, &year, &serial, &c.Kind, &c.Diagnosis, &c.ShowDiagnosis,
 		&c.RestDays, &restFrom, &restTo, &c.Notes, &issued, &c.IssuedBy, &c.Branch,
 		&c.Status, &c.VoidReason, &c.MRN, &c.PatientName, &dob, &c.Gender); err != nil {
@@ -949,9 +957,9 @@ func scanCert(row interface{ Scan(...any) error }) (clinical.Certificate, error)
 	if restTo != nil {
 		c.RestTo = restTo.Format("2006-01-02")
 	}
-	if !dob.IsZero() {
+	if dob != nil && !dob.IsZero() {
 		// Whole years, the way a certificate states an age.
-		years := int(time.Since(dob).Hours() / 24 / 365.25)
+		years := int(time.Since(*dob).Hours() / 24 / 365.25)
 		if years >= 0 {
 			c.Age = strconv.Itoa(years)
 		}
