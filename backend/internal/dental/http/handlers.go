@@ -78,6 +78,19 @@ func clinical(c *gin.Context) bool {
 	return ok && p.HasPermission("dental.manage")
 }
 
+// sealed returns v for a clinician and "" for anyone else. Used on the fields that
+// leaked past the summary's seal (audit D19): a plan's tooth and note, and the
+// procedure and tooth on the calendar and the unbilled report.
+func sealed(clinical bool, v string) string {
+	if clinical {
+		return v
+	}
+	return ""
+}
+
+// noChart is what the front desk is given in place of the odontogram.
+var noChart = dental.Chart{Teeth: map[string]string{}}
+
 func sessionDTO(se dental.Session, clinical bool) gin.H {
 	images := make([]gin.H, 0, len(se.Images))
 	for _, im := range se.Images {
@@ -121,10 +134,10 @@ func planDTO(p dental.Plan, clinical bool) gin.H {
 		sessions = append(sessions, sessionDTO(se, clinical))
 	}
 	out := gin.H{
-		"id": id.Encode(id.PrefixTreatmentPlan, p.ID), "title": p.Title, "tooth": p.Tooth,
+		"id": id.Encode(id.PrefixTreatmentPlan, p.ID), "title": p.Title, "tooth": sealed(clinical, p.Tooth),
 		"total_amount": p.TotalAmount, "start_date": p.StartDate, "interval_unit": p.IntervalUnit,
 		"interval_count": p.IntervalCount, "session_count": p.SessionCount, "deadline": p.Deadline,
-		"status": p.Status, "note": p.Note, "created_at": p.CreatedAt, "sessions": sessions,
+		"status": p.Status, "note": sealed(clinical, p.Note), "created_at": p.CreatedAt, "sessions": sessions,
 		// The catalogue link and the price it quoted on the day. Absent rather than
 		// empty when the course predates the catalogue, so "off-list" is legible.
 		"service_name": p.ServiceName, "list_price": p.ListPrice,
@@ -215,7 +228,11 @@ func (h *Handlers) Summary(c *gin.Context) {
 	for _, p := range sum.Plans {
 		plans = append(plans, planDTO(p, clin))
 	}
-	httpx.OK(c, gin.H{"chart": chartDTO(sum.Chart), "plans": plans, "balance": balanceDTO(sum.Balance), "image_limit": sum.ImageLimit})
+	chart := sum.Chart
+	if !clin {
+		chart = noChart // the tooth chart is clinical, like the notes
+	}
+	httpx.OK(c, gin.H{"chart": chartDTO(chart), "plans": plans, "balance": balanceDTO(sum.Balance), "image_limit": sum.ImageLimit})
 }
 
 // --- chart ---
@@ -223,6 +240,12 @@ func (h *Handlers) Summary(c *gin.Context) {
 func (h *Handlers) GetChart(c *gin.Context) {
 	pid, ok := decode(c, id.PrefixPatient, c.Param("id"))
 	if !ok {
+		return
+	}
+	if !clinical(c) {
+		// Empty, not 403: shared screens ask for it, and a desk user must not see
+		// errors for a seal working as intended (audit D19).
+		httpx.OK(c, chartDTO(noChart))
 		return
 	}
 	ch, err := h.svc.GetChart(c.Request.Context(), pid)
@@ -761,6 +784,12 @@ func (h *Handlers) ListImages(c *gin.Context) {
 		}
 		sess = &u
 	}
+	// X-rays and clinical photos are part of the record; the desk's dental.read used
+	// to receive signed links to every one of them (audit D19).
+	if !clinical(c) {
+		httpx.OK(c, []gin.H{})
+		return
+	}
 	imgs, err := h.svc.ListImages(c.Request.Context(), pid, sess)
 	if err != nil {
 		httpx.Fail(c, err)
@@ -808,6 +837,7 @@ func (h *Handlers) Outstanding(c *gin.Context) {
 // SessionsCalendar lists all patients' treatment sessions in [from,to] for the
 // clinic calendar (follow-up visits alongside appointments).
 func (h *Handlers) SessionsCalendar(c *gin.Context) {
+	clin := clinical(c)
 	from, to := c.Query("from"), c.Query("to")
 	if from == "" || to == "" {
 		httpx.Fail(c, apperr.Validation("from and to (YYYY-MM-DD) are required"))
@@ -826,7 +856,7 @@ func (h *Handlers) SessionsCalendar(c *gin.Context) {
 			"patient_id":   id.Encode(id.PrefixPatient, it.PatientID),
 			"patient_name": it.PatientName, "mrn": it.MRN, "scheduled_date": it.ScheduledDate,
 			"seq": it.Seq, "session_count": it.SessionCount, "title": it.Title,
-			"procedure": it.Procedure, "tooth": it.Tooth, "amount_due": it.AmountDue,
+			"procedure": sealed(clin, it.Procedure), "tooth": sealed(clin, it.Tooth), "amount_due": it.AmountDue,
 			"status": it.Status, "payment": it.Payment, "pay_later": it.PayLater,
 		})
 	}
@@ -981,6 +1011,7 @@ func (h *Handlers) DeleteExam(c *gin.Context) {
 // --- the unbilled-treatment report -------------------------------------------
 
 func (h *Handlers) UnbilledTreatment(c *gin.Context) {
+	clin := clinical(c)
 	limit, _ := strconv.Atoi(c.Query("limit"))
 	offset, _ := strconv.Atoi(c.Query("offset"))
 	out, err := h.svc.UnbilledTreatment(c.Request.Context(), c.Query("from"), c.Query("to"), limit, offset)
@@ -994,7 +1025,7 @@ func (h *Handlers) UnbilledTreatment(c *gin.Context) {
 			"session_id": id.Encode(id.PrefixTreatmentSession, r.SessionID),
 			"patient_id": id.Encode(id.PrefixPatient, r.PatientID),
 			"mrn":        r.MRN, "patient_name": r.PatientName, "phone": r.Phone,
-			"plan_title": r.PlanTitle, "procedure": r.Procedure, "tooth": r.Tooth,
+			"plan_title": r.PlanTitle, "procedure": sealed(clin, r.Procedure), "tooth": sealed(clin, r.Tooth),
 			"seq": r.Seq, "session_count": r.SessionCount,
 			"kind": r.Kind, "service_name": r.Service, "treatment_date": r.TreatmentDate, "days_unbilled": r.DaysUnbilled,
 			"amount": r.Amount, "lane": r.Lane,
