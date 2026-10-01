@@ -77,6 +77,22 @@ echo "=== D1: the front desk cannot correct a given visit ==="
 F=$(curl -k -sS -H "$HOST" -H "$AR" -H "$CT" -o /dev/null -w "%{http_code}" -X PUT $B/dental/patients/$PID/sessions/$S1 -d '{"status":"planned","reason":"x"}')
 [ "$F" = "403" ] && ok "receptionist cannot undo a visit ($F)" || no "desk undo: $F"
 
+echo "=== D18/D19: chart saves merge; the desk is sealed from the record ==="
+CODE=$(curl -k -sS -H "$HOST" -H "$AD" "$B/dental/tooth-statuses" | J "print(d['data'][0]['code'])")
+CH=$(curl -k -sS -H "$HOST" -H "$AD" -H "$CT" -o /dev/null -w "%{http_code}" -X PUT $B/dental/patients/$PID/chart -d "{\"changes\":{\"UR6\":\"$CODE\"}}")
+CH2=$(curl -k -sS -H "$HOST" -H "$AD" -H "$CT" -X PUT $B/dental/patients/$PID/chart -d "{\"changes\":{\"LL4\":\"$CODE\"}}" | J "print(','.join(sorted(d['data']['teeth'])))")
+[ "$CH" = "200" ] && [ "$CH2" = "LL4,UR6" ] && ok "two partial saves merged ($CH2)" || no "chart merge: $CH / $CH2"
+BAD=$(curl -k -sS -H "$HOST" -H "$AD" -H "$CT" -o /dev/null -w "%{http_code}" -X PUT $B/dental/patients/$PID/chart -d '{"changes":{"ZZ9":"x"}}')
+[ "$BAD" = "400" ] && ok "unknown tooth refused ($BAD)" || no "bad tooth: $BAD"
+DT=$(curl -k -sS -H "$HOST" -H "$AR" "$B/dental/patients/$PID/summary" | J "print(len(d['data']['chart']['teeth']))")
+[ "$DT" = "0" ] && ok "desk sees no tooth chart" || no "desk chart teeth: $DT"
+DI=$(curl -k -sS -H "$HOST" -H "$AR" "$B/dental/patients/$PID/images" | J "print(len(d['data']))")
+[ "$DI" = "0" ] && ok "desk gets no image list" || no "desk images: $DI"
+
+echo "=== D14: the course total matches its lines ==="
+TOT=$(curl -k -sS -H "$HOST" -H "$AD" "$B/dental/patients/$PID/summary" | J "print(d['data']['plans'][0]['total_amount'])")
+[ "$TOT" = "2500.00" ] && ok "total 2,500 = 500 deposit + 2 × 1,000" || no "total: $TOT"
+
 echo "=== D10: owed now = visit 1 + the down payment ==="
 DUE=$(curl -k -sS -H "$HOST" -H "$AR" "$B/dental/patients/$PID/summary" | J "print(d['data']['balance']['due'])")
 # 2,500 course − 500 deposit = 2,000 over 2 visits; visit 1 is given.
