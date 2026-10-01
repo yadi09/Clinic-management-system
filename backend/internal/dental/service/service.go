@@ -742,8 +742,12 @@ func (s *Service) CreatePlan(ctx context.Context, patientID uuid.UUID, in dental
 
 func (s *Service) UpdatePlan(ctx context.Context, patientID, planID uuid.UUID, in dental.PlanUpdate) error {
 	tid, _ := actorOf(ctx)
-	if in.Status != nil && *in.Status != "active" && *in.Status != "completed" && *in.Status != "cancelled" {
-		return apperr.Validation("invalid plan status")
+	// Status is not edited here. A bare UPDATE could cancel a course whose bills
+	// were still at the cashier, or mark it completed without the FinishCourse
+	// sweep, with no check and no event (audit D11/W14). Courses end through
+	// FinishCourse or CancelPlan, which both guard the money.
+	if in.Status != nil {
+		return apperr.Validation("a course is finished or cancelled from its own actions, not edited")
 	}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		ct, e := tx.Exec(ctx,
@@ -751,10 +755,9 @@ func (s *Service) UpdatePlan(ctx context.Context, patientID, planID uuid.UUID, i
 			   title = COALESCE($3, title),
 			   tooth = COALESCE($4, tooth),
 			   note = COALESCE($5, note),
-			   status = COALESCE($6, status),
 			   updated_at = now()
-			 WHERE tenant_id = $1 AND patient_id = $2 AND id = $7`,
-			tid, patientID, in.Title, in.Tooth, in.Note, in.Status, planID)
+			 WHERE tenant_id = $1 AND patient_id = $2 AND id = $6`,
+			tid, patientID, in.Title, in.Tooth, in.Note, planID)
 		if e != nil {
 			return e
 		}
@@ -1054,9 +1057,116 @@ func (s *Service) FinishCourse(ctx context.Context, patientID, planID uuid.UUID)
 	return cancelled, nil
 }
 
+// CancelPlan ends a course that will not go ahead — entered by mistake, or the
+// patient withdrew. Its visits still to come are cancelled, and so is an unpaid
+// down payment: that is the point of cancelling an agreement that was never
+// meant (contrast FinishCourse, which keeps the deposit owed).
+//
+// Refused while any bill on the course is live, and while any treatment given
+// is still owed: cancelling would otherwise hide money the clinic is due, or
+// leave bills at the cashier for a course that no longer exists (audit D11).
+// Those have to be settled, refunded, pulled back or written off first.
+func (s *Service) CancelPlan(ctx context.Context, patientID, planID uuid.UUID, reason string) (cancelled int, err error) {
+	tid, _ := actorOf(ctx)
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return 0, apperr.Validation("say why the course is being cancelled")
+	}
+	err = s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		var st string
+		if e := tx.QueryRow(ctx,
+			`SELECT status FROM treatment_plans WHERE tenant_id = $1 AND patient_id = $2 AND id = $3 FOR UPDATE`,
+			tid, patientID, planID).Scan(&st); e != nil {
+			if errors.Is(e, pgx.ErrNoRows) {
+				return apperr.NotFound("PLAN_NOT_FOUND", "treatment plan not found")
+			}
+			return e
+		}
+		if st == "cancelled" {
+			return apperr.Conflict("PLAN_CANCELLED", "this course is already cancelled")
+		}
+		if _, e := tx.Exec(ctx,
+			`SELECT 1 FROM treatment_sessions WHERE tenant_id = $1 AND plan_id = $2 FOR UPDATE`, tid, planID); e != nil {
+			return e
+		}
+		var live, owed int
+		var owedAmt string
+		if e := tx.QueryRow(ctx, sessionMoneyCTE+`
+			SELECT count(*) FILTER (WHERE sm.pay_state IN ('billed','paid','waived')),
+			       count(*) FILTER (WHERE sm.kind <> 'deposit' AND sm.session_status = 'done'
+			                          AND sm.pay_state IN ('unpaid','refunded') AND sm.owed_amount > 0.005),
+			       coalesce(sum(sm.owed_amount) FILTER (WHERE sm.kind <> 'deposit' AND sm.session_status = 'done'
+			                          AND sm.pay_state IN ('unpaid','refunded')), 0)::text
+			  FROM session_money sm
+			 WHERE sm.plan_id = $2 AND sm.session_status <> 'cancelled'`,
+			tid, planID).Scan(&live, &owed, &owedAmt); e != nil {
+			return e
+		}
+		if live > 0 {
+			return apperr.Conflict("PLAN_HAS_BILLS",
+				"this course has bills at the cashier, paid or written off — pull them back or refund them first")
+		}
+		if owed > 0 {
+			return apperr.Conflict("PLAN_HAS_DEBT",
+				"treatment already given on this course is owed ("+fmtMoney(money(owedAmt))+" ETB) — bill it or write it off before cancelling")
+		}
+		ct, e := tx.Exec(ctx,
+			`UPDATE treatment_sessions SET status = 'cancelled', updated_at = now()
+			  WHERE tenant_id = $1 AND plan_id = $2 AND patient_id = $3 AND status = 'planned'`,
+			tid, planID, patientID)
+		if e != nil {
+			return e
+		}
+		cancelled = int(ct.RowsAffected())
+		if _, e := tx.Exec(ctx,
+			`UPDATE treatment_plans SET status = 'cancelled', updated_at = now()
+			  WHERE tenant_id = $1 AND patient_id = $2 AND id = $3`, tid, patientID, planID); e != nil {
+			return e
+		}
+		return s.publisher.Publish(ctx, tx, &tid, "treatment_plan", planID, "dental.plan.cancelled",
+			map[string]any{"patient_id": patientID, "plan_id": planID, "reason": reason, "sessions_cancelled": cancelled})
+	})
+	if ae, ok := apperr.As(err); ok {
+		return 0, ae
+	}
+	if err != nil {
+		return 0, apperr.Internal(err)
+	}
+	return cancelled, nil
+}
+
 func (s *Service) DeletePlan(ctx context.Context, patientID, planID uuid.UUID) error {
 	tid, _ := actorOf(ctx)
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		// Lock the course and its rows before judging them, so a collect running at
+		// this moment is seen rather than raced (audit D11/W24, the D2 rule).
+		if _, e := tx.Exec(ctx,
+			`SELECT 1 FROM treatment_plans WHERE tenant_id = $1 AND patient_id = $2 AND id = $3 FOR UPDATE`,
+			tid, patientID, planID); e != nil {
+			return e
+		}
+		if _, e := tx.Exec(ctx,
+			`SELECT 1 FROM treatment_sessions WHERE tenant_id = $1 AND plan_id = $2 FOR UPDATE`, tid, planID); e != nil {
+			return e
+		}
+		// Delete is for a course entered by mistake, before anything happened. Once a
+		// visit was given, or a prescription or image is attached, deleting would
+		// erase the clinical record (prescriptions cascade; images are orphaned) and
+		// any debt with it — cancel the course instead (audit D11/W16).
+		var given int
+		if e := tx.QueryRow(ctx,
+			`SELECT count(*) FROM treatment_sessions se
+			  WHERE se.tenant_id = $1 AND se.plan_id = $2
+			    AND (se.status = 'done'
+			         OR EXISTS (SELECT 1 FROM dental_prescriptions rx WHERE rx.tenant_id = se.tenant_id AND rx.session_id = se.id)
+			         OR EXISTS (SELECT 1 FROM attachments a WHERE a.tenant_id = se.tenant_id AND a.treatment_session_id = se.id AND a.deleted_at IS NULL))`,
+			tid, planID).Scan(&given); e != nil {
+			return e
+		}
+		if given > 0 {
+			return apperr.Conflict("PLAN_HAS_RECORDS",
+				"treatment was given on this course, or it has prescriptions or images — cancel it instead of deleting it, so the record stays")
+		}
 		// Deleting a plan cascades its sessions out of existence. Every other path
 		// guards money carefully; this one bypassed all of them, so a plan carrying a
 		// paid, queued or refunded charge could be erased and the debt — or the record

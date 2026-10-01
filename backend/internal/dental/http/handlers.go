@@ -1073,6 +1073,31 @@ func (h *Handlers) AddSession(c *gin.Context) {
 	httpx.Created(c, sessionDTO(*out, true))
 }
 
+// CancelPlan ends a course that will not go ahead. A reason is required.
+func (h *Handlers) CancelPlan(c *gin.Context) {
+	pid, ok := decode(c, id.PrefixPatient, c.Param("id"))
+	if !ok {
+		return
+	}
+	planID, ok := decode(c, id.PrefixTreatmentPlan, c.Param("pid"))
+	if !ok {
+		return
+	}
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("say why the course is being cancelled"))
+		return
+	}
+	n, err := h.svc.CancelPlan(c.Request.Context(), pid, planID, req.Reason)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"sessions_cancelled": n})
+}
+
 func (h *Handlers) FinishCourse(c *gin.Context) {
 	pid, ok := decode(c, id.PrefixPatient, c.Param("id"))
 	if !ok {

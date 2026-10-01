@@ -28,7 +28,7 @@ import { DualDate } from "@/components/DualDate";
 import { MoveSessionDialog } from "@/features/dental/shared/MoveSessionDialog";
 import { ExtrasSection } from "@/features/dental/shared/Extras";
 import { MONEY, birr, num, sessionMoneyState } from "@/features/dental/money";
-import { addSession, finishCourse, type Plan } from "@/features/dental/api";
+import { addSession, cancelCourse, finishCourse, type Plan } from "@/features/dental/api";
 import { visitTiming, type FocusResult, type FocusVisit, type Rung } from "@/features/dental/visit/useFocusVisit";
 import { RecordVisitForm } from "@/features/dental/visit/RecordVisitForm";
 import { feeResolved, feeStage, FeeStrip, VisitPaymentStep } from "@/features/dental/visit/VisitPaymentStep";
@@ -77,6 +77,7 @@ export function VisitCockpit({
   const [moving, setMoving] = useState(false);
   const [adding, setAdding] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const [cancellingCourse, setCancellingCourse] = useState(false);
   const [correcting, setCorrecting] = useState(false);
   const { focus, rung, others } = resolved;
 
@@ -170,6 +171,11 @@ export function VisitCockpit({
                 <DropdownMenuItem onClick={() => setAdding(true)}>Add a visit to this course</DropdownMenuItem>
                 {plan.status === "active" && (
                   <DropdownMenuItem onClick={() => setFinishing(true)}>Finish this course</DropdownMenuItem>
+                )}
+                {plan.status !== "cancelled" && (
+                  <DropdownMenuItem className="text-destructive" onClick={() => setCancellingCourse(true)}>
+                    Cancel this course…
+                  </DropdownMenuItem>
                 )}
                 {onNewPlan && <DropdownMenuItem onClick={onNewPlan}>New treatment plan</DropdownMenuItem>}
               </DropdownMenuContent>
@@ -343,6 +349,12 @@ export function VisitCockpit({
         <FinishCourseDialog
           patientId={patientId} plan={plan}
           onClose={() => setFinishing(false)} onDone={onChanged}
+        />
+      )}
+      {cancellingCourse && (
+        <CancelCourseDialog
+          patientId={patientId} plan={plan}
+          onClose={() => setCancellingCourse(false)} onDone={onChanged}
         />
       )}
       {moving && (
@@ -619,6 +631,51 @@ function AddSessionDialog({ patientId, planId, planTitle, suggestDate, suggestAm
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button loading={add.isPending} disabled={!date} onClick={() => add.mutate()}>Add visit</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// For a course that will not go ahead — entered by mistake, or the patient withdrew.
+// The server refuses while money is live or given treatment is owed, and says what
+// to do first; this dialog only has to say what will happen (audit D11).
+function CancelCourseDialog({ patientId, plan, onClose, onDone }: {
+  patientId: string; plan: Plan; onClose: () => void; onDone: () => void;
+}) {
+  const [reason, setReason] = useState("");
+  const upcoming = plan.sessions.filter((s) => s.status === "planned");
+  const dep = plan.deposit;
+  const depositGoes = !!dep && dep.payment === "unpaid" && num(dep.amount_due) > 0;
+  const cancel = useMutation({
+    mutationFn: () => cancelCourse(patientId, plan.id, reason.trim()),
+    onSuccess: () => { toast.success("Course cancelled"); onDone(); onClose(); },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not cancel the course"),
+  });
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle className="text-destructive">Cancel {plan.title}?</DialogTitle></DialogHeader>
+        <p className="text-sm">
+          Use this for a course that will not go ahead. {upcoming.length > 0
+            ? <>Its {upcoming.length} booked visit{upcoming.length === 1 ? "" : "s"} will be cancelled</>
+            : <>Nothing is booked on it</>}
+          {depositGoes && dep ? <>, and the unpaid down payment of <b>{birr(dep.amount_due)}</b> will no longer be owed</> : null}.
+        </p>
+        <p className="text-xs text-muted-foreground">
+          A course with a bill at the cashier, a payment, or treatment already given and not paid for cannot be
+          cancelled — those have to be pulled back, refunded or written off first, so no money disappears.
+        </p>
+        <div className="space-y-1.5">
+          <Label htmlFor="cancel-why" className="text-xs">Why? (kept on the record)</Label>
+          <Input id="cancel-why" value={reason} onChange={(e) => setReason(e.target.value)}
+            placeholder="Created on the wrong patient · patient decided not to go ahead" />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Keep the course</Button>
+          <Button variant="destructive" disabled={!reason.trim()} loading={cancel.isPending} onClick={() => cancel.mutate()}>
+            Cancel the course
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -358,6 +358,11 @@ export function addSession(patientId: string, planId: string, body: { scheduled_
   return apiFetch<Session>(`/dental/patients/${patientId}/plans/${planId}/sessions`, { method: "POST", body });
 }
 /** Close a course early. Cancels only visits never delivered and never billed. */
+/** Cancel a course that will not go ahead. Refused while any bill is live or any
+ *  treatment given is still owed; an unpaid down payment is cancelled with it. */
+export function cancelCourse(patientId: string, planId: string, reason: string) {
+  return apiFetch<{ sessions_cancelled: number }>(`/dental/patients/${patientId}/plans/${planId}/cancel`, { method: "POST", body: { reason } });
+}
 export function finishCourse(patientId: string, planId: string) {
   return apiFetch<{ sessions_cancelled: number }>(`/dental/patients/${patientId}/plans/${planId}/finish`, { method: "POST" });
 }

@@ -113,6 +113,7 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	// clinical decisions about the treatment, so they sit with the dentist.
 	g.POST("/patients/:id/plans/:pid/sessions", h.AddSession)
 	g.POST("/patients/:id/plans/:pid/finish", h.FinishCourse)
+	g.POST("/patients/:id/plans/:pid/cancel", h.CancelPlan)
 
 	g.PUT("/patients/:id/sessions/:sid", h.UpdateSession)
 	// Changing a visit's price re-spreads the course, so it sits with the dentist who

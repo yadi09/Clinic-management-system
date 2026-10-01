@@ -380,6 +380,7 @@ type Service interface {
 	CreatePlan(ctx context.Context, patientID uuid.UUID, in PlanInput) (*Plan, error)
 	UpdatePlan(ctx context.Context, patientID, planID uuid.UUID, in PlanUpdate) error
 	DeletePlan(ctx context.Context, patientID, planID uuid.UUID) error
+	CancelPlan(ctx context.Context, patientID, planID uuid.UUID, reason string) (int, error)
 	// AddSession appends a visit to a running course (a root canal that needs a
 	// seventh). FinishCourse closes one early, cancelling only the visits that were
 	// never delivered and never billed.

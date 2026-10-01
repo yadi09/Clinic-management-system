@@ -586,3 +586,52 @@ func TestD13_PullBackNeedsAReasonAndKeepsIt(t *testing.T) {
 		t.Fatalf("void_reason = %q", why)
 	}
 }
+
+// --- D11: a course can be cancelled safely, and not by the back doors ---
+
+func TestD11_CancelAMistakenCourse(t *testing.T) {
+	f := newFixture(t)
+	p := f.course(3, "2000", "500")
+	if _, err := f.svc.CancelPlan(f.as(f.dentist), f.patient, p.ID, ""); code(err) != validation {
+		t.Fatalf("no reason: got %q", code(err))
+	}
+	n, err := f.svc.CancelPlan(f.as(f.dentist), f.patient, p.ID, "created on the wrong patient")
+	must(t, err)
+	if n != 4 { // three visits and the unpaid down payment
+		t.Fatalf("cancelled %d rows, want 4", n)
+	}
+	if st, _, _ := f.session(p.Deposit.ID); st != "cancelled" {
+		t.Fatalf("deposit = %s, want cancelled with the course", st)
+	}
+	if ev := f.lastEvent("dental.plan.cancelled", p.ID); ev == nil || ev["reason"] != "created on the wrong patient" {
+		t.Fatalf("event = %v", ev)
+	}
+}
+
+func TestD11_CancelRefusesOwedOrBilledCourses(t *testing.T) {
+	f := newFixture(t)
+	p := f.course(3, "2000", "")
+	f.record(f.dentist, p.Sessions[0].ID)
+	if _, err := f.svc.CancelPlan(f.as(f.owner), f.patient, p.ID, "x"); code(err) != "PLAN_HAS_DEBT" {
+		t.Fatalf("given visit owed: got %q", code(err))
+	}
+	must(t, f.svc.CollectSession(f.as(f.owner), f.patient, p.Sessions[0].ID))
+	if _, err := f.svc.CancelPlan(f.as(f.owner), f.patient, p.ID, "x"); code(err) != "PLAN_HAS_BILLS" {
+		t.Fatalf("bill at cashier: got %q", code(err))
+	}
+}
+
+func TestD11_BackDoorsAreClosed(t *testing.T) {
+	f := newFixture(t)
+	p := f.course(2, "1000", "")
+	cancelled := "cancelled"
+	if err := f.svc.UpdatePlan(f.as(f.owner), f.patient, p.ID, dental.PlanUpdate{Status: &cancelled}); code(err) != validation {
+		t.Fatalf("status via UpdatePlan: got %q", code(err))
+	}
+	f.record(f.dentist, p.Sessions[0].ID)
+	if err := f.svc.DeletePlan(f.as(f.owner), f.patient, p.ID); code(err) != "PLAN_HAS_RECORDS" {
+		t.Fatalf("delete with given treatment: got %q", code(err))
+	}
+	clean := f.course(2, "1000", "")
+	must(t, f.svc.DeletePlan(f.as(f.dentist), f.patient, clean.ID))
+}
