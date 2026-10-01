@@ -1244,12 +1244,11 @@ func (s *Service) ExpectedForDay(ctx context.Context, date string) (*billing.Exp
 		if e != nil {
 			return e
 		}
-		var total float64
+		cash, other := splitDrawer(rows)
 		for _, r := range rows {
-			out.ByMethod = append(out.ByMethod, billing.CashGroup{Label: r.Method, Total: r.Total, Count: int(r.N)})
-			total += parseMoneyB(r.Total)
+			out.ByMethod = append(out.ByMethod, billing.CashGroup{Label: r.Method, Total: r.Total, Count: int(r.N), Cash: r.IsCash})
 		}
-		out.ExpectedTotal = money2(total)
+		out.ExpectedTotal, out.NonCashTotal = money2(cash), money2(other)
 		rec, e := q.GetReconciliation(ctx, billingdb.GetReconciliationParams{TenantID: tenantID, CashierID: *actor, BusinessDate: day})
 		if e == nil {
 			out.Closed = true
@@ -1335,6 +1334,19 @@ func (s *Service) DayCloses(ctx context.Context, from, to string) ([]billing.Day
 
 // CloseDay records a counted drawer against the expected total for the acting
 // cashier and returns the Z-report (idempotent per cashier per day).
+// splitDrawer totals a day's lines into what is in the cash drawer (cash taken net
+// of cash refunded) and everything else.
+func splitDrawer(rows []billingdb.ExpectedForCashierDayRow) (cash, other float64) {
+	for _, r := range rows {
+		if r.IsCash {
+			cash += parseMoneyB(r.Total)
+		} else {
+			other += parseMoneyB(r.Total)
+		}
+	}
+	return cash, other
+}
+
 func (s *Service) CloseDay(ctx context.Context, in billing.CloseDayInput) (*billing.Reconciliation, error) {
 	tenantID, actor := actorOf(ctx)
 	if actor == nil {
@@ -1353,10 +1365,11 @@ func (s *Service) CloseDay(ctx context.Context, in billing.CloseDayInput) (*bill
 		if e != nil {
 			return e
 		}
-		var expected float64
+		// The counted drawer is held against cash only (audit D4). by_method keeps
+		// every line, so the stored close still shows the whole day.
+		expected, _ := splitDrawer(rows)
 		methods := map[string]string{}
 		for _, r := range rows {
-			expected += parseMoneyB(r.Total)
 			methods[r.Method] = r.Total
 		}
 		byMethodJSON, _ := json.Marshal(methods)

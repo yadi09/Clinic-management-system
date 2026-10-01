@@ -82,6 +82,8 @@ export interface CashGroup {
   label: string;
   total: string;
   count: number;
+  /** In the cash drawer. Only these lines make up a day close's expected total. */
+  cash?: boolean;
 }
 export interface CashSummary {
   collected: string;
@@ -109,7 +111,10 @@ export interface Reconciliation {
 export interface ExpectedDay {
   business_date: string;
   by_method: CashGroup[];
+  /** The CASH that should be in the drawer: cash taken minus cash refunded. */
   expected_total: string;
+  /** Telebirr, bank, card — taken today but never in the drawer. */
+  non_cash_total?: string;
   closed: boolean;
   reconciliation?: Reconciliation;
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/pressly/goose/v3"
 
 	migrations "github.com/reicb/clinicsaas/db/migrations"
+	"github.com/reicb/clinicsaas/internal/billing"
 	billingsvc "github.com/reicb/clinicsaas/internal/billing/service"
 	"github.com/reicb/clinicsaas/internal/dental"
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
@@ -465,5 +466,40 @@ func TestD3_FinishCourseKeepsTheDepositOwed(t *testing.T) {
 	must(t, f.svc.CollectSession(f.as(f.owner), f.patient, p.Deposit.ID))
 	if st, _, _ := f.session(p.Sessions[0].ID); st != "done" {
 		t.Fatalf("given visit 1 became %s", st)
+	}
+}
+
+// --- D4: the day close holds the counted drawer against cash only ---
+
+func TestD4_DayCloseExpectsCashNetOfCashRefunds(t *testing.T) {
+	f := newFixture(t)
+	b := billingsvc.NewService(f.db, events.NewOutboxPublisher())
+	p := f.course(3, "1000", "")
+	var charges []uuid.UUID
+	for _, s := range p.Sessions {
+		f.record(f.dentist, s.ID)
+		must(t, f.svc.CollectSession(f.as(f.owner), f.patient, s.ID))
+		var cid uuid.UUID
+		must(t, f.db.Pool.QueryRow(context.Background(),
+			`SELECT charge_id FROM treatment_sessions WHERE id = $1`, s.ID).Scan(&cid))
+		charges = append(charges, cid)
+	}
+	cashier := f.as(f.owner)
+	must(t, b.SettleCharge(cashier, charges[0], billing.SettleInput{Method: "cash"}))
+	must(t, b.SettleCharge(cashier, charges[1], billing.SettleInput{Method: "cash"}))
+	must(t, b.SettleCharge(cashier, charges[2], billing.SettleInput{Method: "telebirr"}))
+	must(t, b.RefundCharge(cashier, charges[1], "patient changed their mind"))
+
+	day, err := b.ExpectedForDay(cashier, time.Now().UTC().Format("2006-01-02"))
+	must(t, err)
+	// 2,000 cash in − 1,000 cash refunded = 1,000 in the drawer; Telebirr never was.
+	if day.ExpectedTotal != "1000.00" || day.NonCashTotal != "1000.00" {
+		t.Fatalf("expected cash %s, non-cash %s; want 1000.00 and 1000.00 (lines %+v)",
+			day.ExpectedTotal, day.NonCashTotal, day.ByMethod)
+	}
+	rec, err := b.CloseDay(cashier, billing.CloseDayInput{BusinessDate: day.BusinessDate, Counted: "1000"})
+	must(t, err)
+	if rec.Variance != "0.00" {
+		t.Fatalf("an exact drawer closed with variance %s", rec.Variance)
 	}
 }

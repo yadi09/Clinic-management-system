@@ -282,12 +282,29 @@ GROUP BY c.settled_by, u.full_name ORDER BY total DESC;
 -- ---- end-of-day cash reconciliation (Z-report) ----
 
 -- name: ExpectedForCashierDay :many
--- What a cashier collected on a business day, grouped by method (the "expected" drawer).
-SELECT COALESCE(payment_method, 'unknown') AS method, COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
-FROM charges
-WHERE tenant_id = @tenant_id AND settled_by = @cashier_id AND status = 'paid' AND source <> 'refund'
-  AND settled_at >= @day_start AND settled_at < @day_end
-GROUP BY payment_method ORDER BY method;
+-- What a cashier took on a business day, by method, NET of the refunds they paid
+-- out, and whether each line is cash — the only thing a counted drawer can be held
+-- against. Telebirr or a bank transfer never reaches the drawer, so totalling every
+-- method made any day with a digital payment read as a shortfall (audit D4).
+--
+-- Cash is a rail whose kind is 'cash', or — for bills settled before rails existed —
+-- payment_method 'cash' with no rail. A refund is paid back the way the original
+-- was taken, so it is classified by its original charge.
+SELECT (CASE WHEN c.source = 'refund' THEN 'refund · ' || COALESCE(m.payment_method, 'unknown')
+             ELSE COALESCE(m.payment_method, 'unknown') END)::text AS method,
+       COALESCE(sum(c.amount), 0)::numeric AS total,
+       count(*)::int AS n,
+       COALESCE(COALESCE(pr.kind, CASE WHEN m.payment_rail_id IS NULL AND m.payment_method = 'cash' THEN 'cash' END) = 'cash', false)::bool AS is_cash
+FROM charges c
+LEFT JOIN charges o ON c.source = 'refund' AND o.id = c.reverses_charge_id AND o.tenant_id = c.tenant_id
+CROSS JOIN LATERAL (
+  SELECT CASE WHEN c.source = 'refund' THEN o.payment_method  ELSE c.payment_method  END AS payment_method,
+         CASE WHEN c.source = 'refund' THEN o.payment_rail_id ELSE c.payment_rail_id END AS payment_rail_id
+) m
+LEFT JOIN payment_rails pr ON pr.id = m.payment_rail_id AND pr.tenant_id = c.tenant_id
+WHERE c.tenant_id = @tenant_id AND c.settled_by = @cashier_id AND c.status = 'paid' AND c.deleted_at IS NULL
+  AND c.settled_at >= @day_start AND c.settled_at < @day_end
+GROUP BY 1, 4 ORDER BY 4 DESC, 1;
 
 -- name: GetReconciliation :one
 SELECT id, cashier_id, business_date, expected_total, counted_total, variance, by_method, note, closed_at

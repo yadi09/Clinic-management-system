@@ -254,6 +254,9 @@ type CashGroup struct {
 	Label string `json:"label"`
 	Total string `json:"total"`
 	Count int    `json:"count"`
+	// Cash marks the lines that are in the drawer. Only these make up a day close's
+	// expected total; the rest (Telebirr, bank, card) are listed for information.
+	Cash bool `json:"cash,omitempty"`
 }
 
 type CashSummary struct {
@@ -273,9 +276,13 @@ type CashSummary struct {
 
 // ExpectedDay is a cashier's drawer for one business day (the Z-report basis).
 type ExpectedDay struct {
-	BusinessDate   string          `json:"business_date"`
-	ByMethod       []CashGroup     `json:"by_method"`
+	BusinessDate string      `json:"business_date"`
+	ByMethod     []CashGroup `json:"by_method"`
+	// ExpectedTotal is the CASH that should be in the drawer: cash taken minus cash
+	// refunded. It used to total every method, so any Telebirr payment read as a
+	// shortfall (audit D4). NonCashTotal is the rest, for information only.
 	ExpectedTotal  string          `json:"expected_total"`
+	NonCashTotal   string          `json:"non_cash_total"`
 	Closed         bool            `json:"closed"`
 	Reconciliation *Reconciliation `json:"reconciliation,omitempty"`
 }

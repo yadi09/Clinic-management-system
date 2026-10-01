@@ -216,7 +216,7 @@ export function printZReport(o: {
   clinic: string;
   cashier: string;
   businessDate: string;
-  byMethod: { label: string; total: string; count: number }[];
+  byMethod: { label: string; total: string; count: number; cash?: boolean }[];
   expected: string;
   counted: string;
   variance: string;
@@ -225,7 +225,7 @@ export function printZReport(o: {
 }) {
   const cur = o.currency || "ETB";
   const lines = o.byMethod
-    .map((m) => `<tr><td class="muted">${esc(m.label)} (${m.count})</td><td class="r">${cur} ${esc(m.total)}</td></tr>`)
+    .map((m) => `<tr><td class="muted">${esc(m.label)} (${m.count})${m.cash ? "" : " — not in drawer"}</td><td class="r">${cur} ${esc(m.total)}</td></tr>`)
     .join("");
   const vNum = parseFloat(o.variance);
   const vLabel = vNum === 0 ? "BALANCED" : vNum > 0 ? "OVER" : "SHORT";
@@ -242,8 +242,8 @@ export function printZReport(o: {
     <table>${lines || `<tr><td class="muted">No collections</td><td class="r">${cur} 0.00</td></tr>`}</table>
     <hr/>
     <table>
-      <tr><td class="b">Expected</td><td class="r b">${cur} ${esc(o.expected)}</td></tr>
-      <tr><td class="b">Counted</td><td class="r b">${cur} ${esc(o.counted)}</td></tr>
+      <tr><td class="b">Expected cash</td><td class="r b">${cur} ${esc(o.expected)}</td></tr>
+      <tr><td class="b">Counted cash</td><td class="r b">${cur} ${esc(o.counted)}</td></tr>
       <tr><td class="b lg">Variance (${vLabel})</td><td class="r b lg">${cur} ${esc(o.variance)}</td></tr>
     </table>
     ${o.note ? `<hr/><div class="muted">Note</div><div>${esc(o.note)}</div>` : ""}

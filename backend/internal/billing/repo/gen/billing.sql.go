@@ -626,11 +626,21 @@ func (q *Queries) EnqueueFromCharge(ctx context.Context, arg EnqueueFromChargePa
 
 const expectedForCashierDay = `-- name: ExpectedForCashierDay :many
 
-SELECT COALESCE(payment_method, 'unknown') AS method, COALESCE(sum(amount), 0)::numeric AS total, count(*)::int AS n
-FROM charges
-WHERE tenant_id = $1 AND settled_by = $2 AND status = 'paid' AND source <> 'refund'
-  AND settled_at >= $3 AND settled_at < $4
-GROUP BY payment_method ORDER BY method
+SELECT (CASE WHEN c.source = 'refund' THEN 'refund · ' || COALESCE(m.payment_method, 'unknown')
+             ELSE COALESCE(m.payment_method, 'unknown') END)::text AS method,
+       COALESCE(sum(c.amount), 0)::numeric AS total,
+       count(*)::int AS n,
+       COALESCE(COALESCE(pr.kind, CASE WHEN m.payment_rail_id IS NULL AND m.payment_method = 'cash' THEN 'cash' END) = 'cash', false)::bool AS is_cash
+FROM charges c
+LEFT JOIN charges o ON c.source = 'refund' AND o.id = c.reverses_charge_id AND o.tenant_id = c.tenant_id
+CROSS JOIN LATERAL (
+  SELECT CASE WHEN c.source = 'refund' THEN o.payment_method  ELSE c.payment_method  END AS payment_method,
+         CASE WHEN c.source = 'refund' THEN o.payment_rail_id ELSE c.payment_rail_id END AS payment_rail_id
+) m
+LEFT JOIN payment_rails pr ON pr.id = m.payment_rail_id AND pr.tenant_id = c.tenant_id
+WHERE c.tenant_id = $1 AND c.settled_by = $2 AND c.status = 'paid' AND c.deleted_at IS NULL
+  AND c.settled_at >= $3 AND c.settled_at < $4
+GROUP BY 1, 4 ORDER BY 4 DESC, 1
 `
 
 type ExpectedForCashierDayParams struct {
@@ -644,10 +654,18 @@ type ExpectedForCashierDayRow struct {
 	Method string `json:"method"`
 	Total  string `json:"total"`
 	N      int32  `json:"n"`
+	IsCash bool   `json:"is_cash"`
 }
 
 // ---- end-of-day cash reconciliation (Z-report) ----
-// What a cashier collected on a business day, grouped by method (the "expected" drawer).
+// What a cashier took on a business day, by method, NET of the refunds they paid
+// out, and whether each line is cash — the only thing a counted drawer can be held
+// against. Telebirr or a bank transfer never reaches the drawer, so totalling every
+// method made any day with a digital payment read as a shortfall (audit D4).
+//
+// Cash is a rail whose kind is 'cash', or — for bills settled before rails existed —
+// payment_method 'cash' with no rail. A refund is paid back the way the original
+// was taken, so it is classified by its original charge.
 func (q *Queries) ExpectedForCashierDay(ctx context.Context, arg ExpectedForCashierDayParams) ([]ExpectedForCashierDayRow, error) {
 	rows, err := q.db.Query(ctx, expectedForCashierDay,
 		arg.TenantID,
@@ -662,7 +680,12 @@ func (q *Queries) ExpectedForCashierDay(ctx context.Context, arg ExpectedForCash
 	items := []ExpectedForCashierDayRow{}
 	for rows.Next() {
 		var i ExpectedForCashierDayRow
-		if err := rows.Scan(&i.Method, &i.Total, &i.N); err != nil {
+		if err := rows.Scan(
+			&i.Method,
+			&i.Total,
+			&i.N,
+			&i.IsCash,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

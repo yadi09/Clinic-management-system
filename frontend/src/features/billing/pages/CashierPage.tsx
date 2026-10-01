@@ -377,7 +377,9 @@ function DayCloseRow({ d, isToday, clinicName, cashierName, onClose }: {
 
   const printZ = () => printZReport({
     clinic: clinicName, cashier: cashierName, businessDate: d.business_date,
-    byMethod: detail.data?.by_method ?? [], expected: d.expected_total,
+    // The close's own expected (cash) figure, not the day's takings across every
+    // method — that mismatch is what printed a false SHORT (audit D4).
+    byMethod: detail.data?.by_method ?? [], expected: detail.data?.reconciliation?.expected_total ?? detail.data?.expected_total ?? d.expected_total,
     counted: d.counted_total ?? "0", variance: d.variance ?? "0", note: d.note,
   });
 
@@ -425,10 +427,10 @@ function DayCloseRow({ d, isToday, clinicName, cashierName, onClose }: {
             <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Collected</p>
             <div className="divide-y rounded-md border bg-card text-sm">
               {(detail.data?.by_method ?? []).map((m) => (
-                <div key={m.label} className="flex justify-between px-3 py-1.5"><span className="capitalize">{m.label} ({m.count})</span><span className="font-mono">ETB {etbFmt(m.total)}</span></div>
+                <div key={m.label} className="flex justify-between px-3 py-1.5"><span className="capitalize">{m.label} ({m.count}){!m.cash && <span className="text-xs normal-case text-muted-foreground"> · not in drawer</span>}</span><span className="font-mono">ETB {etbFmt(m.total)}</span></div>
               ))}
               {(detail.data?.by_method ?? []).length === 0 && <div className="px-3 py-1.5 text-muted-foreground">{detail.isLoading ? "Loading…" : "No payments on this day."}</div>}
-              <div className="flex justify-between px-3 py-1.5 font-semibold"><span>Expected</span><span className="font-mono">ETB {etbFmt(d.expected_total)}</span></div>
+              <div className="flex justify-between px-3 py-1.5 font-semibold"><span>Expected cash in drawer</span><span className="font-mono">ETB {etbFmt(detail.data?.reconciliation?.expected_total ?? detail.data?.expected_total ?? "0")}</span></div>
             </div>
           </div>
           {d.closed ? (
@@ -493,13 +495,20 @@ function DayCloseDialog({ date, onClose, onDone }: { date: string | null; onClos
         )}
         {e?.closed && <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">Already closed — saving again updates the closeout.</p>}
         <div>
-          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Expected (what you collected)</p>
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">What you took today</p>
           <div className="rounded-md border divide-y text-sm">
             {(e?.by_method ?? []).map((m) => (
-              <div key={m.label} className="flex justify-between px-3 py-1.5"><span className="capitalize">{m.label} ({m.count})</span><span className="font-mono">ETB {m.total}</span></div>
+              <div key={m.label} className="flex justify-between px-3 py-1.5"><span className="capitalize">{m.label} ({m.count}){!m.cash && <span className="text-xs normal-case text-muted-foreground"> · not in drawer</span>}</span><span className="font-mono">ETB {m.total}</span></div>
             ))}
-            <div className="flex justify-between px-3 py-1.5 font-semibold"><span>Expected total</span><span className="font-mono">ETB {e?.expected_total ?? "0"}</span></div>
+            {/* Only cash is counted against the drawer. Telebirr and bank payments are
+                listed so the day is complete, but they were never in it (audit D4). */}
+            <div className="flex justify-between px-3 py-1.5 font-semibold"><span>Expected cash in drawer</span><span className="font-mono">ETB {e?.expected_total ?? "0"}</span></div>
           </div>
+          {Number(e?.non_cash_total ?? 0) !== 0 && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              ETB {e?.non_cash_total} more was taken by Telebirr, bank or card — check it against those statements, not the drawer.
+            </p>
+          )}
         </div>
         <div className="space-y-1.5">
           <Label>Counted cash in drawer (ETB)</Label>
