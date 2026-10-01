@@ -14,6 +14,11 @@ The two Claude sessions don't share memory (different machines, different paths)
 
 ## Log
 
+### 2026-10-02 — WSL
+- Shipped in-app notifications: the top-bar bell + a sign-in pop-up. v1 kind = dental "missed visit" (to owner, clinic admin, reception, and the course's dentist). Migration **00087** (`notifications`, `notification_watermarks`); backend `internal/notification`; frontend `features/notifications`. Producer runs in the worker every 5 min; notices clear themselves once the visit is rebooked/done.
+- Next migration number is **00088**. To add a notification kind, see the `produce` package doc and `href()` in `notification/http/handlers.go`.
+- Left alone on purpose (pre-existing): stale sqlc models in 6 modules, the importlint failure in `dental/service/money_integration_test.go`, and the dialog close ✕ drawn at the bottom by `.touch-hit`.
+
 ### 2026-09-29 — WSL
 - Set up the Windows-side working copy at `C:\Users\Lenovo\Projects\Clinic-management-system` via a direct rsync copy (not a fresh `git clone`) — so it already has full git history and the `origin` remote wired up, no clone step needed there.
 - Excluded from that copy (regenerate locally instead): `frontend/node_modules`, `frontend/dist`, `backend/seed` (compiled Linux binary — rebuild with `go build` if you use it), `.history/` (editor local-history clutter, not worth carrying over).

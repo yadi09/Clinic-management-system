@@ -973,6 +973,26 @@ type MrnCounter struct {
 	LastValue int64     `json:"last_value"`
 }
 
+type Notification struct {
+	ID        uuid.UUID  `json:"id"`
+	TenantID  uuid.UUID  `json:"tenant_id"`
+	UserID    uuid.UUID  `json:"user_id"`
+	Kind      string     `json:"kind"`
+	Title     string     `json:"title"`
+	Body      string     `json:"body"`
+	PatientID *uuid.UUID `json:"patient_id"`
+	SubjectID *uuid.UUID `json:"subject_id"`
+	DedupeKey string     `json:"dedupe_key"`
+	CreatedAt time.Time  `json:"created_at"`
+	ReadAt    *time.Time `json:"read_at"`
+}
+
+type NotificationWatermark struct {
+	Kind      string    `json:"kind"`
+	Since     time.Time `json:"since"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type PartnerLead struct {
 	ID              uuid.UUID `json:"id"`
 	Name            string    `json:"name"`

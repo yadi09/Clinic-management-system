@@ -55,6 +55,8 @@ import (
 	"github.com/reicb/clinicsaas/internal/messaging"
 	messaginghttp "github.com/reicb/clinicsaas/internal/messaging/http"
 	messagingservice "github.com/reicb/clinicsaas/internal/messaging/service"
+	notificationhttp "github.com/reicb/clinicsaas/internal/notification/http"
+	notificationservice "github.com/reicb/clinicsaas/internal/notification/service"
 	orghttp "github.com/reicb/clinicsaas/internal/org/http"
 	orgservice "github.com/reicb/clinicsaas/internal/org/service"
 	patienthttp "github.com/reicb/clinicsaas/internal/patient/http"
@@ -182,8 +184,9 @@ func main() {
 	}
 
 	campaignHandlers := campaignhttp.New(campaignservice.New(db))
+	notificationHandlers := notificationhttp.NewHandlers(notificationservice.NewService(db))
 
-	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, reportingHandlers, dashboardHandlers, maternityHandlers, inpatientHandlers, dentalHandlers, messagingHandlers, pharmacyHandlers, labHandlers, financeHandlers, platformHandlers, crmHandlers, campaignHandlers)
+	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, reportingHandlers, dashboardHandlers, maternityHandlers, inpatientHandlers, dentalHandlers, messagingHandlers, pharmacyHandlers, labHandlers, financeHandlers, platformHandlers, crmHandlers, campaignHandlers, notificationHandlers)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -232,6 +235,7 @@ func newRouter(
 	platformHandlers *platformhttp.Handlers,
 	crmHandlers *crmhttp.Handlers,
 	campaignHandlers *campaignhttp.Handlers,
+	notificationHandlers *notificationhttp.Handlers,
 ) *gin.Engine {
 	if cfg.IsProd() {
 		gin.SetMode(gin.ReleaseMode)
@@ -285,6 +289,7 @@ func newRouter(
 	labHandlers.RegisterProtected(protected)                 // /lab/...
 	dashboardHandlers.RegisterProtected(protected)           // /dashboard/today
 	financehttp.Register(protected, financeHandlers, tokens) // /finance/overview, /finance/receivables
+	notificationHandlers.RegisterProtected(protected)        // /notifications, /notifications/count, /notifications/:id/read
 
 	// SSE queue stream authenticates via ?token= (EventSource can't set headers).
 	v1.GET("/queue/stream", httpx.RequireAuthQuery(tokens), schedulingHandlers.QueueStream)

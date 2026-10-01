@@ -19,6 +19,7 @@ import (
 	"github.com/reicb/clinicsaas/internal/kernel/sms"
 	"github.com/reicb/clinicsaas/internal/messaging"
 	"github.com/reicb/clinicsaas/internal/messaging/dispatch"
+	"github.com/reicb/clinicsaas/internal/notification/produce"
 )
 
 func main() {
@@ -77,7 +78,12 @@ func main() {
 			// reach them after they had left.
 			reg.On("patient.patient.registered", dispatch.WelcomeOnRegistration(planner))
 
-			log.Info("worker started: dispatcher, delivery reconciler and reminder planner")
+			// In-app notifications (the bell). A missed visit becomes missed when its
+			// day ends, not when someone clicks, so a timer finds it. Five minutes is
+			// plenty: staff read these when they sign in, not to the second.
+			go produce.NewMissedVisits(privDB, log).Run(ctx, 5*time.Minute)
+
+			log.Info("worker started: dispatcher, delivery reconciler, reminder planner and notifications")
 		}
 	} else {
 		log.Warn("PLATFORM_DATABASE_URL unset — patient messages will not be sent")

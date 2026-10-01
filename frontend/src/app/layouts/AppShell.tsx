@@ -1,11 +1,13 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, Bell, Search, LogOut, ChevronsUpDown, Building2, Check } from "lucide-react";
+import { Activity, Search, LogOut, ChevronsUpDown, Building2, Check } from "lucide-react";
 
 import { useAuth } from "@/app/auth-context";
 import { navSections, visibleNav } from "@/app/nav";
 import { inboxCount } from "@/features/lab/api";
 import { PageHelp } from "@/features/help/PageHelp";
+import { NotificationBell } from "@/features/notifications/NotificationBell";
+import { SignInNotifications } from "@/features/notifications/SignInNotifications";
 import { CommandPalette } from "@/app/command-palette";
 import { MobileNav } from "@/app/layouts/MobileNav";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -118,9 +120,7 @@ export function AppShell() {
             <Search className="h-5 w-5" />
           </button>
           <PageHelp />
-          <button className="relative rounded-md p-2 hover:bg-white/10" aria-label="Notifications">
-            <Bell className="h-5 w-5" />
-          </button>
+          <NotificationBell />
           <DropdownMenu>
             <DropdownMenuTrigger className="flex items-center gap-2 rounded-md p-1 hover:bg-white/10 focus:outline-none">
               <Avatar className="h-8 w-8">
@@ -215,6 +215,7 @@ export function AppShell() {
 
       <MobileNav sections={sections} badgeCount={badgeCount} />
       <CommandPalette />
+      <SignInNotifications />
     </div>
   );
 }

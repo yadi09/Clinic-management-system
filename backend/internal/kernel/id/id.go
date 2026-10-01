@@ -85,6 +85,8 @@ const (
 	PrefixTouch       = "tch" // a call, a visit, a message
 	PrefixProcedure   = "prc" // a dental procedure this clinic offers
 	PrefixToothStatus = "tst" // a condition a clinic marks on a tooth
+
+	PrefixNotification = "ntf" // an in-app notification for one staff member
 )
 
 // base32 lower-case, no padding. Decoding is case-insensitive.
