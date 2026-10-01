@@ -69,10 +69,20 @@ function Quadrant({ label, codes, teeth, editable, onToggle, align, sts }: { lab
   );
 }
 
-export function ToothChart({ teeth, editable, onToggle }: { teeth: Record<string, string>; editable: boolean; onToggle: (code: string) => void }) {
+export function ToothChart({ teeth, editable: canEdit, onToggle }: { teeth: Record<string, string>; editable: boolean; onToggle: (code: string) => void }) {
   const sts = useToothStatuses();
+  // Read-only until the clinic's conditions have loaded (audit D12).
+  const editable = canEdit && sts.ready;
   return (
     <div className="space-y-2">
+      {canEdit && !sts.ready && (
+        <div role="status" className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-900">
+          <span className="min-w-0 flex-1">
+            {sts.failed ? "The tooth conditions did not load — the chart is read-only until they do." : "Loading the tooth conditions…"}
+          </span>
+          {sts.failed && <button type="button" className="font-medium underline" onClick={sts.retry}>Retry</button>}
+        </div>
+      )}
       {/* Side by side the two arches need ~520px; a phone gets one quadrant per
           row so eight teeth fill the width instead of shrinking below a finger. */}
       <div className="grid grid-cols-1 gap-x-4 gap-y-2 border-b pb-3 md:grid-cols-2">

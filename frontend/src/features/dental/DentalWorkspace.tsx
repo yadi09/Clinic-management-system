@@ -274,6 +274,8 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
     // and starting a save from inside one is a side effect in a place that promises
     // to be pure.
     const prev = draft.current[code] ?? "";
+    // The chart is read-only until the conditions load; this is the second lock.
+    if (!toothSts.ready) return;
     const next = toothSts.next(prev);
     applyTooth(code, next);
     // Tap-to-cycle with autosave means a stray thumb-tap silently rewrites the

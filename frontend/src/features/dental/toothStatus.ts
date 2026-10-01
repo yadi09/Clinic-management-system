@@ -10,6 +10,10 @@ import { listToothStatuses, type ToothStatusDef } from "@/features/dental/api";
 
 /** An unmarked tooth. Not a condition, so it is never in the clinic's list. */
 const BLANK = { background: "#ffffff", borderColor: "#dddde8", color: "#c9c9d4" };
+/** A mark whose condition this page does not know. Deliberately NOT blank: it used
+ *  to render exactly like an unmarked tooth, so a chart whose condition list failed
+ *  to load read as a healthy mouth (audit D12). */
+const UNKNOWN = { background: "#f1f1f4", borderColor: "#6b6b7a", color: "#3d3d4a" };
 
 /** The pale fill behind a tooth, derived from the one colour a clinic picked. */
 function tint(hex: string, alpha: number) {
@@ -29,26 +33,46 @@ export interface ToothStatuses {
   /** Tapping a tooth walks the clinic's own conditions, then back to unmarked. */
   next: (current: string) => string;
   loading: boolean;
+  /** The condition list has loaded and has entries. Until it has, the chart must
+   *  not be edited: a tap would compute its next mark from an empty list. */
+  ready: boolean;
+  failed: boolean;
+  retry: () => void;
 }
 
 export function useToothStatuses(): ToothStatuses {
-  const q = useQuery({ queryKey: ["tooth-statuses"], queryFn: () => listToothStatuses(), staleTime: 300000 });
-  const list = q.data ?? [];
-  const by = new Map(list.map((s) => [s.code, s]));
+  // Retired conditions are fetched too, for display only: a tooth marked "crown"
+  // before the clinic retired crowns still shows as a crown. Tapping cycles through
+  // the active ones.
+  const q = useQuery({ queryKey: ["tooth-statuses", "all"], queryFn: () => listToothStatuses(true), staleTime: 300000 });
+  const all = q.data ?? [];
+  const list = all.filter((s) => s.is_active);
+  const by = new Map(all.map((s) => [s.code, s]));
+  const ready = q.isSuccess && list.length > 0;
   return {
     list,
     loading: q.isLoading,
+    ready,
+    failed: q.isError,
+    retry: () => { void q.refetch(); },
     // A code no longer in the list is still shown: a tooth marked "crown" before the
     // clinic retired crowns was marked by a dentist, and the record stands.
     labelOf: (code) => by.get(code)?.label ?? (code ? code.replace(/_/g, " ") : ""),
     styleOf: (code) => {
+      if (!code) return BLANK;
       const s = by.get(code);
-      if (!s) return BLANK;
+      if (!s) return UNKNOWN;
       return { background: tint(s.color, 0.14), borderColor: s.color, color: s.color };
     },
     next: (current) => {
+      // Never compute a mark from a list that is not there: that is how a failed
+      // 200-byte request turned the next tap into an erased tooth (audit D12/W21).
+      if (!ready) return current;
       const codes = ["", ...list.map((s) => s.code)];
       const i = codes.indexOf(current || "");
+      // A retired or unknown mark steps to the first condition instead of being
+      // erased; the toast after the tap offers Undo (audit D12/W20).
+      if (i < 0) return codes[1];
       return codes[(i + 1) % codes.length];
     },
   };
