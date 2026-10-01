@@ -185,12 +185,13 @@ func (h *Handlers) RepriceSession(c *gin.Context) {
 	var req struct {
 		Amount string `json:"amount"`
 		Mode   string `json:"mode"` // respread | total
+		Reason string `json:"reason"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.Fail(c, apperr.Validation("an amount and a mode are required"))
 		return
 	}
-	if err := h.svc.RepriceSession(c.Request.Context(), pid, sid, req.Amount, req.Mode); err != nil {
+	if err := h.svc.RepriceSession(c.Request.Context(), pid, sid, req.Amount, req.Mode, req.Reason); err != nil {
 		httpx.Fail(c, err)
 		return
 	}
@@ -429,6 +430,7 @@ func (h *Handlers) UpdateSession(c *gin.Context) {
 		Tooth         *string `json:"tooth"`
 		Notes         *string `json:"notes"`
 		Rx            *string `json:"rx"`
+		Reason        string  `json:"reason"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.Fail(c, apperr.Validation("invalid request"))
@@ -436,7 +438,7 @@ func (h *Handlers) UpdateSession(c *gin.Context) {
 	}
 	if err := h.svc.UpdateSession(c.Request.Context(), pid, sid, dental.SessionUpdate{
 		ScheduledDate: req.ScheduledDate, AmountDue: req.AmountDue, Status: req.Status,
-		Procedure: req.Procedure, Tooth: req.Tooth, Notes: req.Notes, Rx: req.Rx,
+		Procedure: req.Procedure, Tooth: req.Tooth, Notes: req.Notes, Rx: req.Rx, Reason: req.Reason,
 	}); err != nil {
 		httpx.Fail(c, err)
 		return

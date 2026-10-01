@@ -59,7 +59,67 @@ func activeBranchOf(ctx context.Context) *uuid.UUID {
 	return nil
 }
 
-func money(s string) float64    { f, _ := strconv.ParseFloat(s, 64); return f }
+func money(s string) float64 { f, _ := strconv.ParseFloat(s, 64); return f }
+
+// parseMoney reads a fee typed by a person. Unlike money(), which reads values the
+// database already holds, it refuses what it cannot read: "1,500" or "1500 ETB"
+// silently becoming 0 is a fee forgiven by a typo (audit D8).
+func parseMoney(s string) (float64, error) {
+	f, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0, apperr.Validation("the fee must be a plain number, like 1500")
+	}
+	if f < 0 {
+		return 0, apperr.Validation("a fee cannot be negative")
+	}
+	return math.Round(f*100) / 100, nil
+}
+
+// mayForgive is the one rule for any change that forgives money owed on a given
+// visit (undoing it, cancelling it, or lowering its fee): allowed for the person
+// who recorded it on the same clinic day — correcting their own mistake — or for
+// someone holding payment.waive, and always with a reason (audit D1).
+func mayForgive(ctx context.Context, completedBy *uuid.UUID, doneToday bool, owed float64, reason string) error {
+	_, actor := actorOf(ctx)
+	own := actor != nil && completedBy != nil && *completedBy == *actor && doneToday
+	if !own && !hasPermission(ctx, "payment.waive") {
+		return apperr.Forbidden("VISIT_OWED",
+			"this visit was given and its fee of "+fmtMoney(owed)+" ETB is owed — only the person who "+
+				"recorded it can change that, on the same day; otherwise ask the owner or cashier to write it off")
+	}
+	if strings.TrimSpace(reason) == "" {
+		return apperr.Validation("say why this visit is being corrected")
+	}
+	return nil
+}
+
+// lockSession takes the row lock on one session in a statement of its own, and
+// must run BEFORE any read that joins the session to its charge.
+//
+// Under READ COMMITTED, `SELECT … FROM treatment_sessions se LEFT JOIN charges c …
+// FOR UPDATE OF se` waits for a concurrent collect and then re-reads only the
+// session row: the joined charge still comes from the statement's original
+// snapshot, in which the competing charge did not exist yet. So the second Collect
+// saw "no charge" and billed the visit twice (audit D2). A new statement started
+// after the lock is granted takes a new snapshot and sees the committed charge.
+func lockSession(ctx context.Context, tx pgx.Tx, tid, patientID, sessionID uuid.UUID) error {
+	var one int
+	e := tx.QueryRow(ctx,
+		`SELECT 1 FROM treatment_sessions WHERE tenant_id = $1 AND patient_id = $2 AND id = $3 FOR UPDATE`,
+		tid, patientID, sessionID).Scan(&one)
+	if errors.Is(e, pgx.ErrNoRows) {
+		return apperr.NotFound("SESSION_NOT_FOUND", "session not found")
+	}
+	return e
+}
+
+// hasPermission reports whether the signed-in user holds perm. Routes gate whole
+// endpoints; this is for the rules inside one, where the same request is allowed
+// or refused depending on what it would do to money.
+func hasPermission(ctx context.Context, perm string) bool {
+	p, ok := tenancy.PrincipalFromContext(ctx)
+	return ok && p.HasPermission(perm)
+}
 func fmtMoney(f float64) string { return strconv.FormatFloat(f, 'f', 2, 64) }
 func nullStr(s string) *string {
 	if s == "" {
@@ -1000,8 +1060,25 @@ func (s *Service) DeletePlan(ctx context.Context, patientID, planID uuid.UUID) e
 	return nil
 }
 
+// UpdateSession is "Correct this visit" and the record form. It is the route that
+// changes the most state, so it is also the one that most needs rules:
+//
+//   - A visit with a live bill (pending, paid or written off) cannot leave 'done',
+//     be cancelled, or change fee. The bill has to be dealt with first — pulled
+//     back, refunded or the write-off undone — so the money and the record can
+//     never disagree.
+//   - A done, unbilled visit is owed. Undoing it (back to planned, or cancelled)
+//     or lowering its fee erases that debt from every money surface, so only the
+//     person who recorded it may do so, on the same clinic day (the "I clicked the
+//     wrong visit" case), or someone holding payment.waive — and always with a
+//     reason.
+//   - Only a planned visit may move to another date (RescheduleSession's rule):
+//     redating a given visit rewrites the clinical record and its debt's age.
+//
+// Every change publishes dental.session.updated with each changed field's before
+// and after, the reason and who did it. Until this, nothing here was audited.
 func (s *Service) UpdateSession(ctx context.Context, patientID, sessionID uuid.UUID, in dental.SessionUpdate) error {
-	tid, _ := actorOf(ctx)
+	tid, actor := actorOf(ctx)
 	if in.Status != "" && !validSessionStatus[in.Status] {
 		return apperr.Validation("invalid session status")
 	}
@@ -1014,10 +1091,14 @@ func (s *Service) UpdateSession(ctx context.Context, patientID, sessionID uuid.U
 	}
 	var amtPtr *string
 	if in.AmountDue != "" {
-		a := fmtMoney(money(in.AmountDue))
-		amtPtr = &a
+		a, e := parseMoney(in.AmountDue)
+		if e != nil {
+			return e
+		}
+		f := fmtMoney(a)
+		amtPtr = &f
 	}
-	_, actor := actorOf(ctx)
+	reason := strings.TrimSpace(in.Reason)
 	branch := activeBranchOf(ctx)
 	clinical := in.Status != "" || in.Procedure != nil || in.Tooth != nil || in.Notes != nil || in.Rx != nil
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
@@ -1026,27 +1107,66 @@ func (s *Service) UpdateSession(ctx context.Context, patientID, sessionID uuid.U
 				return e
 			}
 		}
-		// The fee is frozen once a charge is live. Without this a session billed and
-		// paid at 2,000 could afterwards be edited to 5,000 while the receipt still
-		// says 2,000, and the two never reconcile. Deliberately narrow: only the
-		// AMOUNT is refused, because blocking the whole update would stop the dentist
-		// writing clinical notes on a visit the desk has already billed — which is
-		// the exact ordering phase 3 removed.
-		if amtPtr != nil {
-			var live bool
+		// Lock the visit first, then read its bill in a SEPARATE statement. Reading
+		// the bill through a join in the locking statement returns it as it was
+		// before any concurrent collect committed (audit D2).
+		var was struct {
+			status, date, amount, procedure, tooth, notes, rx string
+			completedBy                                       *uuid.UUID
+			doneToday                                         bool
+			chargeID                                          *uuid.UUID
+		}
+		e := tx.QueryRow(ctx,
+			`SELECT se.status, se.scheduled_date::text, se.amount_due::text,
+			        coalesce(se.procedure,''), coalesce(se.tooth,''), coalesce(se.notes,''), coalesce(se.rx,''),
+			        se.completed_by,
+			        coalesce((se.completed_at AT TIME ZONE t.timezone)::date = (now() AT TIME ZONE t.timezone)::date, false),
+			        se.charge_id
+			   FROM treatment_sessions se JOIN tenants t ON t.id = se.tenant_id
+			  WHERE se.tenant_id = $1 AND se.patient_id = $2 AND se.id = $3
+			  FOR UPDATE OF se`,
+			tid, patientID, sessionID).Scan(&was.status, &was.date, &was.amount, &was.procedure, &was.tooth,
+			&was.notes, &was.rx, &was.completedBy, &was.doneToday, &was.chargeID)
+		if errors.Is(e, pgx.ErrNoRows) {
+			return apperr.NotFound("SESSION_NOT_FOUND", "session not found")
+		}
+		if e != nil {
+			return e
+		}
+		billState := ""
+		if was.chargeID != nil {
 			if e := tx.QueryRow(ctx,
-				`SELECT EXISTS (SELECT 1 FROM treatment_sessions se
-				                JOIN charges c ON c.id = se.charge_id AND c.tenant_id = se.tenant_id
-				                WHERE se.tenant_id = $1 AND se.id = $2 AND c.deleted_at IS NULL
-				                  AND c.status IN ('pending','paid','waived'))`,
-				tid, sessionID).Scan(&live); e != nil {
+				`SELECT status FROM charges WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+				tid, *was.chargeID).Scan(&billState); e != nil && !errors.Is(e, pgx.ErrNoRows) {
 				return e
 			}
-			if live {
-				return apperr.Conflict("SESSION_ALREADY_BILLED",
-					"this session's fee has already been billed — undo the charge first, or adjust it from the cashier")
+		}
+		live := billState == "pending" || billState == "paid" || billState == "waived"
+
+		next := was.status
+		if in.Status != "" {
+			next = in.Status
+		}
+		leavingDone := was.status == "done" && next != "done"
+		cancelling := next == "cancelled" && was.status != "cancelled"
+		feeChanged := amtPtr != nil && money(*amtPtr) != money(was.amount)
+		dateChanged := datePtr != nil && *datePtr != was.date
+
+		if live && (leavingDone || cancelling || feeChanged) {
+			what := map[string]string{"pending": "is at the cashier", "paid": "has been paid", "waived": "was written off"}[billState]
+			return apperr.Conflict("SESSION_HAS_BILL",
+				"this visit's bill "+what+" — pull it back from the cashier, refund it, or undo the write-off first")
+		}
+		// Undoing given treatment, or charging less for it, forgives money owed.
+		if was.status == "done" && money(was.amount) > 0 && (leavingDone || (feeChanged && money(*amtPtr) < money(was.amount))) {
+			if e := mayForgive(ctx, was.completedBy, was.doneToday, money(was.amount), reason); e != nil {
+				return e
 			}
 		}
+		if dateChanged && was.status != "planned" {
+			return apperr.Validation("only a planned visit can be moved to another date")
+		}
+
 		ct, e := tx.Exec(ctx,
 			`UPDATE treatment_sessions SET
 			   scheduled_date = COALESCE($3::date, scheduled_date),
@@ -1056,14 +1176,18 @@ func (s *Service) UpdateSession(ctx context.Context, patientID, sessionID uuid.U
 			   tooth = COALESCE($7, tooth),
 			   notes = COALESCE($8, notes),
 			   rx = COALESCE($9, rx),
-			   -- Stamped on the TRANSITION into done, never on a re-save. The record form
-			   -- re-sends status='done' every time a note is edited, and a session that
-			   -- predates this column has completed_at NULL — so a COALESCE here stamped
-			   -- today on the whole existing backlog and reset the report's ageing to zero
-			   -- the moment anyone fixed a typo.
-			   completed_at = CASE WHEN $5 = 'done' AND status <> 'done' THEN now() ELSE completed_at END,
-			   completed_by = CASE WHEN $5 = 'done' AND status <> 'done' THEN $11    ELSE completed_by END,
-			   branch_id    = CASE WHEN $5 = 'done' AND status <> 'done' THEN $12    ELSE branch_id END,
+			   -- Stamped on the TRANSITION into done, never on a re-save: the record form
+			   -- re-sends status='done' every time a note is edited. Cleared when a
+			   -- visit leaves done — that is an undo, which the guard above has allowed
+			   -- and the event below records, so a later completion is stamped afresh
+			   -- instead of inheriting the mistaken one.
+			   completed_at = CASE WHEN $5 = 'done' AND status <> 'done' THEN now()
+			                       WHEN $5 IN ('planned','cancelled') AND status = 'done' THEN NULL
+			                       ELSE completed_at END,
+			   completed_by = CASE WHEN $5 = 'done' AND status <> 'done' THEN $11
+			                       WHEN $5 IN ('planned','cancelled') AND status = 'done' THEN NULL
+			                       ELSE completed_by END,
+			   branch_id    = CASE WHEN $5 = 'done' AND status <> 'done' THEN $12 ELSE branch_id END,
 			   updated_at = now()
 			 WHERE tenant_id = $1 AND patient_id = $2 AND id = $10`,
 			tid, patientID, datePtr, amtPtr, in.Status, in.Procedure, in.Tooth, in.Notes, in.Rx, sessionID, actor, branch)
@@ -1073,7 +1197,30 @@ func (s *Service) UpdateSession(ctx context.Context, patientID, sessionID uuid.U
 		if ct.RowsAffected() == 0 {
 			return apperr.NotFound("SESSION_NOT_FOUND", "session not found")
 		}
-		return nil
+
+		changes := map[string]any{}
+		diff := func(field, from string, to *string) {
+			if to != nil && *to != from {
+				changes[field] = map[string]string{"from": from, "to": *to}
+			}
+		}
+		if next != was.status {
+			changes["status"] = map[string]string{"from": was.status, "to": next}
+		}
+		if feeChanged {
+			changes["amount_due"] = map[string]string{"from": fmtMoney(money(was.amount)), "to": *amtPtr}
+		}
+		diff("scheduled_date", was.date, datePtr)
+		diff("procedure", was.procedure, in.Procedure)
+		diff("tooth", was.tooth, in.Tooth)
+		diff("notes", was.notes, in.Notes)
+		diff("rx", was.rx, in.Rx)
+		if len(changes) == 0 {
+			return nil // a re-save that changed nothing is not an event
+		}
+		return s.publisher.Publish(ctx, tx, &tid, "treatment_session", sessionID, "dental.session.updated",
+			map[string]any{"patient_id": patientID, "session_id": sessionID, "changes": changes,
+				"reason": reason, "by": actor})
 	})
 	if ae, ok := apperr.As(err); ok {
 		return ae
@@ -1146,10 +1293,30 @@ func (s *Service) CollectSession(ctx context.Context, patientID, sessionID uuid.
 // collectOne bills a single session and returns the amount charged. Shared by the
 // single and bulk paths so the money logic exists exactly once.
 func (s *Service) collectOne(ctx context.Context, patientID, sessionID uuid.UUID) (float64, error) {
+	var charged float64
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		amt, e := s.collectInTx(ctx, tx, patientID, sessionID)
+		charged = amt
+		return e
+	})
+	if ae, ok := apperr.As(err); ok {
+		return 0, ae
+	}
+	if err != nil {
+		return 0, apperr.Internal(err)
+	}
+	return charged, nil
+}
+
+// collectInTx is collectOne inside the caller's transaction.
+func (s *Service) collectInTx(ctx context.Context, tx pgx.Tx, patientID, sessionID uuid.UUID) (float64, error) {
 	tid, _ := actorOf(ctx)
 	br := activeBranchOf(ctx)
 	var charged float64
-	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+	err := func() error {
+		if e := lockSession(ctx, tx, tid, patientID, sessionID); e != nil {
+			return e
+		}
 		var amount, planTitle, kind string
 		var seq, count int
 		var chargeStatus *string
@@ -1165,19 +1332,20 @@ func (s *Service) collectOne(ctx context.Context, patientID, sessionID uuid.UUID
 		// the report has to be able to count it as one.
 		var svcItem *uuid.UUID
 		var svcName string
+		var oldCharge *uuid.UUID
 		e := tx.QueryRow(ctx,
 			`SELECT se.amount_due::text, se.seq, p.title, p.session_count, c.status,
 			        (SELECT sum(-r.amount)::text FROM charges r
 			          WHERE r.tenant_id = c.tenant_id AND r.reverses_charge_id = c.id AND r.deleted_at IS NULL),
 			        se.branch_id, se.kind, coalesce(se.service_item_id, p.service_item_id),
-			        coalesce(si.name, '')
+			        coalesce(si.name, ''), se.charge_id
 			 FROM treatment_sessions se
 			 JOIN treatment_plans p ON p.id = se.plan_id AND p.tenant_id = se.tenant_id
 			 LEFT JOIN service_items si ON si.id = se.service_item_id AND si.tenant_id = se.tenant_id
 			 LEFT JOIN charges c ON c.id = se.charge_id AND c.tenant_id = se.tenant_id AND c.deleted_at IS NULL
 			 WHERE se.tenant_id = $1 AND se.patient_id = $2 AND se.id = $3
 			 FOR UPDATE OF se`,
-			tid, patientID, sessionID).Scan(&amount, &seq, &planTitle, &count, &chargeStatus, &refunded, &treatedAt, &kind, &svcItem, &svcName)
+			tid, patientID, sessionID).Scan(&amount, &seq, &planTitle, &count, &chargeStatus, &refunded, &treatedAt, &kind, &svcItem, &svcName, &oldCharge)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return apperr.NotFound("SESSION_NOT_FOUND", "session not found")
 		}
@@ -1227,20 +1395,22 @@ func (s *Service) collectOne(ctx context.Context, patientID, sessionID uuid.UUID
 		}
 		// Re-points the session at the new charge. The refunded original keeps its own
 		// row and its reversal, so the history stays intact and readable.
-		if _, e := tx.Exec(ctx, `UPDATE treatment_sessions SET charge_id = $1, updated_at = now() WHERE tenant_id = $2 AND id = $3`, cid, tid, sessionID); e != nil {
+		// Compare-and-set: relink only from the link we read. If anything moved it
+		// in between, fail rather than orphan a live charge with nothing pointing at it.
+		ct, e := tx.Exec(ctx,
+			`UPDATE treatment_sessions SET charge_id = $1, updated_at = now()
+			 WHERE tenant_id = $2 AND id = $3 AND charge_id IS NOT DISTINCT FROM $4`, cid, tid, sessionID, oldCharge)
+		if e != nil {
 			return e
+		}
+		if ct.RowsAffected() != 1 {
+			return apperr.Conflict("SESSION_CHANGED", "this visit was billed by someone else at the same moment — refresh and check")
 		}
 		charged = amt
 		return s.publisher.Publish(ctx, tx, &tid, "charge", cid, "dental.charge.raised",
 			map[string]any{"patient_id": patientID, "session_id": sessionID, "amount": fmtMoney(amt)})
-	})
-	if ae, ok := apperr.As(err); ok {
-		return 0, ae
-	}
-	if err != nil {
-		return 0, apperr.Internal(err)
-	}
-	return charged, nil
+	}()
+	return charged, err
 }
 
 // CollectSessions bills several of a patient's sessions at once — the front desk
@@ -1320,6 +1490,9 @@ func (s *Service) WriteOffSession(ctx context.Context, patientID, sessionID uuid
 		return apperr.Validation("say why this is not being charged for — it is recorded on the write-off")
 	}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		if e := lockSession(ctx, tx, tid, patientID, sessionID); e != nil {
+			return e
+		}
 		var amount, planTitle, kind string
 		var seq, count int
 		var chargeStatus *string
@@ -1389,11 +1562,15 @@ func (s *Service) WriteOffSession(ctx context.Context, patientID, sessionID uuid
 		}
 		// Scoped to the link we read under FOR UPDATE, so a concurrent collect cannot
 		// have its charge silently replaced and left live with nothing pointing at it.
-		if _, e := tx.Exec(ctx,
+		ct, e := tx.Exec(ctx,
 			`UPDATE treatment_sessions SET charge_id = $1, updated_at = now()
 			 WHERE tenant_id = $2 AND id = $3 AND charge_id IS NOT DISTINCT FROM $4`,
-			cid, tid, sessionID, existingCharge); e != nil {
+			cid, tid, sessionID, existingCharge)
+		if e != nil {
 			return e
+		}
+		if ct.RowsAffected() != 1 {
+			return apperr.Conflict("SESSION_CHANGED", "this visit changed while it was being written off — refresh and check")
 		}
 		return s.publisher.Publish(ctx, tx, &tid, "charge", cid, "dental.session.written_off",
 			map[string]any{"patient_id": patientID, "session_id": sessionID, "reason": reason, "amount": amount})
@@ -1415,6 +1592,9 @@ func (s *Service) WriteOffSession(ctx context.Context, patientID, sessionID uuid
 func (s *Service) UndoWriteOff(ctx context.Context, patientID, sessionID uuid.UUID) error {
 	tid, _ := actorOf(ctx)
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		if e := lockSession(ctx, tx, tid, patientID, sessionID); e != nil {
+			return e
+		}
 		var chargeID *uuid.UUID
 		var chargeStatus *string
 		e := tx.QueryRow(ctx,
@@ -1460,6 +1640,9 @@ func (s *Service) UndoWriteOff(ctx context.Context, patientID, sessionID uuid.UU
 func (s *Service) UncollectSession(ctx context.Context, patientID, sessionID uuid.UUID) error {
 	tid, _ := actorOf(ctx)
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		if e := lockSession(ctx, tx, tid, patientID, sessionID); e != nil {
+			return e
+		}
 		var chargeID *uuid.UUID
 		var chargeStatus *string
 		e := tx.QueryRow(ctx,
@@ -2453,34 +2636,48 @@ func (s *Service) DeleteImage(ctx context.Context, patientID, imageID uuid.UUID)
 // Only visits AFTER this one and still unbilled can absorb anything. A visit that
 // has been sent to the cashier or paid is frozen — a receipt already states its
 // price, and re-spreading onto it would make the ledger disagree with the paper.
-func (s *Service) RepriceSession(ctx context.Context, patientID, sessionID uuid.UUID, amount string, mode string) error {
+func (s *Service) RepriceSession(ctx context.Context, patientID, sessionID uuid.UUID, amount, mode, reason string) error {
 	if mode != "respread" && mode != "total" {
 		return apperr.Validation("say where the difference goes: respread or total")
 	}
-	newAmt := money(amount)
-	if newAmt < 0 {
-		return apperr.Validation("a fee cannot be negative")
+	newAmt, perr := parseMoney(amount)
+	if perr != nil {
+		return perr
 	}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		tid, _ := actorOf(ctx)
+		if e := lockSession(ctx, tx, tid, patientID, sessionID); e != nil {
+			return e
+		}
 		if e := refuseDeposit(ctx, tx, tid, sessionID); e != nil {
 			return e
 		}
 		var planID uuid.UUID
 		var seq int
-		var oldAmt string
+		var oldAmt, status string
 		var chargeStatus *string
+		var completedBy *uuid.UUID
+		var doneToday bool
 		if e := tx.QueryRow(ctx,
-			`SELECT se.plan_id, se.seq, se.amount_due::text, c.status
+			`SELECT se.plan_id, se.seq, se.amount_due::text, c.status, se.status, se.completed_by,
+			        coalesce((se.completed_at AT TIME ZONE t.timezone)::date = (now() AT TIME ZONE t.timezone)::date, false)
 			   FROM treatment_sessions se
+			   JOIN tenants t ON t.id = se.tenant_id
 			   LEFT JOIN charges c ON c.id = se.charge_id AND c.tenant_id = se.tenant_id AND c.deleted_at IS NULL
 			  WHERE se.tenant_id = $1 AND se.patient_id = $2 AND se.id = $3
 			  FOR UPDATE OF se`,
-			tid, patientID, sessionID).Scan(&planID, &seq, &oldAmt, &chargeStatus); e != nil {
+			tid, patientID, sessionID).Scan(&planID, &seq, &oldAmt, &chargeStatus, &status, &completedBy, &doneToday); e != nil {
 			if errors.Is(e, pgx.ErrNoRows) {
 				return apperr.NotFound("SESSION_NOT_FOUND", "session not found")
 			}
 			return e
+		}
+		// Charging less for a visit already given forgives money owed — the same
+		// rule as undoing it (audit D1/W15). A price set before the visit is pricing.
+		if status == "done" && newAmt < money(oldAmt) {
+			if e := mayForgive(ctx, completedBy, doneToday, money(oldAmt), reason); e != nil {
+				return e
+			}
 		}
 		// The same freeze the fee edit already honours: once money is queued or taken,
 		// the price on the receipt is the price.
@@ -2496,12 +2693,22 @@ func (s *Service) RepriceSession(ctx context.Context, patientID, sessionID uuid.
 		if mode == "respread" && delta != 0 {
 			// The visits that can still absorb a change: later in the course, not called
 			// off, and with no live charge against them.
+			// Lock the candidates in their own statement first (see lockSession), so a
+			// visit collected at this moment is seen as billed, not re-priced under it.
+			if _, e := tx.Exec(ctx,
+				`SELECT 1 FROM treatment_sessions
+				  WHERE tenant_id = $1 AND plan_id = $2 AND kind = 'visit' AND seq > $3
+				  FOR UPDATE`, tid, planID, seq); e != nil {
+				return e
+			}
 			rows, e := tx.Query(ctx,
 				`SELECT se.id, se.amount_due::text
 				   FROM treatment_sessions se
 				   LEFT JOIN charges c ON c.id = se.charge_id AND c.tenant_id = se.tenant_id AND c.deleted_at IS NULL
 				  WHERE se.tenant_id = $1 AND se.plan_id = $2 AND se.kind = 'visit'
-				    AND se.seq > $3 AND se.status <> 'cancelled'
+				    -- Only visits still to come absorb the difference: a visit already given
+				    -- has been priced to the patient, billed or not (audit D9).
+				    AND se.seq > $3 AND se.status = 'planned'
 				    AND (c.status IS NULL OR c.status NOT IN ('pending','paid','waived'))
 				  ORDER BY se.seq
 				  FOR UPDATE OF se`,

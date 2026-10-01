@@ -211,6 +211,9 @@ type SessionUpdate struct {
 	Tooth         *string
 	Notes         *string
 	Rx            *string
+	// Reason is required when the change forgives money owed (undoing a given
+	// visit, or lowering its fee); it goes into the audit event.
+	Reason string
 }
 
 // Balance is the money picture: owed across sessions vs settled dental payments.
@@ -406,7 +409,7 @@ type Service interface {
 	WriteOffSession(ctx context.Context, patientID, sessionID uuid.UUID, reason string) error
 	UndoWriteOff(ctx context.Context, patientID, sessionID uuid.UUID) error
 	// SetPayLater flags (or clears) a session as service-given-on-a-promise-to-pay.
-	RepriceSession(ctx context.Context, patientID, sessionID uuid.UUID, amount, mode string) error
+	RepriceSession(ctx context.Context, patientID, sessionID uuid.UUID, amount, mode, reason string) error
 	SetPayLater(ctx context.Context, patientID, sessionID uuid.UUID, on bool, note string) error
 
 	// Examinations — the clinical assessment behind the treatment. Clinician only:

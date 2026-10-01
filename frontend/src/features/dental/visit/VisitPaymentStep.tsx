@@ -106,7 +106,9 @@ function Pipeline({ stage }: { stage: FeeStage }) {
 /** Sessions that can still absorb a price change: later, live, and unbilled. */
 export function respreadPool(plan: Plan, current: Session): Session[] {
   return plan.sessions.filter(
-    (s) => s.seq > current.seq && s.status !== "cancelled"
+    // Only visits still to come absorb a change — the server's rule (audit D9): a
+    // visit already given has been priced to the patient, billed or not.
+    (s) => s.seq > current.seq && s.status === "planned"
       && s.payment !== "paid" && s.payment !== "billed" && s.payment !== "waived",
   );
 }
@@ -251,8 +253,13 @@ function FeeEditor({ patientId, plan, session, onDone, onCancel }: {
   const was = num(session.amount_due);
   const [val, setVal] = useState(String(Math.round(was)));
   const [mode, setMode] = useState<"respread" | "total">("respread");
+  const [reason, setReason] = useState("");
   const next = num(val);
   const delta = next - was;
+  // Charging less for a visit already given forgives money owed: the server wants
+  // a reason, and allows it only for whoever recorded the visit today, or a
+  // write-off holder (audit D1).
+  const forgiving = session.status === "done" && delta < -0.005;
   const pool = respreadPool(plan, session);
   const poolTotal = pool.reduce((a, s) => a + num(s.amount_due), 0);
   const canRespread = pool.length > 0 && poolTotal - delta >= 0;
@@ -268,7 +275,7 @@ function FeeEditor({ patientId, plan, session, onDone, onCancel }: {
   const each = shares[0] ?? 0;
   const last = shares[shares.length - 1] ?? 0;
   const save = useMutation({
-    mutationFn: () => repriceSession(patientId, session.id, { amount: String(next), mode }),
+    mutationFn: () => repriceSession(patientId, session.id, { amount: String(next), mode, reason: reason.trim() || undefined }),
     onSuccess: () => { toast.success("Fee updated"); onDone(); },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not change the fee"),
   });
@@ -338,8 +345,20 @@ function FeeEditor({ patientId, plan, session, onDone, onCancel }: {
         </div>
       )}
 
+      {forgiving && (
+        <div className="space-y-1.5">
+          <Label htmlFor="fee-why" className="text-xs">Why is this visit costing less? (recorded)</Label>
+          <Input id="fee-why" value={reason} onChange={(e) => setReason(e.target.value)}
+            placeholder="Agreed discount · procedure was shorter than planned" />
+          <p className="text-xs text-muted-foreground">
+            This treatment was already given. Only the dentist who recorded it today, or the owner or cashier, can lower its fee.
+          </p>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" loading={save.isPending} disabled={next < 0 || Math.abs(delta) < 0.005}
+        <Button size="sm" loading={save.isPending}
+          disabled={next < 0 || Math.abs(delta) < 0.005 || (forgiving && reason.trim() === "")}
           onClick={() => save.mutate()}>Save fee</Button>
         <Button size="sm" variant="outline" onClick={onCancel}>Cancel</Button>
       </div>

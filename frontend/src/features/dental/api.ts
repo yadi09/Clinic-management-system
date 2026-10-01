@@ -197,10 +197,12 @@ export function deletePlan(patientId: string, planId: string) {
 /** Change one visit's fee. `mode` says where the difference lands:
  *  "respread" keeps the course total and adjusts the visits still to come;
  *  "total" leaves them alone and moves the course total instead. */
-export function repriceSession(patientId: string, sessionId: string, body: { amount: string; mode: "respread" | "total" }) {
+export function repriceSession(patientId: string, sessionId: string, body: { amount: string; mode: "respread" | "total"; reason?: string }) {
   return apiFetch<void>(`/dental/patients/${patientId}/sessions/${sessionId}/reprice`, { method: "POST", body });
 }
-export function updateSession(patientId: string, sessionId: string, body: { scheduled_date?: string; amount_due?: string; status?: string; procedure?: string; tooth?: string; notes?: string; rx?: string }) {
+/** reason is required by the server when the change forgives money owed on a
+ *  given visit (undoing it, cancelling it, or lowering its fee). */
+export function updateSession(patientId: string, sessionId: string, body: { scheduled_date?: string; amount_due?: string; status?: string; procedure?: string; tooth?: string; notes?: string; rx?: string; reason?: string }) {
   return apiFetch<void>(`/dental/patients/${patientId}/sessions/${sessionId}`, { method: "PUT", body });
 }
 /** Move a planned session to another date — and nothing else. Reachable with

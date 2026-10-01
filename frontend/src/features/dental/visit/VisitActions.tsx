@@ -21,7 +21,7 @@ import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
 import { EthiopianDateInput } from "@/components/EthiopianDateInput";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
-import { birr, isBillable } from "@/features/dental/money";
+import { birr, isBillable, num } from "@/features/dental/money";
 import { collectSession, setPayLater, uncollectSession, updateSession, type Session } from "@/features/dental/api";
 
 const todayISO = () => {
@@ -44,7 +44,6 @@ export function VisitActions({ patientId, session, canCollect, editable, onChang
 }) {
   const [open, setOpen] = useState(false);
   const { ask, dialog } = useConfirmDialog();
-  const [amount, setAmount] = useState(session.amount_due);
   const [date, setDate] = useState(session.scheduled_date);
   const [promise, setPromise] = useState(session.pay_later_note ?? "");
 
@@ -55,11 +54,11 @@ export function VisitActions({ patientId, session, canCollect, editable, onChang
   });
 
   const setStatus = useMutation({
-    mutationFn: (v: string) => updateSession(patientId, session.id, { status: v }),
+    mutationFn: ({ status, reason }: { status: string; reason?: string }) =>
+      updateSession(patientId, session.id, { status, reason }),
     onSuccess: () => { toast.success("Visit updated"); onChanged(); },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not update the visit"),
   });
-  const saveFee = useMutation(run(() => updateSession(patientId, session.id, { amount_due: amount }), "Fee updated"));
   const saveDate = useMutation(run(() => updateSession(patientId, session.id, { scheduled_date: date }), "Date updated"));
   const undo = useMutation(run(() => uncollectSession(patientId, session.id), "Pulled back from the cashier"));
   const bill = useMutation(run(() => collectSession(patientId, session.id), "Sent to the cashier"));
@@ -117,36 +116,53 @@ export function VisitActions({ patientId, session, canCollect, editable, onChang
                         ),
                         confirmLabel: "Mark it done",
                         destructive: true,
-                      }, () => setStatus.mutateAsync(v));
+                      }, () => setStatus.mutateAsync({ status: v }));
                       return;
                     }
-                    setStatus.mutate(v);
+                    // Taking a given visit back out of "done" erases what it is owed from
+                    // every money screen. The server allows it only for whoever recorded
+                    // it today, or a write-off holder, and always records why (audit D1).
+                    if (session.status === "done" && v !== "done") {
+                      ask({
+                        title: v === "cancelled" ? "Cancel a visit that was given?" : "Undo this visit?",
+                        description: (
+                          <>
+                            This visit is recorded as done. {num(session.amount_due) > 0 && session.payment === "unpaid"
+                              ? <>Its {birr(session.amount_due)} fee will no longer be owed. </>
+                              : null}
+                            Only the dentist who recorded it today, or the owner or cashier, can do this — and the reason is kept.
+                          </>
+                        ),
+                        reason: { label: "Why?", placeholder: "Recorded the wrong visit", required: true },
+                        confirmLabel: v === "cancelled" ? "Cancel the visit" : "Undo the visit",
+                        destructive: true,
+                      }, (reason) => setStatus.mutateAsync({ status: v, reason }));
+                      return;
+                    }
+                    setStatus.mutate({ status: v });
                   }}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>{STATUS.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">Marking a visit cancelled leaves its record intact.</p>
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs" htmlFor="vf-fee">Fee (ETB)</Label>
-                  <div className="flex gap-2">
-                    <Input id="vf-fee" type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} />
-                    <Button size="sm" variant="outline" loading={saveFee.isPending}
-                      disabled={amount === session.amount_due} onClick={() => saveFee.mutate()}>Save</Button>
-                  </div>
-                  {/* The server refuses this once a charge is live, and says why. */}
-                  <p className="text-xs text-muted-foreground">Locked once the fee has been billed or paid.</p>
-                </div>
+                {/* The fee is changed in the payment step, which says where the
+                    difference goes and keeps the course total right. A second editor
+                    here skipped both (audit D1). */}
+                <p className="self-end text-xs text-muted-foreground">
+                  To change the fee, press <b>Change</b> beside “This visit’s fee” above.
+                </p>
               </div>
 
-              <div className="space-y-1.5">
+              {/* Only a visit that has not happened can move; the server refuses the rest. */}
+              {session.status === "planned" && <div className="space-y-1.5">
                 <Label className="text-xs">Visit date</Label>
                 <div className="flex flex-wrap items-end gap-2">
                   <div className="min-w-[14rem] flex-1"><EthiopianDateInput value={date} onChange={setDate} showAge={false} /></div>
                   <Button size="sm" variant="outline" loading={saveDate.isPending}
-                    disabled={date === session.scheduled_date} onClick={() => saveDate.mutate()}>Save date</Button>
+                    disabled={!date || date === session.scheduled_date} onClick={() => saveDate.mutate()}>Save date</Button>
                 </div>
-              </div>
+              </div>}
 
               {!session.pay_later && session.payment === "unpaid" && (
                 <div className="space-y-1.5">
