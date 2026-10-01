@@ -49,7 +49,13 @@ function dayHeading(iso: string) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
 }
 
-export function PaymentHistoryCard({ patientId, bare }: { patientId: string; bare?: boolean }) {
+export function PaymentHistoryCard({ patientId, bare, treatment }: {
+  patientId: string; bare?: boolean;
+  /** Dental: what the charge ledger cannot see — treatment given and not billed,
+   *  and future visits on running courses — so the statement states the real
+   *  balance (audit D15). */
+  treatment?: { unbilled: string; upcoming: string };
+}) {
   const { user } = useAuth();
   const q = useQuery({ queryKey: ["patient-charges", patientId], queryFn: () => patientCharges(patientId) });
   const patient = useQuery({ queryKey: ["patient", patientId], queryFn: () => getPatient(patientId) });
@@ -113,6 +119,7 @@ export function PaymentHistoryCard({ patientId, bare }: { patientId: string; bar
         .map((c) => ({ date: dayOf(c), description: c.description, status: label(c).text, amount: c.amount })),
       charged: String(totals.charged), paid: String(totals.paid),
       refunded: String(totals.refunded), outstanding: String(totals.awaiting),
+      unbilled: treatment?.unbilled, upcoming: treatment?.upcoming,
       issuedBy: user?.full_name,
       // The totals cover the whole account; the lines are the newest page. Saying so
       // on the document is the difference between an abridged statement and a wrong one.

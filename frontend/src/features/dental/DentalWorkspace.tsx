@@ -487,7 +487,13 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
               <div className="space-y-5">
                 <BalanceSummary patientId={patientId} bal={bal} plans={plans} canCollect={canCollect} />
                 <div className="border-t pt-5">
-                  <PaymentHistoryCard patientId={patientId} bare />
+                  <PaymentHistoryCard patientId={patientId} bare treatment={{
+                    unbilled: bal?.due ?? "0",
+                    upcoming: String(plans.filter((pl) => pl.status === "active")
+                      .flatMap((pl) => pl.sessions)
+                      .filter((s) => s.status === "planned" && s.payment === "unpaid")
+                      .reduce((a, s) => a + Number(s.amount_due || 0), 0)),
+                  }} />
                 </div>
               </div>
             ),

@@ -131,6 +131,10 @@ export function printStatement(o: {
   paid: string;
   refunded: string;
   outstanding: string;
+  /** Dental only: treatment given (or a down payment agreed) not yet billed, and
+   *  future visits on running courses. Absent for a general clinic. */
+  unbilled?: string;
+  upcoming?: string;
   issuedBy?: string;
   /** Printed under the lines when they are a page and the totals are the whole account. */
   note?: string;
@@ -175,7 +179,14 @@ export function printStatement(o: {
       <tr><td>Total charged</td><td class="r">${money(o.charged)}</td></tr>
       <tr><td>Total paid</td><td class="r">${money(o.paid)}</td></tr>
       ${Number(o.refunded || 0) > 0 ? `<tr><td>Refunded</td><td class="r">− ${money(o.refunded)}</td></tr>` : ""}
-      <tr class="grand"><td>Balance outstanding</td><td class="r">${money(o.outstanding)}</td></tr>
+      ${o.unbilled !== undefined
+        // A statement that said "0 outstanding" while treatment was owed but not yet
+        // billed understated the account to the patient and any insurer (audit D15).
+        ? `<tr><td>Billed, not yet paid</td><td class="r">${money(o.outstanding)}</td></tr>
+           <tr><td>Treatment given, not yet billed</td><td class="r">${money(o.unbilled)}</td></tr>
+           <tr class="grand"><td>Balance owed now</td><td class="r">${money(String(Number(o.outstanding || 0) + Number(o.unbilled || 0)))}</td></tr>
+           ${Number(o.upcoming || 0) > 0 ? `<tr><td class="muted">Still to come on treatment plans (not yet owed)</td><td class="r muted">${money(o.upcoming!)}</td></tr>` : ""}`
+        : `<tr class="grand"><td>Balance outstanding</td><td class="r">${money(o.outstanding)}</td></tr>`}
     </table>
     ${o.note ? `<div class="muted" style="margin-top:10px">${esc(o.note)}</div>` : ""}
     <div class="foot">
