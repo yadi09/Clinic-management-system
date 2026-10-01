@@ -635,3 +635,41 @@ func TestD11_BackDoorsAreClosed(t *testing.T) {
 	clean := f.course(2, "1000", "")
 	must(t, f.svc.DeletePlan(f.as(f.dentist), f.patient, clean.ID))
 }
+
+// --- D14: the course total is always the sum of what the course contains ---
+
+func (f *fixture) planTotal(planID uuid.UUID) string {
+	f.t.Helper()
+	var t string
+	must(f.t, f.db.Pool.QueryRow(context.Background(),
+		`SELECT total_amount::text FROM treatment_plans WHERE id = $1`, planID).Scan(&t))
+	return t
+}
+
+func TestD14_TotalFollowsExtrasFeesAndCancellations(t *testing.T) {
+	f := newFixture(t)
+	p := f.course(2, "1000", "") // 2,000
+	var xray uuid.UUID
+	must(t, f.db.Pool.QueryRow(context.Background(),
+		`INSERT INTO service_items (tenant_id, code, name, category, price) VALUES ($1,'XR','X-ray','dental',500) RETURNING id`,
+		f.tenant).Scan(&xray))
+	must(t, f.svc.AddExtra(f.as(f.dentist), f.patient, p.Sessions[0].ID, dental.ExtraInput{ServiceID: xray}))
+	if got := f.planTotal(p.ID); got != "2500.00" {
+		t.Fatalf("after adding a 500 extra: total %s, want 2500.00", got)
+	}
+	var extra uuid.UUID
+	must(t, f.db.Pool.QueryRow(context.Background(),
+		`SELECT id FROM treatment_sessions WHERE plan_id = $1 AND kind = 'extra'`, p.ID).Scan(&extra))
+	must(t, f.svc.RemoveExtra(f.as(f.dentist), f.patient, extra))
+	if got := f.planTotal(p.ID); got != "2000.00" {
+		t.Fatalf("after removing it: total %s, want 2000.00", got)
+	}
+	must(t, f.svc.UpdateSession(f.as(f.dentist), f.patient, p.Sessions[1].ID, dental.SessionUpdate{AmountDue: "1500"}))
+	if got := f.planTotal(p.ID); got != "2500.00" {
+		t.Fatalf("after a fee edit: total %s, want 2500.00", got)
+	}
+	must(t, f.svc.UpdateSession(f.as(f.dentist), f.patient, p.Sessions[1].ID, dental.SessionUpdate{Status: "cancelled"}))
+	if got := f.planTotal(p.ID); got != "1000.00" {
+		t.Fatalf("after cancelling visit 2: total %s, want 1000.00", got)
+	}
+}

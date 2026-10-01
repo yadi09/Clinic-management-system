@@ -93,6 +93,21 @@ func mayForgive(ctx context.Context, completedBy *uuid.UUID, doneToday bool, owe
 	return nil
 }
 
+// recomputeTotal makes a course's total the sum of what it actually contains: every
+// line that is not cancelled — visits, the down payment and extras. AddSession,
+// FinishCourse and Reprice already did this; adding or removing an extra and
+// editing a fee did not, so six live courses showed a total 14,000 ETB below the
+// treatment on them, and the discount badge overstated by the same (audit D14).
+func recomputeTotal(ctx context.Context, tx pgx.Tx, tid, planID uuid.UUID) error {
+	_, e := tx.Exec(ctx,
+		`UPDATE treatment_plans SET
+		   total_amount = (SELECT coalesce(sum(amount_due),0) FROM treatment_sessions
+		                    WHERE tenant_id = $1 AND plan_id = $2 AND status <> 'cancelled'),
+		   updated_at = now()
+		 WHERE tenant_id = $1 AND id = $2`, tid, planID)
+	return e
+}
+
 // lockSession takes the row lock on one session in a statement of its own, and
 // must run BEFORE any read that joins the session to its charge.
 //
@@ -856,6 +871,9 @@ func (s *Service) AddExtra(ctx context.Context, patientID, sessionID uuid.UUID, 
 			tid, planID, patientID, seq, sd, fmtMoney(amt), sessionID, in.ServiceID, branch, actor).Scan(&exID); e != nil {
 			return e
 		}
+		if e := recomputeTotal(ctx, tx, tid, planID); e != nil {
+			return e
+		}
 		return s.publisher.Publish(ctx, tx, &tid, "treatment_session", exID, "dental.extra.added",
 			map[string]any{"patient_id": patientID, "session_id": sessionID,
 				"service_item_id": in.ServiceID, "amount": fmtMoney(amt)})
@@ -874,12 +892,13 @@ func (s *Service) AddExtra(ctx context.Context, patientID, sessionID uuid.UUID, 
 func (s *Service) RemoveExtra(ctx context.Context, patientID, extraID uuid.UUID) error {
 	tid, _ := actorOf(ctx)
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		var kind string
+		var kind, amount string
 		var chargeID *uuid.UUID
+		var planID uuid.UUID
 		e := tx.QueryRow(ctx,
-			`SELECT kind, charge_id FROM treatment_sessions
+			`SELECT kind, charge_id, plan_id, amount_due::text FROM treatment_sessions
 			  WHERE tenant_id = $1 AND patient_id = $2 AND id = $3 FOR UPDATE`,
-			tid, patientID, extraID).Scan(&kind, &chargeID)
+			tid, patientID, extraID).Scan(&kind, &chargeID, &planID, &amount)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return apperr.NotFound("EXTRA_NOT_FOUND", "that extra is no longer there")
 		}
@@ -895,8 +914,11 @@ func (s *Service) RemoveExtra(ctx context.Context, patientID, extraID uuid.UUID)
 		if _, e := tx.Exec(ctx, `DELETE FROM treatment_sessions WHERE tenant_id = $1 AND id = $2`, tid, extraID); e != nil {
 			return e
 		}
+		if e := recomputeTotal(ctx, tx, tid, planID); e != nil {
+			return e
+		}
 		return s.publisher.Publish(ctx, tx, &tid, "treatment_session", extraID, "dental.extra.removed",
-			map[string]any{"patient_id": patientID})
+			map[string]any{"patient_id": patientID, "plan_id": planID, "amount": amount})
 	})
 	if ae, ok := apperr.As(err); ok {
 		return ae
@@ -1257,18 +1279,19 @@ func (s *Service) UpdateSession(ctx context.Context, patientID, sessionID uuid.U
 			completedBy                                       *uuid.UUID
 			doneToday                                         bool
 			chargeID                                          *uuid.UUID
+			planID                                            uuid.UUID
 		}
 		e := tx.QueryRow(ctx,
 			`SELECT se.status, se.scheduled_date::text, se.amount_due::text,
 			        coalesce(se.procedure,''), coalesce(se.tooth,''), coalesce(se.notes,''), coalesce(se.rx,''),
 			        se.completed_by,
 			        coalesce((se.completed_at AT TIME ZONE t.timezone)::date = (now() AT TIME ZONE t.timezone)::date, false),
-			        se.charge_id
+			        se.charge_id, se.plan_id
 			   FROM treatment_sessions se JOIN tenants t ON t.id = se.tenant_id
 			  WHERE se.tenant_id = $1 AND se.patient_id = $2 AND se.id = $3
 			  FOR UPDATE OF se`,
 			tid, patientID, sessionID).Scan(&was.status, &was.date, &was.amount, &was.procedure, &was.tooth,
-			&was.notes, &was.rx, &was.completedBy, &was.doneToday, &was.chargeID)
+			&was.notes, &was.rx, &was.completedBy, &was.doneToday, &was.chargeID, &was.planID)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return apperr.NotFound("SESSION_NOT_FOUND", "session not found")
 		}
@@ -1340,6 +1363,11 @@ func (s *Service) UpdateSession(ctx context.Context, patientID, sessionID uuid.U
 			return apperr.NotFound("SESSION_NOT_FOUND", "session not found")
 		}
 
+		if feeChanged || next != was.status {
+			if e := recomputeTotal(ctx, tx, tid, was.planID); e != nil {
+				return e
+			}
+		}
 		changes := map[string]any{}
 		diff := func(field, from string, to *string) {
 			if to != nil && *to != from {
