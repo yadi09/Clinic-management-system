@@ -94,7 +94,7 @@ UC=$(curl -k -sS -H "$HOST" -H "$A" -H "$CT" -o /dev/null -w "%{http_code}" -X P
 
 echo "=== 5b. a refunded session can be written off (the lane the report offers it for) ==="
 # S1 is currently at the cashier from the re-bill; pull it back and refund-state it again
-curl -k -sS -H "$HOST" -H "$A" -H "$CT" -o /dev/null -X POST $B/dental/patients/$PID/sessions/$S1/uncollect
+curl -k -sS -H "$HOST" -H "$A" -H "$CT" -o /dev/null -X POST $B/dental/patients/$PID/sessions/$S1/uncollect -d '{"reason":"e2e: pull back"}'
 RWC=$(curl -k -sS -H "$HOST" -H "$A" -H "$CT" -o /dev/null -w "%{http_code}" -X POST $B/dental/patients/$PID/sessions/$S1/write-off -d '{"reason":"service failure — not charging"}')
 [ "$RWC" = "204" ] && ok "written off after refund ($RWC)" || no "write-off after refund rejected ($RWC)"
 [ "$(pay_state $S1)" = "waived" ] && ok "reads waived" || no "state: $(pay_state $S1)"

@@ -42,8 +42,10 @@ BAL=$(curl -k -sS -H "$HOST" -H "$R" "$B/dental/patients/$PID/summary" | J "b=d[
 CO=$(curl -k -sS -H "$HOST" -H "$R" -H "$CT" -X POST $B/dental/patients/$PID/collect-sessions -d "{\"session_ids\":[\"$S1\"]}" | J "print(str(d['data']['billed'])+'|'+d['data']['total'])" 2>/dev/null)
 [ "$CO" = "1|3000.00" ] && ok "bulk Take payment works ($CO)" || no "collect-sessions: $CO"
 # 3 undo / pull back from the cashier
-UN=$(curl -k -sS -H "$HOST" -H "$R" -H "$CT" -o /dev/null -w "%{http_code}" -X POST $B/dental/patients/$PID/sessions/$S1/uncollect)
-[ "$UN" = "204" ] && ok "can pull a charge back from the cashier ($UN)" || no "uncollect: $UN"
+# The front desk may send a bill to the cashier but not void one: pulling it back
+# needs dental.manage or payment.waive (audit D13c, 2026-10-01).
+UN=$(curl -k -sS -H "$HOST" -H "$R" -H "$CT" -o /dev/null -w "%{http_code}" -X POST $B/dental/patients/$PID/sessions/$S1/uncollect -d '{"reason":"e2e"}')
+[ "$UN" = "403" ] && ok "front desk cannot pull a charge back ($UN)" || no "uncollect by desk: $UN (want 403)"
 # 4 reschedule / rebook a missed visit
 RS=$(curl -k -sS -H "$HOST" -H "$R" -H "$CT" -o /dev/null -w "%{http_code}" -X POST $B/dental/patients/$PID/sessions/$S2/reschedule -d '{"scheduled_date":"2026-12-01"}')
 [ "$RS" = "204" ] && ok "can rebook a visit ($RS)" || no "reschedule: $RS"
