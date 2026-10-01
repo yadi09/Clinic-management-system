@@ -65,7 +65,7 @@ export function PatientRegisterPage() {
     getValues,
     setValue,
     formState: { errors },
-  } = useForm<PatientValues>({ resolver: zodResolver(patientSchema), defaultValues: { gender: "unknown", dob_estimated: true } });
+  } = useForm<PatientValues>({ resolver: zodResolver(patientSchema), defaultValues: { gender: "unknown", dob: "", dob_estimated: true } });
 
   const next = async () => {
     if (await trigger(STEP_FIELDS[step])) setStep((s) => Math.min(s + 1, STEPS.length - 1));
