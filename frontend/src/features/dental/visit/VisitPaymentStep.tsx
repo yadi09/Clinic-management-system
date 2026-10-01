@@ -25,7 +25,7 @@ import {
   collectSession, repriceSession, setPayLater, uncollectSession,
   type Plan, type Session,
 } from "@/features/dental/api";
-import { birr, num, splitRounded } from "@/features/dental/money";
+import { birr, num, splitRounded, settledLabel } from "@/features/dental/money";
 import { formatEthiopian } from "@/lib/ethiopian";
 
 const todayISO = () => {
@@ -166,11 +166,15 @@ function CourseRecap({ plan, current }: { plan: Plan; current: Session }) {
 function visitState(s: Session, todayISO: string): { label: string; cls: string; dot: string } {
   const st = feeStage(s);
   if (s.status === "done") {
-    if (st === "paid") return { label: "Paid", cls: "text-emerald-700", dot: "bg-emerald-500" };
+    if (st === "paid") return settledLabel(s.payment).forgiven
+      ? { label: "Free of charge", cls: "text-muted-foreground", dot: "bg-muted-foreground/60" }
+      : { label: "Paid", cls: "text-emerald-700", dot: "bg-emerald-500" };
     if (st === "atCashier") return { label: "At cashier", cls: "text-amber-700", dot: "bg-amber-500" };
     return { label: "Owed", cls: "text-destructive", dot: "bg-destructive" };
   }
-  if (st === "paid") return { label: "Paid ahead", cls: "text-emerald-700", dot: "bg-emerald-500" };
+  if (st === "paid") return settledLabel(s.payment).forgiven
+    ? { label: "Free of charge", cls: "text-muted-foreground", dot: "bg-muted-foreground/60" }
+    : { label: "Paid ahead", cls: "text-emerald-700", dot: "bg-emerald-500" };
   if (st === "atCashier") return { label: "At cashier", cls: "text-amber-700", dot: "bg-amber-500" };
   if (s.scheduled_date < todayISO) return { label: "Missed", cls: "text-destructive", dot: "bg-destructive" };
   return { label: "Booked", cls: "text-muted-foreground", dot: "bg-muted-foreground/40" };
@@ -194,7 +198,9 @@ function CourseTrack({ plan, current }: { plan: Plan; current: Session }) {
     const paid = d.payment === "paid";
     items.push({
       key: "deposit", title: "Down payment", date: d.scheduled_date, amount: d.amount_due, now: false,
+      // A written-off deposit fell through to "Owed" here.
       st: paid ? { label: "Paid", cls: "text-emerald-700", dot: "bg-emerald-500" }
+        : d.payment === "waived" ? { label: "Free of charge", cls: "text-muted-foreground", dot: "bg-muted-foreground/60" }
         : d.payment === "billed" ? { label: "At cashier", cls: "text-amber-700", dot: "bg-amber-500" }
           : { label: "Owed", cls: "text-destructive", dot: "bg-destructive" },
     });
@@ -546,7 +552,9 @@ export function FeeStrip({ session, planTitle, onReopen }: {
 }) {
   const stage = feeStage(session);
   const meta = {
-    paid: { label: "Paid", cls: "bg-emerald-600 text-white" },
+    paid: settledLabel(session.payment).forgiven
+      ? { label: "Free of charge", cls: "bg-muted text-foreground border" }
+      : { label: "Paid", cls: "bg-emerald-600 text-white" },
     atCashier: { label: "At cashier", cls: "bg-amber-500 text-white" },
     promised: { label: "Pay later", cls: "bg-amber-100 text-amber-900 border border-amber-300" },
     unpaid: { label: "Unpaid", cls: "bg-destructive text-destructive-foreground" },

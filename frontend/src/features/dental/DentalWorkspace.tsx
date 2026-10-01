@@ -164,7 +164,14 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
   const scrolledPast = useScrolledPast(bannerRef);
 
   const patient = useQuery({ queryKey: ["patient", patientId], queryFn: () => getPatient(patientId) });
-  const summary = useQuery({ queryKey: ["dental-summary", patientId], queryFn: () => dentalSummary(patientId) });
+  // The cashier settles on another computer, so this page cannot be told when money
+  // arrives. It re-reads when the tab regains focus and, while anything is waiting at
+  // the cashier, every 15 s — otherwise the desk asks for money already paid (W10).
+  const summary = useQuery({
+    queryKey: ["dental-summary", patientId], queryFn: () => dentalSummary(patientId),
+    refetchOnWindowFocus: true,
+    refetchInterval: (q) => (Number(q.state.data?.balance?.at_cashier ?? 0) > 0 ? 15_000 : false),
+  });
   const invalidate = () => invalidateDental(qc, patientId);
 
   // Resolution replaces filtering. The old code filtered plans by date scope FIRST

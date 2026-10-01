@@ -493,7 +493,9 @@ function VisitReader({ plan, before, onPick }: {
   const said = [previous.procedure, previous.tooth].filter(Boolean).join(" · ");
   const stage = feeStage(previous);
   const money = {
-    paid: { label: "Paid", cls: "bg-emerald-100 text-emerald-800" },
+    paid: previous.payment === "waived"
+      ? { label: "Free of charge", cls: "bg-muted text-foreground" }
+      : { label: "Paid", cls: "bg-emerald-100 text-emerald-800" },
     atCashier: { label: "At cashier", cls: "bg-amber-100 text-amber-800" },
     promised: { label: "Owed", cls: "bg-amber-100 text-amber-900" },
     unpaid: { label: "Owed", cls: "bg-destructive/10 text-destructive" },

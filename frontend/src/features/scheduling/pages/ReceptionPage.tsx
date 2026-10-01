@@ -13,6 +13,7 @@
 // the three things the desk could not previously see — how late, what they owe, and
 // whether this visit is already covered — because each of those changes what happens
 // next, and all three were invisible at the exact moment they mattered.
+import { invalidateDental } from "@/features/dental/invalidate";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -306,7 +307,7 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
     onSuccess: (r) => {
       toast.success(`${p.name}: ${etb(Number(r.total))} collected`);
       qc.invalidateQueries({ queryKey: ["reception-today"] });
-      qc.invalidateQueries({ queryKey: ["pending-charges"] });
+      invalidateDental(qc, p.patient_id);
       onDone();
     },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not take the payment"),

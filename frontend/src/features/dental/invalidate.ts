@@ -31,6 +31,8 @@ export function invalidateDental(qc: QueryClient, patientId: string) {
     ["patient", patientId],
     ["dental-cal"],
     ["dental-outstanding"],
+    ["dental-unbilled"],
+    ["chairside"],
     ["pending-charges"],
   ];
   for (const queryKey of keys) qc.invalidateQueries({ queryKey });

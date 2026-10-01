@@ -84,6 +84,13 @@ export const MONEY: Record<MoneyState, MoneyMeta> = {
 /** ETB, grouped, no decimals unless the amount has them. The clinic prices in whole birr. */
 /** Parse a money string from the API. Defined here so every surface reads a fee the
  *  same way rather than each keeping its own one-liner. */
+/** What to call a settled line. A write-off is settled — nothing more is collected —
+ *  but it is not money received, and rendering it as a green "Paid" told the desk the
+ *  patient had paid what the clinic had in fact forgiven (audit D13b/W19). */
+export function settledLabel(payment?: string): { label: string; forgiven: boolean } {
+  return payment === "waived" ? { label: "Free of charge", forgiven: true } : { label: "Paid", forgiven: false };
+}
+
 export function num(amount?: string | number): number {
   return Number(amount || 0);
 }

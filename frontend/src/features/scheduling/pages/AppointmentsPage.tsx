@@ -901,6 +901,8 @@ const etb = (v: string) => `${Number(v).toLocaleString(undefined, { maximumFract
 function sessPayBadge(s: DentalSessionCal) {
   if (sessOwes(s)) return <Badge variant="destructive">owes</Badge>;
   if (s.payment === "paid") return <Badge variant="success">paid</Badge>;
+  // Was falling through to "unpaid" (audit D13b/W19).
+  if (s.payment === "waived") return <Badge variant="outline">free of charge</Badge>;
   if (s.payment === "billed") return <Badge variant="warning">at cashier</Badge>;
   return <Badge variant="outline">unpaid</Badge>;
 }

@@ -112,7 +112,9 @@ export function DepositRow({ patientId, plan, canCollect }: {
   if (!d) return null;
 
   const meta = {
-    paid: { label: "Paid", variant: "success" as const },
+    paid: plan.deposit?.payment === "waived"
+      ? { label: "Free of charge", variant: "outline" as const }
+      : { label: "Paid", variant: "success" as const },
     atCashier: { label: "At cashier", variant: "warning" as const },
     unpaid: { label: "Owed now", variant: "destructive" as const },
   }[d.stage];

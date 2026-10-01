@@ -53,6 +53,10 @@ export function CashierPage() {
     qc.invalidateQueries({ queryKey: ["pending-charges"] });
     qc.invalidateQueries({ queryKey: ["payments-today"] });
     qc.invalidateQueries({ queryKey: ["queue"] });
+    // A settled dental bill changes the patient's dental money too (audit D13a/W10).
+    for (const queryKey of [["dental-summary"], ["patient-charges"], ["dental-outstanding"], ["dental-unbilled"], ["chairside"]]) {
+      qc.invalidateQueries({ queryKey });
+    }
   };
   const refreshDays = () => {
     qc.invalidateQueries({ queryKey: ["day-closes"] });
