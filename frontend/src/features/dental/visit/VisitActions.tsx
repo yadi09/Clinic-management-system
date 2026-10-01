@@ -21,6 +21,7 @@ import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
 import { EthiopianDateInput } from "@/components/EthiopianDateInput";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { useAuth } from "@/app/auth-context";
 import { birr, isBillable, num } from "@/features/dental/money";
 import { collectSession, setPayLater, uncollectSession, updateSession, type Session } from "@/features/dental/api";
 
@@ -44,6 +45,7 @@ export function VisitActions({ patientId, session, canCollect, editable, onChang
 }) {
   const [open, setOpen] = useState(false);
   const { ask, dialog } = useConfirmDialog();
+  const { can } = useAuth();
   const [date, setDate] = useState(session.scheduled_date);
   const [promise, setPromise] = useState(session.pay_later_note ?? "");
 
@@ -60,11 +62,15 @@ export function VisitActions({ patientId, session, canCollect, editable, onChang
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not update the visit"),
   });
   const saveDate = useMutation(run(() => updateSession(patientId, session.id, { scheduled_date: date }), "Date updated"));
-  const undo = useMutation(run(() => uncollectSession(patientId, session.id), "Pulled back from the cashier"));
+  const undo = useMutation({ ...run(() => Promise.resolve(), "Pulled back from the cashier"),
+    mutationFn: (reason: string) => uncollectSession(patientId, session.id, reason) });
   const bill = useMutation(run(() => collectSession(patientId, session.id), "Sent to the cashier"));
   const later = useMutation(run(() => setPayLater(patientId, session.id, { on: true, note: promise.trim() }), "Recorded as pay later"));
   const clearLater = useMutation(run(() => setPayLater(patientId, session.id, { on: false }), "Promise cleared"));
 
+  // The server allows this for dental.manage or payment.waive (audit D13), not for
+  // the front desk's payment.charge alone.
+  const mayPullBack = editable || can("payment.waive");
   if (!editable && !canCollect) return null;
 
   return (
@@ -78,8 +84,13 @@ export function VisitActions({ patientId, session, canCollect, editable, onChang
         <div className="mt-2 space-y-3 rounded-md border bg-muted/30 p-3">
           {/* Money first: the two that cost real birr if they cannot be undone. */}
           <div className="flex flex-wrap items-center gap-2">
-            {canCollect && session.payment === "billed" && (
-              <Button size="sm" variant="outline" loading={undo.isPending} onClick={() => undo.mutate()}
+            {mayPullBack && session.payment === "billed" && (
+              <Button size="sm" variant="outline" loading={undo.isPending} onClick={() => ask({
+      title: "Pull this bill back from the cashier?",
+      description: "The visit goes back to unbilled and is owed again. The bill is cancelled, with your name and the reason.",
+      reason: { label: "Why?", placeholder: "Sent the wrong visit", required: true },
+      confirmLabel: "Pull it back",
+    }, (reason) => undo.mutateAsync(reason))}
                 title="Pull this charge back from the cashier">
                 <Undo2 className="h-3.5 w-3.5" /> Undo — pull back from the cashier
               </Button>

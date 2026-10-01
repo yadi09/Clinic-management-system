@@ -10,6 +10,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"sync"
 	"testing"
@@ -25,6 +27,7 @@ import (
 	billingsvc "github.com/reicb/clinicsaas/internal/billing/service"
 	"github.com/reicb/clinicsaas/internal/dental"
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
+	"github.com/reicb/clinicsaas/internal/kernel/audit"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
 	"github.com/reicb/clinicsaas/internal/kernel/events"
 	"github.com/reicb/clinicsaas/internal/kernel/storage"
@@ -534,5 +537,52 @@ func TestD8_CreatePlanRefusesUnreadableMoney(t *testing.T) {
 		if _, err := f.svc.CreatePlan(f.as(f.dentist), f.patient, in); code(err) != validation {
 			t.Fatalf("plan %+v: got %q, want validation", in, code(err))
 		}
+	}
+}
+
+// --- D5: every audit entry says who did it ---
+
+func TestD5_AuditEntryNamesTheActor(t *testing.T) {
+	f := newFixture(t)
+	v := f.course(2, "1000", "").Sessions[0].ID
+	f.record(f.dentist, v) // publishes dental.session.updated as the dentist
+
+	reg := events.NewRegistry()
+	reg.OnAny(audit.NewWriter(f.db).EventHandler())
+	relay := events.NewRelay(f.db, reg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	for i := 0; i < 50; i++ { // drain everything pending, other tests' events included
+		n, err := relay.RunOnce(context.Background())
+		must(t, err)
+		if n == 0 {
+			break
+		}
+	}
+	var actor *uuid.UUID
+	must(t, f.db.Pool.QueryRow(context.Background(),
+		`SELECT actor_id FROM audit_logs
+		  WHERE tenant_id = $1 AND action = 'dental.session.updated' AND target_id = $2
+		  ORDER BY created_at DESC LIMIT 1`, f.tenant, v).Scan(&actor))
+	if actor == nil || *actor != f.dentist {
+		t.Fatalf("audit actor = %v, want the dentist %v", actor, f.dentist)
+	}
+}
+
+// --- D13c: pulling a bill back off the cashier's queue is a recorded decision ---
+
+func TestD13_PullBackNeedsAReasonAndKeepsIt(t *testing.T) {
+	f := newFixture(t)
+	v := f.course(2, "1000", "").Sessions[0].ID
+	f.record(f.dentist, v)
+	must(t, f.svc.CollectSession(f.as(f.dentist), f.patient, v))
+	if err := f.svc.UncollectSession(f.as(f.dentist), f.patient, v, "  "); code(err) != validation {
+		t.Fatalf("no reason: got %q", code(err))
+	}
+	var cid uuid.UUID
+	must(t, f.db.Pool.QueryRow(context.Background(), `SELECT charge_id FROM treatment_sessions WHERE id = $1`, v).Scan(&cid))
+	must(t, f.svc.UncollectSession(f.as(f.dentist), f.patient, v, "sent the wrong visit"))
+	var why string
+	must(t, f.db.Pool.QueryRow(context.Background(), `SELECT void_reason FROM charges WHERE id = $1`, cid).Scan(&why))
+	if why != "pulled back from the cashier: sent the wrong visit" {
+		t.Fatalf("void_reason = %q", why)
 	}
 }

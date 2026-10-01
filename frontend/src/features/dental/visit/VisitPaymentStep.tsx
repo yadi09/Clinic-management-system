@@ -395,7 +395,8 @@ export function VisitPaymentStep({ patientId, plan, session, canCollect, editabl
     onError: (e: unknown) => toast.error(e instanceof AppError ? e.message : "That didn't work"),
   });
   const bill = useMutation(run(() => collectSession(patientId, session.id), "Sent to the cashier"));
-  const pull = useMutation(run(() => uncollectSession(patientId, session.id), "Pulled back from the cashier"));
+  const pull = useMutation({ ...run(() => Promise.resolve(), "Pulled back from the cashier"),
+    mutationFn: (reason: string) => uncollectSession(patientId, session.id, reason) });
   // The note is a parameter, not the component's state: the promise is captured in
   // the dialog that asks for it, and the inline field below edits it afterwards.
   const later = useMutation({
@@ -484,7 +485,12 @@ export function VisitPaymentStep({ patientId, plan, session, canCollect, editabl
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {canCollect && (
-                  <Button variant="outline" size="sm" loading={pull.isPending} onClick={() => pull.mutate()}>
+                  <Button variant="outline" size="sm" loading={pull.isPending} onClick={() => ask({
+      title: "Pull this bill back from the cashier?",
+      description: "The visit goes back to unbilled and is owed again. The bill is cancelled, with your name and the reason.",
+      reason: { label: "Why?", placeholder: "Sent the wrong visit", required: true },
+      confirmLabel: "Pull it back",
+    }, (reason) => pull.mutateAsync(reason))}>
                     <Undo2 className="h-4 w-4" /> Pull back from cashier
                   </Button>
                 )}

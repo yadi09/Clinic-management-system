@@ -70,13 +70,13 @@ func (r *Relay) processOne(ctx context.Context) (bool, error) {
 		var e Event
 		var attempts int
 		row := tx.QueryRow(ctx,
-			`SELECT id, tenant_id, aggregate_type, aggregate_id, event_type, payload, attempts
+			`SELECT id, tenant_id, aggregate_type, aggregate_id, event_type, payload, attempts, actor_id, branch_id
 			   FROM event_outbox
 			  WHERE dispatched_at IS NULL AND dead_lettered = false
 			  ORDER BY sequence
 			  LIMIT 1
 			  FOR UPDATE SKIP LOCKED`)
-		if err := row.Scan(&e.ID, &e.TenantID, &e.AggregateType, &e.AggregateID, &e.EventType, &e.Payload, &attempts); err != nil {
+		if err := row.Scan(&e.ID, &e.TenantID, &e.AggregateType, &e.AggregateID, &e.EventType, &e.Payload, &attempts, &e.ActorID, &e.BranchID); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return nil
 			}

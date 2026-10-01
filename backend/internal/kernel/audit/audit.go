@@ -68,6 +68,8 @@ func (w *Writer) EventHandler() events.Handler {
 		}
 		return w.Write(ctx, Entry{
 			TenantID:   *e.TenantID,
+			ActorID:    e.ActorID,
+			BranchID:   e.BranchID,
 			Action:     e.EventType,
 			TargetType: e.AggregateType,
 			TargetID:   &e.AggregateID,

@@ -217,8 +217,10 @@ export function rescheduleSession(patientId: string, sessionId: string, schedule
 export function collectSession(patientId: string, sessionId: string) {
   return apiFetch<void>(`/dental/patients/${patientId}/sessions/${sessionId}/collect`, { method: "POST" });
 }
-export function uncollectSession(patientId: string, sessionId: string) {
-  return apiFetch<void>(`/dental/patients/${patientId}/sessions/${sessionId}/uncollect`, { method: "POST" });
+/** Pull a still-pending bill back off the cashier's queue. Needs dental.manage or
+ *  payment.waive, and a reason that is kept on the voided charge. */
+export function uncollectSession(patientId: string, sessionId: string, reason: string) {
+  return apiFetch<void>(`/dental/patients/${patientId}/sessions/${sessionId}/uncollect`, { method: "POST", body: { reason } });
 }
 /** Bill several sessions at once (front desk settling a whole plan). Empty list = everything outstanding. */
 export function collectSessions(patientId: string, sessionIds: string[] = []) {

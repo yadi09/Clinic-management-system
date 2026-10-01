@@ -1686,8 +1686,12 @@ func (s *Service) UndoWriteOff(ctx context.Context, patientID, sessionID uuid.UU
 
 // UncollectSession reverses a mistaken collect: voids the still-pending charge (so
 // the cashier can no longer settle it) and detaches it, returning the session to unpaid.
-func (s *Service) UncollectSession(ctx context.Context, patientID, sessionID uuid.UUID) error {
+func (s *Service) UncollectSession(ctx context.Context, patientID, sessionID uuid.UUID, reason string) error {
 	tid, _ := actorOf(ctx)
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return apperr.Validation("say why the bill is being pulled back — it is kept on the record")
+	}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		if e := lockSession(ctx, tx, tid, patientID, sessionID); e != nil {
 			return e
@@ -1712,7 +1716,7 @@ func (s *Service) UncollectSession(ctx context.Context, patientID, sessionID uui
 		if *chargeStatus != "pending" {
 			return apperr.Conflict("NOT_PENDING", "only a charge still waiting at the cashier can be reversed")
 		}
-		if e := s.billing.VoidChargeTx(ctx, tx, *chargeID, "reversed by clinician (mistaken collect)"); e != nil {
+		if e := s.billing.VoidChargeTx(ctx, tx, *chargeID, "pulled back from the cashier: "+reason); e != nil {
 			return e
 		}
 		// Scoped to the charge we just voided. A blanket NULL could clear a link that a
@@ -1723,7 +1727,7 @@ func (s *Service) UncollectSession(ctx context.Context, patientID, sessionID uui
 			return e
 		}
 		return s.publisher.Publish(ctx, tx, &tid, "charge", *chargeID, "dental.charge.reversed",
-			map[string]any{"patient_id": patientID, "session_id": sessionID})
+			map[string]any{"patient_id": patientID, "session_id": sessionID, "reason": reason})
 	})
 	if ae, ok := apperr.As(err); ok {
 		return ae

@@ -58,10 +58,14 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	// --- billing a session: the dentist or the front desk ---
 	bill := d.Group("", httpx.RequireAnyPermission("dental.manage", "payment.charge"))
 	bill.POST("/patients/:id/sessions/:sid/collect", h.CollectSession)
-	bill.POST("/patients/:id/sessions/:sid/uncollect", h.UncollectSession)
 	// Take payment for several sessions at once (e.g. the patient settles the whole
 	// treatment plan at the desk).
 	bill.POST("/patients/:id/collect-sessions", h.CollectSessions)
+	// Pulling a bill back off the cashier's queue voids a charge. Billing's own void
+	// needs payment.waive; here the dentist who sent it may also correct their own
+	// mistake. payment.charge alone (the front desk) no longer can (audit D13/W2).
+	d.POST("/patients/:id/sessions/:sid/uncollect",
+		httpx.RequireAnyPermission("dental.manage", "payment.waive"), h.UncollectSession)
 	// --- forgiving a fee: payment.waive, the same as everywhere else ---
 	//
 	// These shipped inside the `bill` group (dental.manage OR payment.charge), which

@@ -399,7 +399,7 @@ type Service interface {
 	CollectSession(ctx context.Context, patientID, sessionID uuid.UUID) error
 	// UncollectSession reverses a mistaken collect by voiding the still-pending
 	// charge so the cashier can no longer settle it; the session returns to unpaid.
-	UncollectSession(ctx context.Context, patientID, sessionID uuid.UUID) error
+	UncollectSession(ctx context.Context, patientID, sessionID uuid.UUID, reason string) error
 	// CollectSessions bills several sessions in one go — the front desk settling a
 	// whole treatment plan. Sessions already billed or paid are skipped, not failed.
 	// Passing no ids bills every outstanding session the patient has.

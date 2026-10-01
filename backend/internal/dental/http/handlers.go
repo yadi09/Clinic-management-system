@@ -533,7 +533,14 @@ func (h *Handlers) UncollectSession(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.svc.UncollectSession(c.Request.Context(), pid, sid); err != nil {
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("say why the bill is being pulled back"))
+		return
+	}
+	if err := h.svc.UncollectSession(c.Request.Context(), pid, sid, req.Reason); err != nil {
 		httpx.Fail(c, err)
 		return
 	}
