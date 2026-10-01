@@ -1,17 +1,18 @@
 import { useState, type ReactNode } from "react";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, type Path } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, UserPlus } from "lucide-react";
+import { ArrowLeft, ArrowRight, UserPlus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Stepper } from "@/components/ui/stepper";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +27,14 @@ import { createPatient, type Duplicate } from "@/features/patients/api";
 import { patientSchema, type PatientValues } from "@/features/patients/schemas";
 import { EthiopianDateInput } from "@/components/EthiopianDateInput";
 import { cn } from "@/lib/utils";
+import { formatEthiopian } from "@/lib/ethiopian";
+
+const STEPS = ["Demographics", "Contact & IDs", "Review"];
+const STEP_FIELDS: Path<PatientValues>[][] = [
+  ["first_name", "middle_name", "last_name", "gender", "dob", "blood_group"],
+  ["phone", "email", "national_id", "passport_no"],
+  [],
+];
 
 /** A date of birth N years before today, for a patient registered by age. */
 function dobFromAge(years: number): string {
@@ -36,19 +45,10 @@ function dobFromAge(years: number): string {
   return `${y}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
-
-// One screen, built for the front desk (clinic feedback, 2026-10-01).
-//
-// It was a three-step wizard — Demographics, Contact & IDs, Review — for what is
-// usually a name, a phone number and an age: two "Continue" presses before Save,
-// the phone (which every SMS reminder needs) on page two, and blood group, which
-// the desk almost never knows, given the same weight as the name. Now: the few
-// things reception actually asks, in the order it asks them, and the rest behind
-// "More details". Only the first name is required. The duplicate check is unchanged.
 export function PatientRegisterPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [step, setStep] = useState(0);
   const [formError, setFormError] = useState<string | null>(null);
   const [duplicates, setDuplicates] = useState<Duplicate[] | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -56,18 +56,20 @@ export function PatientRegisterPage() {
   // when the patient knows it, is one click away (Ethiopian or Gregorian).
   const [dobMode, setDobMode] = useState<"age" | "date">("age");
   const [ageText, setAgeText] = useState("");
-  const [more, setMore] = useState(false);
 
   const {
     register,
     handleSubmit,
     control,
+    trigger,
     getValues,
     setValue,
-    watch,
     formState: { errors },
-  } = useForm<PatientValues>({ resolver: zodResolver(patientSchema), defaultValues: { gender: "unknown", dob: "", dob_estimated: true } });
-  const gender = watch("gender");
+  } = useForm<PatientValues>({ resolver: zodResolver(patientSchema), defaultValues: { gender: "unknown", dob_estimated: true } });
+
+  const next = async () => {
+    if (await trigger(STEP_FIELDS[step])) setStep((s) => Math.min(s + 1, STEPS.length - 1));
+  };
 
   const submit = async (values: PatientValues, force: boolean) => {
     setFormError(null);
@@ -90,131 +92,167 @@ export function PatientRegisterPage() {
     }
   };
 
-  const switchDob = (m: "age" | "date") => {
-    setDobMode(m);
-    // Switching clears the other way of saying it, so the record never carries an
-    // age and a birthday that disagree.
-    setAgeText("");
-    setValue("dob", "");
-    setValue("dob_estimated", m === "age");
-  };
-
   const v = getValues();
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5">
+    <div className="mx-auto max-w-3xl space-y-8">
       <div>
-        <h1>New patient</h1>
-        <p className="text-sm text-muted-foreground">Only the first name is required — add whatever else the patient can tell you.</p>
+        <h1>Register patient</h1>
+        <p className="text-sm text-muted-foreground">Step {step + 1} of {STEPS.length} · {STEPS[step]}</p>
       </div>
 
+      <Stepper steps={STEPS} current={step} />
+
       <Card>
-        <CardContent className="pt-6">
-          <form onSubmit={handleSubmit((vals) => submit(vals, false))} className="space-y-6" noValidate>
+        <CardHeader>
+          <CardTitle>{STEPS[step]}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {/* Never auto-submit: registration only fires from the explicit Review-step
+              button below, so Enter in a field can't skip the review. */}
+          <form onSubmit={(e) => e.preventDefault()} className="space-y-5" noValidate>
             {formError && (
               <Alert variant="destructive">
                 <AlertDescription>{formError}</AlertDescription>
               </Alert>
             )}
 
-            {/* Name: an Ethiopian name is the person's, their father's and their grandfather's. */}
-            <div className="grid gap-4 sm:grid-cols-3">
-              <Field label="First name" required error={errors.first_name?.message}>
-                <Input autoFocus autoComplete="off" {...register("first_name")} />
-              </Field>
-              <Field label="Father's name">
-                <Input autoComplete="off" {...register("middle_name")} />
-              </Field>
-              <Field label="Grandfather's name">
-                <Input autoComplete="off" {...register("last_name")} />
-              </Field>
-            </div>
-
-            <div className="grid gap-5 sm:grid-cols-2">
-              <Field label="Sex">
-                <div className="flex gap-2" role="radiogroup" aria-label="Sex">
-                  {(["male", "female"] as const).map((g) => (
-                    <button key={g} type="button" role="radio" aria-checked={gender === g}
-                      onClick={() => setValue("gender", gender === g ? "unknown" : g)}
-                      className={cn("h-10 flex-1 rounded-md border text-sm font-medium capitalize transition-colors",
-                        gender === g ? "border-brand bg-brand text-brand-foreground" : "hover:bg-muted")}>
-                      {g}
-                    </button>
-                  ))}
-                </div>
-              </Field>
-
-              <Field label={dobMode === "age" ? "Age" : "Date of birth"} error={errors.dob?.message}>
-                {dobMode === "age" ? (
-                  <div className="flex items-center gap-2">
-                    <Input inputMode="numeric" className="h-10 w-24 text-center text-base tabular-nums" placeholder="—" aria-label="Age in years"
-                      value={ageText}
-                      onChange={(e) => {
-                        const t = e.target.value.replace(/\D/g, "").slice(0, 3);
-                        setAgeText(t);
-                        const n = Number(t);
-                        setValue("dob", t !== "" && n <= 120 ? dobFromAge(n) : "");
-                        setValue("dob_estimated", true);
-                      }} />
-                    <span className="text-sm text-muted-foreground">years</span>
-                  </div>
-                ) : (
-                  <Controller
-                    control={control}
-                    name="dob"
-                    render={({ field }) => <EthiopianDateInput value={field.value ?? ""} onChange={(val) => { field.onChange(val); setValue("dob_estimated", false); }} />}
-                  />
-                )}
-                <button type="button" className="text-xs font-medium text-brand underline-offset-2 hover:underline"
-                  onClick={() => switchDob(dobMode === "age" ? "date" : "age")}>
-                  {dobMode === "age" ? "Knows their date of birth? Enter it instead" : "Use age in years instead"}
-                </button>
-                {dobMode === "age" && Number(ageText) > 120 && <p className="text-sm text-destructive">An age above 120 is not possible.</p>}
-              </Field>
-            </div>
-
-            <Field label="Phone">
-              <Input inputMode="tel" autoComplete="off" placeholder="09…" className="sm:max-w-xs" {...register("phone")} />
-            </Field>
-
-            {/* What the desk rarely knows, out of the way until it does. */}
-            <div className="rounded-md border">
-              <button type="button" onClick={() => setMore((m) => !m)} aria-expanded={more}
-                className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-medium">
-                More details <span className="font-normal text-muted-foreground">blood group · national ID · passport · email</span>
-                <ChevronDown className={cn("h-4 w-4 transition-transform", more && "rotate-180")} />
-              </button>
-              {more && (
-                <div className="grid gap-4 border-t p-3 sm:grid-cols-2">
-                  <Field label="Blood group">
-                    <Controller control={control} name="blood_group" render={({ field }) => (
-                      <Select value={field.value || "none"} onValueChange={(x) => field.onChange(x === "none" ? "" : x)}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Not known</SelectItem>
-                          {BLOOD_GROUPS.map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    )} />
+            {step === 0 && (
+              <div className="space-y-5">
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <Field label="First name" required error={errors.first_name?.message}>
+                    <Input {...register("first_name")} />
                   </Field>
+                  <Field label="Middle name">
+                    <Input {...register("middle_name")} />
+                  </Field>
+                  <Field label="Last name" error={errors.last_name?.message}>
+                    <Input {...register("last_name")} />
+                  </Field>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Gender">
+                    <Controller
+                      control={control}
+                      name="gender"
+                      render={({ field }) => (
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="male">Male</SelectItem>
+                            <SelectItem value="female">Female</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                            <SelectItem value="unknown">Unknown</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                  </Field>
+                  <Field label="Blood group">
+                    <Input placeholder="O+" {...register("blood_group")} />
+                  </Field>
+                </div>
+                <Field label={dobMode === "age" ? "Age" : "Date of birth"} error={errors.dob?.message}>
+                  <div className="space-y-2">
+                    <div className="inline-flex rounded-md border p-0.5 text-sm" role="tablist" aria-label="Age or date of birth">
+                      {(["age", "date"] as const).map((m) => (
+                        <button key={m} type="button" role="tab" aria-selected={dobMode === m}
+                          className={cn("rounded px-3 py-1", dobMode === m ? "bg-brand text-brand-foreground" : "text-muted-foreground hover:bg-muted")}
+                          onClick={() => {
+                            setDobMode(m);
+                            // Switching clears the other way of saying it, so the
+                            // record never carries an age and a birthday that disagree.
+                            setAgeText("");
+                            setValue("dob", "", { shouldValidate: false });
+                            setValue("dob_estimated", m === "age");
+                          }}>
+                          {m === "age" ? "Age in years" : "Date of birth"}
+                        </button>
+                      ))}
+                    </div>
+                    {dobMode === "age" ? (
+                      <div className="flex items-center gap-2">
+                        <Input inputMode="numeric" className="w-28" placeholder="e.g. 40" aria-label="Age in years"
+                          value={ageText}
+                          onChange={(e) => {
+                            const t = e.target.value.replace(/\D/g, "").slice(0, 3);
+                            setAgeText(t);
+                            const n = Number(t);
+                            const ok = t !== "" && n >= 0 && n <= 120;
+                            setValue("dob", ok ? dobFromAge(n) : "", { shouldValidate: t !== "" });
+                            setValue("dob_estimated", true);
+                          }} />
+                        <span className="text-sm text-muted-foreground">years old</span>
+                      </div>
+                    ) : (
+                      <Controller
+                        control={control}
+                        name="dob"
+                        render={({ field }) => <EthiopianDateInput value={field.value ?? ""} onChange={(v) => { field.onChange(v); setValue("dob_estimated", false); }} />}
+                      />
+                    )}
+                  </div>
+                </Field>
+              </div>
+            )}
+
+            {step === 1 && (
+              <div className="space-y-5">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Phone">
+                    <Input {...register("phone")} />
+                  </Field>
+                  <Field label="Email" error={errors.email?.message}>
+                    <Input type="email" {...register("email")} />
+                  </Field>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="National ID">
                     <Input {...register("national_id")} />
                   </Field>
                   <Field label="Passport no.">
                     <Input {...register("passport_no")} />
                   </Field>
-                  <Field label="Email" error={errors.email?.message}>
-                    <Input type="email" {...register("email")} />
-                  </Field>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className="space-y-4">
+                <dl className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-md border bg-background p-4 text-sm sm:grid-cols-3">
+                  <Review label="Name" value={[v.first_name, v.middle_name, v.last_name].filter(Boolean).join(" ")} />
+                  <Review label="Gender" value={v.gender} />
+                  <Review label={v.dob_estimated ? "Age" : "Date of birth"}
+                    value={v.dob ? (v.dob_estimated ? `${ageText} years (age given)` : `${v.dob} · ${formatEthiopian(v.dob)} EC`) : undefined} />
+                  <Review label="Phone" value={v.phone} />
+                  <Review label="Email" value={v.email} />
+                  <Review label="National ID" value={v.national_id} />
+                </dl>
+                <p className="text-sm text-muted-foreground">
+                  Review the details above. Registration assigns a unique MRN and checks for possible duplicates.
+                </p>
+              </div>
+            )}
 
             <div className="flex items-center justify-between border-t pt-5">
-              <Button type="button" variant="ghost" onClick={() => navigate("/patients")}>Cancel</Button>
-              <Button type="submit" loading={submitting} disabled={dobMode === "age" && Number(ageText) > 120}>
-                <UserPlus /> Register patient
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => (step === 0 ? navigate("/patients") : setStep((s) => s - 1))}
+              >
+                {step === 0 ? "Cancel" : (<><ArrowLeft /> Back</>)}
               </Button>
+              {step < STEPS.length - 1 ? (
+                <Button type="button" onClick={next}>
+                  Continue <ArrowRight />
+                </Button>
+              ) : (
+                <Button type="button" loading={submitting} onClick={handleSubmit((vals) => submit(vals, false))}>
+                  <UserPlus /> Register patient
+                </Button>
+              )}
             </div>
           </form>
         </CardContent>
@@ -234,7 +272,7 @@ export function PatientRegisterPage() {
             <div className="rounded-lg border-2 border-primary/50 bg-primary/5 p-3">
               <Badge className="mb-2">New — registering now</Badge>
               <DupRow label="Name" value={[v.first_name, v.middle_name, v.last_name].filter(Boolean).join(" ")} />
-              <DupRow label={v.dob_estimated ? "Age" : "Date of birth"} value={v.dob ? (v.dob_estimated ? `${ageText} years (age given)` : v.dob) : undefined} />
+              <DupRow label="Date of birth" value={v.dob} />
               <DupRow label="Phone" value={v.phone} />
               <DupRow label="Email" value={v.email} />
             </div>
@@ -315,3 +353,11 @@ function DupRow({ label, value, mono, highlight }: { label: string; value?: stri
   );
 }
 
+function Review({ label, value }: { label: string; value?: string }) {
+  return (
+    <div>
+      <dt className="text-label uppercase text-muted-foreground">{label}</dt>
+      <dd className="mt-0.5 font-medium capitalize">{value || "—"}</dd>
+    </div>
+  );
+}
