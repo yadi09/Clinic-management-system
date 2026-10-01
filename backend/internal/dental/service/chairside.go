@@ -67,11 +67,13 @@ SELECT l.id, l.patient_id, l.state, l.stage, l.priority,
   -- Treatment delivered and never billed. The same definition the Unbilled
   -- treatment report uses, so the chair and the report cannot disagree.
   LEFT JOIN LATERAL (
-      SELECT sum(sm.amount_due) AS amt
+      -- Exactly the report's predicate (audit D21/W25): owed_amount, not the planned
+      -- fee; refunded counts as owed again; nothing from a cancelled course.
+      SELECT sum(sm.owed_amount) AS amt
         FROM session_money sm
        WHERE sm.patient_id = p.id
-         AND sm.owed_now AND sm.pay_state = 'unpaid'
-         AND sm.session_status <> 'cancelled'
+         AND sm.alive AND sm.owed_now AND sm.pay_state IN ('unpaid','refunded')
+         AND sm.owed_amount > 0.005
   ) unbilled ON true
   -- Did anything actually get written down during THIS visit? Counted from the
   -- moment they were enqueued, so yesterday's notes cannot vouch for today.

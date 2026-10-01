@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/reicb/clinicsaas/internal/dental"
 	"github.com/reicb/clinicsaas/internal/finance"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
 )
@@ -23,27 +24,17 @@ var _ finance.Dental = (*DentalAdapter)(nil)
 
 func NewDentalAdapter(db *kerneldb.DB) *DentalAdapter { return &DentalAdapter{db: db} }
 
-// owedSessions is dental's "delivered but not paid for", as a joinable CTE.
-const owedSessions = `
+// owedSessions is dental's "delivered but not paid for", as a joinable CTE — built
+// on dental.SessionMoneySQL, so Finance's Receivables and Overview agree with the
+// dental Unbilled report. Its own copy left out down payments and extras
+// (kind = 'visit'), ignored deleted patients and aged debt in UTC (audit D21/N-M3).
+var owedSessions = dental.SessionMoneySQL + `,
 owed_session AS (
-  SELECT se.patient_id,
-         CASE
-           WHEN c.id IS NULL OR c.status = 'void' THEN se.amount_due
-           ELSE coalesce(rev.refunded, 0)
-         END AS amount,
-         coalesce(se.completed_at::date, se.scheduled_date) AS since
-  FROM treatment_sessions se
-  JOIN treatment_plans pl ON pl.id = se.plan_id AND pl.tenant_id = se.tenant_id
-  LEFT JOIN charges c ON c.id = se.charge_id AND c.tenant_id = se.tenant_id AND c.deleted_at IS NULL
-  LEFT JOIN LATERAL (
-    SELECT sum(-r.amount) AS refunded FROM charges r
-     WHERE r.tenant_id = c.tenant_id AND r.reverses_charge_id = c.id AND r.deleted_at IS NULL
-  ) rev ON true
-  WHERE se.tenant_id = $1
-    AND se.kind = 'visit'
-    AND se.status = 'done'
-    AND pl.status <> 'cancelled'
-    AND (c.id IS NULL OR c.status = 'void' OR (c.status = 'paid' AND rev.refunded IS NOT NULL))
+  SELECT sm.patient_id, sm.owed_amount AS amount,
+         (sm.owed_since AT TIME ZONE 'Africa/Addis_Ababa')::date AS since
+    FROM session_money sm
+    JOIN patients pt ON pt.id = sm.patient_id AND pt.tenant_id = sm.tenant_id AND pt.deleted_at IS NULL
+   WHERE sm.alive AND sm.owed_now AND sm.pay_state IN ('unpaid','refunded')
 )`
 
 func (a *DentalAdapter) UnbilledTotal(ctx context.Context) (string, int, error) {
@@ -51,7 +42,7 @@ func (a *DentalAdapter) UnbilledTotal(ctx context.Context) (string, int, error) 
 	var amount string
 	var n int
 	err := a.db.WithTx(ctx, func(tx pgx.Tx) error {
-		return tx.QueryRow(ctx, `WITH `+owedSessions+`
+		return tx.QueryRow(ctx, owedSessions+`
 			SELECT coalesce(sum(amount),0)::text, count(*) FROM owed_session WHERE amount > 0.005`,
 			tid).Scan(&amount, &n)
 	})
@@ -62,8 +53,8 @@ func (a *DentalAdapter) UnbilledByPatient(ctx context.Context) ([]finance.Unbill
 	tid := tenantOf(ctx)
 	out := []finance.UnbilledPatient{}
 	err := a.db.WithTx(ctx, func(tx pgx.Tx) error {
-		rows, e := tx.Query(ctx, `WITH `+owedSessions+`
-			SELECT patient_id, sum(amount)::text, max((now()::date - since))::int
+		rows, e := tx.Query(ctx, owedSessions+`
+			SELECT patient_id, sum(amount)::text, max(((now() AT TIME ZONE 'Africa/Addis_Ababa')::date - since))::int
 			  FROM owed_session WHERE amount > 0.005 GROUP BY patient_id`, tid)
 		if e != nil {
 			return e

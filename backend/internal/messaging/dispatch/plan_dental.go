@@ -213,7 +213,9 @@ func (p *Planner) planDentalBillsFor(ctx context.Context, tid uuid.UUID) (int, e
 			       ) c ON true
 			  LEFT JOIN message_templates t ON t.tenant_id = $1
 			                               AND t.kind = 'bill_reminder' AND t.lang = c.sms_lang
-			 WHERE sm.session_status <> 'cancelled'
+			 -- alive: not cancelled, and not in a cancelled course. Filtering only the
+			 -- line's status kept chasing debts on courses every screen had dropped.
+			 WHERE sm.alive
 			   AND sm.pay_state IN ('unpaid','refunded')
 			   -- Down payments are owed too. That was a clause here, read by joining back
 			   -- for the session kind; it now lives in owed_now, which is why this

@@ -2143,10 +2143,8 @@ func (s *Service) balanceTx(ctx context.Context, tx pgx.Tx, tid, patientID uuid.
 	var owed, paid, atCashier, due, waived string
 	err := tx.QueryRow(ctx, sessionMoneyCTE+`,
 scoped AS (
-  SELECT sm.*, (sm.session_status <> 'cancelled' AND pl.status <> 'cancelled') AS alive
-  FROM session_money sm
-  JOIN treatment_plans pl ON pl.id = sm.plan_id AND pl.tenant_id = sm.tenant_id
-  WHERE sm.patient_id = $2
+  -- alive comes from the projection itself now.
+  SELECT sm.* FROM session_money sm WHERE sm.patient_id = $2
 )
 SELECT coalesce(sum(amount_due)    FILTER (WHERE alive AND pay_state <> 'waived'), 0)::text,
        -- Deliberately NOT gated on alive: money the patient actually handed over does

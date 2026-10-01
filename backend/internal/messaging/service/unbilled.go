@@ -95,7 +95,7 @@ func (s *Service) UnbilledReminders(ctx context.Context, in messaging.UnbilledRe
 			  JOIN patients pt ON pt.id = sm.patient_id AND pt.tenant_id = $1 AND pt.deleted_at IS NULL
 			  LEFT JOIN service_items si ON si.id = sm.service_item_id AND si.tenant_id = $1
 			 WHERE sm.session_id = ANY($2)
-			   AND sm.session_status <> 'cancelled'
+			   AND sm.alive
 			   AND sm.owed_now
 			   AND sm.pay_state IN ('unpaid','refunded')`,
 			tid, in.SessionIDs)

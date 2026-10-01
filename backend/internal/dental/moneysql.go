@@ -25,8 +25,11 @@ WITH session_charge AS (
          se.amount_due,
          se.completed_at, se.completed_by, se.branch_id,
          c.id AS charge_id, c.status AS charge_status, c.amount AS charge_amount,
-         rev.refunded_amount
+         rev.refunded_amount,
+         pl.status AS plan_status
   FROM treatment_sessions se
+  LEFT JOIN treatment_plans pl
+         ON pl.id = se.plan_id AND pl.tenant_id = se.tenant_id
   LEFT JOIN charges c
          ON c.id = se.charge_id AND c.tenant_id = se.tenant_id AND c.deleted_at IS NULL
   LEFT JOIN LATERAL (
@@ -52,6 +55,12 @@ session_money AS (
          -- unpaid deposit in the clinic from the unbilled report, the "Owes" badge
          -- and the patient's due balance, while the plan card said it was owed.
          (sc.session_status = 'done' OR sc.kind = 'deposit') AS owed_now,
+         -- Still part of a running agreement: neither the line nor its course was
+         -- cancelled. Every surface that asks "what is owed" must filter on it. It
+         -- lives here because the SMS chase did not, and texted patients about a
+         -- course every other screen had dropped (audit D20); and because the
+         -- chair and Finance each re-derived it and disagreed (audit D21).
+         (sc.session_status <> 'cancelled' AND coalesce(sc.plan_status, '') <> 'cancelled') AS alive,
          -- A deposit cannot be a broken promise about a visit that never happened.
          (sc.pay_later AND sc.session_status <> 'done' AND sc.kind <> 'deposit') AS promised_undelivered,
          -- When the debt started running: treatment date for a visit, the day the

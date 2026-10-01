@@ -25,6 +25,7 @@ import (
 	migrations "github.com/reicb/clinicsaas/db/migrations"
 	"github.com/reicb/clinicsaas/internal/billing"
 	billingsvc "github.com/reicb/clinicsaas/internal/billing/service"
+	financesvc "github.com/reicb/clinicsaas/internal/finance/service"
 	"github.com/reicb/clinicsaas/internal/dental"
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
 	"github.com/reicb/clinicsaas/internal/kernel/audit"
@@ -671,5 +672,36 @@ func TestD14_TotalFollowsExtrasFeesAndCancellations(t *testing.T) {
 	must(t, f.svc.UpdateSession(f.as(f.dentist), f.patient, p.Sessions[1].ID, dental.SessionUpdate{Status: "cancelled"}))
 	if got := f.planTotal(p.ID); got != "1000.00" {
 		t.Fatalf("after cancelling visit 2: total %s, want 1000.00", got)
+	}
+}
+
+// --- D20/D21: one definition of "still owed", used by Finance and the SMS chase ---
+
+func TestD21_FinanceCountsWhatTheReportCounts(t *testing.T) {
+	f := newFixture(t)
+	p := f.course(2, "1000", "500") // deposit 500 owed from the start
+	f.record(f.dentist, p.Sessions[0].ID)
+	var xray uuid.UUID
+	must(t, f.db.Pool.QueryRow(context.Background(),
+		`INSERT INTO service_items (tenant_id, code, name, category, price) VALUES ($1,'XR','X-ray','dental',300) RETURNING id`,
+		f.tenant).Scan(&xray))
+	must(t, f.svc.AddExtra(f.as(f.dentist), f.patient, p.Sessions[0].ID, dental.ExtraInput{ServiceID: xray}))
+	// A second course, given and unbilled, then (as the owner) cancelled: not owed.
+	q := f.course(1, "4000", "")
+	f.record(f.dentist, q.Sessions[0].ID)
+	_, err := f.db.Pool.Exec(context.Background(), `UPDATE treatment_plans SET status='cancelled' WHERE id=$1`, q.ID)
+	must(t, err)
+
+	got, n, err := financesvc.NewDentalAdapter(f.db).UnbilledTotal(f.as(f.owner))
+	must(t, err)
+	if got != "1800.00" || n != 3 { // visit 1,000 + deposit 500 + X-ray 300
+		t.Fatalf("finance unbilled = %s over %d, want 1800.00 over 3", got, n)
+	}
+	var chased string
+	must(t, f.db.Pool.QueryRow(context.Background(), dental.SessionMoneySQL+`
+		SELECT coalesce(sum(owed_amount),0)::text FROM session_money sm
+		 WHERE sm.alive AND sm.owed_now AND sm.pay_state IN ('unpaid','refunded')`, f.tenant).Scan(&chased))
+	if chased != "1800.00" {
+		t.Fatalf("SMS planner's set = %s, want 1800.00 (the cancelled course excluded)", chased)
 	}
 }
