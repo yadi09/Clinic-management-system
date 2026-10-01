@@ -106,7 +106,12 @@
      are visually 28-32px and must stay that size on desktop-dense rows. The
      pseudo-element enlarges the hit area without moving a single pixel of layout —
      clicks on ::after land on the element itself. */
-  .touch-hit { position: relative; }
+  /* Only when the element is not positioned already. This rule sits after
+     Tailwind's own utilities, so on an `absolute` button it used to win and pull
+     the button back into the flow: every dialog's close X landed at the bottom of
+     the dialog instead of its top-right corner. A positioned element already
+     anchors the ::after halo, so it needs nothing from here. */
+  .touch-hit:not(.absolute):not(.fixed):not(.sticky) { position: relative; }
   /* Coarse pointers only: a mouse needs no halo, and on desktop the halos of
      adjacent dense-row icons would overlap. Note ::after does not render on
      <input> elements — wrap form controls in a padded label instead. */
