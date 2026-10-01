@@ -71,7 +71,10 @@ import { AppError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
 type SectionKey = "account" | "profile" | "locations" | "flow" | "payments" | "vitals" | "diagnoses" | "drugs" | "procedures" | "toothconditions";
-const SECTIONS: { group: string; items: { key: SectionKey; label: string; icon: LucideIcon; flag?: string }[] }[] = [
+// flag: shown only with it. hideWhen: hidden with it — a dental clinic has no
+// triage (so no vitals form) and its examination's diagnosis is free text, not the
+// general clinic's catalogue.
+const SECTIONS: { group: string; items: { key: SectionKey; label: string; icon: LucideIcon; flag?: string; hideWhen?: string }[] }[] = [
   {
     group: "General",
     items: [
@@ -90,8 +93,8 @@ const SECTIONS: { group: string; items: { key: SectionKey; label: string; icon: 
   {
     group: "Clinical library",
     items: [
-      { key: "vitals", label: "Vitals form", icon: Stethoscope },
-      { key: "diagnoses", label: "Diagnosis catalog", icon: ClipboardList },
+      { key: "vitals", label: "Vitals form", icon: Stethoscope, hideWhen: "dental" },
+      { key: "diagnoses", label: "Diagnosis catalog", icon: ClipboardList, hideWhen: "dental" },
       { key: "drugs", label: "Drugs & allergens", icon: Pill },
       // Dental only: the list of what this practice does. Hidden elsewhere by
       // the same flag that hides the chart and the treatment plan.
@@ -124,7 +127,7 @@ export function SettingsPage() {
           {SECTIONS.map((g) => (
             <div key={g.group} className="mb-2">
               <p className="px-3 pb-1 pt-3 text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">{g.group}</p>
-              {g.items.filter((it) => (it.key !== "locations" || BRANCHES_ENABLED) && (!it.flag || flagOn(it.flag))).map((it) => (
+              {g.items.filter((it) => (it.key !== "locations" || BRANCHES_ENABLED) && (!it.flag || flagOn(it.flag)) && !(it.hideWhen && flagOn(it.hideWhen))).map((it) => (
                 <button
                   key={it.key}
                   onClick={() => setActive(it.key)}
@@ -1174,6 +1177,7 @@ function VitalsFormCard({ manage }: { manage: boolean }) {
 
 function FlowSettingsCard({ manage }: { manage: boolean }) {
   const qc = useQueryClient();
+  const { flagOn } = useAuth();
   const settings = useQuery({ queryKey: ["settings"], queryFn: getSettings, retry: false });
 
   const [form, setForm] = useState<ClinicSettings | null>(null);
@@ -1237,7 +1241,8 @@ function FlowSettingsCard({ manage }: { manage: boolean }) {
               disabled={disabled}
             />
           </div>
-          <div className="space-y-1.5">
+          {/* A dental clinic always goes straight to the dentist; the setting does nothing there. */}
+          {!flagOn("dental") && <div className="space-y-1.5">
             <Label>Triage step</Label>
             <Select value={form.triage_required ? "on" : "off"} onValueChange={(v) => set("triage_required", v === "on")}>
               <SelectTrigger disabled={disabled}>
@@ -1248,7 +1253,7 @@ function FlowSettingsCard({ manage }: { manage: boolean }) {
                 <SelectItem value="off">Optional</SelectItem>
               </SelectContent>
             </Select>
-          </div>
+          </div>}
           <div className="space-y-1.5">
             <Label>Doctor assignment</Label>
             <Select value={form.doctor_assignment} onValueChange={(v) => set("doctor_assignment", v)}>

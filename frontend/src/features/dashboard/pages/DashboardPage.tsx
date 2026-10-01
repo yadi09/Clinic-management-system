@@ -31,7 +31,8 @@ const etb = (s?: string | number) =>
   `${Number(s || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} ETB`;
 
 export function DashboardPage() {
-  const { user, can } = useAuth();
+  const { user, can, flagOn } = useAuth();
+  const dental = flagOn("dental");
   const q = useQuery({
     queryKey: ["dashboard-today"],
     queryFn: dashboardToday,
@@ -61,7 +62,8 @@ export function DashboardPage() {
             <Tile to="/reception" icon={Users} label="Waiting" value={d.flow.waiting}
               hint={d.flow.waiting === 0 ? "nobody in the queue" : "in the queue"}
               loud={d.flow.waiting > 0} />
-            <Tile to="/worklist" icon={Stethoscope} label="With a clinician" value={d.flow.in_consult} hint="being seen" />
+            {/* A dental clinic has no "My day" — its patients are in the chair. */}
+            <Tile to={dental ? "/chairside" : "/worklist"} icon={Stethoscope} label={dental ? "In the chair" : "With a clinician"} value={d.flow.in_consult} hint="being seen" />
             <Tile to="/appointments" icon={CalendarClock} label="Booked today" value={d.flow.booked_today}
               hint={`${d.flow.arrived} arrived`} />
             <Tile icon={Users} label="Seen today" value={d.flow.seen_today} hint="visits completed" />

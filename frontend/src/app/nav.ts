@@ -92,7 +92,8 @@ export const navSections: NavSection[] = [
   },
   {
     heading: "Reporting",
-    items: [{ to: "/reporting/dhis2", label: "Ministry report", icon: Landmark, perm: ["clinic.manage"], module: "dhis2", upsell: "clinic.manage" }],
+    // Built from medical encounters' diagnoses, which a dental clinic does not record.
+    items: [{ to: "/reporting/dhis2", label: "Ministry report", icon: Landmark, perm: ["clinic.manage"], module: "dhis2", upsell: "clinic.manage", hideWhen: "dental" }],
   },
   {
     heading: "Administration",

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { roleOffered } from "@/features/admin/roles";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, UserPlus } from "lucide-react";
 
@@ -290,7 +291,7 @@ function EditDetailsDialog({ user, onClose, onSaved }: { user: UserListItem | nu
 }
 
 function EditRolesDialog({ user, onClose, onSaved }: { user: UserListItem | null; onClose: () => void; onSaved: () => void }) {
-  const { branches } = useAuth();
+  const { branches, flagOn } = useAuth();
   const [selected, setSelected] = useState<string[]>([]);
   const [branchSel, setBranchSel] = useState<string[]>([]);
   const roles = useQuery({ queryKey: ["roles"], queryFn: listRoles, enabled: !!user });
@@ -319,7 +320,7 @@ function EditRolesDialog({ user, onClose, onSaved }: { user: UserListItem | null
         <div className="space-y-1.5">
           <Label>Roles</Label>
           <div className="flex flex-wrap gap-2">
-            {(roles.data ?? []).map((r) => (
+            {(roles.data ?? []).filter((r) => roleOffered(r.code, flagOn, user?.roles.includes(r.code))).map((r) => (
               <button
                 key={r.code}
                 type="button"
@@ -370,7 +371,7 @@ function InviteDialog({ onInvited }: { onInvited: () => void }) {
   const [result, setResult] = useState<InviteResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const roles = useQuery({ queryKey: ["roles"], queryFn: listRoles, enabled: open });
-  const { branches, activeBranchId } = useAuth();
+  const { branches, activeBranchId, flagOn } = useAuth();
   const [branchSel, setBranchSel] = useState<string[]>([]);
   // Default new staff to the branch the admin is currently working in.
   useEffect(() => {
@@ -469,7 +470,7 @@ function InviteDialog({ onInvited }: { onInvited: () => void }) {
             <div className="space-y-1.5">
               <Label>Roles</Label>
               <div className="flex flex-wrap gap-2">
-                {(roles.data ?? []).map((r) => (
+                {(roles.data ?? []).filter((r) => roleOffered(r.code, flagOn)).map((r) => (
                   <button
                     key={r.code}
                     type="button"
