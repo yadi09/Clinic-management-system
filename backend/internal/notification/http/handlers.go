@@ -42,6 +42,7 @@ func dto(n notification.Notification) gin.H {
 		"kind":       n.Kind,
 		"title":      n.Title,
 		"body":       n.Body,
+		"data":       n.Data,
 		"href":       href(n),
 		"created_at": n.CreatedAt,
 		"read_at":    n.ReadAt,

@@ -985,6 +985,7 @@ type Notification struct {
 	DedupeKey string     `json:"dedupe_key"`
 	CreatedAt time.Time  `json:"created_at"`
 	ReadAt    *time.Time `json:"read_at"`
+	Data      string     `json:"data"`
 }
 
 type NotificationWatermark struct {

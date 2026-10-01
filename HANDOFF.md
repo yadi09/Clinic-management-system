@@ -14,6 +14,11 @@ The two Claude sessions don't share memory (different machines, different paths)
 
 ## Log
 
+### 2026-10-02 (later) — WSL
+- Dialog close ✕ is back in the top-right corner app-wide: `.touch-hit` no longer forces `position: relative` on an element that is already `absolute`/`fixed`/`sticky` (`src/styles/index.css`). Also fixes the dental image delete ✕.
+- Notifications redesigned: rows lead with the patient name + card, then "Missed visit N of <course>", then the date in both calendars; Unread/Earlier sections in the bell; kind-aware pop-up title. Migration **00088** adds `notifications.data` (structured fields) and makes `patient_id` cascade on delete (e2e cleanups hard-delete patients). Next migration number is **00089**.
+- Test data on prod, test account `cure-dental` only: patients `TEST-N1..3` (and their notices). Delete notifications first is no longer needed (cascade), but remove sessions and plans before the patient.
+
 ### 2026-10-02 — WSL
 - Shipped in-app notifications: the top-bar bell + a sign-in pop-up. v1 kind = dental "missed visit" (to owner, clinic admin, reception, and the course's dentist). Migration **00087** (`notifications`, `notification_watermarks`); backend `internal/notification`; frontend `features/notifications`. Producer runs in the worker every 5 min; notices clear themselves once the visit is rebooked/done.
 - Next migration number is **00088**. To add a notification kind, see the `produce` package doc and `href()` in `notification/http/handlers.go`.

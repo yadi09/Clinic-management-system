@@ -79,7 +79,7 @@ func (m *MissedVisits) once(ctx context.Context) {
 }
 
 // Produce writes one notification per missed visit per recipient, and returns how
-// many were new. It is safe to run any number of times: the unique dedupe index
+// many were new (or, once, filled in with the fields added in 00088). It is safe to run any number of times: the unique dedupe index
 // refuses a second copy, so nothing here checks first.
 func (m *MissedVisits) Produce(ctx context.Context) (int, error) {
 	var created int64
@@ -195,13 +195,19 @@ recipients AS (
               WHERE urs.user_id = u.id AND urs.tenant_id = m.tenant_id AND r.code = 'doctor'
                 AND (urs.branch_id IS NULL OR m.branch_id IS NULL OR urs.branch_id = m.branch_id)))
 )
-INSERT INTO notifications (tenant_id, user_id, kind, title, body, patient_id, subject_id, dedupe_key)
+INSERT INTO notifications (tenant_id, user_id, kind, title, body, patient_id, subject_id, dedupe_key, data)
 SELECT tenant_id, user_id, $3, 'Missed visit',
        -- "Visit 3", as the dental screens say it. No "of 6": a course's count
        -- changes as visits are cancelled or added, and a wrong total misleads.
        format('%s (card %s) missed visit %s of %s on %s.',
               patient_name, mrn, seq, title, to_char(scheduled_date, 'FMDD Mon YYYY')),
        patient_id, session_id,
-       $3 || ':' || session_id::text || ':' || scheduled_date::text
+       $3 || ':' || session_id::text || ':' || scheduled_date::text,
+       -- The same facts as fields, for the screen to lay out.
+       jsonb_build_object('patient', patient_name, 'card', mrn, 'course', title,
+                          'visit', seq, 'date', scheduled_date::text)
   FROM recipients
-ON CONFLICT (tenant_id, user_id, dedupe_key) DO NOTHING`
+-- A notice written before these fields existed gets them filled in once; a
+-- complete one is left exactly as it is.
+ON CONFLICT (tenant_id, user_id, dedupe_key)
+DO UPDATE SET data = EXCLUDED.data WHERE notifications.data = '{}'::jsonb`

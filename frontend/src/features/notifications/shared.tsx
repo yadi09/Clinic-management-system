@@ -1,6 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
+import { DualDate } from "@/components/DualDate";
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -10,6 +12,7 @@ import {
   notificationKeys,
   timeAgo,
 } from "./api";
+import { present } from "./kinds";
 
 /** Opening a notification marks it read and goes where it points. Navigation does
  *  not wait for the mark: the user asked to see the patient, and a slow or failed
@@ -42,29 +45,52 @@ export function useMarkAllRead(userId: string, after?: () => void) {
 
 export function NotificationRow({ n, onOpen }: { n: AppNotification; onOpen: (n: AppNotification) => void }) {
   const unread = !n.read_at;
+  const p = present(n);
+  const Icon = p.icon;
   return (
     <button
       type="button"
       onClick={() => onOpen(n)}
-      className={cn(
-        "flex w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none",
-        unread && "bg-primary/5",
-      )}
+      aria-label={`${p.headline}. ${p.detail}.${unread ? " Unread." : ""}`}
+      className="group flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
     >
       <span
         aria-hidden
-        className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", unread ? "bg-primary" : "bg-transparent")}
-      />
-      <span className="min-w-0 flex-1">
-        <span className="flex items-baseline justify-between gap-2">
-          <span className={cn("truncate text-sm", unread ? "font-semibold" : "font-medium text-muted-foreground")}>
-            {n.title}
-          </span>
-          <span className="shrink-0 text-xs text-muted-foreground">{timeAgo(n.created_at)}</span>
-        </span>
-        <span className="mt-0.5 block text-sm leading-snug text-muted-foreground">{n.body}</span>
+        className={cn(
+          "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+          unread ? p.tone.unread : p.tone.read,
+        )}
+      >
+        <Icon className="h-[18px] w-[18px]" />
       </span>
-      <span className="sr-only">{unread ? "Unread" : "Read"}</span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-start gap-2">
+          {/* The name wraps rather than truncates: staff act on the whole name,
+              and on a phone a cut-off one is a guess. */}
+          <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span className={cn("break-words text-sm", unread ? "font-semibold text-foreground" : "font-medium text-foreground/80")}>
+              {p.headline}
+            </span>
+            {p.tag && (
+              <span className="whitespace-nowrap rounded bg-muted px-1.5 py-px text-[11px] font-medium tabular-nums text-muted-foreground">
+                {p.tag}
+              </span>
+            )}
+          </span>
+          <span className="flex shrink-0 items-center gap-1.5 pt-0.5 text-xs text-muted-foreground">
+            {timeAgo(n.created_at)}
+            {unread && <span className="h-2 w-2 rounded-full bg-primary" />}
+          </span>
+        </span>
+        <span className={cn("mt-0.5 block text-sm leading-snug", unread ? "text-foreground/80" : "text-muted-foreground")}>
+          {p.detail}
+        </span>
+        {p.date && <DualDate iso={p.date} className="mt-0.5 block text-xs text-muted-foreground" />}
+      </span>
+      <ChevronRight
+        aria-hidden
+        className="mt-2.5 h-4 w-4 shrink-0 text-muted-foreground opacity-100 transition-opacity md:opacity-60 md:group-hover:opacity-100 md:group-focus-visible:opacity-100"
+      />
     </button>
   );
 }

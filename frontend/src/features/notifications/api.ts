@@ -6,7 +6,11 @@ export interface AppNotification {
   id: string;
   kind: string;
   title: string;
+  /** The readable sentence; the fallback when a kind's fields are missing. */
   body: string;
+  /** The same facts as fields, by kind (missed visit: patient, card, course,
+   *  visit, date). */
+  data?: Record<string, unknown>;
   href: string;
   created_at: string;
   read_at: string | null;

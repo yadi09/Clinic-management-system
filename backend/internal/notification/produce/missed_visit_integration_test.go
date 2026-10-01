@@ -3,6 +3,7 @@ package produce
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -260,6 +261,33 @@ func TestIntegrationMissedVisitNotifications(t *testing.T) {
 		}
 	}
 
+	// The same facts as fields, for the screen to lay out.
+	var data map[string]any
+	var raw []byte
+	if err := db.Pool.QueryRow(ctx,
+		`SELECT data FROM notifications WHERE user_id = $1 AND subject_id = $2`, desk, missed).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &data); err != nil {
+		t.Fatalf("data is not a JSON object: %s", raw)
+	}
+	if data["patient"] != "Almaz Bekele" || data["card"] != "C-101" || data["course"] != "Root canal" ||
+		data["visit"] != float64(1) || data["date"] == "" {
+		t.Fatalf("data fields wrong: %s", raw)
+	}
+	// A notice written before the fields existed is filled in once by the next pass.
+	f.exec(`UPDATE notifications SET data = '{}'::jsonb WHERE user_id = $1 AND subject_id = $2`, desk, missed)
+	if _, err := mv.Produce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Pool.QueryRow(ctx,
+		`SELECT data FROM notifications WHERE user_id = $1 AND subject_id = $2`, desk, missed).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "Almaz Bekele") {
+		t.Fatalf("an older notice was not filled in: %s", raw)
+	}
+
 	// Running again changes nothing.
 	again, err := mv.Produce(ctx)
 	if err != nil {
@@ -380,6 +408,15 @@ func TestIntegrationMissedVisitNotifications(t *testing.T) {
 	}
 	if n := unreadOwner(); n != 1 {
 		t.Fatalf("owner should have the new miss unread, unread = %d", n)
+	}
+
+	// Removing a patient outright (as the e2e cleanups do) takes their notices
+	// with it instead of being refused by the foreign key.
+	f.exec(`DELETE FROM treatment_sessions WHERE patient_id = $1`, ptB)
+	f.exec(`DELETE FROM treatment_plans WHERE patient_id = $1`, ptB)
+	f.exec(`DELETE FROM patients WHERE id = $1`, ptB)
+	if got := f.count(deskB); got != 0 {
+		t.Fatalf("a deleted patient's notices remain: %d", got)
 	}
 }
 

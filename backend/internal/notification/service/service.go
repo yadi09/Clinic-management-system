@@ -3,6 +3,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -50,7 +51,7 @@ func (s *Service) List(ctx context.Context, f notification.ListFilter) (*notific
 	out := &notification.Page{Items: []notification.Notification{}}
 	err = s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		rows, e := tx.Query(ctx,
-			`SELECT id, kind, title, body, patient_id, subject_id, created_at, read_at
+			`SELECT id, kind, title, body, patient_id, subject_id, data, created_at, read_at
 			   FROM notifications
 			  WHERE tenant_id = $1 AND user_id = $2
 			    AND ($3::bool = false OR read_at IS NULL)
@@ -63,10 +64,12 @@ func (s *Service) List(ctx context.Context, f notification.ListFilter) (*notific
 		defer rows.Close()
 		for rows.Next() {
 			var n notification.Notification
+			var data []byte
 			if e := rows.Scan(&n.ID, &n.Kind, &n.Title, &n.Body, &n.PatientID, &n.SubjectID,
-				&n.CreatedAt, &n.ReadAt); e != nil {
+				&data, &n.CreatedAt, &n.ReadAt); e != nil {
 				return e
 			}
+			n.Data = json.RawMessage(data)
 			out.Items = append(out.Items, n)
 		}
 		if e := rows.Err(); e != nil {

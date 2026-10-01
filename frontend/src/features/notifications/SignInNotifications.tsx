@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { BellRing, CalendarX2, CheckCheck } from "lucide-react";
 
 import { useAuth } from "@/app/auth-context";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 import { listNotifications, notificationKeys } from "./api";
+import { summarize } from "./kinds";
 import { hasUnseen, markSeen } from "./seen";
 import { NotificationRow, useMarkAllRead, useOpenNotification } from "./shared";
 
@@ -54,30 +57,42 @@ export function SignInNotifications() {
   const items = unread.data?.items ?? [];
   const total = unread.data?.unread ?? items.length;
   const more = total - items.length;
+  const { title, lead } = summarize(items, total);
+  const missedOnly = items.length > 0 && items.every((n) => n.kind === "missed_visit");
+  const Icon = missedOnly ? CalendarX2 : BellRing;
 
   return (
     <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : close())}>
       <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="pr-6">
-            {total === 1 ? "You have 1 unread notification" : `You have ${total} unread notifications`}
-          </DialogTitle>
-          <DialogDescription>Here's what needs your attention.</DialogDescription>
+        <DialogHeader className="flex-row items-start gap-3 space-y-0">
+          <span
+            aria-hidden
+            className={cn(
+              "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
+              missedOnly ? "bg-amber-100 text-amber-700" : "bg-primary/10 text-primary",
+            )}
+          >
+            <Icon className="h-5 w-5" />
+          </span>
+          <div className="min-w-0 space-y-1 pr-6">
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription>{lead}</DialogDescription>
+          </div>
         </DialogHeader>
         {/* Full-bleed rows, edge to edge like the bell's list. */}
-        <div className="-mx-6 max-h-[50dvh] divide-y overflow-y-auto border-y">
+        <div className="-mx-6 max-h-[50dvh] divide-y overflow-y-auto overscroll-contain border-y">
           {items.map((n) => (
             <NotificationRow key={n.id} n={n} onOpen={openItem} />
           ))}
         </div>
         {more > 0 && (
           <p className="text-sm text-muted-foreground">
-            And {more} more. Open the bell at the top to see them all.
+            {more === 1 ? "1 more is" : `${more} more are`} in the bell at the top of the page.
           </p>
         )}
-        <DialogFooter>
-          <Button variant="outline" loading={markAll.isPending} onClick={() => markAll.mutate()}>
-            Mark all as read
+        <DialogFooter className="sm:justify-between">
+          <Button variant="ghost" loading={markAll.isPending} onClick={() => markAll.mutate()}>
+            <CheckCheck className="mr-1.5 h-4 w-4" /> Mark all as read
           </Button>
           <Button onClick={close}>Got it</Button>
         </DialogFooter>

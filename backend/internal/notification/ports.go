@@ -11,6 +11,7 @@ package notification
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -30,6 +31,9 @@ type Notification struct {
 	Body      string
 	PatientID *uuid.UUID
 	SubjectID *uuid.UUID
+	// Data is the same facts as fields, by kind (for a missed visit: patient,
+	// card, course, visit, date). A JSON object; {} when there are none.
+	Data      json.RawMessage
 	CreatedAt time.Time
 	ReadAt    *time.Time
 }
