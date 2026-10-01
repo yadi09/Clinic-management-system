@@ -118,7 +118,7 @@ type Params struct {
 	Slug              string // workspace identifier (login)
 	OwnerEmail        string
 	OwnerName         string
-	OwnerPhone        string // local 09… form; blank leaves it unset
+	OwnerPhone        string          // local 09… form; blank leaves it unset
 	OwnerPasswordHash string          // pre-hashed (Argon2id)
 	OwnerStatus       string          // "active" (seed/provision) — invited owners may differ later
 	ClinicType        string          // "general" (default) | "dental" — applies a flag preset
@@ -361,6 +361,23 @@ func BootstrapTenant(ctx context.Context, tx pgx.Tx, p Params) (Result, error) {
 			 ON CONFLICT (tenant_id, lower(code)) WHERE deleted_at IS NULL DO NOTHING`,
 			res.TenantID, s.Code, s.Name, s.Price, s.IsDefault); err != nil {
 			return res, fmt.Errorf("default service %s: %w", s.Code, err)
+		}
+	}
+
+	// The ways a patient can pay. Migration 00063 gave every clinic that existed then
+	// these four, but provisioning never did, so the first clinic created afterwards
+	// had none: the cashier's method picker was empty and every payment — Telebirr
+	// included — was recorded as cash, which the day close then expected in the
+	// drawer. The clinic renames them, or adds its named accounts, in Settings.
+	for i, r := range []struct{ key, label, kind string }{
+		{"cash", "Cash", "cash"}, {"card", "Card", "card"},
+		{"mobile", "Mobile money", "wallet"}, {"transfer", "Bank transfer", "bank"},
+	} {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO payment_rails (tenant_id, key, label, kind, needs_reference, sort_order)
+			 VALUES ($1,$2,$3,$4,false,$5) ON CONFLICT (tenant_id, key) DO NOTHING`,
+			res.TenantID, r.key, r.label, r.kind, i); err != nil {
+			return res, fmt.Errorf("default payment method %s: %w", r.key, err)
 		}
 	}
 
