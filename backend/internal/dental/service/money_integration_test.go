@@ -781,3 +781,41 @@ func TestD18_ChartSavesMergeValidateAndAudit(t *testing.T) {
 		}
 	}
 }
+
+// --- D25: an extra follows its visit ---
+
+func TestD25_ExtrasFollowTheirVisit(t *testing.T) {
+	f := newFixture(t)
+	p := f.course(3, "1000", "")
+	var xray uuid.UUID
+	must(t, f.db.Pool.QueryRow(context.Background(),
+		`INSERT INTO service_items (tenant_id, code, name, category, price) VALUES ($1,'XR','X-ray','dental',400) RETURNING id`,
+		f.tenant).Scan(&xray))
+	extraOf := func(visit uuid.UUID) (status string) {
+		t.Helper()
+		must(t, f.db.Pool.QueryRow(context.Background(),
+			`SELECT status FROM treatment_sessions WHERE parent_session_id = $1 AND kind = 'extra'`, visit).Scan(&status))
+		return
+	}
+	v2, v3 := p.Sessions[1].ID, p.Sessions[2].ID
+	must(t, f.svc.AddExtra(f.as(f.dentist), f.patient, v2, dental.ExtraInput{ServiceID: xray}))
+	if st := extraOf(v2); st != "planned" {
+		t.Fatalf("extra on a visit not yet given = %s, want planned (not owed)", st)
+	}
+	f.record(f.dentist, v2)
+	if st := extraOf(v2); st != "done" {
+		t.Fatalf("after the visit is given, extra = %s, want done", st)
+	}
+	// A free visit carrying an unbilled extra is still owed money: guarded.
+	must(t, f.svc.UpdateSession(f.as(f.dentist), f.patient, v2, dental.SessionUpdate{AmountDue: "0", Reason: "goodwill"}))
+	if err := f.svc.UpdateSession(f.as(f.other), f.patient, v2, dental.SessionUpdate{Status: "planned", Reason: "x"}); code(err) != "VISIT_OWED" {
+		t.Fatalf("undoing a free visit with an unbilled X-ray: got %q, want VISIT_OWED", code(err))
+	}
+	// Finishing the course cancels the extra of the visit it cancels.
+	must(t, f.svc.AddExtra(f.as(f.dentist), f.patient, v3, dental.ExtraInput{ServiceID: xray}))
+	_, err := f.svc.FinishCourse(f.as(f.dentist), f.patient, p.ID)
+	must(t, err)
+	if st := extraOf(v3); st != "cancelled" {
+		t.Fatalf("extra of a cancelled visit = %s, want cancelled", st)
+	}
+}

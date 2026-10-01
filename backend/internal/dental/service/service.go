@@ -955,10 +955,14 @@ func (s *Service) AddExtra(ctx context.Context, patientID, sessionID uuid.UUID, 
 		if e := tx.QueryRow(ctx,
 			`INSERT INTO treatment_sessions
 			   (tenant_id, plan_id, patient_id, seq, scheduled_date, amount_due, status, kind,
-			    parent_session_id, service_item_id, branch_id, created_by)
-			 VALUES ($1,$2,$3,$4,$5,$6,'done','extra',$7,$8,$9,$10)
+			    parent_session_id, service_item_id, branch_id, created_by, completed_at, completed_by)
+			 -- An extra follows its visit (audit D25): added to a visit not yet given
+			 -- it is planned, and only becomes owed when that visit is done. It used
+			 -- to be born done — owed, and SMS-chased, for a visit that might never be.
+			 VALUES ($1,$2,$3,$4,$5,$6,$11,'extra',$7,$8,$9,$10,
+			         CASE WHEN $11 = 'done' THEN now() END, CASE WHEN $11 = 'done' THEN $10::uuid END)
 			 RETURNING id`,
-			tid, planID, patientID, seq, sd, fmtMoney(amt), sessionID, in.ServiceID, branch, actor).Scan(&exID); e != nil {
+			tid, planID, patientID, seq, sd, fmtMoney(amt), sessionID, in.ServiceID, branch, actor, sessStatus).Scan(&exID); e != nil {
 			return e
 		}
 		if e := recomputeTotal(ctx, tx, tid, planID); e != nil {
@@ -1123,7 +1127,8 @@ func (s *Service) FinishCourse(ctx context.Context, patientID, planID uuid.UUID)
 			   -- clinical to deliver), so without this finishing a course quietly
 			   -- forgave an unpaid deposit (audit D3). It stays owed until paid or
 			   -- written off, like any other debt.
-			   AND se.kind = 'visit'
+			   -- (extras of visits not given are planned too, and go with them)
+			   AND se.kind IN ('visit','extra')
 			   -- 'planned' is the whole test, matching the projection's owed_now flag.
 			   -- pay_later was excluded here, which stranded a promised-but-never-given
 			   -- visit inside a closed course: not cancelled, never delivered, and
@@ -1413,8 +1418,24 @@ func (s *Service) UpdateSession(ctx context.Context, patientID, sessionID uuid.U
 				"this visit's bill "+what+" — pull it back from the cashier, refund it, or undo the write-off first")
 		}
 		// Undoing given treatment, or charging less for it, forgives money owed.
-		if was.status == "done" && money(was.amount) > 0 && (leavingDone || (feeChanged && money(*amtPtr) < money(was.amount))) {
-			if e := mayForgive(ctx, was.completedBy, was.doneToday, money(was.amount), reason); e != nil {
+		// What undoing this visit would stop being owed: its fee and its unbilled
+		// extras, which follow it (audit D25) — so a free visit carrying an unbilled
+		// X-ray is guarded like any other.
+		owedHere := money(was.amount)
+		if leavingDone {
+			var extras string
+			if e := tx.QueryRow(ctx,
+				`SELECT coalesce(sum(x.amount_due), 0)::text FROM treatment_sessions x
+				  WHERE x.tenant_id = $1 AND x.parent_session_id = $2 AND x.kind = 'extra' AND x.status = 'done'
+				    AND NOT EXISTS (SELECT 1 FROM charges c WHERE c.id = x.charge_id AND c.tenant_id = x.tenant_id
+				                     AND c.deleted_at IS NULL AND c.status IN ('pending','paid','waived'))`,
+				tid, sessionID).Scan(&extras); e != nil {
+				return e
+			}
+			owedHere += money(extras)
+		}
+		if was.status == "done" && owedHere > 0 && (leavingDone || (feeChanged && money(*amtPtr) < money(was.amount))) {
+			if e := mayForgive(ctx, was.completedBy, was.doneToday, owedHere, reason); e != nil {
 				return e
 			}
 		}
@@ -1453,6 +1474,24 @@ func (s *Service) UpdateSession(ctx context.Context, patientID, sessionID uuid.U
 			return apperr.NotFound("SESSION_NOT_FOUND", "session not found")
 		}
 
+		// The visit's extras follow it (audit D25) — except any with a live bill,
+		// which is its own money and is dealt with at the cashier. Undoing or
+		// cancelling an extra that was given is covered by the guard above, which
+		// treats the whole visit as one: the extras ride on the same decision.
+		if next != was.status {
+			if _, e := tx.Exec(ctx,
+				`UPDATE treatment_sessions x SET status = $4,
+				   completed_at = CASE WHEN $4 = 'done' THEN coalesce(x.completed_at, now()) ELSE NULL END,
+				   completed_by = CASE WHEN $4 = 'done' THEN coalesce(x.completed_by, $5) ELSE NULL END,
+				   updated_at = now()
+				 WHERE x.tenant_id = $1 AND x.patient_id = $2 AND x.parent_session_id = $3 AND x.kind = 'extra'
+				   AND x.status <> $4
+				   AND NOT EXISTS (SELECT 1 FROM charges c WHERE c.id = x.charge_id AND c.tenant_id = x.tenant_id
+				                    AND c.deleted_at IS NULL AND c.status IN ('pending','paid','waived'))`,
+				tid, patientID, sessionID, next, actor); e != nil {
+				return e
+			}
+		}
 		if feeChanged || next != was.status {
 			if e := recomputeTotal(ctx, tx, tid, was.planID); e != nil {
 				return e
