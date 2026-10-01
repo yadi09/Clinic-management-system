@@ -35,7 +35,7 @@ import { useIsLargeScreen } from "@/hooks/useMediaQuery";
 import { searchPatients, type PatientSummary } from "@/features/patients/api";
 import { listDepartments, listProviders, getSettings } from "@/features/admin/api";
 import {
-  deferVisit, listServices, patientCharges, raiseCharge, settleVisit, waiveCharge, waiverReasons,
+  deferVisit, listServices, raiseCharge, settleVisit, waiveCharge, waiverReasons,
   type ServiceItem,
 } from "@/features/billing/api";
 import {
@@ -313,41 +313,49 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
   });
   const canOverride = can("payment.waive");
 
+  // Checks this patient in and raises this arrival's charges, returning their ids.
+  // Shared by Collect and Waive, so both act on exactly what THIS visit raised —
+  // waiving used to sweep every pending charge the patient had, a deposit at the
+  // cashier included, and never checked them in (audit D6).
+  const arrive = async (): Promise<string[]> => {
+    const routing = {
+      to_triage: triageRequired,
+      provider_id: !triageRequired && provider ? provider : undefined,
+      // Carried for appointments booked before a department was required: the
+      // server uses it only when the appointment has none, so it can never
+      // reroute a patient away from where they were actually booked.
+      department_id: dept || undefined,
+    };
+    // Only what THIS arrival raised gets collected. A patient who also owes 1,200
+    // from last month must not have it swept into a receipt for a 300 ETB visit.
+    const mine: string[] = [];
+    if (booked) {
+      // The appointment's own door: marks it arrived and applies the
+      // covered-follow-up rule that reception could never reach.
+      const res = await checkInAppointment(p.appointment_id!, routing);
+      mine.push(...res.charge_ids);
+    } else {
+      // The other door, and it is taken UNCONDITIONALLY. It used to be skipped
+      // whenever a fee was due, because it reported no charge ids to collect
+      // against — so a patient found by search who owed the registration fee was
+      // neither charged nor queued. The desk pressed Collect, nothing happened, and
+      // they never appeared at the cashier.
+      const res = await walkIn({ patient_id: p.patient_id, ...routing, department_id: dept });
+      mine.push(...res.charge_ids);
+    }
+    for (const s of chosenExtras) {
+      const { id: cid } = await raiseCharge({
+        patient_id: p.patient_id, service_item_id: s.id, source: "consultation",
+        description: s.name, amount: parseFloat(s.price) || 0,
+        ...routing, department_id: dept || undefined,
+      });
+      mine.push(cid);
+    }
+    return mine;
+  };
   const receive = useMutation({
     mutationFn: async ({ mode, force }: { mode: "collect" | "cashier"; force?: boolean }) => {
-      const routing = {
-        to_triage: triageRequired,
-        provider_id: !triageRequired && provider ? provider : undefined,
-        // Carried for appointments booked before a department was required: the
-        // server uses it only when the appointment has none, so it can never
-        // reroute a patient away from where they were actually booked.
-        department_id: dept || undefined,
-      };
-      // Only what THIS arrival raised gets collected. A patient who also owes 1,200
-      // from last month must not have it swept into a receipt for a 300 ETB visit.
-      const mine: string[] = [];
-      if (booked) {
-        // The appointment's own door: marks it arrived and applies the
-        // covered-follow-up rule that reception could never reach.
-        const res = await checkInAppointment(p.appointment_id!, routing);
-        mine.push(...res.charge_ids);
-      } else {
-        // The other door, and it is taken UNCONDITIONALLY. It used to be skipped
-        // whenever a fee was due, because it reported no charge ids to collect
-        // against — so a patient found by search who owed the registration fee was
-        // neither charged nor queued. The desk pressed Collect, nothing happened, and
-        // they never appeared at the cashier.
-        const res = await walkIn({ patient_id: p.patient_id, ...routing, department_id: dept });
-        mine.push(...res.charge_ids);
-      }
-      for (const s of chosenExtras) {
-        const { id: cid } = await raiseCharge({
-          patient_id: p.patient_id, service_item_id: s.id, source: "consultation",
-          description: s.name, amount: parseFloat(s.price) || 0,
-          ...routing, department_id: dept || undefined,
-        });
-        mine.push(cid);
-      }
+      const mine = await arrive();
       if (mode === "collect" && mine.length > 0) {
         await settleVisit(p.patient_id, {
           rail_id: pay.railId || undefined, method: pay.method, reference: pay.reference,
@@ -547,7 +555,7 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
                   </Button>
                 )}
                 {canCollect && (
-                  <Button variant="ghost" onClick={() => setWaiveOpen(true)}>Waive…</Button>
+                  <Button variant="ghost" disabled={!routeReady} onClick={() => setWaiveOpen(true)}>Waive…</Button>
                 )}
               </div>
             )}
@@ -558,7 +566,7 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
       <DeferDialog open={deferOpen} onClose={() => setDeferOpen(false)} patient={p} total={total}
         onDone={() => { setDeferOpen(false); onDone(); }} />
       <WaiveDialog open={waiveOpen} onClose={() => setWaiveOpen(false)} reasons={reasons.data ?? []}
-        value={waiveReason} onChange={setWaiveReason} patient={p} onDone={onDone} />
+        value={waiveReason} onChange={setWaiveReason} patient={p} onDone={onDone} arrive={arrive} />
     </div>
   );
 
@@ -648,16 +656,18 @@ function DeferDialog({ open, onClose, patient, total, onDone }: {
   );
 }
 
-function WaiveDialog({ open, onClose, reasons, value, onChange, patient, onDone }: {
+function WaiveDialog({ open, onClose, reasons, value, onChange, patient, onDone, arrive }: {
   open: boolean; onClose: () => void; reasons: string[]; value: string;
   onChange: (s: string) => void; patient: ReceptionPatient; onDone: () => void;
+  arrive: () => Promise<string[]>;
 }) {
   const qc = useQueryClient();
   const waive = useMutation({
+    // Check in, then waive only what this arrival raised. Waiving the waived routed
+    // fee is what releases the patient into the queue, as paying it would.
     mutationFn: async () => {
-      const ledger = await patientCharges(patient.patient_id);
-      const open = ledger.rows.filter((c) => c.status === "pending");
-      for (const c of open) await waiveCharge(c.id, value);
+      const mine = await arrive();
+      for (const id of mine) await waiveCharge(id, value);
     },
     onSuccess: () => {
       toast.success(`${patient.name}: fee waived`);
