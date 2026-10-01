@@ -10,7 +10,7 @@
 set -u
 TID=e4cfd85b-2fdb-46c8-98f7-04336a29ef0c
 HASH='$argon2id$v=19$m=65536,t=1,p=4$mKnkkEHXrX436Zr/bBYqAA$KbWIZ0vAQgazQ8nx4Tbd+NIHeo12F+ZzDJ2yoivq/Q4'
-PW='BranchTest#2026'; DOC='p45-doc@yclinic.test'; DESK='p45-desk@yclinic.test'; MRN='P45-E2E-1'
+PW='BranchTest#2026'; DOC='p45-doc@yclinic.test'; DESK='p45-desk@yclinic.test'; OWN='p45-owner@yclinic.test'; MRN='P45-E2E-1'
 PSQL="docker exec -i clinicos-postgres-1 psql -U clinic -d clinic -At"
 B='https://localhost:8443/api/v1'; HOST='Host: app.clinicos.cc'; CT='Content-Type: application/json'
 pass=0; fail=0
@@ -29,9 +29,9 @@ cleanup(){
               DELETE FROM dental_charts WHERE patient_id='$PID';
               DELETE FROM patients WHERE id='$PID';" >/dev/null 2>&1
   fi
-  $PSQL -c "DELETE FROM sessions s USING users u WHERE s.user_id=u.id AND u.email IN ('$DOC','$DESK');
-            DELETE FROM user_role_scopes urs USING users u WHERE urs.user_id=u.id AND u.email IN ('$DOC','$DESK');
-            DELETE FROM users WHERE email IN ('$DOC','$DESK');
+  $PSQL -c "DELETE FROM sessions s USING users u WHERE s.user_id=u.id AND u.email IN ('$DOC','$DESK','$OWN');
+            DELETE FROM user_role_scopes urs USING users u WHERE urs.user_id=u.id AND u.email IN ('$DOC','$DESK','$OWN');
+            DELETE FROM users WHERE email IN ('$DOC','$DESK','$OWN');
             DELETE FROM feature_flags WHERE tenant_id='$TID' AND flag='dental';
             UPDATE tenants SET status='suspended' WHERE id='$TID';" >/dev/null 2>&1
   echo "cleanup: y-clinic is $(q "SELECT status FROM tenants WHERE id='$TID';"), test patient $( [ -z "$(q "SELECT 1 FROM patients WHERE tenant_id='$TID' AND mrn='$MRN';")" ] && echo removed || echo STILL PRESENT)"
@@ -44,7 +44,7 @@ cleanup >/dev/null
 $PSQL -c "UPDATE tenants SET status='active' WHERE id='$TID';
           INSERT INTO feature_flags (tenant_id,flag,enabled,source) VALUES ('$TID','dental',true,'plan')
           ON CONFLICT (tenant_id,flag) WHERE branch_id IS NULL DO UPDATE SET enabled=true;" >/dev/null
-for pair in "$DOC:doctor" "$DESK:receptionist"; do
+for pair in "$DOC:doctor" "$DESK:receptionist" "$OWN:tenant_owner"; do
   E=${pair%%:*}; R=${pair##*:}
   RID=$(q "SELECT id FROM roles WHERE tenant_id='$TID' AND code='$R';")
   U=$(q "INSERT INTO users (tenant_id,email,full_name,password_hash,status) VALUES ('$TID','$E','P45 $R','$HASH','active') RETURNING id;")
