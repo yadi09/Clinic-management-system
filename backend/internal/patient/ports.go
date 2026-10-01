@@ -16,12 +16,15 @@ import (
 
 // PatientInput is the create/update payload (DOB as YYYY-MM-DD).
 type PatientInput struct {
-	MRN              string // optional: preserve an existing card ID on import; blank = auto-generate
-	FirstName        string
-	MiddleName       string
-	LastName         string
-	Gender           string // male|female|other|unknown
-	DOB              string // YYYY-MM-DD
+	MRN        string // optional: preserve an existing card ID on import; blank = auto-generate
+	FirstName  string
+	MiddleName string
+	LastName   string
+	Gender     string // male|female|other|unknown
+	DOB        string // YYYY-MM-DD
+	// DOBEstimated: the clinic recorded an age, not a birthday, and DOB was derived
+	// from it. Most clinics register by age ("about 40"); the flag keeps that honest.
+	DOBEstimated     bool
 	NationalID       string
 	PassportNo       string
 	Phone            string
@@ -41,6 +44,7 @@ type Patient struct {
 	LastName         string          `json:"last_name"`
 	Gender           string          `json:"gender"`
 	DOB              string          `json:"dob"`
+	DOBEstimated     bool            `json:"dob_estimated,omitempty"`
 	NationalID       string          `json:"national_id,omitempty"`
 	PassportNo       string          `json:"passport_no,omitempty"`
 	Phone            string          `json:"phone,omitempty"`

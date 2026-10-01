@@ -6,7 +6,9 @@ export const patientSchema = z.object({
   middle_name: z.string().optional(),
   last_name: z.string().min(1, "Last name is required"),
   gender: z.enum(["male", "female", "other", "unknown"]),
-  dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
+  dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter the age, or the date of birth"),
+  // True when the clinic gave an age and dob was worked out from it.
+  dob_estimated: z.boolean().optional(),
   national_id: z.string().optional(),
   passport_no: z.string().optional(),
   phone: z.string().optional(),

@@ -86,6 +86,8 @@ export interface PatientFormValues {
   phone?: string;
   email?: string;
   blood_group?: string;
+  /** The clinic recorded an age; dob was derived from it. */
+  dob_estimated?: boolean;
 }
 
 /** Optional narrowing for the patient list. Omitted fields mean "no filter". */

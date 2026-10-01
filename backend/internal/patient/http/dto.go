@@ -14,6 +14,7 @@ type patientRequest struct {
 	LastName         string `json:"last_name" binding:"required"`
 	Gender           string `json:"gender"`
 	DOB              string `json:"dob" binding:"required"`
+	DOBEstimated     bool   `json:"dob_estimated"`
 	NationalID       string `json:"national_id"`
 	PassportNo       string `json:"passport_no"`
 	Phone            string `json:"phone"`

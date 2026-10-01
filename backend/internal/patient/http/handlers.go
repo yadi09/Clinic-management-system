@@ -333,7 +333,7 @@ func toInput(req patientRequest) patient.PatientInput {
 	return patient.PatientInput{
 		MRN:       req.MRN,
 		FirstName: req.FirstName, MiddleName: req.MiddleName, LastName: req.LastName,
-		Gender: req.Gender, DOB: req.DOB, NationalID: req.NationalID, PassportNo: req.PassportNo,
+		Gender: req.Gender, DOB: req.DOB, DOBEstimated: req.DOBEstimated, NationalID: req.NationalID, PassportNo: req.PassportNo,
 		Phone: req.Phone, Email: req.Email, BloodGroup: req.BloodGroup,
 		Address: rawFromAny(req.Address), EmergencyContact: rawFromAny(req.EmergencyContact), Force: req.Force,
 	}

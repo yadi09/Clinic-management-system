@@ -125,6 +125,12 @@ func (s *Service) Create(ctx context.Context, in patient.PatientInput) (*patient
 		if e != nil {
 			return e
 		}
+		if in.DOBEstimated {
+			if _, e := tx.Exec(ctx, `UPDATE patients SET dob_estimated = true WHERE tenant_id = $1 AND id = $2`,
+				tenantID, created.ID); e != nil {
+				return e
+			}
+		}
 		return s.publisher.Publish(ctx, tx, &tenantID, "patient", created.ID, "patient.patient.registered",
 			map[string]any{"patient_id": created.ID, "mrn": created.Mrn})
 	}); err != nil {
@@ -189,6 +195,10 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*patient.Profile, erro
 			Phone: deref(row.Phone), Email: deref(row.Email), BloodGroup: deref(row.BloodGroup),
 			Address: rawOrNil(row.Address), EmergencyContact: rawOrNil(row.EmergencyContact),
 			CreatedAt: row.CreatedAt,
+		}
+		if e := tx.QueryRow(ctx, `SELECT dob_estimated FROM patients WHERE tenant_id = $1 AND id = $2`,
+			tenantID, id).Scan(&prof.Patient.DOBEstimated); e != nil {
+			return e
 		}
 		al, e := q.ListAllergies(ctx, patientdb.ListAllergiesParams{TenantID: tenantID, PatientID: id})
 		if e != nil {
