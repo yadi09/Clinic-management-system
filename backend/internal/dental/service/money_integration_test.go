@@ -742,3 +742,42 @@ func TestD17_PrescriptionIsVoidedAndKeepsItsAuthor(t *testing.T) {
 		t.Fatalf("Rx on a cancelled visit: got %q", code(err))
 	}
 }
+
+// --- D18: two clinicians editing one chart do not erase each other ---
+
+func TestD18_ChartSavesMergeValidateAndAudit(t *testing.T) {
+	f := newFixture(t)
+	sts, err := f.svc.ListToothStatuses(f.as(f.dentist), false) // seeds the clinic's defaults
+	must(t, err)
+	if len(sts) < 2 {
+		t.Fatalf("need two tooth conditions, have %d", len(sts))
+	}
+	a, b := sts[0].Code, sts[1].Code
+
+	// Two clinicians, each saving only the tooth they touched, as the client now does.
+	_, err = f.svc.SaveChart(f.as(f.dentist), f.patient, map[string]string{"UR6": a})
+	must(t, err)
+	ch, err := f.svc.SaveChart(f.as(f.other), f.patient, map[string]string{"LL4": b})
+	must(t, err)
+	if ch.Teeth["UR6"] != a || ch.Teeth["LL4"] != b {
+		t.Fatalf("merged chart = %v, want both UR6 and LL4", ch.Teeth)
+	}
+	ev := f.lastEvent("dental.chart.saved", f.patient)
+	if ev == nil {
+		t.Fatal("no dental.chart.saved event")
+	}
+	if c, _ := ev["changes"].(map[string]any)["LL4"].(map[string]any); c["from"] != "" || c["to"] != b {
+		t.Fatalf("event changes = %v", ev["changes"])
+	}
+	// Clearing one tooth leaves the other.
+	ch, err = f.svc.SaveChart(f.as(f.dentist), f.patient, map[string]string{"UR6": ""})
+	must(t, err)
+	if _, still := ch.Teeth["UR6"]; still || ch.Teeth["LL4"] != b {
+		t.Fatalf("after clearing UR6: %v", ch.Teeth)
+	}
+	for _, bad := range []map[string]string{{"99": a}, {"abc": a}, {"UR6": "not-a-condition"}} {
+		if _, err := f.svc.SaveChart(f.as(f.dentist), f.patient, bad); code(err) != validation {
+			t.Fatalf("save %v: got %q, want validation", bad, code(err))
+		}
+	}
+}

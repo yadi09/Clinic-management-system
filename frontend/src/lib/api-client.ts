@@ -32,6 +32,8 @@ interface RequestOptions {
   /** Extra request headers. Used by the public campaign page, whose caller is a
    *  dental clinic with no account and its own one-off token. */
   headers?: Record<string, string>;
+  /** Let the request outlive the page (a save fired as the tab closes). */
+  keepalive?: boolean;
 }
 
 // Coalesce concurrent refreshes so a burst of 401s triggers a single refresh.
@@ -69,6 +71,7 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<{ da
     headers,
     credentials: "include",
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    keepalive: opts.keepalive,
   });
 
   if (res.status === 401 && auth && retry) {

@@ -242,29 +242,116 @@ func (s *Service) loadChartTx(ctx context.Context, tx pgx.Tx, tid, patientID uui
 	return nil
 }
 
-func (s *Service) SaveChart(ctx context.Context, patientID uuid.UUID, teeth map[string]string) (*dental.Chart, error) {
+// palmerTeeth is every tooth a chart may name: four quadrants, 1–8.
+var palmerTeeth = func() map[string]bool {
+	m := map[string]bool{}
+	for _, q := range []string{"UR", "UL", "LR", "LL"} {
+		for i := 1; i <= 8; i++ {
+			m[fmt.Sprintf("%s%d", q, i)] = true
+		}
+	}
+	return m
+}()
+
+// SaveChart applies tooth changes to the chart: {tooth: condition}, "" clears it.
+//
+// It MERGES rather than replaces. The client used to send the whole mouth and the
+// server stored it, so two clinicians — or one on a tablet and a desktop — had the
+// second save silently erase the first (audit D18/W3). Now each save names only
+// the teeth it changed, applied under a row lock onto what is stored, so edits to
+// different teeth both survive; the same tooth, the later wins and both are in the
+// audit trail. Every save publishes dental.chart.saved with each tooth's from/to —
+// the chart's history, which it never had (W4/W17). Tooth codes must be one of the
+// 32 Palmer teeth and conditions one of the clinic's (W35).
+func (s *Service) SaveChart(ctx context.Context, patientID uuid.UUID, changes map[string]string) (*dental.Chart, error) {
 	tid, actor := actorOf(ctx)
-	if teeth == nil {
-		teeth = map[string]string{}
+	for tooth := range changes {
+		if !palmerTeeth[tooth] {
+			return nil, apperr.Validation("unknown tooth " + tooth)
+		}
 	}
-	raw, err := json.Marshal(teeth)
-	if err != nil {
-		return nil, apperr.Internal(err)
-	}
-	err = s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		_, e := tx.Exec(ctx,
+	out := &dental.Chart{}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		// The clinic's conditions, retired ones included: re-saving an old mark is fine.
+		known := map[string]bool{}
+		rows, e := tx.Query(ctx,
+			`SELECT code FROM dental_tooth_statuses WHERE tenant_id = $1 AND deleted_at IS NULL`, tid)
+		if e != nil {
+			return e
+		}
+		for rows.Next() {
+			var c string
+			if e := rows.Scan(&c); e != nil {
+				rows.Close()
+				return e
+			}
+			known[c] = true
+		}
+		rows.Close()
+		for tooth, st := range changes {
+			if st != "" && !known[st] {
+				return apperr.Validation("unknown condition " + st + " for " + tooth)
+			}
+		}
+		// Make sure a row exists, then lock it, so concurrent saves queue up here.
+		if _, e := tx.Exec(ctx,
 			`INSERT INTO dental_charts (tenant_id, patient_id, teeth, updated_by, updated_at)
-			 VALUES ($1,$2,$3,$4, now())
-			 ON CONFLICT (tenant_id, patient_id) DO UPDATE SET
-			   teeth = EXCLUDED.teeth, updated_by = EXCLUDED.updated_by, updated_at = now()`,
-			tid, patientID, raw, actor)
-		return e
+			 VALUES ($1, $2, '{}'::jsonb, $3, now()) ON CONFLICT (tenant_id, patient_id) DO NOTHING`,
+			tid, patientID, actor); e != nil {
+			return e
+		}
+		var raw []byte
+		if e := tx.QueryRow(ctx,
+			`SELECT teeth FROM dental_charts WHERE tenant_id = $1 AND patient_id = $2 FOR UPDATE`,
+			tid, patientID).Scan(&raw); e != nil {
+			return e
+		}
+		teeth := map[string]string{}
+		if len(raw) > 0 {
+			if e := json.Unmarshal(raw, &teeth); e != nil {
+				return e
+			}
+		}
+		diff := map[string]any{}
+		for tooth, st := range changes {
+			was := teeth[tooth]
+			if was == st {
+				continue
+			}
+			diff[tooth] = map[string]string{"from": was, "to": st}
+			if st == "" {
+				delete(teeth, tooth)
+			} else {
+				teeth[tooth] = st
+			}
+		}
+		out.Teeth = teeth
+		if len(diff) == 0 {
+			return nil // nothing changed: no write, no event
+		}
+		merged, e := json.Marshal(teeth)
+		if e != nil {
+			return e
+		}
+		var at time.Time
+		if e := tx.QueryRow(ctx,
+			`UPDATE dental_charts SET teeth = $3, updated_by = $4, updated_at = now()
+			  WHERE tenant_id = $1 AND patient_id = $2 RETURNING updated_at`,
+			tid, patientID, merged, actor).Scan(&at); e != nil {
+			return e
+		}
+		u := at.Format(time.RFC3339)
+		out.UpdatedAt = &u
+		return s.publisher.Publish(ctx, tx, &tid, "patient", patientID, "dental.chart.saved",
+			map[string]any{"patient_id": patientID, "changes": diff})
 	})
+	if ae, ok := apperr.As(err); ok {
+		return nil, ae
+	}
 	if err != nil {
 		return nil, apperr.Internal(err)
 	}
-	u := time.Now().Format(time.RFC3339)
-	return &dental.Chart{Teeth: teeth, UpdatedAt: &u}, nil
+	return out, nil
 }
 
 // --- medical history (pre-treatment health questionnaire) ---

@@ -155,8 +155,20 @@ export function dentalSummary(patientId: string) {
   return apiFetch<Summary>(`/dental/patients/${patientId}/summary`);
 }
 
-export function saveChart(patientId: string, teeth: Record<string, string>) {
-  return apiFetch<Chart>(`/dental/patients/${patientId}/chart`, { method: "PUT", body: { teeth } });
+/** Saves only the teeth that changed — {tooth: condition}, "" clears — and gets the
+ *  merged chart back. Sending the whole mouth let a second clinician's save erase
+ *  the first's (audit D18). */
+export function saveChart(patientId: string, changes: Record<string, string>, opts?: { keepalive?: boolean }) {
+  return apiFetch<Chart>(`/dental/patients/${patientId}/chart`, { method: "PUT", body: { changes }, keepalive: opts?.keepalive });
+}
+
+/** The teeth that differ between two charts, as a save's changes ("" = cleared). */
+export function chartChanges(from: Record<string, string>, to: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of new Set([...Object.keys(from), ...Object.keys(to)])) {
+    if ((from[k] ?? "") !== (to[k] ?? "")) out[k] = to[k] ?? "";
+  }
+  return out;
 }
 
 export interface CreatePlanBody {

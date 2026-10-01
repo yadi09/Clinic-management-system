@@ -49,7 +49,7 @@ import { ImageGallery } from "@/features/dental/shared/visitRecord";
 
 import {
   createPlan, deleteDentalImage, dentalSummary,
-  listDentalImages, saveChart, uploadDentalImage,
+  listDentalImages, saveChart, chartChanges, uploadDentalImage,
   type Balance, type Plan,
 } from "@/features/dental/api";
 
@@ -214,11 +214,14 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
   const showChart = (map: Record<string, string>) => { draft.current = map; setTeeth(map); };
 
   const chartSave = useMutation({
-    mutationFn: (v: { map: Record<string, string>; seq: number }) => saveChart(patientId, v.map),
-    onSuccess: (_res, v) => {
+    // Only what changed since the last chart the server confirmed. The reply is the
+    // merged chart, which may include another clinician's teeth (audit D18).
+    mutationFn: (v: { map: Record<string, string>; seq: number }) =>
+      saveChart(patientId, chartChanges(confirmed.current, v.map)),
+    onSuccess: (res, v) => {
       if (v.seq < ackSeq.current) return; // a straggler; a newer save already landed
       ackSeq.current = v.seq;
-      confirmed.current = v.map;
+      confirmed.current = res.teeth ?? v.map;
       // Only release the chart if nothing newer is waiting; otherwise the refetch
       // below would land on top of an edit that has not been sent yet.
       if (timer.current === null) queued.current = null;
@@ -251,7 +254,22 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
     const last = queued.current;
-    if (last) saveChart(patientId, last).catch(() => {});
+    // keepalive lets the request finish after the page has gone (audit D18/W37).
+    if (last) saveChart(patientId, chartChanges(confirmed.current, last), { keepalive: true }).catch(() => {});
+  }, [patientId]);
+
+  // Closing the tab inside the debounce lost the tap. Send it now and ask first.
+  useEffect(() => {
+    const onLeave = (e: BeforeUnloadEvent) => {
+      const last = queued.current;
+      if (!last) return;
+      if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+      saveChart(patientId, chartChanges(confirmed.current, last), { keepalive: true }).catch(() => {});
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onLeave);
+    return () => window.removeEventListener("beforeunload", onLeave);
   }, [patientId]);
 
   // One status onto one tooth, through the debounced save. Both a tap and its Undo

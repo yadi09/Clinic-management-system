@@ -262,14 +262,23 @@ func (h *Handlers) SaveChart(c *gin.Context) {
 	if !ok {
 		return
 	}
+	// changes: only the teeth this save touches, {tooth: condition}, "" clears.
+	// teeth (the whole mouth) is still accepted from a page loaded before this
+	// change, and is merged the same way — so even an old tab cannot erase a tooth
+	// it did not show, except by clearing it explicitly.
 	var req struct {
-		Teeth map[string]string `json:"teeth"`
+		Changes map[string]string `json:"changes"`
+		Teeth   map[string]string `json:"teeth"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		httpx.Fail(c, apperr.Validation("teeth map is required"))
+	if err := c.ShouldBindJSON(&req); err != nil || (req.Changes == nil && req.Teeth == nil) {
+		httpx.Fail(c, apperr.Validation("send the teeth that changed"))
 		return
 	}
-	ch, err := h.svc.SaveChart(c.Request.Context(), pid, req.Teeth)
+	changes := req.Changes
+	if changes == nil {
+		changes = req.Teeth
+	}
+	ch, err := h.svc.SaveChart(c.Request.Context(), pid, changes)
 	if err != nil {
 		httpx.Fail(c, err)
 		return
