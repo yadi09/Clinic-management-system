@@ -249,8 +249,11 @@ function PatientCheckout({ group, onWaive, onVoid, onPaid }: {
   const blocked = paymentBlocked(pay);
   const canOverride = can("payment.waive");
   const checkout = useMutation({
+    // Exactly the lines on screen. Sending none meant "everything pending", so a
+    // bill raised after this page loaded was swept onto the receipt unseen (audit D7).
     mutationFn: (force?: boolean) => settleVisit(group.patientId, {
       rail_id: pay.railId || undefined, method: pay.method, reference: pay.reference, force,
+      charge_ids: group.items.map((c) => c.id),
     }),
     onSuccess: (r) => {
       toast.success(`Paid ${group.currency} ${r.total} · receipt RCP-${String(r.receipt_no).padStart(6, "0")} — print it from "Paid today".`);

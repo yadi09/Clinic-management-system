@@ -302,8 +302,9 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
     mutationFn: (force: boolean) => settleVisit(p.patient_id, {
       rail_id: pay.railId || undefined, method: pay.method, reference: pay.reference, force,
     }),
-    onSuccess: () => {
-      toast.success(`${p.name}: ${etb(outstanding)} collected`);
+    // Say what was actually taken, not what the row showed when it loaded.
+    onSuccess: (r) => {
+      toast.success(`${p.name}: ${etb(Number(r.total))} collected`);
       qc.invalidateQueries({ queryKey: ["reception-today"] });
       qc.invalidateQueries({ queryKey: ["pending-charges"] });
       onDone();
