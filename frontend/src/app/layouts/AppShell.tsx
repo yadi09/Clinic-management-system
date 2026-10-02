@@ -8,6 +8,7 @@ import { inboxCount } from "@/features/lab/api";
 import { PageHelp } from "@/features/help/PageHelp";
 import { NotificationBell } from "@/features/notifications/NotificationBell";
 import { SignInNotifications } from "@/features/notifications/SignInNotifications";
+import { LiveAlerts } from "@/features/notifications/LiveAlerts";
 import { CommandPalette } from "@/app/command-palette";
 import { MobileNav } from "@/app/layouts/MobileNav";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -216,6 +217,7 @@ export function AppShell() {
       <MobileNav sections={sections} badgeCount={badgeCount} />
       <CommandPalette />
       <SignInNotifications />
+      <LiveAlerts />
     </div>
   );
 }

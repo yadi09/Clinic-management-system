@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Bell, BellRing, CheckCheck } from "lucide-react";
+import { AlertTriangle, Bell, BellRing, CheckCheck, Volume2, VolumeX } from "lucide-react";
 
 import { useAuth } from "@/app/auth-context";
 import { Button } from "@/components/ui/button";
@@ -8,22 +8,42 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { type AppNotification, listNotifications, notificationCount, notificationKeys } from "./api";
+import { OPEN_NOTIFICATIONS, receivesLiveAlerts } from "./LiveAlerts";
 import { markSeen } from "./seen";
+import { announce, canSpeak, setSoundOn, soundOn } from "./sound";
 import { NotificationRow, useMarkAllRead, useOpenNotification } from "./shared";
 
 /** The bell in the top bar: an unread count, and the latest notifications when
  *  opened. The count is polled once a minute, a cheap request, so new items
  *  appear without a refresh and without holding a database connection open. */
 export function NotificationBell() {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const uid = user?.id ?? "";
   const [open, setOpen] = useState(false);
+  // Doctors and dentists hear about waiting patients, so their badge keeps pace.
+  const live = receivesLiveAlerts(can);
+  const [sound, setSound] = useState(() => soundOn(uid));
+  useEffect(() => setSound(soundOn(uid)), [uid]);
+  const toggleSound = () => {
+    const next = !sound;
+    setSound(next);
+    setSoundOn(uid, next);
+    // Turning it on plays it once: proof it works, and the click is what lets
+    // the browser play sound at all.
+    if (next) announce("Sound is on. You will hear when a patient is waiting.");
+  };
+
+  useEffect(() => {
+    const show = () => setOpen(true);
+    window.addEventListener(OPEN_NOTIFICATIONS, show);
+    return () => window.removeEventListener(OPEN_NOTIFICATIONS, show);
+  }, []);
 
   const count = useQuery({
     queryKey: notificationKeys.count(uid),
     queryFn: notificationCount,
     enabled: !!uid,
-    refetchInterval: 60_000,
+    refetchInterval: live ? 10_000 : 60_000,
   });
   const list = useQuery({
     queryKey: notificationKeys.list(uid),
@@ -93,11 +113,26 @@ export function NotificationBell() {
               {unread} unread
             </span>
           )}
+          {live && canSpeak() && (
+            <button
+              type="button"
+              onClick={toggleSound}
+              aria-pressed={sound}
+              aria-label={sound ? "Sound on. Turn off" : "Sound off. Turn on"}
+              title={sound ? "Sound on" : "Sound off"}
+              className={cn(
+                "ml-auto rounded-md p-1.5 touch-hit hover:bg-accent",
+                sound ? "text-primary" : "text-muted-foreground",
+              )}
+            >
+              {sound ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+            </button>
+          )}
           {unread > 0 && (
             <Button
               variant="ghost"
               size="sm"
-              className="ml-auto h-8 px-2 text-xs"
+              className={cn("h-8 px-2 text-xs", !(live && canSpeak()) && "ml-auto")}
               loading={markAll.isPending}
               onClick={() => markAll.mutate()}
             >

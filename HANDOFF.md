@@ -14,6 +14,11 @@ The two Claude sessions don't share memory (different machines, different paths)
 
 ## Log
 
+### 2026-10-02 (morning) — WSL
+- Second notification kind: **patient waiting** — the assigned doctor gets a short pop-up, a chime and a spoken "<name> is waiting for you." Read from the queue itself (stage with_doctor, state waiting, assigned), so every route into a doctor's queue is covered without touching check-in code. Worker pass every 5 s; doctors' screens poll every 10 s. Clears itself when the patient is called or reassigned.
+- Migration **00089** (watermark row + partial index `idx_queue_waiting`). Next migration number is **00090**.
+- Per-user sound switch in the bell (doctors/dentists only). Live kinds are listed in `LIVE_KINDS` (frontend `kinds.ts`).
+
 ### 2026-10-02 (later) — WSL
 - Dialog close ✕ is back in the top-right corner app-wide: `.touch-hit` no longer forces `position: relative` on an element that is already `absolute`/`fixed`/`sticky` (`src/styles/index.css`). Also fixes the dental image delete ✕.
 - Notifications redesigned: rows lead with the patient name + card, then "Missed visit N of <course>", then the date in both calendars; Unread/Earlier sections in the bell; kind-aware pop-up title. Migration **00088** adds `notifications.data` (structured fields) and makes `patient_id` cascade on delete (e2e cleanups hard-delete patients). Next migration number is **00089**.

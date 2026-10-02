@@ -82,6 +82,9 @@ func main() {
 			// day ends, not when someone clicks, so a timer finds it. Five minutes is
 			// plenty: staff read these when they sign in, not to the second.
 			go produce.NewMissedVisits(privDB, log).Run(ctx, 5*time.Minute)
+			// A waiting patient is now, not tomorrow: every five seconds, over an
+			// index that holds only the entries waiting right now.
+			go produce.NewPatientWaiting(privDB, log).Run(ctx, 5*time.Second)
 
 			log.Info("worker started: dispatcher, delivery reconciler, reminder planner and notifications")
 		}

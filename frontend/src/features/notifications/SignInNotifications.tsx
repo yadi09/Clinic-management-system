@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BellRing, CalendarX2, CheckCheck } from "lucide-react";
+import { BellRing, CalendarX2, CheckCheck, UserRound } from "lucide-react";
 
 import { useAuth } from "@/app/auth-context";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import { listNotifications, notificationKeys } from "./api";
 import { summarize } from "./kinds";
+import { onscreen } from "./onscreen";
 import { hasUnseen, markSeen } from "./seen";
 import { NotificationRow, useMarkAllRead, useOpenNotification } from "./shared";
 
@@ -47,6 +48,13 @@ export function SignInNotifications() {
     if (hasUnseen(uid, unread.data.items)) setOpen(true);
   }, [uid, unread.data, unread.isFetchedAfterMount]);
 
+  useEffect(() => {
+    onscreen.signInOpen = open;
+    return () => {
+      onscreen.signInOpen = false;
+    };
+  }, [open]);
+
   const close = () => {
     markSeen(uid, unread.data?.items);
     setOpen(false);
@@ -59,7 +67,8 @@ export function SignInNotifications() {
   const more = total - items.length;
   const { title, lead } = summarize(items, total);
   const missedOnly = items.length > 0 && items.every((n) => n.kind === "missed_visit");
-  const Icon = missedOnly ? CalendarX2 : BellRing;
+  const waitingOnly = items.length > 0 && items.every((n) => n.kind === "patient_waiting");
+  const Icon = missedOnly ? CalendarX2 : waitingOnly ? UserRound : BellRing;
 
   return (
     <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : close())}>

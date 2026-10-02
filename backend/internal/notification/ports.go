@@ -21,6 +21,9 @@ import (
 // screen that opens it (see Href).
 const (
 	KindMissedVisit = "missed_visit"
+	// KindPatientWaiting: a patient is in this doctor's queue, waiting to be seen.
+	// A live kind: the screen also shows a short pop-up and can speak it.
+	KindPatientWaiting = "patient_waiting"
 )
 
 // Notification is one item in a staff member's inbox.

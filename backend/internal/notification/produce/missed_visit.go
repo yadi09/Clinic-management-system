@@ -4,7 +4,6 @@ package produce
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -41,41 +40,9 @@ func NewMissedVisits(db *kerneldb.DB, log *slog.Logger) *MissedVisits {
 	return &MissedVisits{db: db, log: log}
 }
 
-// Run produces on an interval until the context is cancelled.
+// Run produces and clears on an interval until the context is cancelled.
 func (m *MissedVisits) Run(ctx context.Context, interval time.Duration) {
-	m.once(ctx)
-	t := time.NewTicker(interval)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			m.once(ctx)
-		}
-	}
-}
-
-// once runs one pass and never lets a failure escape. The worker's other loops
-// (the event relay, SMS sending) share this process, and a panic here must not
-// take them down with it.
-func (m *MissedVisits) once(ctx context.Context) {
-	defer func() {
-		if r := recover(); r != nil {
-			m.log.Error("missed-visit notifications panicked", "panic", fmt.Sprint(r))
-		}
-	}()
-	// Two independent steps: a failure in one must not stop the other.
-	if n, err := m.Produce(ctx); err != nil {
-		m.log.Error("missed-visit notifications failed", "err", err)
-	} else if n > 0 {
-		m.log.Info("missed-visit notifications created", "count", n)
-	}
-	if n, err := m.Resolve(ctx); err != nil {
-		m.log.Error("clearing handled missed-visit notifications failed", "err", err)
-	} else if n > 0 {
-		m.log.Info("missed-visit notifications cleared", "count", n)
-	}
+	run(ctx, m, "missed-visit", interval, m.log)
 }
 
 // Produce writes one notification per missed visit per recipient, and returns how

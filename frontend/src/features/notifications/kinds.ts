@@ -1,4 +1,4 @@
-import { Bell, CalendarX2, type LucideIcon } from "lucide-react";
+import { Bell, CalendarX2, UserRound, type LucideIcon } from "lucide-react";
 
 import type { AppNotification } from "./api";
 
@@ -38,6 +38,19 @@ export function present(n: AppNotification): Presented {
       };
     }
   }
+  if (n.kind === "patient_waiting") {
+    const patient = str(d.patient);
+    if (patient) {
+      const dept = str(d.department);
+      return {
+        icon: UserRound,
+        tone: { unread: "bg-primary/10 text-primary", read: "bg-muted text-muted-foreground" },
+        headline: patient,
+        tag: str(d.card) ? `Card ${str(d.card)}` : undefined,
+        detail: dept ? `Waiting for you in ${dept}` : "Waiting for you",
+      };
+    }
+  }
   return {
     icon: Bell,
     tone: { unread: "bg-primary/10 text-primary", read: "bg-muted text-muted-foreground" },
@@ -46,8 +59,27 @@ export function present(n: AppNotification): Presented {
   };
 }
 
+/** Kinds that are happening now: they also get a short pop-up and, if the person
+ *  has sound on, a chime and a spoken sentence. */
+export const LIVE_KINDS = new Set(["patient_waiting"]);
+
+/** The sentence spoken for a live notification. */
+export function spoken(n: AppNotification): string {
+  const patient = str(n.data?.patient);
+  if (n.kind === "patient_waiting") return patient ? `${patient} is waiting for you.` : "A patient is waiting for you.";
+  return n.title;
+}
+
 /** The pop-up's title and lead, in the words of what is waiting. */
 export function summarize(items: AppNotification[], total: number): { title: string; lead: string } {
+  const allWaiting = items.length > 0 && items.every((n) => n.kind === "patient_waiting");
+  if (allWaiting && total === items.length) {
+    const one = total === 1 ? str(items[0].data?.patient) : undefined;
+    return {
+      title: one ? `${one} is waiting for you` : total === 1 ? "A patient is waiting for you" : `${total} patients are waiting for you`,
+      lead: "Open a patient to start the visit.",
+    };
+  }
   const allMissed = items.length > 0 && items.every((n) => n.kind === "missed_visit");
   if (allMissed && total === items.length) {
     return {

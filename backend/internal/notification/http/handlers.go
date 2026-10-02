@@ -1,6 +1,7 @@
 package http
 
 import (
+	"encoding/json"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -32,6 +33,17 @@ func href(n notification.Notification) string {
 		if n.PatientID != nil {
 			return "/patients/" + id.Encode(id.PrefixPatient, *n.PatientID)
 		}
+	case notification.KindPatientWaiting:
+		// The screen a doctor starts the visit from, chosen by the producer from
+		// the clinic's type: a dentist's Chairside, a doctor's My day.
+		var d struct {
+			Screen string `json:"screen"`
+		}
+		_ = json.Unmarshal(n.Data, &d) // a missing or odd value falls to My day
+		if d.Screen == "chairside" {
+			return "/chairside"
+		}
+		return "/worklist"
 	}
 	return ""
 }
