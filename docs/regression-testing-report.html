@@ -90,10 +90,13 @@ ul.tight{margin:6px 0;padding-left:20px} ul.tight li{margin:4px 0}
 <p class="lede">The goal: <b>when someone changes the code, one command says whether anything that worked is now broken.</b> This page covers what existed before, what was built, the baseline it produced, and how to use it. Everything here was run, not just written. At the end, two deliberate bugs were planted and the suite caught both.</p>
 
 <div class="counts">
-  <div><b>235</b><span>regression tests</span></div>
+  <div><b>1,008</b><span>regression tests</span></div>
   <div><b style="color:var(--teal)">0</b><span>failures (fresh database)</span></div>
-  <div><b style="color:var(--amber)">22</b><span>known bugs, caught and catalogued</span></div>
-  <div><b>3½ min</b><span>full run, browser included</span></div>
+  <div><b style="color:var(--teal)">197/197</b><span>dental-clinic API routes tested</span></div>
+  <div><b style="color:var(--amber)">56</b><span>known bugs, each held by a test</span></div>
+</div>
+<div class="box" style="border-left:5px solid var(--teal)">
+<p style="margin:0"><b>Latest full run (2 October 2026, empty database migrated from zero, 12 min 35 s):</b> backend 381 passed / 0 failed / 64 known-bug tests; frontend 557 passed; browser journeys 10/10; dental coverage gate PASS: every one of the 197 API routes a dental clinic can reach is called by a test, and no package is below its coverage minimum. One command: <code>scripts/test/regress.sh --e2e --coverage</code>.</p>
 </div>
 
 <div class="box">
@@ -109,6 +112,7 @@ ul.tight{margin:6px 0;padding-left:20px} ul.tight li{margin:4px 0}
   <li><a href="#t8">CI/CD</a></li>
   <li><a href="#t9">Developer workflow</a></li>
   <li><a href="#t10">Proof it catches regressions</a></li>
+  <li><a href="#t11">Dental completeness: what "everything" means, measured</a></li>
 </ol>
 </div>
 
@@ -214,12 +218,12 @@ CI                  .github/workflows/ci.yml — same suites on every push; red 
 <p>A full run on an <b>empty database migrated from zero</b>, using <code>scripts/test/regress.sh --e2e</code>:</p>
 <div class="scroll"><table>
 <tr><th>Layer</th><th>Total</th><th>Passed</th><th>Failed</th><th>Known bug</th><th>Errors</th></tr>
-<tr><td>Backend (unit + integration + API)</td><td>194</td><td>172</td><td>0</td><td>22</td><td>0</td></tr>
-<tr><td>Frontend unit and component</td><td>36</td><td>36 (one is an expected failure for PAT-6)</td><td>0</td><td>1</td><td>0</td></tr>
-<tr><td>End-to-end journeys</td><td>5</td><td>5</td><td>0</td><td>0</td><td>0</td></tr>
-<tr><td><b>Total</b></td><td><b>235</b></td><td><b>213</b></td><td><b>0</b></td><td><b>23</b></td><td><b>0</b></td></tr>
+<tr><td>Backend (unit + integration + API)</td><td>445</td><td>381</td><td>0</td><td>64</td><td>0</td></tr>
+<tr><td>Frontend unit and component</td><td>557</td><td>557 (8 of them are expected failures holding known bugs)</td><td>0</td><td>8</td><td>0</td></tr>
+<tr><td>End-to-end journeys</td><td>10</td><td>10</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td><b>Total</b></td><td><b>1,012</b></td><td><b>948</b></td><td><b>0</b></td><td><b>72</b> tests · 56 bug IDs</td><td><b>0</b></td></tr>
 </table></div>
-<p class="meta">Wall time 3 min 32 s on a laptop (backend 85 s, E2E 56 s). PAT-6 counts as a pass in Vitest (<code>test.fails</code>) and as a known bug here.</p>
+<p class="meta">Wall time 12 min 35 s for everything including the instrumented coverage run; without <code>--coverage</code> about 6 minutes. The first baseline earlier the same day was 235 tests; this section shows the latest run.</p>
 
 <div class="grid2">
 <div class="box"><h3 style="margin-top:0">Existing bugs (23)</h3><p>Real product defects, present before this work. Each has a test asserting the correct behaviour, wrapped as a known bug. 15 come from the audit; 8 are new. See section 6.</p></div>
@@ -240,27 +244,81 @@ CI                  .github/workflows/ci.yml — same suites on every push; red 
 
 <!-- 6 -->
 <h2 id="t6">6. Critical failures and known bugs</h2>
-<p class="lede">No test fails. These 23 tests each assert the <em>correct</em> behaviour and are currently held as known bugs. They run on every build and show as <code>KNOWN BUG &lt;id&gt; still present</code>. The day a bug is fixed, its test fails with "remove the marker", which forces it to become a permanent guard for the fix.</p>
+<p class="lede">No test fails. Every row below is a test that asserts the <em>correct</em> behaviour and is held as a known bug: visible in every run as <code>KNOWN BUG &lt;id&gt; still present</code>, and it turns red with "remove the marker" the day the bug is fixed. IDs without NEW- come from the production-readiness audit; NEW- ones were found by these tests. The highest-impact ones: <b>SEC-2</b> (deactivated staff keep access), <b>NEW-DEN-2 / TENANT-FK-1</b> (another clinic's patient id accepted on writes — rows land in the caller's clinic, never visible to the other, but they exist), <b>FIN-1 / FIN-2 / NEW-PAY-2</b> (money by the wrong day / refunds missing from the dashboard), <b>DEN-1 / DEN-3</b> (exam and extra removal without trace), <b>APT-1 / APT-2</b> (dental visits missing at reception; reminders with a stale date), <b>NEW-ORG-2</b> (another clinic's branch modules readable and togglable), <b>NEW-QUEUE-1/3</b> (finished visits reopened; queue assigned to non-clinicians), <b>NEW-AUTH-1</b> (the only owner can deactivate themselves).</p>
 <div class="scroll"><table>
-<tr><th>ID</th><th>Test</th><th>Failure, evidence, root cause</th><th>Blocks production?</th></tr>
-<tr><td><span class="sev p1">SEC-2</span></td><td>REG-AUTH-013, 014, 015</td><td>After deactivation or suspension, the existing session still refreshes (HTTP 200, 1 live session), and an old reset link reactivates the account. <code>UpdateUserStatus</code> revokes nothing; <code>Refresh</code> never checks status.</td><td><b>Yes</b>, fix now</td></tr>
-<tr><td><span class="sev p1">NEW-DEN-2</span></td><td>REG-DENTAL-101</td><td>Clinic B saved a chart (200) and created a course (201) against clinic A's patient id; a random id gives 500. Rows are stored in B, pointing at A's patient, and B can tell which ids exist elsewhere. <code>patient_id</code> foreign keys don't include the clinic, and Postgres does not apply RLS to foreign-key checks (00034:25, 00039:10).</td><td><b>Yes</b>, before clinic #2</td></tr>
-<tr><td><span class="sev p1">TENANT-FK-1</span></td><td>REG-TENANT-007</td><td>The same class on patient child rows: an allergy written by A against B's patient is accepted (201) and stored in A. B never sees it (RLS holds).</td><td>Fix with NEW-DEN-2 (one composite foreign-key migration)</td></tr>
-<tr><td><span class="sev p1">FIN-1</span></td><td>REG-PAY-011</td><td>700 cash at 00:30 Addis: Finance counts it today, the day close expects 0.00. <code>parseDay</code>/<code>ExpectedForDay</code> use UTC midnight.</td><td><b>Yes</b>, before clinic #2</td></tr>
-<tr><td><span class="sev p1">FIN-2</span></td><td>REG-DASH-003</td><td>After a same-day full refund the dashboard still says 1,000 collected (Finance says 0). The refund row has a NULL <code>branch_id</code>.</td><td><b>Yes</b>, before clinic #2</td></tr>
-<tr><td><span class="sev p1">APT-1</span></td><td>REG-APPT-014</td><td>A dental visit planned today is missing from reception's Expected list, which reads appointments only.</td><td><b>Yes</b>, for dental reception</td></tr>
-<tr><td><span class="sev p1">DEN-1</span></td><td>REG-DENTAL-061, 062</td><td>Exam delete removes the row; exam update keeps no prior version, and the old diagnosis is nowhere.</td><td><b>Yes</b>, before clinic #2</td></tr>
-<tr><td><span class="sev p1">DEN-3</span></td><td>REG-DENTAL-071</td><td>A colleague removed a done, unbilled 2,000 ETB extra with no reason (204).</td><td><b>Yes</b>, before clinic #2</td></tr>
-<tr><td><span class="sev p1">PAT-1</span></td><td>REG-PATIENT-014</td><td>A patient edit publishes no event and writes no audit row.</td><td><b>Yes</b>, before clinic #2</td></tr>
-<tr><td><span class="sev p1">PAT-6</span></td><td>REG-FE-PATIENT-001</td><td>The edit dialog sends 9 fields; passport, address and emergency contact are wiped on every save.</td><td><b>Yes</b>, small fix</td></tr>
-<tr><td><span class="sev p2">APT-4</span></td><td>REG-APPT-008, 009</td><td>Checking in twice gives 2 queue entries; a cancelled appointment can be checked in.</td><td>Soon</td></tr>
-<tr><td><span class="sev p2">APT-6</span></td><td>REG-APPT-010</td><td>A completed appointment can be reopened (204).</td><td>Soon</td></tr>
-<tr><td><span class="sev p2">NEW-AUTH-1</span></td><td>REG-AUTH-019</td><td>The only owner can deactivate themselves (204), leaving nobody who can sign in to reactivate them (<code>user_service.go:173-187</code>; delete already refuses this).</td><td>Soon, tiny fix</td></tr>
-<tr><td><span class="sev p2">NEW-PAT-2</span></td><td>REG-PATIENT-008</td><td>An edit can store an empty first name ("   " → ""), which registration refuses.</td><td>Soon</td></tr>
-<tr><td><span class="sev p3">NEW-PAT-1, NEW-PAT-3</span></td><td>REG-PATIENT-011, 013</td><td>Deleting a nonexistent patient or allergy answers 204 instead of 404: no row-count check.</td><td>No</td></tr>
-<tr><td><span class="sev p3">NEW-DEN-1</span></td><td>REG-DENTAL-005</td><td>A new clinic has no tooth conditions until someone opens the conditions list, so charting "decayed" is refused until then. Provisioning should seed them.</td><td>No, the UI loads the list first</td></tr>
-<tr><td><span class="sev p3">SEC-6</span></td><td>REG-DENTAL-081</td><td>The front desk gets 200 with an empty list for X-rays, not 403. No image data leaks (REG-DENTAL-080 proves it). Consider reclassifying as fixed by sealing.</td><td>No</td></tr>
-<tr><td><span class="sev p3">RLS-GUC-1</span></td><td>TestIntegrationRLSIsolation</td><td>A no-tenant query on a reused connection errors (invalid uuid "") instead of returning nothing. Still fails closed. Fix: <code>nullif(…,'')</code> in policies.</td><td>No</td></tr>
+<tr><th>Bug</th><th>Test</th><th>What the test sees today</th></tr>
+<tr><td><b>APT-1</b></td><td><code>TestREG_APPT_014_ReceptionExpectedListsTodaysDentalVisit</code></td><td>reception &#x27;Expected today&#x27; reads only appointments; a dental visit planned for today (treatment_sessions) is not listed</td></tr>
+<tr><td><b>APT-13</b></td><td><code>TestIntegrationDispatchOneBadTimezoneDoesNotStopEveryClinic</code></td><td>an unknown time zone in one clinic breaks the cross-tenant queries (dispatch.go:178, plan_dental.go:66): dispatch err=ERROR: time zone &quot;Mars/Olympus_Mons&quot; not recognized (SQLSTATE 22023) other clinic </td></tr>
+<tr><td><b>APT-2</b></td><td><code>TestIntegrationDispatchHonoursAnOptOutMadeAfterQueueing</code></td><td>the dispatcher never re-checks opt-out at send time (dispatch.go:180-205): a patient who opted out after the reminder was queued was still texted</td></tr>
+<tr><td><b>APT-2</b></td><td><code>TestIntegrationPlannerRescheduledVisitGetsTheNewDate</code></td><td>reminder key is per visit not per date (plan_dental.go:111 &quot;tss:&quot;+id) and the dispatcher does not re-check the visit: sent 1 message(s), old date 3 Oct told=true, new date 4 Oct told=false</td></tr>
+<tr><td><b>APT-4</b></td><td><code>TestREG_APPT_008_CheckingInTwiceDoesNotQueueTwice</code></td><td>second check-in answered 200 and the appointment now has 2 queue entries — CheckIn never checks the appointment&#x27;s status or an existing entry (scheduling/service/service.go CheckIn)</td></tr>
+<tr><td><b>APT-4</b></td><td><code>TestREG_APPT_009_CancelledAppointmentCannotBeCheckedIn</code></td><td>check-in of a CANCELLED appointment answered 200; status is now &quot;checked_in&quot; and it has 1 queue entries</td></tr>
+<tr><td><b>APT-6</b></td><td><code>TestREG_APPT_010_CompletedAppointmentCannotBeReopened</code></td><td>completed → confirmed answered 204 and the appointment now reads &quot;confirmed&quot; — SetStatus has no transition rules</td></tr>
+<tr><td><b>APT-8</b></td><td><code>TestREG_MSG_028_MissedVisitMeansTheSameOnTheBellAndTheDashboard</code></td><td>dashboard counts 1 of 2 missed patients: the one missed 10 days ago is on the bell (14-day window, missed_visit.go:24) but not on the dashboard (7 days, dashboard/service.go:345)</td></tr>
+<tr><td><b>DB-1</b></td><td><code>TestREG_ORG_011_DeletedBranchCodeCanBeReused</code></td><td>re-adding branch code OLD after deleting its branch answers 409 BRANCH_CODE_TAKEN: branches UNIQUE (tenant_id, code) ignores soft delete</td></tr>
+<tr><td><b>DB-1</b></td><td><code>TestREG_USER_005_RemovedStaffEmailCanBeInvitedAgain</code></td><td>re-inviting a removed member&#x27;s email answers 409 USER_EMAIL_TAKEN: users UNIQUE (tenant_id, email) ignores soft delete</td></tr>
+<tr><td><b>DEN-1</b></td><td><code>TestREG_DENTAL_061_ExamDeleteKeepsTheRecord</code></td><td>DeleteExam hard-deletes dental_visits (service.go:2608); the examination is gone</td></tr>
+<tr><td><b>DEN-1</b></td><td><code>TestREG_DENTAL_062_ExamUpdateKeepsThePreviousVersion</code></td><td>UpdateExam overwrites every field and keeps no revision (service.go:2561-2600)</td></tr>
+<tr><td><b>DEN-3</b></td><td><code>TestREG_DENTAL_071_RemovingAGivenExtraNeedsForgiveness</code></td><td>a colleague removed a done, unbilled 2,000 ETB extra with no reason (service.go:986-1016)</td></tr>
+<tr><td><b>FE-2</b></td><td><code>REG-FE-EXAM-034</code></td><td>REG-FE-EXAM-034 KNOWN BUG FE-2 Cancel on a half-written examination asks first or keeps the draft</td></tr>
+<tr><td><b>FE-2</b></td><td><code>REG-FE-EXAM-035</code></td><td>REG-FE-EXAM-035 KNOWN BUG FE-2 opening another record</td></tr>
+<tr><td><b>FIN-1</b></td><td><code>TestREG_PAY_011_CashDayCloseUsesTheAddisDay</code></td><td>cash day close for Addis 2026-10-02 expects 0.00, not the 700 settled at 00:30 Addis — it windows by the UTC day (billing/service/service.go parseDay/ExpectedForDay)</td></tr>
+<tr><td><b>FIN-12</b></td><td><code>TestREG_FIN_018_DentalMoneyFailureIsReported</code></td><td>with the dental money query failing, /finance/receivables answered 200 with 300 owed instead of an error (the unbilled 1,000 silently dropped; finance/service/service.go:415)</td></tr>
+<tr><td><b>FIN-13</b></td><td><code>TestREG_BILL_070_LegacyCardFee</code></td><td>POST /billing/card/collect is still mounted and took a 150 card fee into card_payments; Finance&#x27;s collected today is 0 — the money is outside the charges ledger</td></tr>
+<tr><td><b>FIN-2</b></td><td><code>TestREG_DASH_003_CollectedTodayNetsATodayRefund</code></td><td>dashboard collected_today=1000.00 after a same-day full refund (finance says 0.00); the refund row&#x27;s branch_id=&lt;nil&gt; so the branch-scoped series drops it (billing.sql CreateReversalCharge)</td></tr>
+<tr><td><b>FIN-4</b></td><td><code>TestREG_BILL_023_BankRejectedNeedsAManager</code></td><td>override of a bank-rejected payment stored override_reason=&lt;nil&gt; override_by=&lt;nil&gt; (reason found in 0 events/audit rows); billing/http/handlers.go:520 reads force_reason and nothing writes it</td></tr>
+<tr><td><b>FIN-5</b></td><td><code>TestREG_BILL_030_CheckoutTakesOnlyWhatTheButtonSays</code></td><td>a checkout with no charge_ids settled 1,500 against a transfer the bank verified as 300 — the verified amount is never compared with the total (settle_scope.go:31-35)</td></tr>
+<tr><td><b>FIN-9</b></td><td><code>TestREG_BILL_061_ReclosingADayKeepsTheFirstCount</code></td><td>closing the same day twice left one reconciliation reading 700 — the first count (690, 10 short) is overwritten (billing.sql InsertReconciliation ON CONFLICT DO UPDATE)</td></tr>
+<tr><td><b>FIN-9</b></td><td><code>TestREG_BILL_062_RefundComesOutOfTheCashiersDrawer</code></td><td>a manager&#x27;s cash refund of the cashier&#x27;s 500 is booked to the manager&#x27;s drawer (-500); the cashier is still expected to hold 500</td></tr>
+<tr><td><b>NEW-AUTH-1</b></td><td><code>TestREG_AUTH_019_OwnerCannotDeactivateThemselves</code></td><td>the only owner deactivated their own account (HTTP 204) and the clinic now has no one who can sign in to reactivate it; UpdateUserStatus has no self/last-owner guard, unlike DeleteUser</td></tr>
+<tr><td><b>NEW-CAT-1</b></td><td><code>TestREG_CAT_004_EditingAnUnknownCatalogueEntryIs404</code></td><td>edit/delete of a nonexistent allergen or drug answers [204 204 204 204] (want 404): clinical/service/drug_library.go never checks rows affected</td></tr>
+<tr><td><b>NEW-CERT-1</b></td><td><code>TestREG_PATIENT_041_CertificateForNoSuchPatientOrNoSuchCertificateIs404</code></td><td>unknown ids: issue for no such patient 500 INTERNAL_ERROR, void no such certificate 409 NOT_ACTIVE (want 404 both)</td></tr>
+<tr><td><b>NEW-DEN-1</b></td><td><code>TestREG_DENTAL_005_FreshClinicCanChartBeforeOpeningConditionList</code></td><td>a new clinic has no tooth conditions until someone lists them; SaveChart refuses &#x27;decayed&#x27; (unknown condition decayed for UR1)</td></tr>
+<tr><td><b>NEW-DEN-2</b></td><td><code>TestREG_DENTAL_101_OtherClinicCannotFileRecordsAgainstForeignPatient</code></td><td>clinic B wrote 1 chart / 1 plan rows against clinic A&#x27;s patient; chart: A-id HTTP 200 vs random-id HTTP 500; plan: A-id HTTP 201 vs random-id HTTP 500</td></tr>
+<tr><td><b>NEW-DEN-2</b></td><td><code>TestREG_DENTAL_132_OtherClinicCannotReadOrWriteMedicalHistory</code></td><td>clinic B saved a medical history against clinic A&#x27;s patient (HTTP 200, 1 row in B)</td></tr>
+<tr><td><b>NEW-DEN-2</b></td><td><code>TestREG_DENTAL_225_OtherClinicCannotSeeOrFileImages</code></td><td>clinic B recorded an image against clinic A&#x27;s patient (HTTP 201, 1 row)</td></tr>
+<tr><td><b>NEW-DEN-3</b></td><td><code>TestREG_DENTAL_142_UpdatePlanRefusesAnEmptyTitle</code></td><td>PUT /dental/patients/:id/plans/:pid accepts a blank title and stores it (service.go:858-865 has no title check, CreatePlan does)</td></tr>
+<tr><td><b>NEW-DEN-4</b></td><td><code>TestREG_DENTAL_175_RepriceACancelledVisitDoesNotMoveTheCourse</code></td><td>repricing a CANCELLED visit with mode=respread moved the course total to 3000.00 and visit 2 to 1500.00 (HTTP 204); service.go:2975-3106 has no status check</td></tr>
+<tr><td><b>NEW-DEN-5</b></td><td><code>TestREG_DENTAL_224_RecordImageRespectsTheCap</code></td><td>a 9th image was recorded on an 8-image plan (HTTP 201, 9 images)</td></tr>
+<tr><td><b>NEW-DEN-6</b></td><td><code>TestREG_DENTAL_245_ReportDatesAreValidated</code></td><td>malformed report dates give HTTP 500: calendar 500, unbilled 500 (service.go:2805, 2678 cast unvalidated strings)</td></tr>
+<tr><td><b>NEW-EXAM-1</b></td><td><code>REG-FE-EXAM-036</code></td><td>REG-FE-EXAM-036 KNOWN BUG NEW-EXAM-1 a failed load says so, instead of claiming there is no examination</td></tr>
+<tr><td><b>NEW-FOLLOWUP-1</b></td><td><code>REG-FE-FOLLOWUP-019</code></td><td>REG-FE-FOLLOWUP-019 KNOWN BUG NEW-FOLLOWUP-1 a moved visit is numbered as on the patient card</td></tr>
+<tr><td><b>NEW-ORG-1</b></td><td><code>TestREG_ORG_009_BranchUsageHonoursTheClinicOverride</code></td><td>GET /org/branch-usage reports limit 10 while CreateBranch enforces the override of 1: BranchUsage reads plans.branch_limit via GetBranchLimit and ignores tenants.branch_limit_override (org/service/ser</td></tr>
+<tr><td><b>NEW-ORG-2</b></td><td><code>TestREG_ORG_013_BranchModulesOfAnotherClinicsBranchAre404</code></td><td>another clinic&#x27;s branch modules: GET 200, PUT 200, stray flag rows 1 — Get/SetBranchModules never check the branch belongs to the caller&#x27;s clinic (org/service/service.go GetBranchModules/SetBranchModu</td></tr>
+<tr><td><b>NEW-ORG-3</b></td><td><code>TestREG_ORG_015_RenamingAnUnknownDepartmentIs404</code></td><td>department writes against an id the clinic does not have answer rename-unknown 200, rename-other-clinic 200, delete-other-clinic 204 (want 404): Update/DeleteDepartment never check the affected row co</td></tr>
+<tr><td><b>NEW-PAT-1</b></td><td><code>TestREG_PATIENT_011_DeleteOfUnknownPatientIs404</code></td><td>DELETE /patients/&lt;nonexistent&gt; answers 204: SoftDeletePatient is :exec and the affected row count is never checked</td></tr>
+<tr><td><b>NEW-PAT-2</b></td><td><code>TestREG_PATIENT_008_UpdateCannotBlankTheFirstName</code></td><td>PUT /patients/:id with first_name &quot;   &quot; answered 200 and stored first_name=&quot;&quot; — Update does not apply Create&#x27;s TrimSpace check (patient/service/service.go Update)</td></tr>
+<tr><td><b>NEW-PAT-3</b></td><td><code>TestREG_PATIENT_013_RemoveUnknownAllergyIs404</code></td><td>DELETE /patients/:id/allergies/&lt;nonexistent&gt; answers 204: RemoveAllergy is :exec with no row-count check</td></tr>
+<tr><td><b>NEW-PAT-4</b></td><td><code>TestREG_PATIENT_021_RemoveUnknownConditionIs404</code></td><td>DELETE /patients/:id/conditions/&lt;nonexistent&gt; answers 204: RemoveCondition is :exec with no row-count check</td></tr>
+<tr><td><b>NEW-PAT-5</b></td><td><code>TestREG_PATIENT_024_UploadSigningWhenStorageIsFullOrOff</code></td><td>POST /patients/:id/attachments/sign with no storage provider answers 500 INTERNAL_ERROR; SignAttachmentUpload returns the provider error unwrapped (patient/service/service.go SignAttachmentUpload) ins</td></tr>
+<tr><td><b>NEW-PAT-6</b></td><td><code>TestREG_PATIENT_026_BadValuesAreRefusedNot500</code></td><td>invalid values come back as server errors: condition status &#x27;chronic&#x27; 500, attachment type &#x27;exe&#x27; 500, unknown guardian patient 500 (no validation before the INSERT; mapWriteErr turns CHECK/FK violatio</td></tr>
+<tr><td><b>NEW-PAY-1</b></td><td><code>TestREG_BILL_060_DayCloseHoldsTheDrawerToCash</code></td><td>a cashier (no billing.manage) reads every cashier&#x27;s closeouts with ?all=1 (2 rows) — billing/http/handlers.go:842 passes all=1 through without checking billing.manage</td></tr>
+<tr><td><b>NEW-PAY-2</b></td><td><code>TestREG_FIN_011_CashTabShiftsAndOpenDrawers</code></td><td>the cashier&#x27;s open drawer reads &quot;700.00&quot; but they took 740.00 today (incl. 40 at 00:30 Addis) — finance/service/views.go:101 compares settled_at::date (session time zone) with the Addis date</td></tr>
+<tr><td><b>NEW-QUEUE-1</b></td><td><code>TestREG_QUEUE_004_FinishedVisitCannotBeReopened</code></td><td>done → waiting answered 204 and the entry is now &quot;waiting&quot;: TransitionQueue checks the state name only, never the current state (scheduling/service/service.go TransitionQueue)</td></tr>
+<tr><td><b>NEW-QUEUE-2</b></td><td><code>TestREG_QUEUE_006_PriorityOfUnknownEntryIs404</code></td><td>POST /queue/&lt;nonexistent&gt;/priority answers 204: SetQueuePriority is :exec with no row-count check</td></tr>
+<tr><td><b>NEW-QUEUE-3</b></td><td><code>TestREG_QUEUE_008_AssignOnlyToThisClinicsClinicians</code></td><td>assign accepts any user: to the cashier 204, to another clinic&#x27;s dentist 204 (AssignProvider never checks the provider is an active clinician of this clinic)</td></tr>
+<tr><td><b>OPS-10</b></td><td><code>TestIntegrationLogGatewayDoesNotLogPatientData</code></td><td>kernel/sms/sms.go:199 logs the patient&#x27;s number and the full text: time=2026-10-02T15:35:51.264-04:00 level=INFO msg=&quot;sms (log gateway — not sent)&quot; to=251911223344 segments=1 unicode=false text=&quot;Almaz</td></tr>
+<tr><td><b>PAT-1</b></td><td><code>TestREG_PATIENT_014_EditLeavesAnAuditTrail</code></td><td>PUT /patients/:id publishes no event and writes no audit_logs row — patient edits leave no audit trail</td></tr>
+<tr><td><b>PAT-2</b></td><td><code>TestREG_PATIENT_036_FamilySharingAPhoneIsNotOnePerson</code></td><td>a different person on a shared family phone is reported duplicate (Already on file — matched by phone number) instead of imported</td></tr>
+<tr><td><b>PAT-3</b></td><td><code>TestREG_PATIENT_035_ImportedCardIDDoesNotBlockRegistration</code></td><td>registering after importing card ID P000001 answers 409 MRN_TAKEN: the auto sequence collides with the imported number</td></tr>
+<tr><td><b>PAT-6</b></td><td><code>REG-FE-PATIENT-001</code></td><td>REG-FE-PATIENT-001 KNOWN BUG PAT-6 editing the phone must not erase passport, address, emergency contact</td></tr>
+<tr><td><b>PAT-8</b></td><td><code>TestREG_PATIENT_038_HistoryImportRefusesFutureDates</code></td><td>history import dated next year is accepted (HTTP 201) and stored as a signed visit</td></tr>
+<tr><td><b>PAT-9</b></td><td><code>TestREG_PATIENT_034_DryRunSeesCardIDCollisions</code></td><td>a dry run reports a row with a taken card ID as imported; the real run then fails it</td></tr>
+<tr><td><b>RLS-GUC-1</b></td><td><code>TestIntegrationRLSIsolation</code></td><td>a no-tenant query on a reused connection errors instead of returning no rows (ERROR: invalid input syntax for type uuid: &quot;&quot; (SQLSTATE 22P02))</td></tr>
+<tr><td><b>SEC-1</b></td><td><code>TestREG_DENTAL_221_RecordImageTrustsTheClientsKeyAndSession</code></td><td>RecordImage accepted: another clinic&#x27;s key HTTP 201, another patient&#x27;s visit HTTP 201, the deposit HTTP 201 (service.go:2856-2891)</td></tr>
+<tr><td><b>SEC-1</b></td><td><code>TestREG_PATIENT_025_AttachmentKeyMustBeThisClinicsFolder</code></td><td>an attachment whose storage_key sits in another clinic&#x27;s folder is recorded (HTTP 201): RecordAttachment trusts the client&#x27;s key</td></tr>
+<tr><td><b>SEC-2</b></td><td><code>TestREG_AUTH_013_DeactivatedUserCannotSignInOrRefresh</code></td><td>a deactivated user&#x27;s existing refresh session still issues access tokens (refresh HTTP 200, 1 live session(s) after the status change): UpdateUserStatus does not revoke sessions and Refresh never chec</td></tr>
+<tr><td><b>SEC-2</b></td><td><code>TestREG_AUTH_014_SuspendedUserCannotSignInOrRefresh</code></td><td>a suspended user&#x27;s existing refresh session still issues access tokens (refresh HTTP 200, 1 live session(s) after the status change): UpdateUserStatus does not revoke sessions and Refresh never checks</td></tr>
+<tr><td><b>SEC-2</b></td><td><code>TestREG_AUTH_015_DeactivatedUserCannotReactivateWithOldResetLink</code></td><td>an old reset link switched a deactivated account back to active (accept-invite HTTP 200)</td></tr>
+<tr><td><b>SEC-6</b></td><td><code>TestREG_DENTAL_081_FrontDeskImageListIsForbidden</code></td><td>receptionist gets HTTP 200 on /dental/patients/:id/images (sealed to [] in the handler, not 403)</td></tr>
+<tr><td><b>TENANT-FK-1</b></td><td><code>TestREG_CAT_005_DrugTaggedWithAnotherClinicsAllergenIsRefused</code></td><td>a drug tagged with another clinic&#x27;s allergen is accepted (HTTP 201, 1 tag row(s) stored)</td></tr>
+<tr><td><b>TENANT-FK-1</b></td><td><code>TestREG_ORG_016_DepartmentOnAnotherClinicsBranchIsRefused</code></td><td>a department on another clinic&#x27;s branch is accepted (HTTP 201) and stored in the caller&#x27;s clinic pointing at it</td></tr>
+<tr><td><b>TENANT-FK-1</b></td><td><code>TestREG_PATIENT_027_ChildRecordsOnAnotherClinicsPatientAreRefused</code></td><td>child writes against another clinic&#x27;s patient: statuses [201 201 201 404 201]; 5 dangling row(s) left in the caller&#x27;s clinic</td></tr>
+<tr><td><b>TENANT-FK-1</b></td><td><code>TestREG_TENANT_007_ChildWritesAgainstAnotherClinicsPatientAreRefused</code></td><td>a write addressed at another clinic&#x27;s patient is accepted (HTTP 201) and leaves a dangling row in the caller&#x27;s clinic</td></tr>
+<tr><td><b>TENANT-FK-1</b></td><td><code>TestREG_USER_009_AssigningRolesToAnotherClinicsUserIs404</code></td><td>assigning roles to another clinic&#x27;s user answers 204 and stores 1 role row(s) in the caller&#x27;s clinic for that user</td></tr>
+<tr><td><b>UX-7</b></td><td><code>REG-FE-PLAN-021</code></td><td>REG-FE-PLAN-021 KNOWN BUG UX-7 Esc on a half-filled plan must not throw the input away</td></tr>
+<tr><td><b>UX-7</b></td><td><code>REG-FE-PLAN-022</code></td><td>REG-FE-PLAN-022 KNOWN BUG UX-7 a click outside a half-filled plan must not throw the input away</td></tr>
+<tr><td><b>known</b></td><td><code>REG-...</code></td><td>REG-... KNOWN BUG &lt;id&gt; ...</td></tr>
 </table></div>
 
 <!-- 7 -->
@@ -354,6 +412,26 @@ deploy</div>
   expected { label: 'Paid', tone: 'good' }
   to deeply equal { label: 'Paid ahead', tone: 'good' }</pre></div>
 </div>
+
+<!-- 11 -->
+<h2 id="t11">11. Dental completeness: what "everything" means, measured</h2>
+<p class="lede">No test suite can make anyone literally certain: tests only check what someone thought to check. What this system does instead is make "everything" a number a tool enforces, so nothing can quietly fall out of it.</p>
+<div class="grid2">
+<div class="box"><h3 style="margin-top:0">Every route</h3><p><b>197 of 197</b> API routes a dental clinic can reach are called by at least one test with its success path, its refusals and its permission. The scope is every registered route minus the prefixes in <code>scripts/test/dental-scope.txt</code> — modules a dental clinic cannot reach (pharmacy, lab, beds, maternity, general consultations) and the vendor console, each with its reason. A new endpoint without a test fails the gate the day it is added.</p></div>
+<div class="box"><h3 style="margin-top:0">Every line, measured from the real API</h3><p>Backend statement coverage is measured from the running API binary built with <code>-cover</code>, merged with unit and integration tests:</p><ul class="tight">
+<li>dental: service 86.4 %, http 95.9 %</li><li>billing: service 88.5 %, http 97.3 %</li><li>finance: service 85.7 %, http 96.4 %</li><li>patients 87.9 % · appointments/queue 86.4 % · settings 86.8 % · staff 86.2 %</li><li>SMS dispatch 89.7 % · notifications 94.5–100 %</li></ul>
+<p>Frontend dental screens: <b>98.9 % of lines</b>, every dental file ≥ 96.5 %; dashboard 98.6 %.</p></div>
+<div class="box"><h3 style="margin-top:0">Every refusal</h3><p>Each <code>apperr</code> a dental, billing, patient, scheduling or settings service can return was triggered by a test that asserts its HTTP status and error code — the rules (who may undo a visit, a bill at the cashier blocks cancel, a deposit above the total, a reused transfer reference, a double booking…) are protected, not just the happy paths.</p></div>
+<div class="box"><h3 style="margin-top:0">What is not reached, and why</h3><ul class="tight">
+<li><b>Database-failure branches</b> (<code>if err != nil { return Internal }</code> after a query) — need fault injection; billing has fault-injection tests for its money writes (they roll back completely).</li>
+<li><b>Two requests colliding inside a row lock</b> — the lock makes the branch unreachable in practice.</li>
+<li><b>Real file storage and the live Verify.ET</b> — never contacted from tests, by design.</li>
+<li><b>General-clinic encounter code</b> in the shared clinical package (90 functions) — dental clinics never call it.</li></ul></div>
+</div>
+<h3>The ratchet</h3>
+<p>The numbers above are minimums, not snapshots: <code>scripts/test/coverage-baseline.txt</code> (backend, per package) and the <code>thresholds</code> in <code>frontend/vitest.config.ts</code> (frontend, per area). A change that leaves new dental code untested, or deletes tests, fails <code>regress.sh --coverage</code> and the CI jobs. After adding tests: <code>scripts/test/coverage.sh --update-baseline</code> raises the floor; it never lowers.</p>
+<h3>So, after any change</h3>
+<p>Run <code>scripts/test/regress.sh --e2e --coverage</code>. <b>ALL PASS</b> means: every behaviour these 1,012 tests describe still works, every dental-clinic route is still tested, and coverage did not drop. If something is red, the summary names the behaviour, the file and line, and what was expected versus what happened.</p>
 
 <p class="foot">Written for the team that changes this code. Commands assume the repository root. Start with TESTING.md for the day-to-day guide.</p>
 </div>

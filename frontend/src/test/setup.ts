@@ -13,6 +13,12 @@ if (!Element.prototype.hasPointerCapture) {
   Element.prototype.releasePointerCapture = () => {};
   Element.prototype.scrollIntoView = () => {};
 }
+// Sonner's swipe-to-dismiss captures the pointer on a toast.
+if (!Element.prototype.setPointerCapture) Element.prototype.setPointerCapture = () => {};
+// The patient banner watches itself scroll out of view.
+(globalThis as unknown as { IntersectionObserver?: unknown }).IntersectionObserver ??= class {
+  observe() {} unobserve() {} disconnect() {} takeRecords() { return []; }
+};
 if (!window.matchMedia) {
   window.matchMedia = (q: string) =>
     ({ matches: false, media: q, onchange: null, addListener() {}, removeListener() {},

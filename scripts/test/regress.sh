@@ -6,6 +6,8 @@
 #   scripts/test/regress.sh --e2e        # also the browser journeys (Playwright, system Chrome)
 #   scripts/test/regress.sh --db-up      # start a throwaway Postgres in Docker for this run
 #   scripts/test/regress.sh --only PAY   # one regression domain (REG_PAY…), backend only
+#   scripts/test/regress.sh --coverage   # also the dental coverage gate: every in-scope API
+#                                        # route tested, no package below its coverage baseline
 #
 # Database: set TEST_DATABASE_URL to a THROWAWAY Postgres (superuser). The suite refuses
 # any database that is not on localhost or whose name lacks "test"/"regress", so it
@@ -17,12 +19,13 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SUM="python3 $ROOT/scripts/test/summarize.py"
-MODE=full E2E=0 DBUP=0 ONLY=""
+MODE=full E2E=0 DBUP=0 ONLY="" COVER=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --quick) MODE=quick ;;
     --e2e) E2E=1 ;;
     --db-up) DBUP=1 ;;
+    --coverage) COVER=1 ;;
     --only) ONLY="$2"; shift ;;
     -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
@@ -75,7 +78,13 @@ fi
 cd "$ROOT/frontend"
 step "Frontend: lint, typecheck, unit tests"
 if npx eslint src --quiet && npx tsc --noEmit -p .; then STATUS[frontend-static]=ok; else STATUS[frontend-static]=FAIL; fi
-if npx vitest run --reporter=default --reporter=junit --outputFile.junit="$REPORT_DIR/frontend.xml"; then STATUS[frontend-unit]=ok; else STATUS[frontend-unit]=FAIL; fi
+# --coverage enforces the per-area thresholds in vitest.config.ts (the frontend ratchet).
+if npx vitest run --coverage --reporter=default --reporter=junit --outputFile.junit="$REPORT_DIR/frontend.xml"; then STATUS[frontend-unit]=ok; else STATUS[frontend-unit]=FAIL; fi
+
+if [[ $COVER == 1 ]]; then
+  step "Dental coverage gate (instrumented API + every Go test)"
+  if "$ROOT/scripts/test/coverage.sh"; then STATUS[coverage]=ok; else STATUS[coverage]=FAIL; fi
+fi
 
 if [[ $E2E == 1 ]]; then
   step "End-to-end journeys (Playwright, system Chrome)"
@@ -84,7 +93,7 @@ fi
 
 echo; echo "════════ REGRESSION RESULT ════════"
 rc=0
-for k in static backend frontend-static frontend-unit e2e; do
+for k in static backend frontend-static frontend-unit coverage e2e; do
   [[ -z "${STATUS[$k]:-}" ]] && continue
   printf "  %-16s %s\n" "$k" "${STATUS[$k]}"
   [[ "${STATUS[$k]}" != ok ]] && rc=1

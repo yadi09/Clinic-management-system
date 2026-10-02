@@ -1,0 +1,28 @@
+# Minimum statement coverage per package (scripts/test/coverage_gate.py).
+# Raised by `scripts/test/coverage.sh --update-baseline`; never lowered by hand without a reason.
+internal/billing/http 97.2
+internal/billing/service 88.5
+internal/clinical/http 26.3
+internal/clinical/service 29.3
+internal/dashboard/http 85.7
+internal/dashboard/service 83.7
+internal/dental 83.2
+internal/dental/http 95.9
+internal/dental/service 86.4
+internal/finance/http 96.4
+internal/finance/service 85.7
+internal/identity/http 91.5
+internal/identity/service 86.2
+internal/kernel/payments 65.4
+internal/messaging/dispatch 89.7
+internal/messaging/http 92.2
+internal/messaging/service 87.5
+internal/notification/http 92.2
+internal/notification/produce 100.0
+internal/notification/service 94.5
+internal/org/http 88.7
+internal/org/service 86.8
+internal/patient/http 86.5
+internal/patient/service 87.9
+internal/scheduling/http 78.8
+internal/scheduling/service 86.4

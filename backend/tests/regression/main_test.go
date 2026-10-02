@@ -86,6 +86,18 @@ func run(m *testing.M) int {
 		}
 		sort.Strings(lines)
 		_ = os.WriteFile(out, []byte(strings.Join(lines, "\n")+"\n"), 0o644)
+		// …and every route the API registered, so a run can be checked against the
+		// whole surface, not just what it happened to touch.
+		reg := map[string]bool{}
+		for _, m := range ginRoute.FindAllStringSubmatch(srv.Logs(), -1) {
+			reg[m[1]+" "+m[2]] = true
+		}
+		all := make([]string, 0, len(reg))
+		for k := range reg {
+			all = append(all, k)
+		}
+		sort.Strings(all)
+		_ = os.WriteFile(out+".all", []byte(strings.Join(all, "\n")+"\n"), 0o644)
 	}
 	if code != 0 {
 		fmt.Fprintln(os.Stderr, "\n---- API log (last 4000 bytes) ----")
@@ -98,6 +110,7 @@ func run(m *testing.M) int {
 	return code
 }
 
+var ginRoute = regexp.MustCompile(`\[GIN-debug\] (GET|POST|PUT|DELETE|PATCH)\s+/api/v1(\S+)`)
 var routeLine = regexp.MustCompile(`"method":"([A-Z]+)","path":"/api/v1([^"]*)"`)
 
 // setupTB lets TestMain use helpers that take a testing.TB.

@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -55,6 +56,12 @@ func StartAPI(superDSN, appDSN string) (*Server, error) {
 		"RATE_LIMIT_RPS=10000", "RATE_LIMIT_BURST=20000",
 		"CORS_ALLOWED_ORIGINS=http://127.0.0.1",
 	)
+	// REGRESS_COVER_DIR: the binary was built with -cover; it writes its coverage
+	// counters there when it exits (gracefully — see Stop).
+	if dir := os.Getenv("REGRESS_COVER_DIR"); dir != "" {
+		_ = os.MkdirAll(dir, 0o755)
+		cmd.Env = append(cmd.Env, "GOCOVERDIR="+dir)
+	}
 	cmd.Stdout, cmd.Stderr = logs, logs
 	if err := cmd.Start(); err != nil {
 		return nil, err
@@ -75,11 +82,20 @@ func StartAPI(superDSN, appDSN string) (*Server, error) {
 	return nil, fmt.Errorf("api did not become ready:\n%s", logs.String())
 }
 
-// Stop ends the API process.
+// Stop ends the API process: SIGTERM first, so a coverage build gets to write its
+// counters on the way out, then SIGKILL if it has not exited within 15 seconds.
 func (s *Server) Stop() {
-	if s.cmd != nil && s.cmd.Process != nil {
+	if s.cmd == nil || s.cmd.Process == nil {
+		return
+	}
+	_ = s.cmd.Process.Signal(syscall.SIGTERM)
+	done := make(chan struct{})
+	go func() { _, _ = s.cmd.Process.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(15 * time.Second):
 		_ = s.cmd.Process.Kill()
-		_, _ = s.cmd.Process.Wait()
+		<-done
 	}
 }
 
@@ -103,7 +119,12 @@ func buildAPI() (string, error) {
 	_, file, _, _ := runtime.Caller(0)
 	backend := filepath.Join(filepath.Dir(file), "..", "..")
 	out := filepath.Join(os.TempDir(), fmt.Sprintf("clinicos-api-regress-%d", os.Getpid()))
-	cmd := exec.Command("go", "build", "-o", out, "./cmd/api")
+	args := []string{"build", "-o", out}
+	if os.Getenv("REGRESS_COVER_DIR") != "" {
+		// Statement coverage of every internal package, measured from the running API.
+		args = append(args, "-cover", "-coverpkg=./internal/...,./cmd/api" /* main must be listed, or nothing is written */)
+	}
+	cmd := exec.Command("go", append(args, "./cmd/api")...)
 	cmd.Dir = backend
 	cmd.Env = os.Environ()
 	if b, err := cmd.CombinedOutput(); err != nil {

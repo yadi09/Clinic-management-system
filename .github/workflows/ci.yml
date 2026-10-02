@@ -76,6 +76,37 @@ jobs:
         if: always()
         with: { name: backend-regression, path: "backend/regression.xml\nbackend/summary.txt" }
 
+  coverage:
+    name: Dental coverage gate
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: regress
+          POSTGRES_DB: clinic_regress
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      TEST_DATABASE_URL: postgres://postgres:regress@localhost:5432/clinic_regress?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.25", cache-dependency-path: backend/go.sum }
+      # Fails when an in-scope API route has no test, or a gated package's coverage
+      # falls below scripts/test/coverage-baseline.txt.
+      - run: scripts/test/coverage.sh
+      - name: Publish gate result
+        if: always()
+        run: |
+          { echo '```'; cat .regress/coverage-gate.txt 2>/dev/null; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: coverage, path: ".regress/coverage.html\n.regress/coverage-gate.txt\n.regress/uncovered-dental.txt" }
+
   frontend:
     name: Frontend · lint, typecheck, unit, build
     runs-on: ubuntu-latest
@@ -89,8 +120,8 @@ jobs:
         run: npx eslint src --quiet
       - name: Typecheck
         run: npx tsc --noEmit -p .
-      - name: Unit tests
-        run: npx vitest run
+      - name: Unit + component tests, with the dental coverage thresholds
+        run: npx vitest run --coverage
       - run: npm run build
 
   e2e:

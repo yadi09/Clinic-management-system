@@ -1,0 +1,27 @@
+# What "the dental clinic system" is, for the coverage gate (scripts/test/coverage.sh).
+#
+# Every API route is IN SCOPE unless its path starts with a prefix below. An excluded
+# prefix is a module a dental clinic cannot reach (its feature flag is off in the dental
+# preset, or the UI hides it for dental), or the vendor-only console. Each line says why.
+# Adding a prefix here needs a reason a reviewer can check. Removing one (a dental
+# clinic starts using that module) puts its routes under the gate at once.
+#
+# prefix                     reason
+/pharmacy                    pharmacy flag is off in the dental preset (provision.go)
+/lab                         laboratory flag is off in the dental preset
+/lab-referrals               lab referrals belong to general-clinic encounters
+/inpatient                   inpatient flag is off in the dental preset
+/dating                      maternity (pregnancy dating) flag is off in the dental preset
+/encounters                  general-clinic consultations; dental records visits in /dental
+/visits/                     general-clinic triage vitals (/visits/:qid/vitals)
+/vital-fields                general-clinic vitals form configuration
+/diagnosis-catalog           general-clinic diagnosis catalogue (dental uses its own procedures)
+/diagnosis-categories        general-clinic diagnosis catalogue
+/transcribe                  dictation in the general-clinic encounter workspace
+/worklist                    "My day" is hidden for dental clinics (nav hideWhen dental)
+/reporting                   the Ministry (DHIS2) report is hidden for dental clinics
+/campaigns                   vendor marketing campaigns, not clinic operations
+/c/                          public campaign pages
+/partner                     vendor partner programme
+/platform                    vendor super-admin console
+/crm                         vendor CRM

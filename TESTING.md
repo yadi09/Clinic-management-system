@@ -51,6 +51,7 @@ Inside `frontend/`:
 | `npm test` | Vitest unit and component tests |
 | `npm run test:watch` | the same, re-running on save |
 | `npm run test:e2e` | Playwright browser journeys (starts its own API and Vite) |
+| `npm run test:coverage` | unit tests plus coverage; **fails if dental or dashboard coverage drops below the thresholds in `vitest.config.ts`** (HTML report in `frontend/coverage/`) |
 
 Run one test by its catalogue ID: `go test ./tests/regression/ -run REG_PAY_004 -v`, or `npx vitest run -t REG-FE-VISIT-002`.
 
@@ -164,6 +165,21 @@ Change the test **in the same commit** as the behaviour, and say why in the comm
 5. Keep the test forever.
 
 If the fix has to wait, commit the test with `KnownBug("<ID>", …)` so the bug stays visible in every run until it is fixed.
+
+## The dental coverage gate: what "fully tested" means here
+
+No suite can prove a change broke nothing it never checks. So "fully tested" here is something a tool checks. `scripts/test/coverage.sh` (or `regress.sh --coverage`, and the CI job **Dental coverage gate**) fails when either of these is true:
+
+1. **An API route a dental clinic can reach has no test calling it.** The scope is every registered route except the prefixes in `scripts/test/dental-scope.txt`, which lists modules a dental clinic cannot reach and the vendor console, each with its reason. A new endpoint without a test fails the gate the day it is added.
+2. **Statement coverage of a gated package drops below its baseline** in `scripts/test/coverage-baseline.txt`. Coverage is measured from the **real running API**, built with `-cover`, merged with unit and integration tests. It only ratchets up: after adding tests, run `scripts/test/coverage.sh --update-baseline` and commit the new baseline.
+
+It also writes the to-do list:
+
+- `.regress/coverage.html`: every source line, green for covered and red for not.
+- `.regress/uncovered-dental.txt`: every function in the gated packages that no test reaches.
+- `.regress/coverage-gate.txt`: untested routes and per-package numbers.
+
+When you add a business rule, a refusal or a route, a red line in `coverage.html` tells you exactly what still needs a test.
 
 ## Deployment gate
 
