@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Regression Testing System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<style>
+:root{
+  --bg:#F2F7FB; --ink:#1F2A37; --dim:#5d6674; --faint:#8b94a0; --line:#D5DCE5; --card:#fff; --muted:#EEF2F6;
+  --brand:#1F4E79; --teal:#148F77; --teal-soft:#E3F4F0; --red:#C0392B; --red-soft:#FCEBE9;
+  --amber:#B4710F; --amber-soft:#FDF3E2; --blue-soft:#E6EEF6; --grey-soft:#EEF0F3;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1822; --ink:#E7ECF1; --dim:#9AA6B3; --faint:#717d8a; --line:#2A3542; --card:#16202b; --muted:#1f2a36;
+  --brand:#8DB9E4; --teal:#3FC2A6; --teal-soft:#123a33; --red:#F08A80; --red-soft:#3b1d1b;
+  --amber:#E9B45A; --amber-soft:#3a2c14; --blue-soft:#1c2c3d; --grey-soft:#222c37;}}
+:root[data-theme="dark"]{
+  --bg:#0f1822; --ink:#E7ECF1; --dim:#9AA6B3; --faint:#717d8a; --line:#2A3542; --card:#16202b; --muted:#1f2a36;
+  --brand:#8DB9E4; --teal:#3FC2A6; --teal-soft:#123a33; --red:#F08A80; --red-soft:#3b1d1b;
+  --amber:#E9B45A; --amber-soft:#3a2c14; --blue-soft:#1c2c3d; --grey-soft:#222c37;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:40px 16px 90px}
+h1{font-size:30px;line-height:1.2;margin:0 0 6px;color:var(--brand);letter-spacing:-.015em}
+h2{font-size:22px;margin:56px 0 10px;color:var(--brand);letter-spacing:-.01em;scroll-margin-top:16px}
+h3{font-size:16.5px;margin:22px 0 6px}
+p{margin:0 0 10px}
+a{color:var(--teal)}
+.lede{color:var(--dim);max-width:75ch}
+.meta{color:var(--faint);font-size:13.5px}
+.box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:12px 0}
+.toc{columns:2;column-gap:28px;font-size:14px;margin:0;padding-left:18px}
+.toc li{margin:3px 0;break-inside:avoid}
+@media (max-width:640px){.toc{columns:1}}
+.verdict{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:start;border-left:5px solid var(--red)}
+.verdict .tag{font-weight:700;font-size:13px;letter-spacing:.02em;padding:6px 12px;border-radius:8px;background:var(--red-soft);color:var(--red);white-space:nowrap}
+.verdict.go{border-left-color:var(--amber)} .verdict.go .tag{background:var(--amber-soft);color:var(--amber)}
+@media (max-width:560px){.verdict{grid-template-columns:1fr}}
+.counts{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}
+.counts div{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.counts b{display:block;font-size:26px;line-height:1.1}
+.counts span{font-size:13px;color:var(--dim)}
+@media (max-width:560px){.counts{grid-template-columns:repeat(2,1fr)}}
+.sev{display:inline-block;font-size:11.5px;font-weight:700;padding:1px 8px;border-radius:999px;white-space:nowrap;vertical-align:1px}
+.p0{background:var(--red);color:#fff} .p1{background:var(--red-soft);color:var(--red)}
+.p2{background:var(--amber-soft);color:var(--amber)} .p3{background:var(--grey-soft);color:var(--dim)}
+.ok{background:var(--teal-soft);color:var(--teal)}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{width:100%;border-collapse:collapse;font-size:14px;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--muted);font-weight:600;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+td code,p code,li code{font-size:12.5px;background:var(--muted);padding:1px 5px;border-radius:5px;word-break:break-word}
+.finding{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--red);border-radius:12px;padding:14px 16px;margin:12px 0}
+.finding.f1{border-left-color:#e07a6f}
+.finding h4{margin:0 0 8px;font-size:15.5px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.finding h4 .id{color:var(--faint);font-weight:600;font-size:13px}
+.finding dl{display:grid;grid-template-columns:130px 1fr;gap:4px 12px;margin:0;font-size:14px}
+.finding dt{color:var(--dim);font-weight:500}
+.finding dd{margin:0}
+@media (max-width:620px){.finding dl{grid-template-columns:1fr}.finding dt{margin-top:6px}}
+.verified{font-size:12px;font-weight:600;color:var(--teal);margin-left:auto}
+details{background:var(--card);border:1px solid var(--line);border-radius:12px;margin:10px 0}
+summary{cursor:pointer;padding:12px 16px;font-weight:600}
+details > .inner{padding:0 16px 14px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:760px){.grid2{grid-template-columns:1fr}}
+.grid2>*{min-width:0}
+.box[style*="white-space:pre"],pre{overflow-x:auto;max-width:100%}
+ul.tight{margin:6px 0;padding-left:20px} ul.tight li{margin:4px 0}
+.check{list-style:none;padding-left:0;margin:6px 0}
+.check li{padding:7px 0 7px 30px;position:relative;border-bottom:1px solid var(--line)}
+.check li:last-child{border-bottom:none}
+.check li::before{content:"";position:absolute;left:4px;top:11px;width:14px;height:14px;border:2px solid var(--faint);border-radius:4px}
+.flow{font-size:14px}
+.flow .step{display:grid;grid-template-columns:24px 1fr;gap:8px;padding:6px 0;border-bottom:1px dashed var(--line)}
+.flow .step:last-child{border-bottom:none}
+.dot{width:12px;height:12px;border-radius:50%;margin-top:6px}
+.dot.g{background:var(--teal)} .dot.a{background:var(--amber)} .dot.r{background:var(--red)}
+.foot{margin-top:60px;font-size:13px;color:var(--faint)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Regression testing system</h1>
+<p class="meta">ClinicOS · built and run on 2 October 2026 · branch <code>refine/clinic-ops</code></p>
+<p class="lede">The goal: <b>when someone changes the code, one command says whether anything that worked is now broken.</b> This page covers what existed before, what was built, the baseline it produced, and how to use it. Everything here was run, not just written. At the end, two deliberate bugs were planted and the suite caught both.</p>
+
+<div class="counts">
+  <div><b>235</b><span>regression tests</span></div>
+  <div><b style="color:var(--teal)">0</b><span>failures (fresh database)</span></div>
+  <div><b style="color:var(--amber)">22</b><span>known bugs, caught and catalogued</span></div>
+  <div><b>3½ min</b><span>full run, browser included</span></div>
+</div>
+
+<div class="box">
+<b>Contents</b>
+<ol class="toc">
+  <li><a href="#t1">Current testing state (before)</a></li>
+  <li><a href="#t2">Testing architecture</a></li>
+  <li><a href="#t3">Test inventory</a></li>
+  <li><a href="#t4">Implementation</a></li>
+  <li><a href="#t5">Baseline results</a></li>
+  <li><a href="#t6">Critical failures and known bugs</a></li>
+  <li><a href="#t7">Regression protection map</a></li>
+  <li><a href="#t8">CI/CD</a></li>
+  <li><a href="#t9">Developer workflow</a></li>
+  <li><a href="#t10">Proof it catches regressions</a></li>
+</ol>
+</div>
+
+<!-- 1 -->
+<h2 id="t1">1. Current testing state (before this work)</h2>
+<div class="grid2">
+<div class="box"><h3 style="margin-top:0">What existed</h3><ul class="tight">
+<li><b>88 Go tests</b>: 52 unit and 36 integration. The strongest were 29 service-level dental money tests (undo or correct a visit, fee guards, parallel collect bills once, day close).</li>
+<li><b>One RLS test</b>, covering the users table only.</li>
+<li><b>Frontend:</b> no test runner. One ad-hoc script that nothing ran.</li>
+<li><b>"E2E":</b> shell scripts run against production as the database superuser, with a committed test password (audit TST-4).</li>
+</ul></div>
+<div class="box"><h3 style="margin-top:0">What was wrong with it</h3><ul class="tight">
+<li><b>CI ran 4 of the 36 integration tests.</b> Its <code>-run Integration</code> filter skipped all 29 dental money tests.</li>
+<li><b>CI never ran on the deployed branch</b>, only on master and pull requests, and master is 191 commits behind.</li>
+<li><b>CI's module-boundary lint was already red.</b> It rejected the dental test for importing billing.</li>
+<li><b>The one RLS test failed</b> when run (see RLS-GUC-1).</li>
+<li><b>No HTTP-level tests at all:</b> permissions, routing and clinic isolation through the real API were never exercised. Frontend lint was not in CI.</li>
+</ul></div>
+</div>
+
+<!-- 2 -->
+<h2 id="t2">2. Testing architecture</h2>
+<div class="box" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;white-space:pre;overflow-x:auto;line-height:1.5">Unit                Go: pure rules (ids, phone, SMS segments, Verify.ET decision, pregnancy, seal)
+  52 + 36 tests     Vitest: visit words &amp; money, visit focus, Ethiopian calendar, dashboard format &amp; links,
+                    patient edit dialog (component)
+       ↓
+Integration         Go service + real Postgres: dental money rules D1–D13, notifications, provisioning, RLS
+  36 tests
+       ↓
+API regression      backend/tests/regression — the REAL api binary, connected as the RLS role clinic_app
+  106 tests         (exactly like production), driven over HTTP. Two clinics, a user in every role.
+       ↓
+End-to-end          frontend/e2e — Playwright in a real browser, real API, real test clinic
+  5 journeys
+       ↓
+regress.sh          one command, one readable summary, exit code 0 only when nothing broke
+       ↓
+CI                  .github/workflows/ci.yml — same suites on every push; red means do not deploy</div>
+<div class="grid2">
+<div class="box"><h3 style="margin-top:0">Why the API layer is the backbone</h3><p>Most behaviour a clinic depends on is visible at the HTTP boundary: who may do what, whether clinic A can reach clinic B, what a balance says after a payment, which state changes are refused. A test there exercises routing, middleware, permission checks, validation, SQL and row-level security together. Because it only uses the public API, it survives refactoring.</p><p>Tests set up their data through the API too. So if "create patient" breaks, every test that needs a patient fails loudly; nothing hides it by inserting rows directly.</p></div>
+<div class="box"><h3 style="margin-top:0">Why each other layer exists</h3><ul class="tight">
+<li><b>Service integration tests</b> cover rules with many branches cheaply. The dental money rules have about 30 cases.</li>
+<li><b>Unit tests</b> cover deterministic logic where the cases are cheap: calendar conversion, visit wording, focus rules.</li>
+<li><b>E2E tests</b> are deliberately few. They are slow and brittle, so they cover only the journeys a clinic lives on.</li>
+<li><b>The database superuser</b> is used only to inspect what was really stored, or to set up what the API cannot, such as back-dating a payment to 00:30.</li>
+</ul></div>
+</div>
+
+<!-- 3 -->
+<h2 id="t3">3. Test inventory</h2>
+<p class="lede">Every test name carries its ID (<code>TestREG_PAY_005_…</code>, <code>REG-FE-VISIT-005</code>, <code>REG-E2E-002</code>). The full list, with each test's Given/When/Then, is generated from the code: <a href="regression-catalog.md">docs/regression-catalog.md</a>. Regenerate it with <code>python3 scripts/test/catalog.py &gt; docs/regression-catalog.md</code>.</p>
+<div class="scroll"><table>
+<tr><th>Domain</th><th>Tests</th><th>What is protected</th><th>Not yet covered</th></tr>
+<tr><td>Multi-tenancy</td><td>7 API + RLS + 1 dental</td><td>A cannot read, change or delete B's patient; B's patient never appears in A's search; B's dental record is invisible and unchangeable; B's money is absent from A's cashier, receivables, dashboard and unbilled lists, and A cannot settle it; <b>every table with a tenant_id has RLS enabled, forced and a policy</b> (fails if a new table ships without it).</td><td>Branch-level isolation: test clinics have one branch.</td></tr>
+<tr><td>Authentication</td><td>19</td><td>Login, wrong password, unknown workspace, lockout after 5 tries, refresh rotation, reuse revokes the token family, logout, bad and forged tokens (expired, wrong secret, alg=none, MFA token), <code>/auth/me</code>, password change, sign out other devices, deleted user.</td><td>MFA (not enrollable); lockout expiry (15-minute wait).</td></tr>
+<tr><td>Authorisation</td><td>4 (one is a 21×6 matrix)</td><td>Every role gets 403 exactly where the permission catalogue says and nowhere else; refused writes change nothing; dashboard money is decided by the server; permissions follow a role change on the next refresh.</td><td>Platform super-admin routes.</td></tr>
+<tr><td>Patients</td><td>14 API + 2 frontend</td><td>Create and read back every field; MRN numbering and uniqueness; required name; duplicate detection by phone and by name + birth date; force; search by name, MRN and phone; update; soft delete; allergies; audit trail; the edit dialog's payload.</td><td>CSV import, attachments, guardians.</td></tr>
+<tr><td>Appointments and reception</td><td>15</td><td>Book; required department; double booking refused (and back-to-back allowed); cancel frees the slot; reschedule and conflicts; check-in creates exactly one queue entry; double and cancelled check-in; status rules; walk-in duplicates; reception's Expected and Waiting lists; follow-ups list.</td><td>Fee-gated check-in; SMS reminders (worker not run).</td></tr>
+<tr><td>Dental</td><td>30 API + 29 service + 21 frontend</td><td>Chart save, merge, invalid codes, clearing; front desk can't edit the chart; plan split and deposit; record a visit (completed_at and completed_by); a missed visit recorded today moves to today; a done visit can't be re-dated; who may undo or forgive; cancel and delete rules; prescriptions void not delete; exams; extras; images sealed from the front desk; chairside; cross-clinic writes. Plus visit numbering, wording and focus on the frontend.</td><td>Image upload and delete with real storage.</td></tr>
+<tr><td>Payments and finance</td><td>14 API + service tests</td><td>Full payment to zero; deposit plus instalments; pay later; double settle refused; <b>4 concurrent settles take the money once</b>; refund posts one reversal; <b>5 concurrent refunds pay back once</b>; void and waive; dental write-off; checkout under one receipt; whole-receipt refund once; day close in clinic time; receivables counts a debt once; overview nets refunds.</td><td>Telebirr/bank rails with Verify.ET; part-payment (the feature does not exist).</td></tr>
+<tr><td>Dashboard</td><td>3 API + 8 frontend</td><td>Owed equals Finance's receivables and splits correctly; collected today equals Finance and the takings chart; a same-day refund nets; link gating by permission; number and time formatting in Addis time.</td><td>Flow counts beyond the reception tests.</td></tr>
+<tr><td>Frontend journeys</td><td>5 E2E</td><td>Owner sees the dashboard; receptionist registers through the 3-step form and finds the patient; doctor opens a dental patient; follow-ups tabs; wrong password.</td><td>Recording a visit and paying, through the UI.</td></tr>
+<tr><td>Notifications</td><td>3 integration</td><td>Missed-visit notice, patient-waiting notice, inbox paging.</td><td>SMS dispatch end to end.</td></tr>
+<tr><td>Infrastructure</td><td>static step</td><td>Build, vet, module boundaries, migrations from an empty database to the latest version, frontend lint and typecheck.</td><td>Backup restore drill (audit OPS-2).</td></tr>
+</table></div>
+<p class="meta"><b>Not tested on purpose for now:</b> pharmacy, laboratory and inpatient modules (switched off for the dental clinics); AI assist and DHIS2 (external, off); live SMS sending (the suite must never send). These are the next domains to add when they are switched on for a clinic.</p>
+
+<!-- 4 -->
+<h2 id="t4">4. Implementation</h2>
+<div class="scroll"><table>
+<tr><th>Piece</th><th>Where</th><th>What it does</th></tr>
+<tr><td>Test toolkit</td><td><code>backend/internal/testkit/</code></td><td><code>RequireDB</code>/<code>Prepare</code> guard and migrate the test database. <code>NewClinic</code> provisions a real clinic through the same code the platform console uses, plus a user per role. <code>StartAPI</code> runs the real binary with a clean environment. <code>Client</code> is a typed HTTP client. <code>KnownBug</code> implements the known-bug policy.</td></tr>
+<tr><td>API regression suite</td><td><code>backend/tests/regression/</code></td><td>106 tests in seven files (tenancy, auth, patients, appointments, dental, payments, plus helpers). Starts one API and two clinics. Prints the API's own log when a test fails.</td></tr>
+<tr><td>E2E stack</td><td><code>backend/tests/e2estack/</code></td><td>Provisions a test clinic, starts the API, writes the credentials for Playwright, and stops cleanly on SIGTERM.</td></tr>
+<tr><td>Frontend unit</td><td><code>frontend/vitest.config.ts</code>, <code>src/**/__tests__/</code></td><td>Vitest with jsdom and Testing Library. Replaces the old ad-hoc check script.</td></tr>
+<tr><td>Browser journeys</td><td><code>frontend/playwright.config.ts</code>, <code>frontend/e2e/</code></td><td>Playwright with system Chrome locally and bundled Chromium in CI. Global setup starts the stack and Vite; teardown kills both.</td></tr>
+<tr><td>Runner</td><td><code>scripts/test/regress.sh</code></td><td>One command. <code>--quick</code>, <code>--e2e</code>, <code>--db-up</code> (Docker Postgres), <code>--only PAY</code>. Ends with a pass/fail table and an exit code.</td></tr>
+<tr><td>Summary</td><td><code>scripts/test/summarize.py</code></td><td>Turns <code>go test -json</code> into a per-domain table, then failures with <code>file:line</code>, then known bugs with their IDs. Writes JUnit XML for CI.</td></tr>
+<tr><td>Catalogue</td><td><code>scripts/test/catalog.py</code> → <code>docs/regression-catalog.md</code></td><td>The list of every regression test and the behaviour it protects, generated from the code.</td></tr>
+<tr><td>Make targets</td><td><code>backend/Makefile</code></td><td><code>test-unit</code>, <code>test</code>, <code>test-api</code>, <code>test-regress</code>, <code>test-tenancy</code>, <code>test-auth</code>, <code>test-patients</code>, <code>test-appointments</code>, <code>test-dental</code>, <code>test-payments</code>.</td></tr>
+<tr><td>npm scripts</td><td><code>frontend/package.json</code></td><td><code>npm test</code>, <code>test:watch</code>, <code>test:unit</code>, <code>test:e2e</code>.</td></tr>
+<tr><td>CI</td><td><code>.github/workflows/ci.yml</code></td><td>Five jobs: backend static and unit, full regression against a Postgres service, frontend lint, typecheck, unit and build, E2E, secret scan. Runs on <code>refine/**</code> too.</td></tr>
+<tr><td>Developer guide</td><td><code>TESTING.md</code></td><td>How to run, read and add tests; the known-bug rule; the production-bug rule; the deploy gate.</td></tr>
+</table></div>
+
+<h3>Safety guarantees</h3>
+<ul class="tight">
+<li><b>The test database guard</b> <em>fails</em> the run unless the host is local and the database name contains "test" or "regress". A misconfigured shell cannot reach a clinic's data.</li>
+<li><b>The API under test starts with a clean environment.</b> Exported SMS, storage, AI, Verify.ET or DHIS2 keys never reach it. SMS goes to the log gateway, files to a no-op store, and nothing external is contacted.</li>
+<li><b>Each money test gets a private clinic,</b> so totals are exact and tests never share state. Parallel runs are serialised at setup by a database advisory lock.</li>
+</ul>
+
+<h3>Product code changed</h3>
+<p><b>None.</b> Only test files, test tooling and CI changed. Two tooling fixes:</p>
+<ul class="tight">
+<li><b>Module-boundary lint:</b> it now skips test files and the test toolkit. Tests arrange real cross-module scenarios; the rule protects product code, and it was already failing CI on the existing dental test.</li>
+<li><b>RLS test:</b> its failure is now reported as a known bug, checked precisely, so any other error or any visible row still fails it hard.</li>
+</ul>
+
+<!-- 5 -->
+<h2 id="t5">5. Baseline results</h2>
+<p>A full run on an <b>empty database migrated from zero</b>, using <code>scripts/test/regress.sh --e2e</code>:</p>
+<div class="scroll"><table>
+<tr><th>Layer</th><th>Total</th><th>Passed</th><th>Failed</th><th>Known bug</th><th>Errors</th></tr>
+<tr><td>Backend (unit + integration + API)</td><td>194</td><td>172</td><td>0</td><td>22</td><td>0</td></tr>
+<tr><td>Frontend unit and component</td><td>36</td><td>36 (one is an expected failure for PAT-6)</td><td>0</td><td>1</td><td>0</td></tr>
+<tr><td>End-to-end journeys</td><td>5</td><td>5</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td><b>Total</b></td><td><b>235</b></td><td><b>213</b></td><td><b>0</b></td><td><b>23</b></td><td><b>0</b></td></tr>
+</table></div>
+<p class="meta">Wall time 3 min 32 s on a laptop (backend 85 s, E2E 56 s). PAT-6 counts as a pass in Vitest (<code>test.fails</code>) and as a known bug here.</p>
+
+<div class="grid2">
+<div class="box"><h3 style="margin-top:0">Existing bugs (23)</h3><p>Real product defects, present before this work. Each has a test asserting the correct behaviour, wrapped as a known bug. 15 come from the audit; 8 are new. See section 6.</p></div>
+<div class="box"><h3 style="margin-top:0">New regressions (0)</h3><p>Nothing that worked is broken. This is the baseline future runs are compared against.</p></div>
+<div class="box"><h3 style="margin-top:0">Test infrastructure problems found and fixed (5)</h3><ul class="tight">
+<li>CI's filter skipped 32 of the 36 database tests.</li>
+<li>CI did not run on the deployed branch.</li>
+<li>The boundary lint failed on test files.</li>
+<li>Parallel test setups collided ("tuple concurrently updated"); now serialised by an advisory lock.</li>
+<li>The setup helper panicked on failure; it now reports clearly.</li>
+</ul></div>
+<div class="box"><h3 style="margin-top:0">Still open in the infrastructure</h3><ul class="tight">
+<li>sqlc's stale generated models: the CI check is now informational, pending a deliberate regenerate (TST-2, CQ-5).</li>
+<li><code>deploy.sh</code> does not check CI itself (section 8).</li>
+<li>The old production e2e shell scripts still exist. Retire them.</li>
+</ul></div>
+</div>
+
+<!-- 6 -->
+<h2 id="t6">6. Critical failures and known bugs</h2>
+<p class="lede">No test fails. These 23 tests each assert the <em>correct</em> behaviour and are currently held as known bugs. They run on every build and show as <code>KNOWN BUG &lt;id&gt; still present</code>. The day a bug is fixed, its test fails with "remove the marker", which forces it to become a permanent guard for the fix.</p>
+<div class="scroll"><table>
+<tr><th>ID</th><th>Test</th><th>Failure, evidence, root cause</th><th>Blocks production?</th></tr>
+<tr><td><span class="sev p1">SEC-2</span></td><td>REG-AUTH-013, 014, 015</td><td>After deactivation or suspension, the existing session still refreshes (HTTP 200, 1 live session), and an old reset link reactivates the account. <code>UpdateUserStatus</code> revokes nothing; <code>Refresh</code> never checks status.</td><td><b>Yes</b>, fix now</td></tr>
+<tr><td><span class="sev p1">NEW-DEN-2</span></td><td>REG-DENTAL-101</td><td>Clinic B saved a chart (200) and created a course (201) against clinic A's patient id; a random id gives 500. Rows are stored in B, pointing at A's patient, and B can tell which ids exist elsewhere. <code>patient_id</code> foreign keys don't include the clinic, and Postgres does not apply RLS to foreign-key checks (00034:25, 00039:10).</td><td><b>Yes</b>, before clinic #2</td></tr>
+<tr><td><span class="sev p1">TENANT-FK-1</span></td><td>REG-TENANT-007</td><td>The same class on patient child rows: an allergy written by A against B's patient is accepted (201) and stored in A. B never sees it (RLS holds).</td><td>Fix with NEW-DEN-2 (one composite foreign-key migration)</td></tr>
+<tr><td><span class="sev p1">FIN-1</span></td><td>REG-PAY-011</td><td>700 cash at 00:30 Addis: Finance counts it today, the day close expects 0.00. <code>parseDay</code>/<code>ExpectedForDay</code> use UTC midnight.</td><td><b>Yes</b>, before clinic #2</td></tr>
+<tr><td><span class="sev p1">FIN-2</span></td><td>REG-DASH-003</td><td>After a same-day full refund the dashboard still says 1,000 collected (Finance says 0). The refund row has a NULL <code>branch_id</code>.</td><td><b>Yes</b>, before clinic #2</td></tr>
+<tr><td><span class="sev p1">APT-1</span></td><td>REG-APPT-014</td><td>A dental visit planned today is missing from reception's Expected list, which reads appointments only.</td><td><b>Yes</b>, for dental reception</td></tr>
+<tr><td><span class="sev p1">DEN-1</span></td><td>REG-DENTAL-061, 062</td><td>Exam delete removes the row; exam update keeps no prior version, and the old diagnosis is nowhere.</td><td><b>Yes</b>, before clinic #2</td></tr>
+<tr><td><span class="sev p1">DEN-3</span></td><td>REG-DENTAL-071</td><td>A colleague removed a done, unbilled 2,000 ETB extra with no reason (204).</td><td><b>Yes</b>, before clinic #2</td></tr>
+<tr><td><span class="sev p1">PAT-1</span></td><td>REG-PATIENT-014</td><td>A patient edit publishes no event and writes no audit row.</td><td><b>Yes</b>, before clinic #2</td></tr>
+<tr><td><span class="sev p1">PAT-6</span></td><td>REG-FE-PATIENT-001</td><td>The edit dialog sends 9 fields; passport, address and emergency contact are wiped on every save.</td><td><b>Yes</b>, small fix</td></tr>
+<tr><td><span class="sev p2">APT-4</span></td><td>REG-APPT-008, 009</td><td>Checking in twice gives 2 queue entries; a cancelled appointment can be checked in.</td><td>Soon</td></tr>
+<tr><td><span class="sev p2">APT-6</span></td><td>REG-APPT-010</td><td>A completed appointment can be reopened (204).</td><td>Soon</td></tr>
+<tr><td><span class="sev p2">NEW-AUTH-1</span></td><td>REG-AUTH-019</td><td>The only owner can deactivate themselves (204), leaving nobody who can sign in to reactivate them (<code>user_service.go:173-187</code>; delete already refuses this).</td><td>Soon, tiny fix</td></tr>
+<tr><td><span class="sev p2">NEW-PAT-2</span></td><td>REG-PATIENT-008</td><td>An edit can store an empty first name ("   " → ""), which registration refuses.</td><td>Soon</td></tr>
+<tr><td><span class="sev p3">NEW-PAT-1, NEW-PAT-3</span></td><td>REG-PATIENT-011, 013</td><td>Deleting a nonexistent patient or allergy answers 204 instead of 404: no row-count check.</td><td>No</td></tr>
+<tr><td><span class="sev p3">NEW-DEN-1</span></td><td>REG-DENTAL-005</td><td>A new clinic has no tooth conditions until someone opens the conditions list, so charting "decayed" is refused until then. Provisioning should seed them.</td><td>No, the UI loads the list first</td></tr>
+<tr><td><span class="sev p3">SEC-6</span></td><td>REG-DENTAL-081</td><td>The front desk gets 200 with an empty list for X-rays, not 403. No image data leaks (REG-DENTAL-080 proves it). Consider reclassifying as fixed by sealing.</td><td>No</td></tr>
+<tr><td><span class="sev p3">RLS-GUC-1</span></td><td>TestIntegrationRLSIsolation</td><td>A no-tenant query on a reused connection errors (invalid uuid "") instead of returning nothing. Still fails closed. Fix: <code>nullif(…,'')</code> in policies.</td><td>No</td></tr>
+</table></div>
+
+<!-- 7 -->
+<h2 id="t7">7. Regression protection map</h2>
+<div class="scroll"><table>
+<tr><th>Behaviour</th><th>Protected</th><th>Layer</th><th>Tests</th></tr>
+<tr><td>Clinic A cannot reach clinic B</td><td><span class="sev ok">Yes</span></td><td>API + DB catalogue</td><td>REG-TENANT-001…007, REG-DENTAL-100</td></tr>
+<tr><td>Every clinic table has forced RLS</td><td><span class="sev ok">Yes</span></td><td>DB</td><td>REG-TENANT-006</td></tr>
+<tr><td>Sign-in, tokens, sessions</td><td><span class="sev ok">Yes</span></td><td>API</td><td>REG-AUTH-001…019</td></tr>
+<tr><td>Role permissions</td><td><span class="sev ok">Yes</span></td><td>API matrix</td><td>REG-AUTHZ-001…004</td></tr>
+<tr><td>Patient registration and duplicates</td><td><span class="sev ok">Yes</span></td><td>API + E2E</td><td>REG-PATIENT-001…006, REG-E2E-002</td></tr>
+<tr><td>Patient search</td><td><span class="sev ok">Yes</span></td><td>API + E2E</td><td>REG-PATIENT-006, REG-TENANT-003, REG-E2E-002</td></tr>
+<tr><td>Patient edit keeps data</td><td>Guarding a bug</td><td>Frontend component</td><td>REG-FE-PATIENT-001/002</td></tr>
+<tr><td>Appointment conflicts</td><td><span class="sev ok">Yes</span></td><td>API</td><td>REG-APPT-003, 005, 006</td></tr>
+<tr><td>Check-in and queue</td><td>Partly (2 bugs)</td><td>API</td><td>REG-APPT-007…009, 012, 013</td></tr>
+<tr><td>Dental chart persistence and merge</td><td><span class="sev ok">Yes</span></td><td>API</td><td>REG-DENTAL-001…006</td></tr>
+<tr><td>Treatment plans and visits</td><td><span class="sev ok">Yes</span></td><td>API + service + unit</td><td>REG-DENTAL-010…042, D-series, REG-FE-VISIT, REG-FE-FOCUS</td></tr>
+<tr><td>Dental money rules (owed, forgive, undo)</td><td><span class="sev ok">Yes</span></td><td>Service + API</td><td>D1–D13, REG-DENTAL-030/031</td></tr>
+<tr><td>Payment to zero balance</td><td><span class="sev ok">Yes</span></td><td>API</td><td>REG-PAY-001…003, 010</td></tr>
+<tr><td>No double payment (sequential and concurrent)</td><td><span class="sev ok">Yes</span></td><td>API</td><td>REG-PAY-004, 005</td></tr>
+<tr><td>No double refund (sequential and concurrent)</td><td><span class="sev ok">Yes</span></td><td>API</td><td>REG-PAY-006, 007, 012</td></tr>
+<tr><td>Void, waive, write-off</td><td><span class="sev ok">Yes</span></td><td>API</td><td>REG-PAY-008, 009</td></tr>
+<tr><td>Receivables / "owed" correctness</td><td><span class="sev ok">Yes</span></td><td>API</td><td>REG-FIN-001, REG-DASH-001</td></tr>
+<tr><td>Dashboard agrees with Finance</td><td>Partly (FIN-2)</td><td>API</td><td>REG-DASH-001…003</td></tr>
+<tr><td>Day close in clinic time</td><td>Guarding a bug</td><td>API</td><td>REG-PAY-011</td></tr>
+<tr><td>Ethiopian calendar</td><td><span class="sev ok">Yes</span></td><td>Unit</td><td>REG-FE-ETH-001…005</td></tr>
+<tr><td>Critical journeys in a browser</td><td><span class="sev ok">Yes</span> (5)</td><td>E2E</td><td>REG-E2E-001…005</td></tr>
+<tr><td>Migrations build from zero</td><td><span class="sev ok">Yes</span></td><td>Every database run</td><td>testkit.Prepare</td></tr>
+</table></div>
+
+<!-- 8 -->
+<h2 id="t8">8. CI/CD</h2>
+<div class="box" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;white-space:pre;overflow-x:auto;line-height:1.5">push / pull request (master, main, refine/**)
+   ├─ backend-static   build · vet · module boundaries · unit · sqlc (informational)
+   ├─ regression       Postgres service → every Go test (unit + integration + API) → summary + JUnit
+   ├─ frontend         eslint · tsc · vitest · build
+   ├─ e2e              (after regression + frontend) Playwright, bundled Chromium
+   └─ secrets          gitleaks
+ALL GREEN ─────────────▶ deploy allowed          ANY RED ─▶ deploy blocked, read the job summary</div>
+<h3>To make the gate real</h3>
+<ol class="tight">
+  <li><b>Push this branch once and watch the first CI run.</b> This environment could not reach GitHub to run it, so the workflow is written and its suites run locally, but CI itself has not run yet.</li>
+  <li><b>In GitHub → Settings → Branches</b>, protect the deploy branch and require the <i>regression</i>, <i>frontend</i> and <i>e2e</i> checks.</li>
+  <li><b>Add a check to <code>deploy.sh</code></b> that the commit being deployed has a green CI status (GitHub API with a read-only token), and refuse otherwise. Until then the rule is a human one: no deploy from a red or unknown commit.</li>
+  <li><b>Run <code>regress.sh</code> locally before pushing.</b> It is the same suite, so CI should never be the first to say no.</li>
+</ol>
+
+<!-- 9 -->
+<h2 id="t9">9. Developer workflow</h2>
+<div class="grid2">
+<div class="box" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;white-space:pre;line-height:1.55">make a change
+   ↓
+scripts/test/regress.sh --quick      (seconds)
+   ↓
+scripts/test/regress.sh              (minutes)
+   ↓
+red? read the failure: test name,
+     file:line, expected vs actual
+   ↓
+fix → run again → all pass
+   ↓
+commit → push → CI green
+   ↓
+deploy</div>
+<div class="box"><h3 style="margin-top:0">Everyday commands</h3><ul class="tight">
+<li><b>Everything:</b> <code>scripts/test/regress.sh --e2e</code></li>
+<li><b>No database to hand:</b> <code>scripts/test/regress.sh --db-up</code> (Docker)</li>
+<li><b>Only dental:</b> <code>make -C backend test-dental</code></li>
+<li><b>Only payments:</b> <code>make -C backend test-payments</code></li>
+<li><b>Only permissions:</b> <code>make -C backend test-auth</code></li>
+<li><b>One test:</b> <code>go test ./tests/regression/ -run REG_PAY_005 -v</code></li>
+<li><b>Frontend while coding:</b> <code>npm run test:watch</code></li>
+<li><b>Every open bug as red:</b> <code>REGRESSION_STRICT=1 scripts/test/regress.sh</code></li>
+</ul>
+<p><b>Every production bug:</b> reproduce it, write a failing test, fix it, keep the test. If the fix must wait, commit the test with <code>KnownBug("&lt;id&gt;", …)</code> so the bug stays visible.</p></div>
+</div>
+
+<!-- 10 -->
+<h2 id="t10">10. Proof it catches regressions</h2>
+<p>A suite that passes proves nothing until it is shown to fail. Two realistic mistakes were planted, run, and then reverted (the files were restored to the committed version byte for byte):</p>
+<div class="grid2">
+<div class="box"><h3 style="margin-top:0">Backend: "owed" doubled in Receivables</h3><p>One SQL expression changed. Three tests failed, each saying exactly what broke:</p>
+<pre style="font-size:12.5px;white-space:pre-wrap;margin:0">✗ TestREG_DASH_001_DashboardOwedAgreesWithFinance
+    receivables total 1600.00, want 1300
+✗ TestREG_FIN_001_ReceivablesCountsADebtOnce
+    patient with 4 past payments owes "1000.00", want 500
+✗ TestREG_PAY_008_VoidAndWaiveStopTheDebt
+    receivables before: owed "1000.00", want 500</pre></div>
+<div class="box"><h3 style="margin-top:0">Frontend: a payment word changed</h3><p>"Paid ahead" changed to "Paid" on the visit card:</p>
+<pre style="font-size:12.5px;white-space:pre-wrap;margin:0">× REG-FE-VISIT-005 payWord labels
+  expected { label: 'Paid', tone: 'good' }
+  to deeply equal { label: 'Paid ahead', tone: 'good' }</pre></div>
+</div>
+
+<p class="foot">Written for the team that changes this code. Commands assume the repository root. Start with TESTING.md for the day-to-day guide.</p>
+</div>
+</body>
+</html>

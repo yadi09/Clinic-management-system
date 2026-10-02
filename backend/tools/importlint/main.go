@@ -33,6 +33,13 @@ func main() {
 		if strings.Contains(filepath.ToSlash(path), "/repo/gen/") {
 			return nil
 		}
+		// Tests and the shared test toolkit are not part of any module's surface:
+		// they arrange real cross-module scenarios (a dental visit billed through
+		// billing, a clinic provisioned by platform) and never ship. The boundary
+		// rule protects production code; applying it here only forces fakes.
+		if strings.HasSuffix(path, "_test.go") || strings.HasPrefix(filepath.ToSlash(path), "internal/testkit/") {
+			return nil
+		}
 		self := moduleOf(strings.TrimPrefix(filepath.ToSlash(path), "internal/"))
 		fset := token.NewFileSet()
 		f, perr := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
