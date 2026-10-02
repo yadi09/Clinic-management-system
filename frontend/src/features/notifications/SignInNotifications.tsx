@@ -100,7 +100,7 @@ export function SignInNotifications() {
           </p>
         )}
         <DialogFooter className="sm:justify-between">
-          <Button variant="ghost" loading={markAll.isPending} onClick={() => markAll.mutate()}>
+          <Button variant="ghost" loading={markAll.isPending} onClick={() => markAll.mutate(undefined)}>
             <CheckCheck className="mr-1.5 h-4 w-4" /> Mark all as read
           </Button>
           <Button onClick={close}>Got it</Button>

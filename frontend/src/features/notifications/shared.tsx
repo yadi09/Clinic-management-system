@@ -36,7 +36,7 @@ export function useOpenNotification(userId: string, after?: () => void) {
 export function useMarkAllRead(userId: string, after?: () => void) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: markAllNotificationsRead,
+    mutationFn: (kind?: string) => markAllNotificationsRead(kind),
     onSuccess: () => after?.(),
     onSettled: () => qc.invalidateQueries({ queryKey: notificationKeys.all(userId) }),
     onError: () => toast.error("Could not mark notifications as read. Please try again."),

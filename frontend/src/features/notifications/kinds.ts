@@ -59,6 +59,13 @@ export function present(n: AppNotification): Presented {
   };
 }
 
+/** The categories a person can filter by, in the order they are shown. A new
+ *  kind is added here with its plain-language name. */
+export const CATEGORIES: { kind: string; label: string }[] = [
+  { kind: "patient_waiting", label: "Patients waiting" },
+  { kind: "missed_visit", label: "Missed visits" },
+];
+
 /** Kinds that are happening now: they also get a short pop-up and, if the person
  *  has sound on, a chime and a spoken sentence. */
 export const LIVE_KINDS = new Set(["patient_waiting"]);

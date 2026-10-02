@@ -20,26 +20,48 @@ export interface NotificationPage {
   items: AppNotification[];
   /** Unread total, which can be larger than the page. */
   unread: number;
+  /** Pass as `before` to continue after this page; null when there is no more. */
+  next?: string | null;
 }
 
-export function listNotifications(opts: { unread?: boolean; limit?: number } = {}) {
+export type NotificationStatus = "all" | "unread" | "read";
+
+export function listNotifications(opts: {
+  /** Kept for older callers: same as status "unread". */
+  unread?: boolean;
+  status?: NotificationStatus;
+  kind?: string;
+  before?: string | null;
+  limit?: number;
+} = {}) {
   const q = new URLSearchParams();
-  if (opts.unread) q.set("unread", "1");
+  const status = opts.unread ? "unread" : opts.status;
+  if (status && status !== "all") q.set("status", status);
+  if (opts.kind) q.set("kind", opts.kind);
+  if (opts.before) q.set("before", opts.before);
   if (opts.limit) q.set("limit", String(opts.limit));
   const qs = q.toString();
   return apiFetch<NotificationPage>(`/notifications${qs ? `?${qs}` : ""}`);
 }
 
+export interface NotificationCounts {
+  unread: number;
+  /** Unread per kind; a kind with none is absent. */
+  by_kind: Record<string, number>;
+}
+
 export function notificationCount() {
-  return apiFetch<{ unread: number }>("/notifications/count");
+  return apiFetch<NotificationCounts>("/notifications/count");
 }
 
 export function markNotificationRead(id: string) {
   return apiFetch<void>(`/notifications/${encodeURIComponent(id)}/read`, { method: "POST" });
 }
 
-export function markAllNotificationsRead() {
-  return apiFetch<{ marked: number }>("/notifications/read-all", { method: "POST" });
+/** Marks every unread notification read, or only those of one kind. */
+export function markAllNotificationsRead(kind?: string) {
+  const qs = kind ? `?kind=${encodeURIComponent(kind)}` : "";
+  return apiFetch<{ marked: number }>(`/notifications/read-all${qs}`, { method: "POST" });
 }
 
 /** Query keys carry the user, so a shared reception terminal never shows the
@@ -47,7 +69,8 @@ export function markAllNotificationsRead() {
 export const notificationKeys = {
   all: (userId: string) => ["notifications", userId] as const,
   count: (userId: string) => ["notifications", userId, "count"] as const,
-  list: (userId: string) => ["notifications", userId, "list"] as const,
+  list: (userId: string, tab: string = "all") => ["notifications", userId, "list", tab] as const,
+  page: (userId: string, status: string, kind: string) => ["notifications", userId, "page", status, kind] as const,
   unread: (userId: string) => ["notifications", userId, "unread"] as const,
 };
 

@@ -41,17 +41,37 @@ type Notification struct {
 	ReadAt    *time.Time
 }
 
-// Page is the newest notifications plus the unread total, which may be larger
-// than the page.
+// Page is one stretch of the inbox, newest first, plus the unread total (which
+// may be larger than the page). Next is set when there is more: pass it as Before
+// to continue exactly where this page ended.
 type Page struct {
 	Items  []Notification
 	Unread int
+	Next   *uuid.UUID
 }
 
-// ListFilter narrows the inbox. UnreadOnly is what the sign-in pop-up asks for.
+// Status filters by read state.
+const (
+	StatusAll    = ""
+	StatusUnread = "unread"
+	StatusRead   = "read"
+)
+
+// ListFilter narrows the inbox. Every field is optional.
 type ListFilter struct {
-	UnreadOnly bool
-	Limit      int
+	Status string // StatusAll, StatusUnread or StatusRead
+	Kind   string // one kind, or "" for every kind
+	// Before continues after this notification (the previous page's Next). Paging
+	// by position rather than page number costs the same on the hundredth page as
+	// the first, and nothing is skipped or shown twice when new ones arrive.
+	Before *uuid.UUID
+	Limit  int
+}
+
+// Counts is the unread total, and unread per kind, for the category filters.
+type Counts struct {
+	Unread int
+	ByKind map[string]int
 }
 
 // Service is the inbox of the signed-in user. Every method acts on that user's
@@ -59,6 +79,8 @@ type ListFilter struct {
 type Service interface {
 	List(ctx context.Context, f ListFilter) (*Page, error)
 	UnreadCount(ctx context.Context) (int, error)
+	Counts(ctx context.Context) (*Counts, error)
 	MarkRead(ctx context.Context, id uuid.UUID) error
-	MarkAllRead(ctx context.Context) (int, error)
+	// MarkAllRead marks every unread notification read, or only those of one kind.
+	MarkAllRead(ctx context.Context, kind string) (int, error)
 }

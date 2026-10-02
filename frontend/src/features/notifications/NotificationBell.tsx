@@ -1,17 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Bell, BellRing, CheckCheck, Volume2, VolumeX } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { AlertTriangle, ArrowRight, Bell, BellRing, CheckCheck, Volume2, VolumeX } from "lucide-react";
 
 import { useAuth } from "@/app/auth-context";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Segmented } from "@/components/ui/segmented";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { type AppNotification, listNotifications, notificationCount, notificationKeys } from "./api";
+import { listNotifications, notificationCount, notificationKeys } from "./api";
 import { OPEN_NOTIFICATIONS, receivesLiveAlerts } from "./LiveAlerts";
 import { markSeen } from "./seen";
 import { announce, canSpeak, setSoundOn, soundOn } from "./sound";
 import { NotificationRow, useMarkAllRead, useOpenNotification } from "./shared";
+
+const BELL_LIMIT = 10;
 
 /** The bell in the top bar: an unread count, and the latest notifications when
  *  opened. The count is polled once a minute, a cheap request, so new items
@@ -45,13 +49,26 @@ export function NotificationBell() {
     enabled: !!uid,
     refetchInterval: live ? 10_000 : 60_000,
   });
+  // Unread and Earlier are two views, switched, not two stacked lists: with many
+  // unread, a list underneath would never be seen. It always opens on Unread, the
+  // question people open the bell to answer; Earlier is one tap away.
+  const [tab, setTab] = useState<"unread" | "read">("unread");
+  const onOpenChange = (o: boolean) => {
+    if (o) setTab("unread");
+    setOpen(o);
+  };
   const list = useQuery({
-    queryKey: notificationKeys.list(uid),
-    queryFn: () => listNotifications({ limit: 20 }),
+    queryKey: notificationKeys.list(uid, tab),
+    queryFn: () => listNotifications({ status: tab, limit: BELL_LIMIT }),
     enabled: !!uid && open,
   });
   const openItem = useOpenNotification(uid, () => setOpen(false));
   const markAll = useMarkAllRead(uid);
+  const navigate = useNavigate();
+  const seeAll = () => {
+    setOpen(false);
+    navigate(`/notifications?status=${tab}`);
+  };
 
   // While the list is open its own total is the freshest. Once it closes it is
   // no longer refetched, so the poll is the source again: reading the list's
@@ -83,12 +100,11 @@ export function NotificationBell() {
 
   const label = unread > 0 ? `Notifications, ${unread} unread` : "Notifications";
   const items = list.data?.items ?? [];
-  const fresh = items.filter((n) => !n.read_at);
-  const earlier = items.filter((n) => n.read_at);
+  const more = !!list.data?.next;
   const BellIcon = unread > 0 ? BellRing : Bell;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         <button className="relative rounded-md p-2 touch-hit hover:bg-white/10" aria-label={label}>
           <BellIcon className="h-5 w-5" />
@@ -105,14 +121,9 @@ export function NotificationBell() {
           )}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[min(25rem,calc(100vw-16px))] overflow-hidden p-0">
-        <div className="flex items-center gap-2 border-b px-4 py-3">
+      <PopoverContent align="end" className="flex w-[min(25rem,calc(100vw-16px))] flex-col overflow-hidden p-0">
+        <div className="flex items-center gap-2 px-4 pb-2 pt-3">
           <span className="text-sm font-semibold">Notifications</span>
-          {unread > 0 && (
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold tabular-nums text-primary">
-              {unread} unread
-            </span>
-          )}
           {live && canSpeak() && (
             <button
               type="button"
@@ -128,19 +139,31 @@ export function NotificationBell() {
               {sound ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
             </button>
           )}
-          {unread > 0 && (
+          {tab === "unread" && unread > 0 && (
             <Button
               variant="ghost"
               size="sm"
               className={cn("h-8 px-2 text-xs", !(live && canSpeak()) && "ml-auto")}
               loading={markAll.isPending}
-              onClick={() => markAll.mutate()}
+              onClick={() => markAll.mutate(undefined)}
             >
               <CheckCheck className="mr-1 h-3.5 w-3.5" /> Mark all as read
             </Button>
           )}
         </div>
-        <div className="max-h-[min(30rem,65dvh)] overflow-y-auto overscroll-contain">
+        <div className="border-b px-4 pb-3">
+          <Segmented
+            ariaLabel="Show"
+            size="sm"
+            value={tab}
+            onChange={setTab}
+            options={[
+              { value: "unread", label: "Unread", badge: unread > 0 ? unread : undefined },
+              { value: "read", label: "Earlier" },
+            ]}
+          />
+        </div>
+        <div className="max-h-[min(26rem,55dvh)] overflow-y-auto overscroll-contain">
           {list.isLoading ? (
             <div className="space-y-4 p-4">
               {[0, 1].map((i) => (
@@ -172,40 +195,40 @@ export function NotificationBell() {
               <span className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary">
                 <CheckCheck className="h-5 w-5" />
               </span>
-              <div>
-                <p className="text-sm font-medium">You're all caught up</p>
-                <p className="mt-0.5 text-sm text-muted-foreground">When a patient misses a visit, you'll see it here.</p>
-              </div>
+              {tab === "unread" ? (
+                <>
+                  <div>
+                    <p className="text-sm font-medium">You're all caught up</p>
+                    <p className="mt-0.5 text-sm text-muted-foreground">New notifications will show up here.</p>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => setTab("read")}>
+                    See earlier
+                  </Button>
+                </>
+              ) : (
+                <div>
+                  <p className="text-sm font-medium">Nothing earlier yet</p>
+                  <p className="mt-0.5 text-sm text-muted-foreground">Notifications you've read are kept here.</p>
+                </div>
+              )}
             </div>
           ) : (
-            <>
-              <Section title="Unread" items={fresh} onOpen={openItem} />
-              <Section title="Earlier" items={earlier} onOpen={openItem} muted />
-            </>
+            <div className="divide-y">
+              {items.map((n) => (
+                <NotificationRow key={n.id} n={n} onOpen={openItem} />
+              ))}
+            </div>
           )}
         </div>
+        <button
+          type="button"
+          onClick={seeAll}
+          className="flex items-center justify-center gap-1.5 border-t px-4 py-3 text-sm font-medium text-primary hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
+        >
+          {more ? "See all notifications" : "Open notifications page"}
+          <ArrowRight className="h-4 w-4" aria-hidden />
+        </button>
       </PopoverContent>
     </Popover>
-  );
-}
-
-function Section({ title, items, onOpen, muted }: {
-  title: string;
-  items: AppNotification[];
-  onOpen: (n: AppNotification) => void;
-  muted?: boolean;
-}) {
-  if (items.length === 0) return null;
-  return (
-    <section aria-label={title}>
-      <h3 className={cn("bg-muted/40 px-4 py-1.5 text-xs font-medium", muted ? "text-muted-foreground" : "text-foreground")}>
-        {title}
-      </h3>
-      <div className="divide-y">
-        {items.map((n) => (
-          <NotificationRow key={n.id} n={n} onOpen={onOpen} />
-        ))}
-      </div>
-    </section>
   );
 }

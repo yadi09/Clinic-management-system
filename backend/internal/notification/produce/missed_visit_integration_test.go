@@ -333,7 +333,7 @@ func TestIntegrationMissedVisitNotifications(t *testing.T) {
 	if n, _ := svc.UnreadCount(as(tA, desk)); n != 1 {
 		t.Fatalf("unread after reading one = %d, want 1", n)
 	}
-	unread, err := svc.List(as(tA, desk), notification.ListFilter{UnreadOnly: true})
+	unread, err := svc.List(as(tA, desk), notification.ListFilter{Status: notification.StatusUnread})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +344,7 @@ func TestIntegrationMissedVisitNotifications(t *testing.T) {
 	if n, _ := svc.UnreadCount(as(tA, owner)); n != 2 {
 		t.Fatalf("owner unread = %d, want 2 (reading is personal)", n)
 	}
-	if n, err := svc.MarkAllRead(as(tA, desk)); err != nil || n != 1 {
+	if n, err := svc.MarkAllRead(as(tA, desk), ""); err != nil || n != 1 {
 		t.Fatalf("mark all read: n=%d err=%v, want 1", n, err)
 	}
 	if n, _ := svc.UnreadCount(as(tA, desk)); n != 0 {
