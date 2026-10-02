@@ -350,7 +350,7 @@ func flowToday(ctx context.Context, tx pgx.Tx, tid uuid.UUID, branch *uuid.UUID,
 		if missed > 0 {
 			alerts = append(alerts, dashboard.Alert{
 				Kind: "missed_visit", Tone: "warn", Count: missed,
-				Href: "/appointments?view=followups", Action: "Rebook",
+				Href: "/appointments?view=followups&tab=missed", Action: "Rebook",
 				Text:   plural(missed, "patient", "patients") + " missed a treatment visit this week",
 				Detail: "Their treatment is on hold until they are rebooked",
 			})

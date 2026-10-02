@@ -872,6 +872,7 @@ func (h *Handlers) SessionsCalendar(c *gin.Context) {
 			"seq": it.Seq, "session_count": it.SessionCount, "title": it.Title,
 			"procedure": sealed(clin, it.Procedure), "tooth": sealed(clin, it.Tooth), "amount_due": it.AmountDue,
 			"status": it.Status, "payment": it.Payment, "pay_later": it.PayLater,
+			"kind": it.Kind, "phone": it.Phone,
 		})
 	}
 	httpx.OK(c, out)

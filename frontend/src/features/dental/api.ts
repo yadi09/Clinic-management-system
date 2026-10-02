@@ -276,6 +276,9 @@ export interface DentalSessionCal {
   status: string; // planned | done
   payment: PaymentState;
   pay_later: boolean;
+  /** visit | deposit | extra. Only visits are something a patient comes in for. */
+  kind?: "visit" | "deposit" | "extra";
+  phone?: string;
 }
 export function listDentalSessions(from: string, to: string) {
   return apiFetch<DentalSessionCal[]>(`/dental/sessions?from=${from}&to=${to}`);

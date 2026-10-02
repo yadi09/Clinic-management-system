@@ -353,6 +353,10 @@ type SessionCalItem struct {
 	Status        string    `json:"status"`  // planned | done
 	Payment       string    `json:"payment"` // unpaid | billed | paid
 	PayLater      bool      `json:"pay_later"`
+	// Kind is visit | deposit | extra. A follow-up list is about visits; the down
+	// payment shares the session table but nobody is booked to "attend" it.
+	Kind  string `json:"kind"`
+	Phone string `json:"phone,omitempty"` // a follow-up list is a list to phone
 }
 
 // Service is the dental module API.

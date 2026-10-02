@@ -2797,7 +2797,8 @@ func (s *Service) SessionsInRange(ctx context.Context, from, to string) ([]denta
 		rows, e := tx.Query(ctx, sessionMoneyCTE+`
 			SELECT sm.session_id, sm.plan_id, sm.patient_id, pt.first_name, coalesce(pt.last_name,''), pt.mrn,
 			       sm.scheduled_date, sm.seq, p.session_count, p.title,
-			       sm.procedure, sm.tooth, sm.amount_due::text, sm.session_status, sm.pay_later, sm.pay_state
+			       sm.procedure, sm.tooth, sm.amount_due::text, sm.session_status, sm.pay_later, sm.pay_state,
+			       sm.kind, coalesce(pt.phone, '')
 			FROM session_money sm
 			JOIN treatment_plans p ON p.id = sm.plan_id AND p.tenant_id = sm.tenant_id
 			JOIN patients pt ON pt.id = sm.patient_id
@@ -2813,7 +2814,7 @@ func (s *Service) SessionsInRange(ctx context.Context, from, to string) ([]denta
 			var first, last string
 			var sd time.Time
 			if e := rows.Scan(&it.SessionID, &it.PlanID, &it.PatientID, &first, &last, &it.MRN,
-				&sd, &it.Seq, &it.SessionCount, &it.Title, &it.Procedure, &it.Tooth, &it.AmountDue, &it.Status, &it.PayLater, &it.Payment); e != nil {
+				&sd, &it.Seq, &it.SessionCount, &it.Title, &it.Procedure, &it.Tooth, &it.AmountDue, &it.Status, &it.PayLater, &it.Payment, &it.Kind, &it.Phone); e != nil {
 				return e
 			}
 			it.PatientName = strings.TrimSpace(first + " " + last)

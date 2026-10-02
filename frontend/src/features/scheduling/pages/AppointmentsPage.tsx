@@ -3,8 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
-  ArrowLeftRight,
-  CalendarClock,
   CalendarPlus,
   ChevronLeft,
   ChevronRight,
@@ -44,6 +42,7 @@ import {
   type Appointment,
 } from "@/features/scheduling/api";
 import { BookingDialog, PatientCombobox } from "@/features/scheduling/components/BookingDialog";
+import { FollowupsView } from "@/features/scheduling/components/FollowupsView";
 import { getPatient } from "@/features/patients/api";
 import { listDentalSessions, type DentalSessionCal } from "@/features/dental/api";
 import { ETH_MONTHS, formatEthiopian, formatEthiopianRange, toEthiopian } from "@/lib/ethiopian";
@@ -439,9 +438,9 @@ export function AppointmentsPage() {
         {!branchId && !branches.isLoading ? (
           <Card className="flex h-full items-center justify-center p-10 text-center text-sm text-muted-foreground">Add a branch in Settings to start booking.</Card>
         ) : view === "followups" ? (
-          <div className="h-full space-y-8 overflow-y-auto pr-1">
-            {dentalOn && <DentalSessionsLens q={fuSessions} actions={actions} />}
-            <FollowupsLens q={followups} actions={actions} />
+          <div className="h-full overflow-y-auto pr-1">
+            <FollowupsView sessions={fuSessions} appts={followups} dentalOn={dentalOn}
+              patientFilter={patientFilter} actions={actions} />
           </div>
         ) : appts.isLoading ? (
           <Card className="flex h-full flex-col gap-2 p-4">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</Card>
@@ -836,71 +835,6 @@ function MonthGrid({ days, monthIndex, items, sessByDay, actions }: { days: Date
   );
 }
 
-function FollowupsLens({ q, actions }: { q: { data?: Appointment[]; isLoading: boolean }; actions: Actions }) {
-  const groups = useMemo(() => {
-    const now = new Date();
-    const endToday = startOfDay(addDays(now, 1));
-    const startToday = startOfDay(now);
-    const needsHandoff: Appointment[] = [], overdue: Appointment[] = [], dueToday: Appointment[] = [], upcoming: Appointment[] = [];
-    for (const a of q.data ?? []) {
-      if (!isActive(a.status)) continue;
-      const s = new Date(a.starts_at);
-      if (!a.provider_active) needsHandoff.push(a);
-      else if (s < startToday && a.status !== "checked_in") overdue.push(a);
-      else if (s < endToday) dueToday.push(a);
-      else upcoming.push(a);
-    }
-    return { needsHandoff, overdue, dueToday, upcoming };
-  }, [q.data]);
-
-  if (q.isLoading) return <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>;
-  const total = groups.needsHandoff.length + groups.overdue.length + groups.dueToday.length + groups.upcoming.length;
-  if (total === 0) return <Card className="flex h-full items-center justify-center p-12 text-center text-sm text-muted-foreground">No follow-ups on the books. When a doctor books one, it shows up here.</Card>;
-
-  return (
-    <div className="space-y-6">
-      <LensSection title="Needs handoff" hint="The booked doctor is no longer active — reassign to a covering doctor." tone="warning" items={groups.needsHandoff} actions={actions} />
-      <LensSection title="Overdue" hint="The follow-up date has passed and the patient hasn't checked in." tone="danger" items={groups.overdue} actions={actions} />
-      <LensSection title="Due today" tone="brand" items={groups.dueToday} actions={actions} />
-      <LensSection title="Upcoming" tone="muted" items={groups.upcoming} actions={actions} />
-    </div>
-  );
-}
-
-function LensSection({ title, hint, tone, items, actions }: { title: string; hint?: string; tone: "warning" | "danger" | "brand" | "muted"; items: Appointment[]; actions: Actions }) {
-  if (items.length === 0) return null;
-  const dot = { warning: "bg-amber-500", danger: "bg-destructive", brand: "bg-primary", muted: "bg-muted-foreground" }[tone];
-  return (
-    <section>
-      <div className="mb-2 flex items-baseline gap-2">
-        <span className={`h-2 w-2 rounded-full ${dot}`} />
-        <h2 className="text-h3">{title}</h2>
-        <span className="text-sm text-muted-foreground">{items.length}</span>
-        {hint && <span className="hidden text-xs text-muted-foreground sm:inline">· {hint}</span>}
-      </div>
-      <Card className="divide-y">
-        {items.map((a) => (
-          <div key={a.id} className="flex flex-wrap items-center gap-3 p-3">
-            <div className="w-24 shrink-0">
-              <div className="text-sm font-semibold text-brand">{fmtDay(a.starts_at)}</div>
-              <div className="text-xs tabular-nums text-muted-foreground">{fmtTime(a.starts_at)}</div>
-            </div>
-            <div className="min-w-0 flex-1">
-              <button className="touch-hit block truncate font-medium text-brand hover:underline" onClick={() => actions.onOpenPatient(a.patient_id)}>{a.patient_name}</button>
-              <div className="truncate text-xs text-muted-foreground">{handedOff(a) && a.ordered_by_name ? `Ordered by ${a.ordered_by_name} · ` : ""}{a.provider_name}{a.reason ? ` · ${a.reason}` : ""}</div>
-            </div>
-            <div className="flex items-center gap-1.5"><CoverageBadge a={a} />{!a.provider_active && <Badge variant="warning">handoff</Badge>}</div>
-            <div className="flex gap-1.5">
-              <Button size="sm" variant="outline" className="max-md:min-h-9" onClick={() => actions.onReassign(a)}><ArrowLeftRight className="h-3.5 w-3.5" /> Reassign</Button>
-              <Button size="sm" variant="ghost" className="max-md:min-h-9" onClick={() => actions.onReschedule(a)}><CalendarClock className="h-3.5 w-3.5" /> Rebook</Button>
-            </div>
-          </div>
-        ))}
-      </Card>
-    </section>
-  );
-}
-
 const etb = (v: string) => `${Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 })} ETB`;
 function sessPayBadge(s: DentalSessionCal) {
   if (sessOwes(s)) return <Badge variant="destructive">owes</Badge>;
@@ -923,55 +857,6 @@ function SessionDayCard({ s, onOpen }: { s: DentalSessionCal; onOpen: (pid: stri
         <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">{etb(s.amount_due)}</span>
       </div>
     </div>
-  );
-}
-
-/** Follow-ups view: treatment sessions bucketed overdue / due today / upcoming. */
-function DentalSessionsLens({ q, actions }: { q: { data?: DentalSessionCal[]; isLoading: boolean }; actions: Actions }) {
-  const groups = useMemo(() => {
-    const today = dayKey(new Date());
-    const overdue: DentalSessionCal[] = [], dueToday: DentalSessionCal[] = [], upcoming: DentalSessionCal[] = [];
-    for (const s of q.data ?? []) {
-      if (s.scheduled_date < today) { if (!(s.status === "done" && s.payment === "paid")) overdue.push(s); }
-      else if (s.scheduled_date === today) dueToday.push(s);
-      else upcoming.push(s);
-    }
-    return { overdue, dueToday, upcoming };
-  }, [q.data]);
-  if (q.isLoading) return <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>;
-  const total = groups.overdue.length + groups.dueToday.length + groups.upcoming.length;
-  if (total === 0) return null;
-  return (
-    <div className="space-y-6">
-      <div className="flex items-baseline gap-2"><Stethoscope className="h-4 w-4 shrink-0 text-violet-600" /><h2 className="text-h3">Treatment sessions</h2><span className="text-sm text-muted-foreground">{total}</span></div>
-      <SessionLensSection title="Overdue" tone="danger" items={groups.overdue} onOpen={actions.onOpenPatient} />
-      <SessionLensSection title="Due today" tone="brand" items={groups.dueToday} onOpen={actions.onOpenPatient} />
-      <SessionLensSection title="Upcoming" tone="muted" items={groups.upcoming} onOpen={actions.onOpenPatient} />
-    </div>
-  );
-}
-function SessionLensSection({ title, tone, items, onOpen }: { title: string; tone: "danger" | "brand" | "muted"; items: DentalSessionCal[]; onOpen: (pid: string, sessionId?: string) => void }) {
-  if (items.length === 0) return null;
-  const dot = { danger: "bg-destructive", brand: "bg-primary", muted: "bg-muted-foreground" }[tone];
-  return (
-    <section>
-      <div className="mb-2 flex items-baseline gap-2"><span className={`h-2 w-2 rounded-full ${dot}`} /><h3 className="font-semibold">{title}</h3><span className="text-sm text-muted-foreground">{items.length}</span></div>
-      <Card className="divide-y">
-        {items.map((s) => (
-          <div key={s.session_id} className="flex flex-wrap items-center gap-3 p-3">
-            <div className="w-24 shrink-0">
-              <div className="text-sm font-semibold tabular-nums text-brand">{s.scheduled_date}</div>
-              <div className="text-xs tabular-nums text-muted-foreground">S{s.seq}/{s.session_count}</div>
-            </div>
-            <div className="min-w-0 flex-1">
-              <button className="touch-hit block truncate font-medium text-brand hover:underline" onClick={() => onOpen(s.patient_id, s.session_id)}>{s.patient_name}</button>
-              <div className="truncate text-xs text-muted-foreground">{s.title}{s.procedure ? ` · ${s.procedure}` : ""}{s.tooth ? ` (${s.tooth})` : ""}</div>
-            </div>
-            <div className="flex items-center gap-1.5"><Badge variant="outline" className="capitalize">{s.status}</Badge>{sessPayBadge(s)}<span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">{etb(s.amount_due)}</span></div>
-          </div>
-        ))}
-      </Card>
-    </section>
   );
 }
 

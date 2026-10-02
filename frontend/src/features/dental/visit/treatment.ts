@@ -51,7 +51,7 @@ export type PayTone = "good" | "wait" | "owed" | "plain";
 /** A visit's money in two words. "Paid ahead" is a paid visit not yet given, which
  *  is otherwise invisible: the money is in, the treatment is still owed to the
  *  patient. "Owed" is only for treatment given and not paid for. */
-export function payWord(s: Session): { label: string; tone: PayTone } {
+export function payWord(s: { payment: string; status: string; pay_later?: boolean }): { label: string; tone: PayTone } {
   switch (s.payment) {
     case "paid":
       return s.status === "done" ? { label: "Paid", tone: "good" } : { label: "Paid ahead", tone: "good" };
