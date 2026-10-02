@@ -188,11 +188,15 @@ export function AppointmentsPage() {
   // phone the week grid leaves each day ~41px after the hour gutter, so "day" is
   // the only arrival view that is readable there. A patient deep-link keeps
   // "month" everywhere: it answers "when are they next in", which one day cannot.
+  // A link can also name the view and the day (?view=followups, ?date=2026-10-05),
+  // which is how the dashboard opens "the week ahead" on the day you tapped.
+  const askedDate = /^\d{4}-\d{2}-\d{2}$/.test(params.get("date") ?? "") ? params.get("date")! : "";
+  const askedView = (["day", "week", "month", "followups"] as const).find((v) => v === params.get("view"));
   const [view, setView] = useState<View>(() =>
-    params.get("patient") ? "month" : mdMq().matches ? "week" : "day",
+    askedView ?? (askedDate ? "day" : params.get("patient") ? "month" : mdMq().matches ? "week" : "day"),
   );
   const isDesktop = useIsDesktop();
-  const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
+  const [anchor, setAnchor] = useState(() => startOfDay(askedDate ? new Date(`${askedDate}T00:00:00`) : new Date()));
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Appointment | null>(null);
   const [reassign, setReassign] = useState<Appointment | null>(null);

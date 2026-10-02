@@ -43,6 +43,8 @@ func (f Filter) Days() int {
 type DayPoint struct {
 	Date   string `json:"date"`
 	Amount string `json:"amount"`
+	// Payments taken that day (refunds not counted), for "9 payments" in a tooltip.
+	Count int `json:"count"`
 }
 
 // Line is one row of a breakdown — by source, by service, by month.
@@ -80,7 +82,9 @@ type Overview struct {
 	Series              []DayPoint `json:"series"`
 	SeriesPrev          []DayPoint `json:"series_prev"`
 	BySource            []Line     `json:"by_source"`
-	Attention           []Alert    `json:"attention"`
+	// How it was paid — cash, telebirr, bank — over the same window.
+	ByMethod  []Line  `json:"by_method"`
+	Attention []Alert `json:"attention"`
 }
 
 type Bucket struct {
@@ -108,10 +112,14 @@ type ReceivableRow struct {
 }
 
 type Receivables struct {
-	Total   string          `json:"total"`
-	Count   int             `json:"count"`
-	Buckets []Bucket        `json:"buckets"`
-	Rows    []ReceivableRow `json:"rows"`
+	Total string `json:"total"`
+	// Total, split by how it is chased: charges waiting at the cashier, and treatment
+	// delivered that nobody has billed. The two always add up to Total.
+	AtCashier string          `json:"at_cashier"`
+	Unbilled  string          `json:"unbilled"`
+	Count     int             `json:"count"`
+	Buckets   []Bucket        `json:"buckets"`
+	Rows      []ReceivableRow `json:"rows"`
 }
 
 // Dental is the slice of the dental module finance needs. Defined here as a port
@@ -121,6 +129,16 @@ type Dental interface {
 	UnbilledTotal(ctx context.Context) (amount string, count int, err error)
 	UnbilledByPatient(ctx context.Context) ([]UnbilledPatient, error)
 	BookedAhead(ctx context.Context, branch *uuid.UUID) (amount string, visits int, err error)
+	// BookedByDay is the forward book one day at a time, from..to inclusive. Visits
+	// counts every planned visit (paid ahead or not); Amount uses BookedAhead's rule.
+	BookedByDay(ctx context.Context, branch *uuid.UUID, from, to time.Time) ([]DayBooked, error)
+}
+
+// DayBooked is one day of the forward book.
+type DayBooked struct {
+	Date   string `json:"date"`
+	Visits int    `json:"visits"`
+	Amount string `json:"amount"`
 }
 
 // UnbilledPatient is treatment delivered and never billed, per patient.
@@ -132,6 +150,11 @@ type UnbilledPatient struct {
 
 type Service interface {
 	Overview(ctx context.Context, f Filter) (*Overview, error)
+	// Collected is Overview's headline alone — net money settled in [From, To) —
+	// for callers that need one number, such as "yesterday by this hour".
+	Collected(ctx context.Context, f Filter) (string, error)
+	// BookedByDay is the dental forward book per day; empty without dental.
+	BookedByDay(ctx context.Context, f Filter) ([]DayBooked, error)
 	Receivables(ctx context.Context, f Filter) (*Receivables, error)
 	Cash(ctx context.Context, f Filter) (*CashView, error)
 	Services(ctx context.Context, f Filter) ([]ServiceLine, error)

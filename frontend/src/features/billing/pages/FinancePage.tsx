@@ -77,7 +77,13 @@ function firstOfMonth(monthsBack: number) {
   return new Date(n.getFullYear(), n.getMonth() + monthsBack, 1);
 }
 
+/** A period key that is a single day ("2026-09-30"), as a dashboard bar links to. */
+const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+const dayLabel = (iso: string) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+
 function rangeFor(key: string) {
+  if (DAY_KEY.test(key)) return { from: key, to: key, label: dayLabel(key) };
   const p = PERIODS.find((x) => x.key === key) ?? PERIODS[2];
   const { from, to } = p.range();
   return { from: isoDay(from), to: isoDay(to), label: p.label };
@@ -85,6 +91,7 @@ function rangeFor(key: string) {
 
 /** How long the comparison window is, in the reader's words. */
 function comparingLabel(key: string) {
+  if (DAY_KEY.test(key)) return "the day before";
   const p = PERIODS.find((x) => x.key === key);
   if (!p) return "previous period";
   if (p.group === "week") return "previous week";
@@ -119,7 +126,7 @@ function PeriodPicker({ value, onChange }: { value: string; onChange: (k: string
         <PopoverTrigger asChild>
           <Button variant={inQuick ? "outline" : "default"} size="sm" className="h-8 gap-1">
             <CalendarRange className="h-3.5 w-3.5" />
-            {inQuick ? "More" : active?.label ?? "Period"}
+            {inQuick ? "More" : active?.label ?? (DAY_KEY.test(value) ? dayLabel(value) : "Period")}
             <ChevronDown className="h-3 w-3" />
           </Button>
         </PopoverTrigger>
@@ -408,7 +415,10 @@ function ReceivablesTab({ data, loading, params, onSet }: {
 }) {
   const bucket = params.get("bucket") ?? "";
   if (loading || !data) return <p className="p-8 text-center text-sm text-muted-foreground">Loading…</p>;
-  const rows = bucket ? data.rows.filter((r) => r.bucket === bucket) : data.rows;
+  // "60+" is the dashboard's "owed for over 60 days": both of the oldest buckets.
+  const rows = bucket === "60+"
+    ? data.rows.filter((r) => r.bucket === "61-90" || r.bucket === "90+")
+    : bucket ? data.rows.filter((r) => r.bucket === bucket) : data.rows;
   const total = Math.max(1, num(data.total));
 
   return (
@@ -417,7 +427,7 @@ function ReceivablesTab({ data, loading, params, onSet }: {
           four months is money that usually never arrives. */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {data.buckets.map((b) => {
-          const on = bucket === b.key;
+          const on = bucket === b.key || (bucket === "60+" && (b.key === "61-90" || b.key === "90+"));
           const pct = Math.round((num(b.amount) / total) * 100);
           const old = b.key === "61-90" || b.key === "90+";
           return (

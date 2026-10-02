@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -93,4 +94,41 @@ func (a *DentalAdapter) BookedAhead(ctx context.Context, branch *uuid.UUID) (str
 			tid, branchArg(branch)).Scan(&amount, &n)
 	})
 	return money(amount), n, err
+}
+
+// BookedByDay is the forward book one day at a time, for "the week ahead". Every
+// planned visit on a live plan is counted, paid ahead or not, because it is a patient
+// coming in; the amount keeps BookedAhead's rule (nothing charged yet), so the two
+// figures on the dashboard can be added up and agree.
+func (a *DentalAdapter) BookedByDay(ctx context.Context, branch *uuid.UUID, from, to time.Time) ([]finance.DayBooked, error) {
+	tid := tenantOf(ctx)
+	out := []finance.DayBooked{}
+	err := a.db.WithTx(ctx, func(tx pgx.Tx) error {
+		rows, e := tx.Query(ctx,
+			`SELECT d::date::text, count(se.id),
+			        coalesce(sum(se.amount_due) FILTER (WHERE c.id IS NULL OR c.status = 'void'), 0)::text
+			   FROM generate_series($2::date, $3::date, interval '1 day') d
+			   LEFT JOIN treatment_sessions se
+			     ON se.tenant_id = $1 AND se.kind = 'visit' AND se.status = 'planned'
+			    AND se.scheduled_date = d::date
+			    AND ($4::uuid IS NULL OR se.branch_id = $4 OR se.branch_id IS NULL)
+			    AND EXISTS (SELECT 1 FROM treatment_plans pl
+			                 WHERE pl.id = se.plan_id AND pl.tenant_id = se.tenant_id AND pl.status = 'active')
+			   LEFT JOIN charges c ON c.id = se.charge_id AND c.tenant_id = se.tenant_id AND c.deleted_at IS NULL
+			  GROUP BY d ORDER BY d`,
+			tid, from, to, branchArg(branch))
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var b finance.DayBooked
+			if e := rows.Scan(&b.Date, &b.Visits, &b.Amount); e != nil {
+				return e
+			}
+			out = append(out, b)
+		}
+		return rows.Err()
+	})
+	return out, err
 }

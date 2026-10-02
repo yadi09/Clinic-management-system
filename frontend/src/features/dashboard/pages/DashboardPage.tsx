@@ -1,279 +1,146 @@
 // The clinic, right now.
 //
-// What was here before was configuration trivia: how many modules are enabled, how
-// many permissions your role carries, what your role is called, and a list of module
-// chips. All true, none of it a reason to open the page twice — and it told an owner
-// nothing about the day they were standing in.
+// The order is the order the questions get asked. What needs me? Who is in the
+// building? How is the money going? Who owes me, and what is coming? "Needs you" comes
+// first because a dashboard's job is not to reassure: a clinic with 22,000 ETB of
+// unbilled treatment should see that before it sees today's takings.
 //
-// The order below is the order the questions actually get asked. Is anything wrong
-// (money given away, debt ageing, patients not arriving)? What is happening in the
-// building right now? How is the money going? Anything I need to open? Attention
-// comes FIRST because a dashboard's job is not to reassure — a clinic with 22,000 ETB
-// of unbilled treatment should see that before it sees today's takings.
+// Everything on the page opens what it shows — a patient opens the patient, a bar
+// opens that day in Finance — unless the person cannot open it (see links.ts). The
+// money comes from the same finance service the Finance page reads, so the two
+// cannot disagree; the earlier version's "owed" was half of Finance's, and said so
+// to the owner every morning.
 //
-// Every figure is asked for once, from one endpoint, and the money in it comes from
-// the same finance service the Finance page reads. The two cannot drift.
+// Sections the server leaves out are not drawn: a receptionist gets the day without
+// the takings, a cashier the takings without the queue.
+import { Suspense, lazy, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import {
-  AlertTriangle, ArrowRight, ArrowUpRight, ArrowDownRight, CalendarClock,
-  HandCoins, Search, Stethoscope, UserPlus, Users, Wallet,
-} from "lucide-react";
+import { HandCoins, Search, UserPlus, Wallet } from "lucide-react";
 
-import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
 import { useAuth } from "@/app/auth-context";
-import { dashboardToday, type DashAlert } from "@/features/dashboard/api";
+import { LoadError } from "@/components/LoadError";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { formatEthiopian } from "@/lib/ethiopian";
+import { dashKeys, dashboardToday } from "@/features/dashboard/api";
+import { useDashLinks } from "@/features/dashboard/links";
+import { NeedsYou } from "@/features/dashboard/components/NeedsYou";
+import { TodayFlow } from "@/features/dashboard/components/TodayFlow";
+import { MoneyTiles } from "@/features/dashboard/components/MoneyTiles";
+import { OwedCard, WeekAhead } from "@/features/dashboard/components/OwedAndWeek";
 
-const num = (s?: string) => Number(s || 0);
-const etb = (s?: string | number) =>
-  `${Number(s || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} ETB`;
+// The chart library is the heaviest thing on the page and the last thing anyone
+// needs; it arrives after the numbers rather than in front of them.
+const TakingsChart = lazy(() => import("@/features/dashboard/components/TakingsChart"));
 
 export function DashboardPage() {
-  const { user, can, flagOn } = useAuth();
-  const dental = flagOn("dental");
+  const { user, can } = useAuth();
+  const links = useDashLinks();
   const q = useQuery({
-    queryKey: ["dashboard-today"],
+    queryKey: dashKeys.today,
     queryFn: dashboardToday,
     // A clinic changes while you are looking at it: someone pays, someone arrives.
-    refetchInterval: 60_000,
+    refetchInterval: 30_000,
   });
   const d = q.data;
   const first = (user?.full_name || "").trim().split(/\s+/)[0] || "there";
+  const hour = d?.hour ?? new Date().getHours();
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-h1">{greeting()}, {first}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {d?.clinic_name ? `${d.clinic_name} — ` : ""}{today()}
-        </p>
-      </div>
-
-      {/* WHAT NEEDS YOU. First, deliberately. */}
-      <Attention items={d?.attention ?? []} loading={q.isLoading} />
-
-      {/* THE BUILDING, RIGHT NOW. */}
-      {d?.flow && (
-        <section className="space-y-2">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Right now</h2>
-          <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-            <Tile to="/reception" icon={Users} label="Waiting" value={d.flow.waiting}
-              hint={d.flow.waiting === 0 ? "nobody in the queue" : "in the queue"}
-              loud={d.flow.waiting > 0} />
-            {/* A dental clinic has no "My day" — its patients are in the chair. */}
-            <Tile to={dental ? "/chairside" : "/worklist"} icon={Stethoscope} label={dental ? "In the chair" : "With a clinician"} value={d.flow.in_consult} hint="being seen" />
-            <Tile to="/appointments" icon={CalendarClock} label="Booked today" value={d.flow.booked_today}
-              hint={`${d.flow.arrived} arrived`} />
-            <Tile icon={Users} label="Seen today" value={d.flow.seen_today} hint="visits completed" />
-          </div>
-        </section>
-      )}
-
-      {/* THE MONEY. Only for staff who may see it. */}
-      {d?.money && (
-        <section className="space-y-2">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Money</h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Collected today</p>
-                <p className="mt-1 text-3xl font-bold tabular-nums text-emerald-700">{etb(d.money.collected_today)}</p>
-                <Delta today={num(d.money.collected_today)} before={num(d.money.collected_yesterday)} />
-              </CardContent>
-            </Card>
-            <Link to="/finance?tab=receivables" className="rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand">
-              <Card className={cn("h-full transition-colors hover:border-brand/40", num(d.money.owed) > 0 && "border-destructive/40")}>
-                <CardContent className="p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Owed to you</p>
-                  <p className={cn("mt-1 text-3xl font-bold tabular-nums", num(d.money.owed) > 0 ? "text-destructive" : "text-foreground")}>
-                    {etb(d.money.owed)}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {d.money.owed_patients} patient{d.money.owed_patients === 1 ? "" : "s"}
-                    {d.money.oldest_days > 0 && ` · oldest ${d.money.oldest_days} days`}
-                  </p>
-                </CardContent>
-              </Card>
-            </Link>
-            <Card className="max-lg:hidden">
-              <CardContent className="p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Booked ahead</p>
-                <p className="mt-1 text-3xl font-bold tabular-nums">{etb(d.money.booked_ahead)}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {d.money.booked_visits} visit{d.money.booked_visits === 1 ? "" : "s"} scheduled — intent, not revenue
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-          {(d.series?.length ?? 0) > 1 && <Trend series={d.series!} />}
-        </section>
-      )}
-
-      {q.isLoading && !d && (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full" />)}
+      <header className="flex flex-wrap items-end justify-between gap-x-5 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-h1 leading-tight">{greeting(hour)}, {first}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {d ? <DateLine date={d.date} /> : " "}
+            {d?.clinic_name && <> · {d.clinic_name}</>}
+            {d && <>, {d.branch_name || "all branches"}</>}
+          </p>
         </div>
-      )}
-
-      {/* THE FEW THINGS PEOPLE OPEN THIS PAGE TO DO. */}
-      <section className="space-y-2">
-        <h2 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Quick actions</h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {/* The codes are the real ones from the permission catalogue — guessing at
-              "patient.manage" or "report.view" silently hid the two actions this page
-              exists for. */}
-          {can("patient.create") && <Action to="/reception" icon={UserPlus} label="Register a patient" />}
-          {(can("patient.read") || can("patient.search")) && <Action to="/patients" icon={Search} label="Find a patient" />}
-          {can("payment.collect") && <Action to="/cashier" icon={HandCoins} label="Take a payment" />}
-          {can("billing.manage") && <Action to="/finance" icon={Wallet} label="Finance" />}
+        <div className="flex flex-col items-start gap-2 sm:items-end">
+          <div className="flex flex-wrap gap-2">
+            {/* The codes are the real ones from the permission catalogue — guessing at
+                "patient.manage" or "report.view" silently hid the two actions this page
+                exists for. */}
+            {can("patient.create") && <QuickAction to="/reception" icon={UserPlus} label="Register a patient" primary />}
+            {!can("patient.create") && (can("patient.read") || can("patient.search")) &&
+              <QuickAction to="/patients" icon={Search} label="Find a patient" primary />}
+            {can("payment.collect") && <QuickAction to="/cashier" icon={HandCoins} label="Take a payment" />}
+            {can("billing.manage") && links.finance() && <QuickAction to={links.finance()!} icon={Wallet} label="Finance" />}
+          </div>
+          <Freshness at={q.dataUpdatedAt} fetching={q.isFetching} failed={q.isError && !!d} />
         </div>
-      </section>
+      </header>
 
-      {d && (
-        <p className="text-xs text-muted-foreground">
-          {d.patients.toLocaleString()} patients registered.
-          {q.isFetching && <span className="ml-1">Refreshing…</span>}
-        </p>
+      {q.isError && !d ? (
+        <LoadError what="the dashboard" onRetry={() => void q.refetch()} />
+      ) : !d ? (
+        <Loading />
+      ) : (
+        <>
+          <NeedsYou items={d.attention} links={links} canSeeMoney={!!d.money} />
+          {d.flow && <TodayFlow f={d.flow} date={d.date} links={links} />}
+          {d.money && <MoneyTiles m={d.money} links={links} />}
+          {d.money && (
+            <Suspense fallback={<div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[1.75fr_1fr]"><Skeleton className="h-[330px]" /><Skeleton className="h-[330px]" /></div>}>
+              <TakingsChart links={links} today={d.date} />
+            </Suspense>
+          )}
+          {((d.money?.aging.length ?? 0) > 0 || (d.week?.length ?? 0) > 0) && (
+            <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
+              {d.money && d.money.aging.length > 0 && <OwedCard aging={d.money.aging} owers={d.money.top_owers} links={links} />}
+              {d.week && d.week.length > 0 && <WeekAhead week={d.week} links={links} showMoney={!!d.money} />}
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">
+            {d.patients.toLocaleString()} patients registered
+            {d.branch_name ? ` · numbers for ${d.branch_name}; switch branch at the top` : ""}
+          </p>
+        </>
       )}
     </div>
   );
 }
 
-/**
- * What needs doing, loudest first.
- *
- * An empty state that says "nothing needs you" is worth as much as the list: it is
- * the difference between a clinic that has checked and one that has not looked.
- */
-function Attention({ items, loading }: { items: DashAlert[]; loading: boolean }) {
-  if (loading) return <Skeleton className="h-24 w-full" />;
-  const order = { danger: 0, warn: 1, info: 2 } as const;
-  const sorted = [...items].sort((a, b) => (order[a.tone] ?? 3) - (order[b.tone] ?? 3));
+function DateLine({ date }: { date: string }) {
+  const g = new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  return <><b className="font-semibold text-foreground">{g}</b> · {formatEthiopian(date, { dayFirst: true })}</>;
+}
 
-  if (sorted.length === 0) {
-    return (
-      <Card className="border-emerald-200 bg-emerald-50/60">
-        <CardContent className="flex items-center gap-3 p-4">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-600/10 text-emerald-700">✓</span>
-          <div>
-            <p className="text-sm font-semibold text-emerald-900">Nothing needs you</p>
-            <p className="text-xs text-emerald-800">No unbilled treatment, no overdue debt, no unclosed till.</p>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
+/** "Live · updated 12 s ago". Ticks on its own so the page does not re-render. */
+function Freshness({ at, fetching, failed }: { at: number; fetching: boolean; failed: boolean }) {
+  const [, tick] = useState(0);
+  useEffect(() => { const t = setInterval(() => tick((n) => n + 1), 10_000); return () => clearInterval(t); }, []);
+  if (!at) return null;
+  if (failed) return <span className="text-xs font-medium text-destructive">Couldn't refresh · showing the last numbers</span>;
+  const s = Math.max(0, Math.round((Date.now() - at) / 1000));
   return (
-    <section className="space-y-2">
-      <h2 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Needs you</h2>
-      <div className="space-y-2">
-        {sorted.map((a, i) => (
-          <Link key={`${a.kind}-${i}`} to={a.href}
-            className="group flex items-center gap-3 rounded-lg border border-l-4 bg-card p-3 transition-colors hover:bg-accent/40 max-md:min-h-14"
-            style={{ borderLeftColor: a.tone === "danger" ? "hsl(var(--destructive))" : a.tone === "warn" ? "#f59e0b" : "hsl(var(--border))" }}>
-            <AlertTriangle className={cn("h-4 w-4 shrink-0",
-              a.tone === "danger" ? "text-destructive" : a.tone === "warn" ? "text-amber-600" : "text-muted-foreground")} />
-            <span className="min-w-0 flex-1 text-sm">{a.text}</span>
-            {a.amount && num(a.amount) > 0 && (
-              <span className="shrink-0 whitespace-nowrap text-sm font-semibold tabular-nums">{etb(a.amount)}</span>
-            )}
-            <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-          </Link>
-        ))}
-      </div>
-    </section>
+    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+      {fetching ? "Updating…" : s < 10 ? "Live · just updated" : `Live · updated ${s < 60 ? `${s} s` : `${Math.round(s / 60)} min`} ago`}
+    </span>
   );
 }
 
-/** Today against yesterday, in words rather than a bare percentage. */
-function Delta({ today, before }: { today: number; before: number }) {
-  if (before <= 0 && today <= 0) return <p className="mt-1 text-xs text-muted-foreground">Nothing collected yet today.</p>;
-  if (before <= 0) return <p className="mt-1 text-xs text-muted-foreground">Nothing was collected yesterday.</p>;
-  const pct = Math.round(((today - before) / before) * 100);
-  const up = pct >= 0;
+function QuickAction({ to, icon: Icon, label, primary }: { to: string; icon: typeof Wallet; label: string; primary?: boolean }) {
   return (
-    <p className={cn("mt-1 flex items-center gap-1 text-xs", up ? "text-emerald-700" : "text-muted-foreground")}>
-      {up ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
-      {Math.abs(pct)}% vs yesterday ({etb(before)})
-    </p>
+    <Button asChild size="sm" variant={primary ? "default" : "outline"} className="touch-hit">
+      <Link to={to}><Icon className="h-4 w-4" />{label}</Link>
+    </Button>
   );
 }
 
-/**
- * A fortnight of collections. Bars, not a line: these are fourteen separate days,
- * and a line between them implies a quantity that flowed from one to the next.
- */
-function Trend({ series }: { series: { date: string; amount: string }[] }) {
-  const max = Math.max(1, ...series.map((p) => num(p.amount)));
-  const total = series.reduce((a, p) => a + num(p.amount), 0);
+function Loading() {
   return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Collected, last 14 days</p>
-          <p className="text-sm font-semibold tabular-nums">{etb(total)}</p>
-        </div>
-        <div className="mt-3 flex h-16 items-end gap-1">
-          {series.map((p) => {
-            const v = num(p.amount);
-            return (
-              <div key={p.date} className="group relative flex-1" title={`${p.date}: ${etb(v)}`}>
-                <div
-                  className={cn("w-full rounded-sm transition-colors", v > 0 ? "bg-brand/70 group-hover:bg-brand" : "bg-muted")}
-                  style={{ height: `${Math.max(v > 0 ? 6 : 2, (v / max) * 64)}px` }}
-                />
-              </div>
-            );
-          })}
-        </div>
-        <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
-          <span>{shortDay(series[0].date)}</span>
-          <span>today</span>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="space-y-6" aria-busy="true" aria-label="Loading the dashboard">
+      <Skeleton className="h-20 w-full" />
+      <div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[1.75fr_1fr]"><Skeleton className="h-56" /><Skeleton className="h-56" /></div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-32" />)}</div>
+    </div>
   );
 }
 
-function Tile({ to, icon: Icon, label, value, hint, loud }: {
-  to?: string; icon: typeof Users; label: string; value: number; hint?: string; loud?: boolean;
-}) {
-  const body = (
-    <Card className={cn("h-full transition-colors", to && "hover:border-brand/40", loud && "border-brand/50 bg-brand/5")}>
-      <CardContent className="p-4">
-        <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          <Icon className="h-3.5 w-3.5" /> {label}
-        </p>
-        <p className={cn("mt-1 text-3xl font-bold tabular-nums", loud ? "text-brand" : "text-foreground")}>{value}</p>
-        {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
-      </CardContent>
-    </Card>
-  );
-  return to ? <Link to={to} className="rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand">{body}</Link> : body;
-}
-
-function Action({ to, icon: Icon, label }: { to: string; icon: typeof Users; label: string }) {
-  return (
-    <Link to={to}
-      className="flex min-h-14 items-center gap-3 rounded-lg border bg-card p-3 text-sm font-medium transition-colors hover:border-brand/40 hover:bg-accent/40">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand/10 text-brand">
-        <Icon className="h-4 w-4" />
-      </span>
-      <span className="min-w-0 truncate">{label}</span>
-    </Link>
-  );
-}
-
-function greeting() {
-  const h = new Date().getHours();
+function greeting(h: number) {
   return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
-}
-function today() {
-  return new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
-}
-function shortDay(iso: string) {
-  return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }

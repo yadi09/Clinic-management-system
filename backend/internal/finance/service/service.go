@@ -60,7 +60,7 @@ func (s *Service) Overview(ctx context.Context, f finance.Filter) (*finance.Over
 	tid := tenantOf(ctx)
 	out := &finance.Overview{
 		Series: []finance.DayPoint{}, SeriesPrev: []finance.DayPoint{},
-		BySource: []finance.Line{}, Attention: []finance.Alert{},
+		BySource: []finance.Line{}, ByMethod: []finance.Line{}, Attention: []finance.Alert{},
 	}
 	span := f.Days()
 	prevFrom := f.From.AddDate(0, 0, -span)
@@ -69,11 +69,7 @@ func (s *Service) Overview(ctx context.Context, f finance.Filter) (*finance.Over
 		// --- settled money in the window. sum(amount) nets refunds, because a
 		// refund is stored as a negative charge against the same ledger. ---
 		if e := tx.QueryRow(ctx,
-			`SELECT coalesce(sum(amount),0)::text, count(*) FILTER (WHERE amount > 0)
-			   FROM charges
-			  WHERE tenant_id = $1 AND status = 'paid' AND deleted_at IS NULL
-			    AND settled_at >= $2 AND settled_at < $3
-			    AND ($4::uuid IS NULL OR branch_id = $4)`,
+			collectedSQL+`, count(*) FILTER (WHERE amount > 0)`+collectedFrom,
 			tid, f.From, f.To, branchArg(f.Branch)).Scan(&out.Collected, &out.CollectedCount); e != nil {
 			return e
 		}
@@ -127,7 +123,7 @@ func (s *Service) Overview(ctx context.Context, f finance.Filter) (*finance.Over
 		// the split between days was wrong, so nothing looked broken enough to doubt.
 		load := func(from, to time.Time) ([]finance.DayPoint, error) {
 			rows, e := tx.Query(ctx,
-				`SELECT d::date::text, coalesce(sum(c.amount),0)::text
+				`SELECT d::date::text, coalesce(sum(c.amount),0)::text, count(c.id) FILTER (WHERE c.amount > 0)
 				   FROM generate_series($2::date, ($3::date - interval '1 day'), interval '1 day') d
 				   LEFT JOIN charges c
 				     ON c.tenant_id = $1 AND c.status = 'paid' AND c.deleted_at IS NULL
@@ -143,7 +139,7 @@ func (s *Service) Overview(ctx context.Context, f finance.Filter) (*finance.Over
 			pts := []finance.DayPoint{}
 			for rows.Next() {
 				var p finance.DayPoint
-				if e := rows.Scan(&p.Date, &p.Amount); e != nil {
+				if e := rows.Scan(&p.Date, &p.Amount, &p.Count); e != nil {
 					return nil, e
 				}
 				pts = append(pts, p)
@@ -183,6 +179,32 @@ func (s *Service) Overview(ctx context.Context, f finance.Filter) (*finance.Over
 			return e
 		}
 
+		// --- how it was paid. Positive charges only: a refund goes back by its own
+		// method and would otherwise read as a negative slice of "cash". ---
+		mrows, e := tx.Query(ctx,
+			`SELECT coalesce(payment_method,''), coalesce(sum(amount),0)::text, count(*)
+			   FROM charges
+			  WHERE tenant_id = $1 AND status = 'paid' AND deleted_at IS NULL AND amount > 0
+			    AND settled_at >= $2 AND settled_at < $3
+			    AND ($4::uuid IS NULL OR branch_id = $4)
+			  GROUP BY 1 ORDER BY sum(amount) DESC`,
+			tid, f.From, f.To, branchArg(f.Branch))
+		if e != nil {
+			return e
+		}
+		defer mrows.Close()
+		for mrows.Next() {
+			var l finance.Line
+			if e := mrows.Scan(&l.Key, &l.Amount, &l.Count); e != nil {
+				return e
+			}
+			l.Label = methodLabel(l.Key)
+			out.ByMethod = append(out.ByMethod, l)
+		}
+		if e := mrows.Err(); e != nil {
+			return e
+		}
+
 		// --- things somebody should do something about ---
 		//
 		// These errors are RETURNED, not swallowed. The first cut wrote
@@ -204,7 +226,7 @@ func (s *Service) Overview(ctx context.Context, f finance.Filter) (*finance.Over
 		if vCount > 0 {
 			out.Attention = append(out.Attention, finance.Alert{
 				Kind: "shift_variance", Count: vCount, Amount: money(vAmount),
-				Text: fmt.Sprintf("%d cash count(s) did not balance", vCount), Href: "/finance?tab=cash",
+				Text: plural(vCount, "cash count", "cash counts") + " did not balance", Href: "/finance?tab=cash",
 			})
 		}
 
@@ -222,8 +244,9 @@ func (s *Service) Overview(ctx context.Context, f finance.Filter) (*finance.Over
 		if overdueCount > 0 {
 			out.Attention = append(out.Attention, finance.Alert{
 				Kind: "overdue", Count: overdueCount, Amount: money(overdueAmount),
-				Text: fmt.Sprintf("%d patient(s) owing for over 60 days", overdueCount),
-				Href: "/finance?tab=receivables&bucket=90%2B",
+				Text: plural(overdueCount, "patient has", "patients have") + " owed for over 60 days",
+				// 60+, not 90+: the 90+ bucket hid the 61-90 day patients this counted.
+				Href: "/finance?tab=receivables&bucket=60%2B",
 			})
 		}
 		return nil
@@ -238,7 +261,7 @@ func (s *Service) Overview(ctx context.Context, f finance.Filter) (*finance.Over
 		if amt, n, e := s.dental.UnbilledTotal(ctx); e == nil && n > 0 {
 			out.Attention = append(out.Attention, finance.Alert{
 				Kind: "unbilled", Count: n, Amount: amt,
-				Text: fmt.Sprintf("%d visit(s) treated and never billed", n),
+				Text: plural(n, "treated visit", "treated visits") + " not sent to the cashier",
 				Href: "/dental/unbilled",
 			})
 		}
@@ -247,6 +270,63 @@ func (s *Service) Overview(ctx context.Context, f finance.Filter) (*finance.Over
 		}
 	}
 	return out, nil
+}
+
+// collectedSQL is the one definition of "money collected": settled, not deleted,
+// net of refunds (a refund is a negative charge on the same ledger).
+const collectedSQL = `SELECT coalesce(sum(amount),0)::text`
+const collectedFrom = `
+	   FROM charges
+	  WHERE tenant_id = $1 AND status = 'paid' AND deleted_at IS NULL
+	    AND settled_at >= $2 AND settled_at < $3
+	    AND ($4::uuid IS NULL OR branch_id = $4)`
+
+func (s *Service) Collected(ctx context.Context, f finance.Filter) (string, error) {
+	var out string
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, collectedSQL+collectedFrom,
+			tenantOf(ctx), f.From, f.To, branchArg(f.Branch)).Scan(&out)
+	})
+	if err != nil {
+		return "", apperr.Internal(err)
+	}
+	return money(out), nil
+}
+
+func (s *Service) BookedByDay(ctx context.Context, f finance.Filter) ([]finance.DayBooked, error) {
+	if s.dental == nil {
+		return []finance.DayBooked{}, nil
+	}
+	out, err := s.dental.BookedByDay(ctx, f.Branch, f.From, f.To)
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
+}
+
+// methodLabel names a payment method the way the cashier chose it.
+func methodLabel(k string) string {
+	switch k {
+	case "":
+		return "Not recorded"
+	case "cash":
+		return "Cash"
+	case "telebirr":
+		return "telebirr"
+	case "bank", "bank_transfer", "transfer":
+		return "Bank transfer"
+	case "card":
+		return "Card"
+	default:
+		return k
+	}
 }
 
 func sourceLabel(k string) string {
@@ -279,7 +359,7 @@ func sourceLabel(k string) string {
 // for what a session owes, and a second copy of that rule is a second answer.
 func (s *Service) Receivables(ctx context.Context, f finance.Filter) (*finance.Receivables, error) {
 	tid := tenantOf(ctx)
-	out := &finance.Receivables{Buckets: []finance.Bucket{}, Rows: []finance.ReceivableRow{}, Total: "0.00"}
+	out := &finance.Receivables{Buckets: []finance.Bucket{}, Rows: []finance.ReceivableRow{}, Total: "0.00", AtCashier: "0.00", Unbilled: "0.00"}
 
 	byPatient := map[uuid.UUID]*acc{}
 
@@ -291,15 +371,22 @@ func (s *Service) Receivables(ctx context.Context, f finance.Filter) (*finance.R
 			        sum(c.amount)::float8,
 			        max((now() AT TIME ZONE 'Africa/Addis_Ababa')::date
 			            - (c.created_at AT TIME ZONE 'Africa/Addis_Ababa')::date)::int,
-			        coalesce((max(lp.settled_at) AT TIME ZONE 'Africa/Addis_Ababa')::date::text, '')
+			        coalesce((lp.at AT TIME ZONE 'Africa/Addis_Ababa')::date::text, '')
 			   FROM charges c
 			   JOIN patients p ON p.id = c.patient_id AND p.tenant_id = c.tenant_id
-			   LEFT JOIN charges lp ON lp.patient_id = c.patient_id AND lp.tenant_id = c.tenant_id
-			        AND lp.status = 'paid' AND lp.amount > 0 AND lp.deleted_at IS NULL
+			   -- The last payment, looked up once per patient. This was a plain LEFT JOIN
+			   -- onto every paid charge, which repeated each pending charge once per past
+			   -- payment: a patient with twenty payments behind them owed twenty times
+			   -- their debt, and the Finance page's "owed" said so.
+			   LEFT JOIN LATERAL (
+			        SELECT max(x.settled_at) AS at FROM charges x
+			         WHERE x.patient_id = c.patient_id AND x.tenant_id = c.tenant_id
+			           AND x.status = 'paid' AND x.amount > 0 AND x.deleted_at IS NULL
+			   ) lp ON true
 			  WHERE c.tenant_id = $1 AND c.status = 'pending' AND c.deleted_at IS NULL
 			    AND p.deleted_at IS NULL
 			    AND ($2::uuid IS NULL OR c.branch_id = $2)
-			  GROUP BY c.patient_id, p.mrn, p.first_name, p.last_name, p.phone`,
+			  GROUP BY c.patient_id, p.mrn, p.first_name, p.last_name, p.phone, lp.at`,
 			tid, branchArg(f.Branch))
 		if e != nil {
 			return e
@@ -343,6 +430,7 @@ func (s *Service) Receivables(ctx context.Context, f finance.Filter) (*finance.R
 				var amt float64
 				fmt.Sscanf(u.Amount, "%f", &amt)
 				a.owed += amt
+				a.unbilled += amt
 				if u.OldestDay > a.row.OldestDays {
 					a.row.OldestDays = u.OldestDay
 				}
@@ -356,7 +444,7 @@ func (s *Service) Receivables(ctx context.Context, f finance.Filter) (*finance.R
 		"61-90": {Key: "61-90", Label: "61–90 days"},
 		"90+":   {Key: "90+", Label: "Over 90 days"},
 	}
-	total := 0.0
+	total, unbilled := 0.0, 0.0
 	for _, a := range byPatient {
 		if a.owed <= 0.005 {
 			continue
@@ -370,6 +458,7 @@ func (s *Service) Receivables(ctx context.Context, f finance.Filter) (*finance.R
 		b.Amount = fmt.Sprintf("%.2f", bAmt+a.owed)
 		b.Count++
 		total += a.owed
+		unbilled += a.unbilled
 		out.Rows = append(out.Rows, a.row)
 	}
 	// Oldest first: the debt least likely to arrive is the one to chase today.
@@ -388,6 +477,8 @@ func (s *Service) Receivables(ctx context.Context, f finance.Filter) (*finance.R
 		out.Buckets = append(out.Buckets, *b)
 	}
 	out.Total = fmt.Sprintf("%.2f", total)
+	out.Unbilled = fmt.Sprintf("%.2f", unbilled)
+	out.AtCashier = fmt.Sprintf("%.2f", total-unbilled)
 	out.Count = len(out.Rows)
 	return out, nil
 }
@@ -396,6 +487,8 @@ func (s *Service) Receivables(ctx context.Context, f finance.Filter) (*finance.R
 type acc struct {
 	row  finance.ReceivableRow
 	owed float64
+	// The part of owed that is treatment never billed; the rest waits at the cashier.
+	unbilled float64
 }
 
 func bucketOf(days int) string {

@@ -33,8 +33,12 @@ export function RecordShelf({ patientId, panels }: { patientId: string; panels: 
 
   // Per patient, not global: the panel you want for the patient mid-root-canal is not
   // the one you want for the new registration you open next.
+  //
+  // A link that names a panel (?panel=money, from the dashboard's "who owes you")
+  // wins over the remembered one: the person clicked through to see exactly that.
   useEffect(() => {
-    const saved = sessionStorage.getItem(storeKey);
+    const asked = new URLSearchParams(window.location.search).get("panel");
+    const saved = asked && panels.some((p) => p.key === asked) ? asked : sessionStorage.getItem(storeKey);
     if (saved && panels.some((p) => p.key === saved)) setActive(saved);
   }, [storeKey]); // eslint-disable-line react-hooks/exhaustive-deps
 

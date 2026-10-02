@@ -99,7 +99,8 @@ func (h *Handlers) Receivables(c *gin.Context) {
 			"bucket": r.Bucket, "last_paid": r.LastPaid, "why": r.Why,
 		})
 	}
-	httpx.OK(c, gin.H{"total": out.Total, "count": out.Count, "buckets": out.Buckets, "rows": rows})
+	httpx.OK(c, gin.H{"total": out.Total, "at_cashier": out.AtCashier, "unbilled": out.Unbilled,
+		"count": out.Count, "buckets": out.Buckets, "rows": rows})
 }
 
 func (h *Handlers) Cash(c *gin.Context) {
