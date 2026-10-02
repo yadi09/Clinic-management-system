@@ -8,7 +8,7 @@
 // nothing and a screen reader announced no grouping.
 //
 // This is a real tablist: roving tabindex, arrow/Home/End keys, aria-selected.
-import { useRef, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -31,6 +31,19 @@ export function Segmented<T extends string>({
   ariaLabel: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+
+  // Where the strip scrolls (phones), keep the selected segment in view: opened on
+  // the third of three tabs, it sat off the right edge with nothing to say so.
+  // scrollLeft on the strip itself, so the page never jumps.
+  useEffect(() => {
+    const strip = ref.current;
+    const on = strip?.querySelector<HTMLElement>("[role=tab][aria-selected=true]");
+    if (!strip || !on || strip.scrollWidth <= strip.clientWidth) return;
+    const left = on.offsetLeft - strip.offsetLeft;
+    if (left < strip.scrollLeft || left + on.offsetWidth > strip.scrollLeft + strip.clientWidth) {
+      strip.scrollLeft = Math.max(0, left - (strip.clientWidth - on.offsetWidth) / 2);
+    }
+  }, [value]);
 
   // Arrow keys move between segments and select as they go, which is what a
   // tablist is expected to do; Home/End jump to the ends.

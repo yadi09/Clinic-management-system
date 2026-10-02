@@ -424,6 +424,7 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
       <VisitCockpit
         patientId={patientId} resolved={resolved} plans={summary.data.plans} teeth={teeth} editable={editable}
         canCollect={canCollect} canReschedule={canReschedule} imageLimit={summary.data.image_limit}
+        allergies={p.allergies}
         onNewPlan={editable ? () => setNewPlan(true) : undefined}
         onRecordingChange={setRecording}
         onPick={pickVisit} onChanged={invalidate}

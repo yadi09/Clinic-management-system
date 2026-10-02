@@ -116,7 +116,7 @@ export function MoveSessionDialog({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{seq ? `Reschedule session ${seq}` : "Reschedule session"}</DialogTitle>
+          <DialogTitle>{seq ? `Reschedule visit ${seq}` : "Reschedule visit"}</DialogTitle>
         </DialogHeader>
 
         <div className="rounded-md border bg-muted/40 px-3 py-2.5 text-sm">

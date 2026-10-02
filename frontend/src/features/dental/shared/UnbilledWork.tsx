@@ -90,7 +90,7 @@ export function owedOnPlan(plan: Plan, opts?: Opts): OwedItem[] {
         planStart: plan.start_date,
         openSessionId: s.id,
         planTitle: plan.title,
-        label: `session ${s.seq} of ${plan.session_count}`,
+        label: `visit ${s.seq} of ${plan.session_count}`,
         amount: s.amount_due,
         refunded: s.payment === "refunded",
       });
@@ -171,7 +171,7 @@ export function UnbilledCallout({ patientId, items, canCollect, compact, focused
         {birr(owedTotal(items))} has not been billed
       </p>
       <p className="mt-0.5 text-xs text-muted-foreground">
-        Work already done, or a course already agreed — no charge exists for it yet. Sending it to
+        Work already done, or a treatment already agreed — no charge exists for it yet. Sending it to
         the desk is what turns it into money.
       </p>
       <div className="mt-2 space-y-1.5">
@@ -189,19 +189,19 @@ export function UnbilledCallout({ patientId, items, canCollect, compact, focused
           );
           const mark = elsewhere ? (
             <span className="shrink-0 whitespace-nowrap rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
-              another course · from {startedOn(it.planStart)}
+              another treatment · from {startedOn(it.planStart)}
             </span>
           ) : null;
           return (
           <div key={it.sessionId} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
             {open ? (
               <button type="button" onClick={open} title="Open this visit"
-                className="group flex min-w-0 flex-1 items-center gap-1.5 rounded text-left">
+                className="group flex min-w-0 flex-1 items-center gap-1.5 rounded text-left max-sm:basis-full">
                 {text}{mark}
                 <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground opacity-60 group-hover:opacity-100" />
               </button>
             ) : (
-              <span className="flex min-w-0 flex-1 items-center gap-1.5">{text}{mark}</span>
+              <span className="flex min-w-0 flex-1 items-center gap-1.5 max-sm:basis-full">{text}{mark}</span>
             )}
             <span className="shrink-0 tabular-nums font-semibold">{birr(it.amount)}</span>
             {it.refunded && <Badge variant="destructive">Refunded — owed again</Badge>}

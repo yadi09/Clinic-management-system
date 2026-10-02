@@ -44,11 +44,20 @@ const todayISO = () => {
 interface Draft { procedure: string[]; tooth: string[]; notes: string }
 
 export function RecordVisitForm({
-  patientId, session, planTitle, teeth, imageLimit, onSaved, onChanged, onCancel,
+  patientId, session, planTitle, visitLabel, recordDate, teeth, imageLimit, onSaved, onChanged, onCancel,
 }: {
   patientId: string;
   session: Session;
   planTitle: string;
+  /** How the card names this visit ("visit 2"), so the form says the same. */
+  visitLabel?: string;
+  /**
+   * The day this visit is saved as, when it is being recorded for the first time.
+   * The card defaults it to today: a missed visit done today happened today. Omitted,
+   * the visit keeps its booked date, as before. Only sent on the save that marks the
+   * visit done, so editing the note later never moves the visit.
+   */
+  recordDate?: string;
   teeth: Record<string, string>;
   /** Per-patient image cap from the plan; -1 = unlimited. */
   imageLimit: number;
@@ -112,12 +121,16 @@ export function RecordVisitForm({
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
 
+  // The day the record will carry. A visit already done keeps its date.
+  const savedAs = session.status === "planned" && recordDate ? recordDate : session.scheduled_date;
   const save = useMutation({
     mutationFn: () => updateSession(patientId, session.id, {
       procedure: procedure.join(", "),
       tooth: FLAT_TEETH.filter((c) => tooth.includes(c)).join(", "),
       notes,
       status: "done",
+      // One request, so the visit is never left moved but not recorded.
+      ...(savedAs !== session.scheduled_date ? { scheduled_date: savedAs } : {}),
     }),
     onSuccess: () => {
       sessionStorage.removeItem(draftKey);
@@ -131,12 +144,12 @@ export function RecordVisitForm({
   });
 
   const empty = procedure.length === 0 && tooth.length === 0 && !notes.trim();
-  const notToday = session.scheduled_date !== todayISO();
+  const notToday = savedAs !== todayISO();
   // "5 days ago" is the part that makes the warning land; a date alone has to be
   // subtracted from today in the reader's head while a patient waits.
   const backdated = (() => {
     const days = Math.round(
-      (Date.parse(`${todayISO()}T00:00:00`) - Date.parse(`${session.scheduled_date}T00:00:00`)) / 86_400_000,
+      (Date.parse(`${todayISO()}T00:00:00`) - Date.parse(`${savedAs}T00:00:00`)) / 86_400_000,
     );
     if (days <= 0) return "";
     if (days === 1) return "yesterday";
@@ -152,7 +165,7 @@ export function RecordVisitForm({
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand/20 bg-brand/[0.07] px-4 py-2.5">
         <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-brand">
           <span className="flex h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />
-          Recording · {planTitle} · session {session.seq}
+          Recording {visitLabel ?? `visit ${session.seq}`} · {planTitle}
         </p>
         <Button size="sm" variant="ghost" onClick={() => {
           if (!dirty) { onCancel(); return; }
@@ -186,7 +199,8 @@ export function RecordVisitForm({
                 You are recording {backdated ? `a visit from ${backdated}` : "a visit booked for a later date"} — not today.
               </p>
               <p className="text-xs text-amber-800">
-                It is saved as <b><DualDate iso={session.scheduled_date} /></b>, the date it was booked for.
+                It is saved as <b><DualDate iso={savedAs} /></b>
+                {savedAs === session.scheduled_date ? ", the date it was booked for." : "."}
               </p>
             </div>
           </div>

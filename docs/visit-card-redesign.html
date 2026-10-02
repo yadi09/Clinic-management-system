@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Visit card redesign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F2F7FB; --ink:#1F2A37; --dim:#616875; --line:#D5DCE5; --card:#fff; --muted:#EEF2F6;
+  --brand:#1F4E79; --teal:#148F77; --teal-soft:#E3F4F0; --red:#C0392B; --red-soft:#FCEBE9;
+  --amber:#B4710F; --amber-soft:#FDF3E2; --grey:#9AA3AE;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#111a24; --ink:#E7ECF1; --dim:#9AA6B3; --line:#2A3542; --card:#17212c; --muted:#202b37;
+  --brand:#7DB0E0; --teal:#3FC2A6; --teal-soft:#123a33; --red:#F08A80; --red-soft:#3b1d1b;
+  --amber:#E9B45A; --amber-soft:#3a2c14; --grey:#6E7A87;}}
+:root[data-theme="dark"]{
+  --bg:#111a24; --ink:#E7ECF1; --dim:#9AA6B3; --line:#2A3542; --card:#17212c; --muted:#202b37;
+  --brand:#7DB0E0; --teal:#3FC2A6; --teal-soft:#123a33; --red:#F08A80; --red-soft:#3b1d1b;
+  --amber:#E9B45A; --amber-soft:#3a2c14; --grey:#6E7A87;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding:40px 16px 80px}
+h1{font-size:28px;line-height:1.2;margin:0 0 8px;color:var(--brand);letter-spacing:-.01em}
+h2{font-size:20px;margin:56px 0 6px;color:var(--brand)}
+.lede{color:var(--dim);max-width:68ch;margin:0}
+.intro{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px}
+.box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.box h3{margin:0 0 6px;font-size:15px}
+.box ul{margin:0;padding-left:18px;color:var(--dim)} .box li{margin:4px 0}
+.scene{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px;align-items:start;margin-top:14px}
+.why{font-size:14px;color:var(--dim)} .why b{color:var(--ink)} .why ol{padding-left:18px;margin:6px 0} .why li{margin:6px 0}
+.tag{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--muted);color:var(--dim)}
+
+/* ---- the card ---- */
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.tabs{display:flex;gap:6px;padding:10px 12px 0;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
+.tabs .label{font-size:13px;color:var(--dim);padding:7px 4px 10px;white-space:nowrap}
+.tab{border:1px solid transparent;border-bottom:none;border-radius:10px 10px 0 0;padding:8px 12px 9px;font-size:13px;white-space:nowrap;color:var(--dim);background:transparent;cursor:pointer;font-family:inherit;display:flex;gap:8px;align-items:center}
+.tab b{color:var(--ink);font-weight:600}
+.tab.on{background:var(--card);border-color:var(--line);margin-bottom:-1px;color:var(--ink)}
+.tab .dot{width:8px;height:8px;border-radius:50%;background:var(--red)}
+.body{padding:18px 20px 20px}
+.safety{display:flex;gap:10px;align-items:center;background:var(--red-soft);color:var(--red);border-radius:10px;padding:9px 12px;font-size:14px;font-weight:500;margin-bottom:16px}
+.safety svg{flex:none}
+.top{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+.state{font-size:13px;font-weight:600;border-radius:999px;padding:3px 10px;display:inline-block;margin-bottom:8px}
+.state.missed{background:var(--red-soft);color:var(--red)} .state.today{background:var(--teal-soft);color:var(--teal)}
+.state.next{background:var(--muted);color:var(--brand)} .state.done{background:var(--teal-soft);color:var(--teal)}
+.headline{font-size:22px;font-weight:700;letter-spacing:-.01em;margin:0;line-height:1.25}
+.sub{margin:4px 0 0;color:var(--dim)}
+.sub strong{color:var(--ink);font-weight:600}
+.sub .late{color:var(--red);font-weight:600}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.btn{font:inherit;font-size:14px;font-weight:600;border-radius:9px;padding:9px 14px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--teal);border-color:var(--teal);color:#fff}
+.btn.big{font-size:15px;padding:12px 18px}
+.btn.ghost{border-color:transparent;color:var(--dim)}
+
+/* visit steps */
+.steps{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;margin:22px 0 6px;position:relative}
+.step{text-align:center;position:relative;padding:0 4px}
+.step::before{content:"";position:absolute;top:15px;left:-50%;right:50%;height:2px;background:var(--line);z-index:0}
+.step:first-child::before{display:none}
+.step.done::before{background:var(--teal)}
+.circle{position:relative;z-index:1;width:32px;height:32px;border-radius:50%;margin:0 auto;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;border:2px solid var(--line);background:var(--card);color:var(--dim)}
+.step.done .circle{background:var(--teal);border-color:var(--teal);color:#fff}
+.step.missed .circle{border-color:var(--red);color:var(--red);background:var(--red-soft)}
+.step.today .circle{border-color:var(--teal);color:var(--teal);box-shadow:0 0 0 4px var(--teal-soft)}
+.step.next .circle{border-color:var(--brand);color:var(--brand);box-shadow:0 0 0 4px var(--muted)}
+.step .word{font-size:13px;font-weight:600;margin-top:6px}
+.step.done .word{color:var(--teal)} .step.missed .word{color:var(--red)} .step.today .word{color:var(--teal)} .step.next .word{color:var(--brand)} .step.later .word{color:var(--dim)}
+.step .when{font-size:12px;color:var(--dim)}
+.step .pay{font-size:11.5px;margin-top:2px;color:var(--dim)}
+.step .pay.paid{color:var(--teal)}
+.step.focus .word{text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:2px}
+
+/* two summary lines */
+.facts{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:18px 0 0;padding:14px 16px;background:var(--muted);border-radius:12px;font-size:14px}
+.facts dt{color:var(--dim)} .facts dd{margin:0}
+.facts dd b{font-weight:600}
+.bar{display:inline-flex;gap:3px;vertical-align:middle;margin-left:8px}
+.bar i{display:block;width:18px;height:6px;border-radius:3px;background:var(--line)} .bar i.on{background:var(--teal)}
+.note{color:var(--amber);font-weight:500}
+
+.last{margin-top:16px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+.last .k{font-size:13px;color:var(--dim)} .last .v{font-weight:600}
+.link{color:var(--teal);font-weight:600;font-size:14px;text-decoration:none;white-space:nowrap}
+
+.go{margin-top:18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.go .small{font-size:13px;color:var(--dim)} .go .small a{color:var(--teal);font-weight:600;text-decoration:none}
+
+.empty{text-align:center;padding:36px 20px}
+.empty p{color:var(--dim);margin:6px 0 16px}
+
+/* phone frame */
+.phone{width:390px;max-width:100%;border:10px solid #1b2430;border-radius:34px;overflow:hidden;background:var(--bg)}
+.phone .card{border-radius:0;border-left:0;border-right:0}
+.phone .body{padding:16px}
+.phone .headline{font-size:20px}
+.vsteps{list-style:none;margin:16px 0 0;padding:0;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.vsteps li{display:flex;gap:12px;align-items:center;padding:10px 12px;border-top:1px solid var(--line);font-size:14px}
+.vsteps li:first-child{border-top:none}
+.vsteps .circle{width:28px;height:28px;font-size:13px;margin:0;flex:none}
+.vsteps .grow{flex:1;min-width:0}
+.vsteps .word{font-weight:600}
+.vsteps .when{color:var(--dim);font-size:13px}
+.vsteps .pay{font-size:12.5px;color:var(--dim);white-space:nowrap} .vsteps .pay.paid{color:var(--teal)}
+.vsteps li.done .circle{background:var(--teal);border-color:var(--teal);color:#fff} .vsteps li.done .word{color:var(--teal)}
+.vsteps li.missed .circle{border-color:var(--red);color:var(--red);background:var(--red-soft)} .vsteps li.missed .word{color:var(--red)}
+.vsteps li.next .circle{border-color:var(--brand);color:var(--brand)} .vsteps li.next .word{color:var(--brand)}
+.vsteps li.focus{background:var(--muted)}
+
+.compare{width:100%;border-collapse:collapse;margin-top:12px;font-size:14px;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.compare th,.compare td{text-align:left;padding:10px 14px;border-top:1px solid var(--line);vertical-align:top}
+.compare th{background:var(--muted);font-size:13px;color:var(--dim);font-weight:600;border-top:none}
+.compare td:first-child{color:var(--dim);width:28%}
+.qs{counter-reset:q;list-style:none;padding:0;margin:12px 0 0}
+.qs li{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:10px 0}
+.qs li b{display:block;margin-bottom:2px}
+@media (max-width:900px){.scene,.intro{grid-template-columns:1fr}}
+@media (max-width:560px){.steps{grid-auto-flow:row;grid-auto-columns:auto}.step::before{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>The visit card, redesigned</h1>
+<p class="lede">A design for the card at the top of a dental patient's page. Nothing in the app has changed yet. Each situation below is the same card, drawn the way it would look. The notes beside each one explain the choices.</p>
+
+<div class="intro">
+  <div class="box">
+    <h3>What the card is for</h3>
+    <ul>
+      <li>Tell anyone, in one sentence, what is happening with this patient's treatment.</li>
+      <li>Show every visit with a word, not only a colour: done, missed, today, next, later.</li>
+      <li>Keep treatment progress and money apart, so neither is mistaken for the other.</li>
+      <li>Offer one obvious next step.</li>
+    </ul>
+  </div>
+  <div class="box">
+    <h3>The only words it uses</h3>
+    <ul>
+      <li><b>Treatment</b>: the whole plan, such as a root canal. Never "course", "session" or "plan".</li>
+      <li><b>Visit</b>: one appointment in a treatment.</li>
+      <li><b>Done, Missed, Today, Next, Later</b>: what has happened to a visit.</li>
+      <li><b>Paid, Left to pay, Paid ahead</b>: the money.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ================= 1. the real case ================= -->
+<h2>1. Your patient, as of today</h2>
+<p class="lede">Three root canals in progress, two visits missed in the one on screen, three visits paid for but not yet done. This is the hardest case, so it comes first.</p>
+<div class="scene">
+  <div class="card">
+    <div class="tabs" role="tablist" aria-label="Treatments in progress">
+      <span class="label">3 treatments in progress</span>
+      <button class="tab on" role="tab" aria-selected="true"><span class="dot"></span><span><b>Root canal</b> UR5, UR2 · since 24 Aug</span></button>
+      <button class="tab" role="tab"><span class="dot"></span><span><b>Root canal</b> since 18 Aug</span></button>
+      <button class="tab" role="tab"><span class="dot"></span><span><b>Root canal</b> since 24 Aug (2nd)</span></button>
+    </div>
+    <div class="body">
+      <div class="safety"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>Allergic to Pencil In. Check before you treat.</div>
+      <div class="top">
+        <div>
+          <span class="state missed">2 visits missed</span>
+          <p class="headline">Next: visit 2 of 5</p>
+          <p class="sub">It was booked for <strong>Mon 7 Sep</strong> (2 Pagume) and didn't happen, <span class="late">25 days ago</span>. Visit 3 on 21 Sep was missed too.</p>
+        </div>
+        <div class="actions">
+          <button class="btn">Rebook missed visits</button>
+          <button class="btn ghost" aria-label="More">More</button>
+        </div>
+      </div>
+
+      <div class="steps">
+        <div class="step done"><div class="circle">✓</div><div class="word">Done</div><div class="when">24 Aug</div><div class="pay paid">Paid</div></div>
+        <div class="step missed focus"><div class="circle">2</div><div class="word">Missed</div><div class="when">7 Sep</div><div class="pay paid">Paid ahead</div></div>
+        <div class="step missed"><div class="circle">3</div><div class="word">Missed</div><div class="when">21 Sep</div><div class="pay paid">Paid ahead</div></div>
+        <div class="step later"><div class="circle">4</div><div class="word">Later</div><div class="when">5 Oct</div><div class="pay paid">Paid ahead</div></div>
+        <div class="step later"><div class="circle">5</div><div class="word">Later</div><div class="when">19 Oct</div><div class="pay">Not paid</div></div>
+      </div>
+
+      <dl class="facts">
+        <dt>Treatment</dt><dd><b>1 of 5 visits done</b><span class="bar" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i><i></i></span></dd>
+        <dt>Money</dt><dd><b>5,800 paid</b> of 6,500 · <b>700 left to pay</b><br><span class="note">Visits 2, 3 and 4 are paid but not done yet.</span></dd>
+      </dl>
+
+      <div class="last">
+        <div><div class="k">Last time: visit 1 on 24 Aug</div><div class="v">Teeth cleaning on UR5 · 1 prescription</div></div>
+        <a class="link" href="#">See notes</a>
+      </div>
+
+      <div class="go">
+        <button class="btn primary big">Record visit 2</button>
+        <span class="small">Saved as today, Fri 2 Oct. <a href="#">Change date</a></span>
+      </div>
+    </div>
+  </div>
+  <div class="why">
+    <span class="tag">What changed, and why</span>
+    <ol>
+      <li><b>Tabs name every treatment in progress</b>, by teeth and start date, so three root canals are three different things. The red dot means "something is late here".</li>
+      <li><b>The allergy is inside the card</b>, right above the button you press to treat.</li>
+      <li><b>One sentence says what's going on.</b> It focuses on the <i>next step of the treatment</i> (visit 2), not the latest missed date, and names the other missed visit.</li>
+      <li><b>Each visit has a word, a date, and its payment.</b> Missed is red and says "Missed". Paid-but-not-done says "Paid ahead".</li>
+      <li><b>Treatment and money are separate lines.</b> "1 of 5 visits done" can't be mistaken for "89% paid".</li>
+      <li><b>The main button says exactly what it does</b>, and shows the date it will save. Today, unless you change it.</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ================= 2. booked today ================= -->
+<h2>2. The patient is booked for today</h2>
+<p class="lede">The everyday case. The card is calm: one treatment, one sentence, one button.</p>
+<div class="scene">
+  <div class="card">
+    <div class="body">
+      <div class="top">
+        <div>
+          <span class="state today">Today</span>
+          <p class="headline">Visit 3 of 5 · Root canal, UR5</p>
+          <p class="sub">Booked for <strong>today, Fri 2 Oct</strong> (22 Meskerem).</p>
+        </div>
+        <div class="actions"><button class="btn">Reschedule</button><button class="btn ghost">More</button></div>
+      </div>
+      <div class="steps">
+        <div class="step done"><div class="circle">✓</div><div class="word">Done</div><div class="when">4 Sep</div><div class="pay paid">Paid</div></div>
+        <div class="step done"><div class="circle">✓</div><div class="word">Done</div><div class="when">18 Sep</div><div class="pay paid">Paid</div></div>
+        <div class="step today focus"><div class="circle">3</div><div class="word">Today</div><div class="when">2 Oct</div><div class="pay">Not paid</div></div>
+        <div class="step later"><div class="circle">4</div><div class="word">Later</div><div class="when">16 Oct</div><div class="pay">Not paid</div></div>
+        <div class="step later"><div class="circle">5</div><div class="word">Later</div><div class="when">30 Oct</div><div class="pay">Not paid</div></div>
+      </div>
+      <dl class="facts">
+        <dt>Treatment</dt><dd><b>2 of 5 visits done</b><span class="bar" aria-hidden="true"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span></dd>
+        <dt>Money</dt><dd><b>2,400 paid</b> of 6,500 · <b>4,100 left to pay</b></dd>
+      </dl>
+      <div class="last">
+        <div><div class="k">Last time: visit 2 on 18 Sep</div><div class="v">Canal cleaning and shaping · temporary filling</div></div>
+        <a class="link" href="#">See notes</a>
+      </div>
+      <div class="go"><button class="btn primary big">Start visit 3</button><span class="small">Takes the 700 fee first, then the treatment notes.</span></div>
+    </div>
+  </div>
+  <div class="why">
+    <span class="tag">Notes</span>
+    <ol>
+      <li><b>No tabs</b> when there's only one treatment: nothing to choose.</li>
+      <li><b>"Reschedule"</b> replaces "Move": it says what it does.</li>
+      <li><b>The button tells you what comes next</b> (fee, then notes), so taking payment first isn't a surprise.</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ================= 3. between visits ================= -->
+<h2>3. Between visits</h2>
+<p class="lede">Nothing to do today. The card says when the patient comes back, and doesn't push a record button.</p>
+<div class="scene">
+  <div class="card">
+    <div class="body">
+      <div class="top">
+        <div>
+          <span class="state next">Next visit</span>
+          <p class="headline">Visit 4 of 5 · in 3 days</p>
+          <p class="sub">Booked for <strong>Mon 5 Oct</strong> (25 Meskerem). Root canal, UR5.</p>
+        </div>
+        <div class="actions"><button class="btn">Reschedule</button><button class="btn ghost">More</button></div>
+      </div>
+      <div class="steps">
+        <div class="step done"><div class="circle">✓</div><div class="word">Done</div><div class="when">4 Sep</div><div class="pay paid">Paid</div></div>
+        <div class="step done"><div class="circle">✓</div><div class="word">Done</div><div class="when">18 Sep</div><div class="pay paid">Paid</div></div>
+        <div class="step done"><div class="circle">✓</div><div class="word">Done</div><div class="when">28 Sep</div><div class="pay paid">Paid</div></div>
+        <div class="step next focus"><div class="circle">4</div><div class="word">Next</div><div class="when">5 Oct</div><div class="pay">Not paid</div></div>
+        <div class="step later"><div class="circle">5</div><div class="word">Later</div><div class="when">19 Oct</div><div class="pay">Not paid</div></div>
+      </div>
+      <dl class="facts">
+        <dt>Treatment</dt><dd><b>3 of 5 visits done</b><span class="bar" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span></dd>
+        <dt>Money</dt><dd><b>3,100 paid</b> of 6,500 · <b>3,400 left to pay</b></dd>
+      </dl>
+      <div class="go"><button class="btn">Record visit 4 early</button><span class="small">Only if the patient came in before their booked day.</span></div>
+    </div>
+  </div>
+  <div class="why">
+    <span class="tag">Notes</span>
+    <ol>
+      <li><b>"In 3 days"</b> answers the question people actually ask.</li>
+      <li><b>The record button steps back</b> to a plain outline, and says when you'd use it.</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ================= 4. just recorded ================= -->
+<h2>4. Right after a visit is recorded</h2>
+<div class="scene">
+  <div class="card">
+    <div class="body">
+      <div class="top">
+        <div>
+          <span class="state done">✓ Visit 3 done today</span>
+          <p class="headline">Next: visit 4 on Fri 16 Oct</p>
+          <p class="sub">Saved at 10:42 by Dr. Meron. Root canal, UR5.</p>
+        </div>
+        <div class="actions"><button class="btn">Edit visit 3</button><button class="btn ghost">More</button></div>
+      </div>
+      <div class="steps">
+        <div class="step done"><div class="circle">✓</div><div class="word">Done</div><div class="when">4 Sep</div><div class="pay paid">Paid</div></div>
+        <div class="step done"><div class="circle">✓</div><div class="word">Done</div><div class="when">18 Sep</div><div class="pay paid">Paid</div></div>
+        <div class="step done focus"><div class="circle">✓</div><div class="word">Done</div><div class="when">Today</div><div class="pay paid">Paid</div></div>
+        <div class="step next"><div class="circle">4</div><div class="word">Next</div><div class="when">16 Oct</div><div class="pay">Not paid</div></div>
+        <div class="step later"><div class="circle">5</div><div class="word">Later</div><div class="when">30 Oct</div><div class="pay">Not paid</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="why"><span class="tag">Notes</span><ol><li><b>Confirms what happened</b> (who, when), then moves straight on to what's next.</li></ol></div>
+</div>
+
+<!-- ================= 5. no treatment ================= -->
+<h2>5. No treatment in progress</h2>
+<div class="scene">
+  <div class="card"><div class="empty">
+    <p class="headline" style="font-size:19px">No treatment in progress</p>
+    <p>Finished treatments are in the history below.</p>
+    <button class="btn primary">Start a treatment</button>
+  </div></div>
+  <div class="why"><span class="tag">Notes</span><ol><li><b>Says what's true and offers the one useful action.</b> No empty boxes.</li></ol></div>
+</div>
+
+<!-- ================= 6. phone ================= -->
+<h2>6. Case 1 on a phone</h2>
+<p class="lede">The visits become a list, so each visit gets a full line: number, word, date and payment.</p>
+<div class="scene">
+  <div class="phone"><div class="card">
+    <div class="tabs"><button class="tab on"><span class="dot"></span><span><b>Root canal</b> UR5, UR2</span></button><button class="tab"><span class="dot"></span><span><b>Root canal</b> 18 Aug</span></button><button class="tab"><span class="dot"></span><span><b>Root canal</b> 24 Aug</span></button></div>
+    <div class="body">
+      <div class="safety">⚠ Allergic to Pencil In</div>
+      <span class="state missed">2 visits missed</span>
+      <p class="headline">Next: visit 2 of 5</p>
+      <p class="sub">Booked for <strong>Mon 7 Sep</strong>, <span class="late">25 days ago</span>. Visit 3 was missed too.</p>
+      <ul class="vsteps">
+        <li class="done"><span class="circle">✓</span><span class="grow"><span class="word">Done</span> <span class="when">24 Aug</span></span><span class="pay paid">Paid</span></li>
+        <li class="missed focus"><span class="circle">2</span><span class="grow"><span class="word">Missed</span> <span class="when">7 Sep</span></span><span class="pay paid">Paid ahead</span></li>
+        <li class="missed"><span class="circle">3</span><span class="grow"><span class="word">Missed</span> <span class="when">21 Sep</span></span><span class="pay paid">Paid ahead</span></li>
+        <li><span class="circle">4</span><span class="grow"><span class="word">Later</span> <span class="when">5 Oct</span></span><span class="pay paid">Paid ahead</span></li>
+        <li><span class="circle">5</span><span class="grow"><span class="word">Later</span> <span class="when">19 Oct</span></span><span class="pay">Not paid</span></li>
+      </ul>
+      <dl class="facts"><dt>Treatment</dt><dd><b>1 of 5 done</b></dd><dt>Money</dt><dd><b>700 left to pay</b><br><span class="note">Visits 2–4 paid, not done.</span></dd></dl>
+      <div class="go" style="flex-direction:column;align-items:stretch">
+        <button class="btn primary big">Record visit 2</button>
+        <button class="btn">Rebook missed visits</button>
+        <span class="small" style="text-align:center">Saved as today. <a href="#">Change date</a></span>
+      </div>
+    </div>
+  </div></div>
+  <div class="why"><span class="tag">Notes</span><ol><li><b>Buttons go full width at the bottom</b>, where a thumb reaches them.</li><li><b>Tabs scroll sideways</b> when there are more treatments.</li></ol></div>
+</div>
+
+<!-- ================= before / after ================= -->
+<h2>Before and after</h2>
+<table class="compare">
+  <tr><th>Today's card</th><th>New card</th></tr>
+  <tr><td>OVERDUE · Mon 21 Sep · 11 days ago</td><td>2 visits missed. Next: visit 2 of 5. It was due 7 Sep and didn't happen; visit 3 was missed too.</td></tr>
+  <tr><td>Grey circle 2, with no word</td><td>"Missed · 7 Sep · Paid ahead"</td></tr>
+  <tr><td>Green bar: 5,800 ETB paid of 6,500</td><td>Treatment: 1 of 5 visits done. Money: 700 left to pay; visits 2–4 paid, not done.</td></tr>
+  <tr><td>visit 3 of 5 · 700 ETB</td><td>Each visit's payment shown under it; amounts only in the money line</td></tr>
+  <tr><td>"Also needs attention": Root canel, session 1 of 6</td><td>A tab for each treatment: Root canal · since 18 Aug, with a red dot</td></tr>
+  <tr><td>Start this visit now · "Recording it keeps that date"</td><td>Record visit 2 · Saved as today. Change date</td></tr>
+  <tr><td>Move · + visit · + New treatment · Open · …</td><td>Rebook / Reschedule, and one main button. The rest is under More</td></tr>
+  <tr><td>Allergy in the header corner</td><td>Allergy inside the card, above the button</td></tr>
+</table>
+
+<h2>To decide before building</h2>
+<ol class="qs">
+  <li><b>Which treatment opens first when there are several?</b>My suggestion: the one booked today; otherwise the one with the most recent missed or upcoming visit. The tabs make it a click to switch either way.</li>
+  <li><b>Should "Record visit 2" default to today's date?</b>My suggestion: yes. A missed visit done today happened today, and the records should say so. "Change date" covers entering yesterday's paper notes.</li>
+  <li><b>What does "Rebook missed visits" do?</b>My suggestion: one dialog that moves visits 2 and 3, and shifts the later ones along with them, so the plan stays in order.</li>
+  <li><b>Three root canals on one patient:</b> are these real, or duplicates from testing? If real clinics never have this, the tabs still help when a patient has, say, a root canal and braces at once.</li>
+</ol>
+
+</div>
+</body>
+</html>

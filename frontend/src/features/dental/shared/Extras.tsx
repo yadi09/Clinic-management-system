@@ -99,7 +99,7 @@ export function ExtrasSection({ patientId, session, editable, canCollect }: {
     {dialog}
     <RecordSection
       icon={Sparkles} tone="media" title="Also done at this visit"
-      hint="Anything the course did not plan for — an X-ray, a filling on another tooth."
+      hint="Anything the treatment did not plan for — an X-ray, a filling on another tooth."
       count={extras.length || undefined}
       action={editable && !adding ? (
         <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setAdding(true)}>
@@ -145,7 +145,7 @@ export function ExtrasSection({ patientId, session, editable, canCollect }: {
         })}
 
         {extras.length === 0 && !adding && (
-          <p className="py-1 text-xs text-muted-foreground">Nothing extra — this visit is what the course planned.</p>
+          <p className="py-1 text-xs text-muted-foreground">Nothing extra — this visit is what the treatment planned.</p>
         )}
 
         {adding && (

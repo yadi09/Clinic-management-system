@@ -1,125 +1,114 @@
 // Which visit is this page about?
 //
 // The old page answered that by FILTERING: a date scope defaulting to "today" plus
-// three plan tabs, applied in that order. For any patient not booked today — which
-// is every patient on every day between their appointments — the filter emptied the
-// "in progress" tab, the auto-picker fell through to "history", and the dentist
-// landed on last year's finished scaling with the escape control hidden on that very
-// tab. The running root canal was two clicks and a guess away, and nothing on screen
-// said the page was being filtered at all.
+// three plan tabs, applied in that order. For any patient not booked today the
+// filter emptied the "in progress" tab and the dentist landed on last year's
+// finished scaling. This RESOLVES instead, and always says what it chose.
 //
-// This RESOLVES instead. It walks a ladder of candidates and always reports which
-// rung it landed on, so the answer can be read and argued with rather than guessed.
-// A resolver that picks wrong but says so is recoverable; a filter that silently
-// hides everything is not.
+// It works in two steps, the way a dentist does:
+//   1. Which TREATMENT? The one booked today; otherwise the one whose next visit is
+//      closest to today, so a treatment abandoned months ago cannot take the card
+//      from the one the patient is actually here for. Every treatment in progress
+//      is shown as a tab, so the choice is visible and one click to change.
+//   2. Which VISIT of it? Its next step: the first visit not yet done. A dentist
+//      continues a root canal from where it stopped, not from the latest missed date.
 import { useMemo } from "react";
 
 import type { Plan, Session } from "@/features/dental/api";
+import { liveVisits, missedVisits, nextStep, visitPosition } from "@/features/dental/visit/treatment";
 
-export type Rung = "chosen" | "today" | "overdue" | "next" | "lastDone" | "none";
+export type Rung = "chosen" | "today" | "missed" | "next" | "lastDone" | "none";
 
 export interface FocusVisit {
   session: Session;
   plan: Plan;
-  /** 1-based position within the plan, for "session 4 of 6". */
-  seq: number;
+  /** Place in the treatment, in date order: "visit 2 of 5". */
+  position: number;
   count: number;
+}
+
+/** One treatment in progress, for the tabs. */
+export interface Treatment {
+  plan: Plan;
+  /** Its first visit not yet done, if any. */
+  next?: Session;
+  missed: Session[];
+  bookedToday: boolean;
 }
 
 export interface FocusResult {
   focus: FocusVisit | null;
   rung: Rung;
-  /** Why this one — shown on the cockpit so the choice is never silent. */
+  /** Why this one: never a silent choice. */
   label: string;
-  /** The other live courses, so a demoted candidate is named rather than hidden. */
-  others: FocusVisit[];
+  /** Every treatment in progress, in a stable order, so tabs never jump about. */
+  treatments: Treatment[];
 }
 
-const isLive = (p: Plan) => p.status === "active";
+const isActive = (p: Plan) => p.status === "active";
 
-/** One entry per other course — its next open visit, not all of them. */
-function dedupeByPlan(list: FocusVisit[]): FocusVisit[] {
-  const seen = new Set<string>();
-  return list.filter((v) => (seen.has(v.plan.id) ? false : (seen.add(v.plan.id), true)));
-}
-const isOpen = (s: Session) => s.status === "planned";
-
-/** Every still-open session across every active plan, earliest first. */
-function openVisits(plans: Plan[]): FocusVisit[] {
-  const out: FocusVisit[] = [];
-  for (const plan of plans) {
-    if (!isLive(plan)) continue;
-    for (const session of plan.sessions) {
-      if (!isOpen(session)) continue;
-      out.push({ session, plan, seq: session.seq, count: plan.session_count });
-    }
-  }
-  return out.sort((a, b) => a.session.scheduled_date.localeCompare(b.session.scheduled_date));
+function asFocus(plan: Plan, session: Session): FocusVisit {
+  return { plan, session, ...visitPosition(plan, session.id) };
 }
 
-/**
- * Resolve the visit this page is about.
- *
- * The ladder, in order:
- *   0. an explicit ?visit= override — the dentist's own choice always wins
- *   1. a session booked for today
- *   2. the most overdue open session (the patient who came back late)
- *   3. the next open session (the patient who came early, or is just being reviewed)
- *   4. the most recent completed session (a finished course, or a walk-in)
- *   5. nothing at all — a patient with no treatment yet
- */
+function daysApart(a: string, b: string): number {
+  return Math.abs(new Date(`${a}T00:00:00`).getTime() - new Date(`${b}T00:00:00`).getTime()) / 86_400_000;
+}
+
 export function resolveFocus(plans: Plan[], todayISO: string, chosenId?: string | null): FocusResult {
-  const open = openVisits(plans);
+  const treatments: Treatment[] = plans
+    .filter((p) => isActive(p) && liveVisits(p).length > 0)
+    .sort((a, b) => a.start_date.localeCompare(b.start_date) || a.created_at.localeCompare(b.created_at))
+    .map((plan) => ({
+      plan,
+      next: nextStep(plan),
+      missed: missedVisits(plan, todayISO),
+      bookedToday: liveVisits(plan).some((s) => s.status === "planned" && s.scheduled_date === todayISO),
+    }));
+  const result = (focus: FocusVisit | null, rung: Rung, label: string): FocusResult => ({ focus, rung, label, treatments });
 
-  // "Others" means the patient's OTHER courses. Siblings within the focused plan are
-  // already drawn on the course rail, and listing them again pushed a genuinely
-  // separate open treatment out of the visible slice.
-  const pick = (f: FocusVisit | undefined, rung: Rung, label: string): FocusResult | null =>
-    f ? { focus: f, rung, label, others: dedupeByPlan(open.filter((o) => o.plan.id !== f.plan.id)) } : null;
-
+  // 0. The dentist's own choice (?visit=) always wins, even a finished visit.
   if (chosenId) {
-    const chosen = open.find((v) => v.session.id === chosenId)
-      // An explicit choice may point at an already-done session — honour it anyway.
-      ?? plans.flatMap((plan) => plan.sessions.map((session) => ({ session, plan, seq: session.seq, count: plan.session_count })))
-        .find((v) => v.session.id === chosenId);
-    const r = pick(chosen, "chosen", "Selected visit");
-    if (r) return r;
-    // Falls through when the id is stale (session deleted or moved to another
-    // patient); resolving normally beats rendering an error at the top of the page.
+    for (const plan of plans) {
+      const s = plan.sessions.find((v) => v.id === chosenId && v.status !== "cancelled");
+      if (s) return result(asFocus(plan, s), "chosen", "Selected visit");
+    }
+    // A stale id (visit removed) falls through: resolving beats an error at the top.
   }
 
-  const today = pick(open.find((v) => v.session.scheduled_date === todayISO), "today", "Booked today");
-  if (today) return today;
-
-  const overdue = open.filter((v) => v.session.scheduled_date < todayISO);
-  if (overdue.length > 0) {
-    // The MOST RECENT overdue one, not the oldest. A course abandoned six months ago
-    // still has an open session; picking the longest-waiting visit would let it
-    // capture the page ahead of the treatment the patient is actually here for.
-    const r = pick(overdue[overdue.length - 1], "overdue", "Overdue");
-    if (r) return r;
+  // 1. A treatment with a visit booked today, and that visit.
+  for (const t of treatments) {
+    const s = liveVisits(t.plan).find((v) => v.status === "planned" && v.scheduled_date === todayISO);
+    if (s) return result(asFocus(t.plan, s), "today", "Booked today");
   }
 
-  const next = pick(open.find((v) => v.session.scheduled_date > todayISO), "next", "Next scheduled");
-  if (next) return next;
+  // 2. The treatment whose next step is closest to today, and that next step.
+  const withNext = treatments.filter((t) => t.next);
+  if (withNext.length > 0) {
+    const best = [...withNext].sort((a, b) =>
+      daysApart(a.next!.scheduled_date, todayISO) - daysApart(b.next!.scheduled_date, todayISO)
+      || b.plan.start_date.localeCompare(a.plan.start_date))[0];
+    const s = best.next!;
+    return s.scheduled_date < todayISO
+      ? result(asFocus(best.plan, s), "missed", "Missed")
+      : result(asFocus(best.plan, s), "next", "Next visit");
+  }
 
-  // Nothing open. Show the last thing that actually happened, so the page still
-  // opens on this patient's treatment rather than on an empty state.
+  // 3. Nothing still to do: the last visit that happened, so the page opens on this
+  //    patient's treatment rather than on an empty state.
   const done = plans
-    .flatMap((plan) => plan.sessions.map((session) => ({ session, plan, seq: session.seq, count: plan.session_count })))
-    .filter((v) => v.session.status === "done")
-    .sort((a, b) => b.session.scheduled_date.localeCompare(a.session.scheduled_date));
-  const last = pick(done[0], "lastDone", "Most recent visit");
-  if (last) return last;
+    .flatMap((plan) => plan.sessions.filter((s) => s.status === "done").map((s) => ({ plan, s })))
+    .sort((a, b) => b.s.scheduled_date.localeCompare(a.s.scheduled_date));
+  if (done[0]) return result(asFocus(done[0].plan, done[0].s), "lastDone", "Most recent visit");
 
-  return { focus: null, rung: "none", label: "No treatment scheduled", others: [] };
+  return result(null, "none", "No treatment in progress");
 }
 
 export function useFocusVisit(plans: Plan[], todayISO: string, chosenId?: string | null): FocusResult {
   return useMemo(() => resolveFocus(plans, todayISO, chosenId), [plans, todayISO, chosenId]);
 }
 
-/** How late or early this visit is, in the words a clinician would use. */
+/** How late or early a visit is, in the words a clinician would use. */
 export function visitTiming(dateISO: string, todayISO: string): { days: number; text: string } {
   const days = Math.round(
     (new Date(`${dateISO}T00:00:00`).getTime() - new Date(`${todayISO}T00:00:00`).getTime()) / 86_400_000,
