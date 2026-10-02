@@ -1,11 +1,10 @@
 import { useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { X } from "lucide-react";
+import { Users, X } from "lucide-react";
 
 import { useAuth } from "@/app/auth-context";
 import { Button } from "@/components/ui/button";
-import { toast } from "@/components/ui/sonner";
-import { cn } from "@/lib/utils";
+import { LIVE_TOASTER, toast } from "@/components/ui/sonner";
 import { type AppNotification, listNotifications, notificationKeys } from "./api";
 import { LIVE_KINDS, present, spoken } from "./kinds";
 import { onscreen } from "./onscreen";
@@ -89,6 +88,7 @@ export function LiveAlerts() {
       fresh.forEach((n) => {
         toast.custom((t) => <LiveToast n={n} onOpen={() => { toast.dismiss(t); openRef.current(n); }} onClose={() => toast.dismiss(t)} />, {
           id: `live-${n.id}`,
+          toasterId: LIVE_TOASTER,
           duration: SHOW_MS,
         });
         if (speakIt && claim(n.id)) announce(spoken(n));
@@ -101,7 +101,7 @@ export function LiveAlerts() {
           onOpen={() => { toast.dismiss(t); window.dispatchEvent(new CustomEvent(OPEN_NOTIFICATIONS)); }}
           onClose={() => toast.dismiss(t)}
         />
-      ), { duration: SHOW_MS });
+      ), { toasterId: LIVE_TOASTER, duration: SHOW_MS });
       if (speakIt && fresh.every((n) => claim(n.id))) announce(`${fresh.length} patients are waiting for you.`);
     }
   }, [live.data, uid, qc]);
@@ -109,41 +109,62 @@ export function LiveAlerts() {
   return null;
 }
 
+/** "Almaz Bekele" -> "AB": the patient, recognisable at a glance. */
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase() || "?";
+}
+
 function Shell({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
-    <div className="relative flex w-[min(24rem,calc(100vw-32px))] gap-3 rounded-lg border border-primary/25 bg-card p-4 pr-10 text-card-foreground shadow-popover">
-      {children}
+    <div
+      role="status"
+      className="group relative w-[min(28rem,calc(100vw-24px))] overflow-hidden rounded-xl border bg-card text-card-foreground shadow-modal"
+    >
+      <div className="flex items-start gap-3 p-4 pr-11">{children}</div>
       <button
         type="button"
         onClick={onClose}
         aria-label="Dismiss"
-        className="absolute right-2 top-2 rounded-md p-1.5 text-muted-foreground touch-hit hover:bg-accent hover:text-foreground"
+        className="absolute right-2.5 top-2.5 rounded-md p-1.5 text-muted-foreground touch-hit hover:bg-accent hover:text-foreground"
       >
         <X className="h-4 w-4" />
       </button>
+      {/* How long the pop-up has left. Paused while the pointer is on it, and
+          still for people who ask for less motion. */}
+      <div
+        aria-hidden
+        style={{ ["--countdown" as string]: `${SHOW_MS}ms` }}
+        className="absolute inset-x-0 bottom-0 h-[3px] origin-left bg-primary/70 motion-safe:animate-countdown group-hover:[animation-play-state:paused]"
+      />
     </div>
   );
 }
 
 function LiveToast({ n, onOpen, onClose }: { n: AppNotification; onOpen: () => void; onClose: () => void }) {
   const p = present(n);
-  const Icon = p.icon;
+  const where = p.detail.replace(/^Waiting for you ?/, "");
   return (
     <Shell onClose={onClose}>
-      <span aria-hidden className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-full", p.tone.unread)}>
-        <Icon className="h-5 w-5" />
+      <span
+        aria-hidden
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold tracking-wide text-primary-foreground"
+      >
+        {initials(p.headline)}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold leading-snug">{spoken(n).replace(/\.$/, "")}</p>
-        <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
+        <p className="text-[15px] font-semibold leading-snug">{p.headline}</p>
+        <p className="text-sm text-muted-foreground">is waiting for you{where ? ` ${where}` : ""}</p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Button size="sm" className="h-8 px-4" onClick={onOpen}>
+            Open
+          </Button>
           {p.tag && (
-            <span className="whitespace-nowrap rounded bg-muted px-1.5 py-px text-[11px] font-medium tabular-nums">{p.tag}</span>
+            <span className="whitespace-nowrap rounded bg-muted px-1.5 py-px text-[11px] font-medium tabular-nums text-muted-foreground">
+              {p.tag}
+            </span>
           )}
-          <span>{p.detail.replace(/^Waiting for you ?/, "") || "Just now"}</span>
-        </p>
-        <Button size="sm" className="mt-3 h-8" onClick={onOpen}>
-          Open
-        </Button>
+        </div>
       </div>
     </Shell>
   );
@@ -152,9 +173,13 @@ function LiveToast({ n, onOpen, onClose }: { n: AppNotification; onOpen: () => v
 function SummaryToast({ title, onOpen, onClose }: { title: string; onOpen: () => void; onClose: () => void }) {
   return (
     <Shell onClose={onClose}>
+      <span aria-hidden className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <Users className="h-5 w-5" />
+      </span>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold">{title}</p>
-        <Button size="sm" className="mt-3 h-8" onClick={onOpen}>
+        <p className="text-[15px] font-semibold leading-snug">{title}</p>
+        <p className="text-sm text-muted-foreground">They're in your queue now.</p>
+        <Button size="sm" className="mt-3 h-8 px-4" onClick={onOpen}>
           View all
         </Button>
       </div>

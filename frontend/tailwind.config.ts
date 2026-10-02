@@ -47,10 +47,13 @@ export default {
       keyframes: {
         "accordion-down": { from: { height: "0" }, to: { height: "var(--radix-accordion-content-height)" } },
         "accordion-up": { from: { height: "var(--radix-accordion-content-height)" }, to: { height: "0" } },
+        // A bar that empties over a live pop-up's lifetime: it is temporary, and how long is left.
+        countdown: { from: { transform: "scaleX(1)" }, to: { transform: "scaleX(0)" } },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        countdown: "countdown var(--countdown, 12s) linear forwards",
       },
     },
   },
