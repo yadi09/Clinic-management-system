@@ -13,6 +13,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -70,6 +73,20 @@ func run(m *testing.M) int {
 		return 1
 	}
 	code := m.Run()
+	// REGRESS_ROUTES_OUT=<file> records every route the API served during the run
+	// (method + route template, from its access log): the measured API coverage.
+	if out := os.Getenv("REGRESS_ROUTES_OUT"); out != "" {
+		seen := map[string]bool{}
+		for _, m := range routeLine.FindAllStringSubmatch(srv.Logs(), -1) {
+			seen[m[1]+" "+m[2]] = true
+		}
+		lines := make([]string, 0, len(seen))
+		for k := range seen {
+			lines = append(lines, k)
+		}
+		sort.Strings(lines)
+		_ = os.WriteFile(out, []byte(strings.Join(lines, "\n")+"\n"), 0o644)
+	}
 	if code != 0 {
 		fmt.Fprintln(os.Stderr, "\n---- API log (last 4000 bytes) ----")
 		l := srv.Logs()
@@ -80,6 +97,8 @@ func run(m *testing.M) int {
 	}
 	return code
 }
+
+var routeLine = regexp.MustCompile(`"method":"([A-Z]+)","path":"/api/v1([^"]*)"`)
 
 // setupTB lets TestMain use helpers that take a testing.TB.
 type setupTB struct {
