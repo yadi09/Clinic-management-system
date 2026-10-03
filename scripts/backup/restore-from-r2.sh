@@ -41,7 +41,7 @@ umask 077; mkdir -p "$OUT"
 s3() {
   docker run --rm -e AWS_ACCESS_KEY_ID="$BK_R2_ACCESS_KEY_ID" -e AWS_SECRET_ACCESS_KEY="$BK_R2_SECRET_ACCESS_KEY" \
     -e AWS_DEFAULT_REGION=auto -v "$OUT:/data" amazon/aws-cli:2.17.0 \
-    s3 "$@" --endpoint-url "https://$BK_R2_ACCOUNT_ID.r2.cloudflarestorage.com" --only-show-errors
+    s3 "$@" --endpoint-url "https://$BK_R2_ACCOUNT_ID.r2.cloudflarestorage.com"
 }
 
 if [ -z "$DAY" ]; then
@@ -51,8 +51,8 @@ fi
 echo "backup of $DAY"
 
 fetch() { # fetch DIR NAME -> $OUT/NAME, decrypted and checked
-  s3 cp "s3://$BK_R2_BUCKET/$1/$2.enc" "/data/$2.enc"
-  s3 cp "s3://$BK_R2_BUCKET/$1/$2.sha256" "/data/$2.sha256"
+  s3 cp "s3://$BK_R2_BUCKET/$1/$2.enc" "/data/$2.enc" --only-show-errors
+  s3 cp "s3://$BK_R2_BUCKET/$1/$2.sha256" "/data/$2.sha256" --only-show-errors
   decrypt_verified "$OUT/$2.enc" "$OUT/$2.sha256" "$OUT/$2" \
     || { echo "✗ $2 did not decrypt to the file that was backed up (wrong passphrase, or damaged)" >&2; exit 1; }
   rm -f "$OUT/$2.enc"

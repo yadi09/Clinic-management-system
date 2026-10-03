@@ -2073,7 +2073,7 @@
    "scripts/backup/restore-from-r2.sh"
   ],
   "tested": false,
-  "status": "confirmed",
+  "status": "fixed",
   "log": [
    {
     "date": "2026-10-03",
@@ -2082,6 +2082,10 @@
    {
     "date": "2026-10-03",
     "note": "Owner confirmed. Owner creates the R2 bucket + key and writes r2.env on the server; code side built: encryption before upload, refusal to upload unencrypted, restore script with a throwaway-database check, written restore guide, 11-check test in regress.sh."
+   },
+   {
+    "date": "2026-10-03",
+    "note": "Live: owner wrote r2.env; new scripts on the server; first encrypted backup uploaded (offsite: yes). Restore check from R2: decrypted, hash matched, loaded into a throwaway database: 9 clinics, 683 patients, 851 bills, 151 dental visits, identical to live. Bucket holds only encrypted files. Waiting for the owner to verify."
    }
   ],
   "order": 0
