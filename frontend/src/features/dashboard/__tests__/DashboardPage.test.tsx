@@ -207,7 +207,9 @@ describe("REG-FE-DASH dashboard", () => {
     api.dashboardToday.mockResolvedValue(today());
     renderUI(<DashboardPage />);
     expect(await screen.findByRole("heading", { name: "Good morning, Hanna" })).toBeInTheDocument();
-    expect(screen.getByText(/Cure Dental/)).toHaveTextContent("Cure Dental, Bole");
+    // Wait for the data, not the greeting: before it loads the greeting falls back to
+    // the machine's clock, which in the morning already matches (a 02:45 run failed).
+    expect(await screen.findByText(/Cure Dental/)).toHaveTextContent("Cure Dental, Bole");
     expect(screen.getByRole("heading", { name: "Needs you" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Today in the clinic" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Money" })).toBeInTheDocument();

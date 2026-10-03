@@ -2,7 +2,9 @@
 #
 # Every API route is IN SCOPE unless its path starts with a prefix below. An excluded
 # prefix is a module a dental clinic cannot reach (its feature flag is off in the dental
-# preset, or the UI hides it for dental), or the vendor-only console. Each line says why.
+# preset, or the UI hides it for dental), or vendor marketing tools. Each line says why.
+# The super-admin console (/platform) and partner programme (/partner) ARE gated: they
+# provision and suspend dental clinics.
 # Adding a prefix here needs a reason a reviewer can check. Removing one (a dental
 # clinic starts using that module) puts its routes under the gate at once.
 #
@@ -22,6 +24,4 @@
 /reporting                   the Ministry (DHIS2) report is hidden for dental clinics
 /campaigns                   vendor marketing campaigns, not clinic operations
 /c/                          public campaign pages
-/partner                     vendor partner programme
-/platform                    vendor super-admin console
 /crm                         vendor CRM

@@ -2,7 +2,7 @@
 // conditions have loaded, a tap reports the tooth), and the patient page's save
 // around it (a tap is saved as just that tooth's change, Undo is saved like any
 // other edit, and a failed save puts the chart back to what the server holds).
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { Toaster } from "sonner";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -132,10 +132,21 @@ describe("REG-FE-CHART saving the chart from the patient page", () => {
   });
 
   test("REG-FE-CHART-007 quick taps on two teeth go out as one save with both changes", async () => {
-    const { user } = await openChart({});
+    await openChart({});
     api.saveChart.mockResolvedValue({ teeth: { UR1: "healthy", UR2: "healthy" } });
-    await user.click(tooth("UR1"));
-    await user.click(tooth("UR2"));
+    // The batch window is 700 ms of wall time. With real timers, two simulated clicks on
+    // a loaded machine (the full run under coverage) can land further apart than that,
+    // and the test failed while the batching was fine. Own the clock instead.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      fireEvent.click(tooth("UR1"));
+      act(() => { vi.advanceTimersByTime(600); });
+      fireEvent.click(tooth("UR2"));
+      expect(api.saveChart).not.toHaveBeenCalled();
+      act(() => { vi.advanceTimersByTime(700); });
+    } finally {
+      vi.useRealTimers();
+    }
     await waitFor(() => expect(api.saveChart).toHaveBeenCalledTimes(1), { timeout: 3000 });
     expect(api.saveChart.mock.calls[0][1]).toEqual({ UR1: "healthy", UR2: "healthy" });
   });

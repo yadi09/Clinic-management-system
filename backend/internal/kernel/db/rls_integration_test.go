@@ -16,7 +16,9 @@ import (
 	migrations "github.com/reicb/clinicsaas/db/migrations"
 )
 
-const appRolePassword = "apptest-rls-pw"
+// Same password testkit gives the role (it cannot be imported here: import cycle),
+// so this test and the regression suite never fight over clinic_app's login.
+const appRolePassword = "regress-app-pw"
 
 // TestIntegrationRLSIsolation proves the core tenant-isolation guarantee
 // (NFR-13): connected as the least-privilege clinic_app role, a predicate-less

@@ -1,7 +1,7 @@
 // Shared setup for every Vitest file: DOM matchers, and cleanup between tests.
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
-import { afterEach } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 
 afterEach(() => cleanup());
 
@@ -23,4 +23,15 @@ if (!window.matchMedia) {
   window.matchMedia = (q: string) =>
     ({ matches: false, media: q, onchange: null, addListener() {}, removeListener() {},
        addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false }) as MediaQueryList;
+}
+
+// FAKE_NOW=<ISO instant> runs the whole suite at a chosen moment (only Date is
+// faked; timers stay real). scripts/test/time-sweep.sh uses it to prove no test
+// depends on the hour, the date or the time zone it happens to run in.
+if (process.env.FAKE_NOW) {
+  const now = new Date(process.env.FAKE_NOW);
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now);
+  });
 }

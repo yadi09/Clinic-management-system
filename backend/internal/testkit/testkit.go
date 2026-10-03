@@ -104,7 +104,13 @@ func migrate(dsn string) error {
 		return err
 	}
 	// The API connects as clinic_app; give it a login in the test database only.
-	_, err = conn.ExecContext(ctx, `ALTER ROLE clinic_app WITH LOGIN PASSWORD '`+AppRolePassword+`'`)
+	if _, err = conn.ExecContext(ctx, `ALTER ROLE clinic_app WITH LOGIN PASSWORD '`+AppRolePassword+`'`); err != nil {
+		return err
+	}
+	// Production's Postgres (the stock Docker image) runs in UTC. A developer's local
+	// server inherits the machine's zone instead, which moves every SQL "today" and
+	// made results depend on where the suite ran. Pin the test database to production's.
+	_, err = conn.ExecContext(ctx, `DO $$ BEGIN EXECUTE format('ALTER DATABASE %I SET timezone TO %L', current_database(), 'UTC'); END $$`)
 	return err
 }
 
