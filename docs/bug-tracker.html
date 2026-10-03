@@ -88,19 +88,19 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 <p style="margin:8px 0 0;color:var(--soft)">Right now: 189 open · 1 explained or confirmed · 0 fixed, waiting for your check · 0 verified.</p>
 </div>
 
-<a class="next" href="#OPS-1" data-open="OPS-1"><span>Next up</span><b>All backups sit on the same server as the database</b><em>Critical · OPS-1 · Explained</em></a>
+<a class="next" href="#OPS-1" data-open="OPS-1"><span>Next up</span><b>All backups sit on the same server as the database</b><em>Critical · OPS-1 · Confirmed</em></a>
 
 <div class="tallies"><button class="tally sev-critical" data-filter-sev="critical"><b>9</b><span>Critical</span><small>Money lost or created wrongly, a patient-safety risk, or someone reaching data they must not.</small></button><button class="tally sev-high" data-filter-sev="high"><b>42</b><span>High</span><small>Wrong figures, changes nobody can trace, or permission holes inside a clinic.</small></button><button class="tally sev-medium" data-filter-sev="medium"><b>74</b><span>Medium</span><small>Wrong but recoverable, or a screen that misleads about what is real.</small></button><button class="tally sev-low" data-filter-sev="low"><b>65</b><span>Low</span><small>Cosmetic, a wrong error message, or a rare edge.</small></button></div>
 
 <div class="filters">
   <input id="q" type="search" placeholder="Search: cashier, follow-up, refund…" aria-label="Search issues">
-  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (189)</option><option value="explained">Explained (1)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (0)</option><option value="verified">Verified (0)</option><option value="wontfix">Won't fix (0)</option></select>
+  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (189)</option><option value="explained">Explained (0)</option><option value="confirmed">Confirmed (1)</option><option value="fixed">Fixed (0)</option><option value="verified">Verified (0)</option><option value="wontfix">Won't fix (0)</option></select>
   <select id="ar" aria-label="Area"><option value="">Every area</option><option value="Appointments &amp; front desk">Appointments &amp; front desk</option><option value="Dental">Dental</option><option value="Money">Money</option><option value="Patient records">Patient records</option><option value="Reliability">Reliability</option><option value="Safety &amp; access">Safety &amp; access</option><option value="Screens &amp; usability">Screens &amp; usability</option></select>
 </div>
 <p class="count" id="count"></p>
 
 
-<article class="issue sev-critical st-explained" id="OPS-1" data-sev="critical" data-status="explained"
+<article class="issue sev-critical st-confirmed" id="OPS-1" data-sev="critical" data-status="confirmed"
   data-area="Reliability" data-q="ops-1 all backups sit on the same server as the database backups are made every night, but they are kept only on the same server&#x27;s disk, next to the database. the copy to a separate storage account is ready but switched off until a backup key is created. the secret keys needed to read some encrypted fields sit beside them. this is the one item the audit says blocks go-live. the hosting company has a disk failure on a sunday night. on monday cure dental has no patient list, no balances owed, no treatment history, and no backup anywhere else to restore from. every clinic reliability">
   <details>
     <summary>
@@ -108,7 +108,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">Critical</span>
       <span class="ttl">All backups sit on the same server as the database</span>
       <span class="meta"><span class="id">OPS-1</span> · Reliability · effort S</span>
-      <span class="status">Explained</span>
+      <span class="status">Confirmed</span>
     </summary>
     <div class="body">
       
@@ -121,11 +121,11 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       </dl>
       <div class="tech">
         <details><summary>For the developer: tests and code</summary>
-          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li>No automated test yet: an operational item</li></ul>
-          <p>Where in the code:</p><ul><li><code>scripts/backup/backup.sh:36</code></li><li><code>scripts/backup/backup.sh:57</code></li></ul>
+          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li><code>scripts/backup/test_backup.sh</code></li></ul>
+          <p>Where in the code:</p><ul><li><code>docs/backup-restore.md</code></li><li><code>scripts/backup/backup.sh:36</code></li><li><code>scripts/backup/backup.sh:57</code></li><li><code>scripts/backup/lib.sh</code></li><li><code>scripts/backup/restore-from-r2.sh</code></li></ul>
         </details>
       </div>
-      <div class="log"><b>History</b><ul><li><time>2026-10-03</time> Walked through with the owner; waiting for confirmation and the backup key.</li></ul></div>
+      <div class="log"><b>History</b><ul><li><time>2026-10-03</time> Walked through with the owner; waiting for confirmation and the backup key.</li><li><time>2026-10-03</time> Owner confirmed. Owner creates the R2 bucket + key and writes r2.env on the server; code side built: encryption before upload, refusal to upload unencrypted, restore script with a throwaway-database check, written restore guide, 11-check test in regress.sh.</li></ul></div>
     </div>
   </details>
 </article>
@@ -5611,7 +5611,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   </details>
 </article>
 
-<footer>Built 3 October 2026, 08:13 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
+<footer>Built 3 October 2026, 13:35 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
 </div>
 <script>
 (function () {

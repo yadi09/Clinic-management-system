@@ -56,8 +56,8 @@ if [[ -n "$ONLY" ]]; then
   exit $?
 fi
 
-step "Backend: build, vet, module boundaries"
-if go build ./... && go vet ./... && go run ./tools/importlint; then STATUS[static]=ok; else STATUS[static]=FAIL; fi
+step "Backend: build, vet, module boundaries; backup encryption"
+if go build ./... && go vet ./... && go run ./tools/importlint && "$ROOT/scripts/backup/test_backup.sh"; then STATUS[static]=ok; else STATUS[static]=FAIL; fi
 
 if [[ $MODE == quick ]]; then
   step "Backend unit tests"

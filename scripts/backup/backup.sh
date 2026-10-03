@@ -22,13 +22,21 @@
 #
 #   BK_R2_ACCOUNT_ID=...        BK_R2_ACCESS_KEY_ID=...
 #   BK_R2_SECRET_ACCESS_KEY=... BK_R2_BUCKET=clinicos-backups
+#   BK_ENCRYPTION_PASSPHRASE=...  required: every file is encrypted with it before
+#                               it leaves this server (a leaked bucket reads as
+#                               noise). Keep a copy OFF this server too: if the
+#                               server dies, the backup cannot be opened without it.
 #   BK_HEARTBEAT_URL=...        optional: pinged only after a fully good run,
 #                               so a monitor notices the night it does NOT come
+#
+# Restore: scripts/backup/restore-from-r2.sh (see docs/backup-restore.md).
 #
 # The dump is taken as the database owner, never as clinic_app: row-level
 # security would hand clinic_app an almost empty file that still looks like a
 # backup. It is then proven readable, and must contain the patients table.
 set -euo pipefail
+# shellcheck source=lib.sh
+. "$(dirname "$(readlink -f "$0")")/lib.sh"
 
 APP_DIR="${APP_DIR:-/home/themillions/clinicos}"
 BACKUP_ROOT="${BACKUP_ROOT:-$HOME/clinicos-backups}"
@@ -71,16 +79,23 @@ prune "$BACKUP_ROOT/nightly" 'clinic-*.dump' 14
 prune "$BACKUP_ROOT/weekly"  'clinic-*.dump' 8
 prune "$BACKUP_ROOT/secrets" 'secrets-*.tgz' 14
 
+
 if [ -r "$R2_CONF" ]; then
   # shellcheck disable=SC1090
   . "$R2_CONF"
+  # Never upload a readable copy of every patient's record: no passphrase, no upload.
+  [ -n "${BK_ENCRYPTION_PASSPHRASE:-}" ] || fail "BK_ENCRYPTION_PASSPHRASE missing from $R2_CONF: refusing to upload unencrypted"
   for f in "$DUMP" "$SECRETS"; do
-    docker run --rm \
-      -e AWS_ACCESS_KEY_ID="$BK_R2_ACCESS_KEY_ID" -e AWS_SECRET_ACCESS_KEY="$BK_R2_SECRET_ACCESS_KEY" \
-      -e AWS_DEFAULT_REGION=auto -v "$(dirname "$f"):/data:ro" amazon/aws-cli:2.17.0 \
-      s3 cp "/data/$(basename "$f")" "s3://$BK_R2_BUCKET/$(basename "$(dirname "$f")")/$(basename "$f")" \
-      --endpoint-url "https://$BK_R2_ACCOUNT_ID.r2.cloudflarestorage.com" --only-show-errors \
-      || fail "upload $(basename "$f") to R2"
+    encrypt_verified "$f" || fail "encrypt $(basename "$f")"
+    for g in "$f.enc" "$f.sha256"; do
+      docker run --rm \
+        -e AWS_ACCESS_KEY_ID="$BK_R2_ACCESS_KEY_ID" -e AWS_SECRET_ACCESS_KEY="$BK_R2_SECRET_ACCESS_KEY" \
+        -e AWS_DEFAULT_REGION=auto -v "$(dirname "$g"):/data:ro" amazon/aws-cli:2.17.0 \
+        s3 cp "/data/$(basename "$g")" "s3://$BK_R2_BUCKET/$(basename "$(dirname "$g")")/$(basename "$g")" \
+        --endpoint-url "https://$BK_R2_ACCOUNT_ID.r2.cloudflarestorage.com" --only-show-errors \
+        || fail "upload $(basename "$g") to R2"
+    done
+    rm -f "$f.enc" "$f.sha256"
   done
   log "uploaded to r2://$BK_R2_BUCKET"
   offsite="yes"

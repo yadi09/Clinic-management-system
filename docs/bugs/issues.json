@@ -2062,17 +2062,26 @@
   "fix": "Create a separate backup storage account and key, encrypt the nightly backup and keys, upload them off the server every night, and do one test restore on another machine. Until then, copy the latest backup off the server daily by hand.",
   "effort": "S",
   "decision": null,
-  "tests": [],
+  "tests": [
+   "scripts/backup/test_backup.sh"
+  ],
   "files": [
+   "docs/backup-restore.md",
    "scripts/backup/backup.sh:36",
-   "scripts/backup/backup.sh:57"
+   "scripts/backup/backup.sh:57",
+   "scripts/backup/lib.sh",
+   "scripts/backup/restore-from-r2.sh"
   ],
   "tested": false,
-  "status": "explained",
+  "status": "confirmed",
   "log": [
    {
     "date": "2026-10-03",
     "note": "Walked through with the owner; waiting for confirmation and the backup key."
+   },
+   {
+    "date": "2026-10-03",
+    "note": "Owner confirmed. Owner creates the R2 bucket + key and writes r2.env on the server; code side built: encryption before upload, refusal to upload unencrypted, restore script with a throwaway-database check, written restore guide, 11-check test in regress.sh."
    }
   ],
   "order": 0
