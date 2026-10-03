@@ -1067,6 +1067,10 @@
    {
     "date": "2026-10-03",
     "note": "Attempt 3 passed server (667 pass, 0 fail), coverage gate (264/264 routes, no package below its minimum) and browser journeys (10/10); two storage-blocked screen tests added for the last coverage minimums, then lint, typecheck and all 1,625 screen tests with minimums passed. Committed; not yet deployed. Waiting for the owner to verify."
+   },
+   {
+    "date": "2026-10-03",
+    "note": "Deployed to app.clinicos.cc with SEC-10 (commit 0d82f9c). Waiting for the owner to verify."
    }
   ],
   "order": 1
@@ -1123,6 +1127,10 @@
    {
     "date": "2026-10-03",
     "note": "Attempt 3 passed server (667 pass, 0 fail), coverage gate (264/264 routes, no package below its minimum) and browser journeys (10/10); two storage-blocked screen tests added for the last coverage minimums, then lint, typecheck and all 1,625 screen tests with minimums passed. Committed; not yet deployed. Waiting for the owner to verify."
+   },
+   {
+    "date": "2026-10-03",
+    "note": "Deployed to app.clinicos.cc (commit 0d82f9c, pre-deploy backup taken, API ready). Live check on the suspended test-clinic: sign-in refused 403 TENANT_INACTIVE, and a valid pass for it refused on its next request (before the fix: 200). No other refusals in the API log since the deploy."
    }
   ],
   "order": 2
