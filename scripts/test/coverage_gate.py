@@ -54,12 +54,23 @@ for l in lines(a.percent):
     if m:
         pct[m.group(1).replace("github.com/reicb/clinicsaas/", "")] = float(m.group(2))
 
-baseline = {}
+# Each line: "<package> <minimum>", optionally "slack=<points> # <reason>". Slack is
+# for a package whose coverage moves between identical runs (code driven by
+# background timers inside the API under test): a drop smaller than the slack is
+# timing, not lost tests. It needs a written reason, and the updater keeps both.
+baseline, slack, note = {}, {}, {}
 for l in lines(a.baseline):
     if l.startswith("#"):
         continue
-    k, v = l.split()
+    body, _, comment = l.partition("#")
+    parts = body.split()
+    k, v = parts[0], parts[1]
     baseline[k] = float(v)
+    for extra in parts[2:]:
+        if extra.startswith("slack="):
+            slack[k] = float(extra[len("slack="):])
+    if comment.strip():
+        note[k] = comment.strip()
 
 out = []
 w = out.append
@@ -81,7 +92,7 @@ for pkg in sorted(baseline):
         drops.append(pkg)
         continue
     flag = ""
-    if now + 0.05 < base:
+    if now + 0.05 + slack.get(pkg, 0) < base:
         flag = "  ✗ DROPPED"
         drops.append(pkg)
     w(f"   {pkg:<40} {now:5.1f}%   baseline {base:5.1f}%{flag}")
@@ -95,7 +106,8 @@ if a.update_baseline:
         f.write("# Minimum statement coverage per package (scripts/test/coverage_gate.py).\n")
         f.write("# Raised by `scripts/test/coverage.sh --update-baseline`; never lowered by hand without a reason.\n")
         for pkg in sorted(new):
-            f.write(f"{pkg} {new[pkg]}\n")
+            extra = (f" slack={slack[pkg]}" if pkg in slack else "") + (f"  # {note[pkg]}" if pkg in note else "")
+            f.write(f"{pkg} {new[pkg]}{extra}\n")
     w("\nbaseline updated (ratchet raised where coverage improved)")
 
 ok = not missing and not drops

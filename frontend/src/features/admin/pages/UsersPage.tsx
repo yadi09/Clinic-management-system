@@ -150,7 +150,7 @@ export function UsersPage() {
                         )}
                         {/* A forgotten password had no way out: the invitation has
                             been used, and nothing could issue another. */}
-                        {canInvite && u.status !== "suspended" && (
+                        {canInvite && u.status !== "suspended" && u.status !== "deactivated" && (
                           <button className="text-xs text-primary hover:underline"
                             onClick={() => resetMut.mutate(u)}>
                             {resetMut.isPending && resetMut.variables?.id === u.id ? "Working…" : "Reset password"}

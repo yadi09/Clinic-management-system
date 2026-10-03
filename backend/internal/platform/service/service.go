@@ -191,8 +191,16 @@ func (s *Service) SetClinicStatus(ctx context.Context, tenantID uuid.UUID, statu
 	if status != "active" && status != "suspended" {
 		return apperr.Validation("status must be active or suspended")
 	}
+	// Suspended means stopped now (SEC-10): every device signed in to this clinic is
+	// signed out in the same statement that suspends it, so the two cannot come
+	// apart. Reactivating does not bring sessions back; staff sign in again.
 	ct, err := s.db.Pool.Exec(ctx,
-		`UPDATE tenants SET status = $1, updated_at = now() WHERE id = $2 AND deleted_at IS NULL`, status, tenantID)
+		`WITH t AS (
+		   UPDATE tenants SET status = $1, updated_at = now() WHERE id = $2 AND deleted_at IS NULL RETURNING id),
+		 ended AS (
+		   UPDATE sessions SET revoked_at = now()
+		    WHERE $1 = 'suspended' AND tenant_id IN (SELECT id FROM t) AND revoked_at IS NULL)
+		 SELECT 1 FROM t`, status, tenantID)
 	if err != nil {
 		return apperr.Internal(err)
 	}

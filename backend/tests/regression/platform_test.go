@@ -692,10 +692,19 @@ func TestREG_PLAT_016_SuspendingAClinicEndsItsSessions(t *testing.T) {
 	owner.Do("GET", "/patients", nil).Expect(t, 200, "owner reads patients before suspension")
 	adm.Do("POST", "/platform/clinics/"+p.Clinic.ID+"/suspend", nil).Expect(t, 204, "suspend")
 	r := owner.Do("GET", "/patients", nil)
-	testkit.KnownBug(t, "SEC-10", r.Status == 200, "a suspended clinic's open session still reads patients")
-	if r.Status != 401 && r.Status != 403 {
-		t.Fatalf("suspended clinic session: want 401/403, got %d", r.Status)
+	// (SEC-10, fixed 2026-10-03.)
+	if r.Status != 403 || r.Code != "TENANT_INACTIVE" {
+		t.Fatalf("suspended clinic session: HTTP %d %s, want 403 TENANT_INACTIVE", r.Status, r.Code)
 	}
+	var live int
+	one(t, `SELECT count(*) FROM sessions s JOIN tenants t ON t.id = s.tenant_id
+	         WHERE t.slug = $1 AND s.revoked_at IS NULL`, &live, p.WorkspaceSlug)
+	if live != 0 {
+		t.Fatalf("suspending left %d live session(s) in the clinic", live)
+	}
+	// Reactivated: nobody is silently signed back in, and a fresh sign-in works.
+	adm.Do("POST", "/platform/clinics/"+p.Clinic.ID+"/reactivate", nil).Expect(t, 204, "reactivate")
+	platStaffLogin(t, p.WorkspaceSlug, p.OwnerEmail, p.TempPassword)
 }
 
 // ---- modules and policies --------------------------------------------------------------

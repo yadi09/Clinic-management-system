@@ -17,7 +17,7 @@ import type { ToothStatusDef } from "@/features/dental/api";
 import { renderUI } from "@/test/render";
 
 // The tooth list is 32 rows plus quick picks; a few clicks re-render it all.
-vi.setConfig({ testTimeout: 20000 });
+vi.setConfig({ testTimeout: 60_000 });
 
 const STATUSES: ToothStatusDef[] = [
   { id: "1", code: "decayed", label: "Decayed", color: "#ef4444", sort_order: 1, is_active: true },

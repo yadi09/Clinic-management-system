@@ -182,7 +182,22 @@ func (s *UserService) UpdateUserStatus(ctx context.Context, userID uuid.UUID, st
 				return e
 			}
 		}
-		return q.UpdateUserStatus(ctx, identitydb.UpdateUserStatusParams{TenantID: tenantID, ID: userID, Status: status})
+		e := q.UpdateUserStatus(ctx, identitydb.UpdateUserStatusParams{TenantID: tenantID, ID: userID, Status: status})
+		if e != nil || status == "active" {
+			return e
+		}
+		// Locked out means locked out now (SEC-2): every device they are signed in on
+		// is signed out, and any invite or reset link they still hold stops working,
+		// so neither a phone left signed in nor an old link brings them back. One
+		// statement, in the same transaction as the status change.
+		_, e = tx.Exec(ctx,
+			`WITH ended AS (
+			   UPDATE sessions SET revoked_at = now()
+			    WHERE tenant_id = $1 AND user_id = $2 AND revoked_at IS NULL)
+			 UPDATE user_invitations SET expires_at = now()
+			  WHERE tenant_id = $1 AND user_id = $2 AND accepted_at IS NULL AND expires_at > now()`,
+			tenantID, userID)
+		return e
 	})
 }
 
@@ -362,7 +377,7 @@ const resetLinkTTL = 12 * time.Hour
 // sets the password WITHOUT signing the person in — otherwise anyone holding the
 // link would walk past an enabled second factor.
 //
-// A suspended account is refused rather than reset. The password path activates the
+// A suspended or deactivated account is refused rather than reset. The password path activates the
 // user as it sets the password, so resetting a suspended account would quietly
 // restore access that somebody deliberately removed; reactivating is a separate
 // decision, and it belongs to whoever suspended them.
@@ -381,8 +396,8 @@ func (s *UserService) IssueResetLink(ctx context.Context, userID uuid.UUID) (*id
 		if e != nil {
 			return e
 		}
-		if status == "suspended" {
-			return apperr.Validation("this account is suspended — reactivate it first, then issue a reset link")
+		if status == "suspended" || status == "deactivated" {
+			return apperr.Validation("this account is " + status + " — reactivate it first, then issue a reset link")
 		}
 		// Retire every link still outstanding for this person, so the one just issued
 		// is the only one that works.

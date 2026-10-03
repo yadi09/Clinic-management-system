@@ -21,12 +21,12 @@ h1 { font-family:Fraunces,Georgia,serif; font-weight:600; font-size:2.1rem; line
 .lede { color:var(--soft); max-width:62ch; margin:0 0 24px }
 .progress { display:flex; align-items:center; gap:14px; margin:0 0 22px }
 .bar { flex:1; height:12px; border-radius:6px; background:var(--line); overflow:hidden }
-.bar i { display:block; height:100%; background:var(--ok); width:0% }
+.bar i { display:block; height:100%; background:var(--ok); width:1% }
 .progress b { white-space:nowrap }
 .how { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 20px; margin:0 0 22px }
 .how ol { margin:6px 0 0; padding-left:22px } .how li { margin:2px 0 }
 .tallies { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:0 0 18px }
-.tally { text-align:left; font:inherit; color:inherit; background:var(--card); border:1px solid var(--line); border-top:5px solid; border-radius:10px; padding:12px 14px; cursor:pointer }
+.tally { display:flex; flex-direction:column; justify-content:flex-start; align-items:flex-start; text-align:left; font:inherit; color:inherit; background:var(--card); border:1px solid var(--line); border-top:5px solid; border-radius:10px; padding:12px 14px; cursor:pointer }
 .tally b { font-size:1.9rem; line-height:1; display:block } .tally span { font-weight:700 }
 .tally small { display:block; color:var(--soft); font-size:.8rem; line-height:1.35; margin-top:4px }
 .tally.on { outline:3px solid var(--teal); outline-offset:1px }
@@ -49,6 +49,7 @@ h1 { font-family:Fraunces,Georgia,serif; font-weight:600; font-size:2.1rem; line
 .sev-critical .sev { color:var(--crit); background:var(--crit-bg) } .sev-high .sev { color:var(--high); background:var(--high-bg) }
 .sev-medium .sev { color:var(--med); background:var(--med-bg) } .sev-low .sev { color:var(--low); background:var(--low-bg) }
 .ttl { font-weight:700 }
+.notest { font-style:normal; color:var(--high) }
 .meta { grid-column:3; color:var(--soft); font-size:.85rem }
 .status { grid-row:1; grid-column:4; font-size:.8rem; font-weight:700; padding:2px 10px; border-radius:20px; background:var(--low-bg); color:var(--soft); white-space:nowrap }
 .st-explained .status, .st-confirmed .status { background:var(--high-bg); color:var(--high) }
@@ -74,9 +75,9 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 </style></head>
 <body><div class="wrap">
 <h1>ClinicOS bug tracker</h1>
-<p class="lede">Every known problem in the system, in plain words, most urgent first. Each one is already caught by an automated test, so when it is fixed the test proves it, and keeps proving it after every future change.</p>
+<p class="lede">Every known problem in the system, in plain words, most urgent first. 139 of the 190 are already caught by an automated test, so when one is fixed its test proves it, and keeps proving it after every future change. The other 51, marked <i>No test yet</i>, came from the audit (mostly server and operations work); each gets a test or a written check when it is fixed.</p>
 
-<div class="progress"><div class="bar"><i></i></div><b>0 of 190 closed</b></div>
+<div class="progress"><div class="bar"><i></i></div><b>1 of 190 closed</b></div>
 
 <div class="how"><b>How we work through this list</b>
 <ol>
@@ -85,22 +86,22 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 <li><b>Fix:</b> I change the code; its test turns from "known bug" to a normal passing test, and the whole suite must still pass.</li>
 <li><b>Verify:</b> you check it and accept it. Then the next one.</li>
 </ol>
-<p style="margin:8px 0 0;color:var(--soft)">Right now: 189 open · 0 explained or confirmed · 1 fixed, waiting for your check · 0 verified.</p>
+<p style="margin:8px 0 0;color:var(--soft)">Right now: 187 open · 0 explained or confirmed · 2 fixed, waiting for your check · 1 verified.</p>
 </div>
 
-<a class="next" href="#SEC-2" data-open="SEC-2"><span>Next up</span><b>Removed staff keep access for up to a month</b><em>Critical · SEC-2 · Open</em></a>
+<a class="next" href="#SEC-1" data-open="SEC-1"><span>Next up</span><b>A file record can point at another clinic&#x27;s stored file</b><em>Critical · SEC-1 · Open</em></a>
 
 <div class="tallies"><button class="tally sev-critical" data-filter-sev="critical"><b>9</b><span>Critical</span><small>Money lost or created wrongly, a patient-safety risk, or someone reaching data they must not.</small></button><button class="tally sev-high" data-filter-sev="high"><b>42</b><span>High</span><small>Wrong figures, changes nobody can trace, or permission holes inside a clinic.</small></button><button class="tally sev-medium" data-filter-sev="medium"><b>74</b><span>Medium</span><small>Wrong but recoverable, or a screen that misleads about what is real.</small></button><button class="tally sev-low" data-filter-sev="low"><b>65</b><span>Low</span><small>Cosmetic, a wrong error message, or a rare edge.</small></button></div>
 
 <div class="filters">
   <input id="q" type="search" placeholder="Search: cashier, follow-up, refund…" aria-label="Search issues">
-  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (189)</option><option value="explained">Explained (0)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (1)</option><option value="verified">Verified (0)</option><option value="wontfix">Won't fix (0)</option></select>
+  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (187)</option><option value="explained">Explained (0)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (2)</option><option value="verified">Verified (1)</option><option value="wontfix">Won't fix (0)</option></select>
   <select id="ar" aria-label="Area"><option value="">Every area</option><option value="Appointments &amp; front desk">Appointments &amp; front desk</option><option value="Dental">Dental</option><option value="Money">Money</option><option value="Patient records">Patient records</option><option value="Reliability">Reliability</option><option value="Safety &amp; access">Safety &amp; access</option><option value="Screens &amp; usability">Screens &amp; usability</option></select>
 </div>
 <p class="count" id="count"></p>
 
 
-<article class="issue sev-critical st-fixed" id="OPS-1" data-sev="critical" data-status="fixed"
+<article class="issue sev-critical st-verified" id="OPS-1" data-sev="critical" data-status="verified"
   data-area="Reliability" data-q="ops-1 all backups sit on the same server as the database backups are made every night, but they are kept only on the same server&#x27;s disk, next to the database. the copy to a separate storage account is ready but switched off until a backup key is created. the secret keys needed to read some encrypted fields sit beside them. this is the one item the audit says blocks go-live. the hosting company has a disk failure on a sunday night. on monday cure dental has no patient list, no balances owed, no treatment history, and no backup anywhere else to restore from. every clinic reliability">
   <details>
     <summary>
@@ -108,7 +109,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">Critical</span>
       <span class="ttl">All backups sit on the same server as the database</span>
       <span class="meta"><span class="id">OPS-1</span> · Reliability · effort S</span>
-      <span class="status">Fixed</span>
+      <span class="status">Verified</span>
     </summary>
     <div class="body">
       
@@ -125,11 +126,11 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>docs/backup-restore.md</code></li><li><code>scripts/backup/backup.sh:36</code></li><li><code>scripts/backup/backup.sh:57</code></li><li><code>scripts/backup/lib.sh</code></li><li><code>scripts/backup/restore-from-r2.sh</code></li></ul>
         </details>
       </div>
-      <div class="log"><b>History</b><ul><li><time>2026-10-03</time> Walked through with the owner; waiting for confirmation and the backup key.</li><li><time>2026-10-03</time> Owner confirmed. Owner creates the R2 bucket + key and writes r2.env on the server; code side built: encryption before upload, refusal to upload unencrypted, restore script with a throwaway-database check, written restore guide, 11-check test in regress.sh.</li><li><time>2026-10-03</time> Live: owner wrote r2.env; new scripts on the server; first encrypted backup uploaded (offsite: yes). Restore check from R2: decrypted, hash matched, loaded into a throwaway database: 9 clinics, 683 patients, 851 bills, 151 dental visits, identical to live. Bucket holds only encrypted files. Waiting for the owner to verify.</li></ul></div>
+      <div class="log"><b>History</b><ul><li><time>2026-10-03</time> Walked through with the owner; waiting for confirmation and the backup key.</li><li><time>2026-10-03</time> Owner confirmed. Owner creates the R2 bucket + key and writes r2.env on the server; code side built: encryption before upload, refusal to upload unencrypted, restore script with a throwaway-database check, written restore guide, 11-check test in regress.sh.</li><li><time>2026-10-03</time> Live: owner wrote r2.env; new scripts on the server; first encrypted backup uploaded (offsite: yes). Restore check from R2: decrypted, hash matched, loaded into a throwaway database: 9 clinics, 683 patients, 851 bills, 151 dental visits, identical to live. Bucket holds only encrypted files. Waiting for the owner to verify.</li><li><time>2026-10-03</time> Owner verified: encrypted backups present in the Cloudflare bucket.</li></ul></div>
     </div>
   </details>
 </article>
-<article class="issue sev-critical st-open" id="SEC-2" data-sev="critical" data-status="open"
+<article class="issue sev-critical st-fixed" id="SEC-2" data-sev="critical" data-status="fixed"
   data-area="Safety &amp; access" data-q="sec-2 removed staff keep access for up to a month when the owner deactivates or suspends a staff member, only new sign-ins are blocked. a phone or computer that was already signed in keeps renewing itself quietly and keeps full access for up to 30 days. worse, an old password-reset link they still hold switches their account back on. selam the receptionist is let go on monday and hanna (owner) clicks deactivate. selam&#x27;s phone is still signed in: for the next weeks she can open patient files, phone numbers and balances from home. she also kept a reset link from last month; opening it turns her account active again. owner, every patient&#x27;s privacy safety &amp; access">
   <details>
     <summary>
@@ -137,7 +138,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">Critical</span>
       <span class="ttl">Removed staff keep access for up to a month</span>
       <span class="meta"><span class="id">SEC-2</span> · Safety &amp; access · effort S</span>
-      <span class="status">Open</span>
+      <span class="status">Fixed</span>
     </summary>
     <div class="body">
       
@@ -150,15 +151,15 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       </dl>
       <div class="tech">
         <details><summary>For the developer: tests and code</summary>
-          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li><code>TestREG_AUTH_013_DeactivatedUserCannotSignInOrRefresh</code></li><li><code>TestREG_AUTH_014_SuspendedUserCannotSignInOrRefresh</code></li><li><code>TestREG_AUTH_015_DeactivatedUserCannotReactivateWithOldResetLink</code></li></ul>
+          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li><code>REG-FE-STAFF-008</code></li><li><code>TestREG_AUTH_013_DeactivatedUserCannotSignInOrRefresh</code></li><li><code>TestREG_AUTH_014_SuspendedUserCannotSignInOrRefresh</code></li><li><code>TestREG_AUTH_015_DeactivatedUserCannotReactivateWithOldResetLink</code></li><li><code>TestREG_AUTH_023_ResetLinkStillCompletesAnUnacceptedInvitation</code></li><li><code>TestREG_AUTH_024_RenewalChecksTheAccountItself</code></li><li><code>TestREG_AUTH_025_UnexpiredLinkCannotSwitchALockedOutAccountOn</code></li><li><code>TestREG_AUTH_027_SignInEdgesAreRefusedCleanly</code></li></ul>
           <p>Where in the code:</p><ul><li><code>backend/internal/identity/service/user_service.go:173</code></li><li><code>backend/internal/identity/service/auth_service.go:166</code></li><li><code>backend/internal/identity/service/auth_service.go:352</code></li></ul>
         </details>
       </div>
-      
+      <div class="log"><b>History</b><ul><li><time>2026-10-03</time> Explained to the owner, who confirmed it is a problem to fix.</li><li><time>2026-10-03</time> Fix written: locking someone out signs them out everywhere, retires their invite/reset links, renewals check the account is active, and a reset link can no longer switch a locked-out account back on. Full regression run in progress.</li><li><time>2026-10-03</time> First full run: every behaviour test passed, but two checks failed: the backup test assumed a filled database, and two new safety checks were not reached by any test (coverage 86.5% to 86.0%). Fixed both, added tests REG_AUTH_024/025; full run repeated.</li><li><time>2026-10-03</time> Full run for issues 2+3 failed: 1 screen test timed out under load, and coverage dropped in 4 packages (new code no test reached). Fixed: removed a renewal check that could never run, made suspend + sign-out (and staff lock-out + link retirement) single database statements so they cannot come apart, added a unit test for the per-request check (REG_KERNEL_HTTPX_020), raised the screen-test wait from 1 s to 5 s, and documented the SMS timer wobble in the coverage minimums. Full run repeated.</li><li><time>2026-10-03</time> Attempt 2 failed: sign-in coverage 85.8% (minimum 86.5%) and one long examination test exceeded 20 s under load. Added REG_AUTH_027 (expired renewal, harmless logout with unknown token, too-short password, blank email, invitation without @); raised the per-test limit to 60 s (a quick fix that removed typing pauses broke two tests, so it was reverted). Attempt 3 running.</li><li><time>2026-10-03</time> Attempt 3 passed server (667 pass, 0 fail), coverage gate (264/264 routes, no package below its minimum) and browser journeys (10/10); two storage-blocked screen tests added for the last coverage minimums, then lint, typecheck and all 1,625 screen tests with minimums passed. Committed; not yet deployed. Waiting for the owner to verify.</li></ul></div>
     </div>
   </details>
 </article>
-<article class="issue sev-critical st-open" id="SEC-10" data-sev="critical" data-status="open"
+<article class="issue sev-critical st-fixed" id="SEC-10" data-sev="critical" data-status="fixed"
   data-area="Safety &amp; access" data-q="sec-10 a suspended clinic stays signed in and keeps working when you suspend a clinic from the platform console, its staff can no longer sign in fresh. but everyone already signed in keeps working normally, because nothing re-checks the clinic&#x27;s status: the short pass renews itself for up to 30 days. bole dental stops paying and you press suspend on friday. on monday their reception, already signed in, is still registering patients and taking 1,500 birr payments as if nothing happened. vendor (you), suspended clinic&#x27;s staff safety &amp; access">
   <details>
     <summary>
@@ -166,7 +167,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">Critical</span>
       <span class="ttl">A suspended clinic stays signed in and keeps working</span>
       <span class="meta"><span class="id">SEC-10</span> · Safety &amp; access · effort M</span>
-      <span class="status">Open</span>
+      <span class="status">Fixed</span>
     </summary>
     <div class="body">
       
@@ -179,11 +180,11 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       </dl>
       <div class="tech">
         <details><summary>For the developer: tests and code</summary>
-          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li><code>TestREG_AUTH_021_SuspendedClinicRefreshIsRefused</code></li><li><code>TestREG_AUTH_022_SuspendedClinicAccessTokenStopsWorking</code></li><li><code>TestREG_PLAT_016_SuspendingAClinicEndsItsSessions</code></li></ul>
+          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li><code>REG-FE-API-017</code></li><li><code>REG-FE-LOGIN-009</code></li><li><code>REG-FE-LOGIN-010</code></li><li><code>REG-FE-SESSION-003</code></li><li><code>REG-FE-SESSION-004</code></li><li><code>REG-FE-SESSION-005</code></li><li><code>TestREG_AUTH_021_SuspendedClinicRefreshIsRefused</code></li><li><code>TestREG_AUTH_022_SuspendedClinicAccessTokenStopsWorking</code></li><li><code>TestREG_AUTH_026_LockedOutStaffStopAtTheirNextRequest</code></li><li><code>TestREG_KERNEL_HTTPX_020_AccountGuardDecidesEveryRequest</code></li><li><code>TestREG_PLAT_016_SuspendingAClinicEndsItsSessions</code></li></ul>
           <p>Where in the code:</p><ul><li><code>backend/internal/identity/service/auth_service.go:166</code></li><li><code>backend/internal/kernel/httpx/middleware.go:111</code></li><li><code>backend/internal/platform/service/service.go:190</code></li></ul>
         </details>
       </div>
-      
+      <div class="log"><b>History</b><ul><li><time>2026-10-03</time> Explained; owner confirmed: once a clinic is suspended, nobody in it should stay signed in.</li><li><time>2026-10-03</time> Fix written: suspending a clinic signs out every session; renewal and every request check the clinic and the person are active (instant, no cache); the app signs out and the sign-in page says the workspace is suspended. Three existing tests updated where the stricter rule answers earlier (documented in each). Full run in progress, together with issue 2.</li><li><time>2026-10-03</time> Full run for issues 2+3 failed: 1 screen test timed out under load, and coverage dropped in 4 packages (new code no test reached). Fixed: removed a renewal check that could never run, made suspend + sign-out (and staff lock-out + link retirement) single database statements so they cannot come apart, added a unit test for the per-request check (REG_KERNEL_HTTPX_020), raised the screen-test wait from 1 s to 5 s, and documented the SMS timer wobble in the coverage minimums. Full run repeated.</li><li><time>2026-10-03</time> Attempt 2 failed: sign-in coverage 85.8% (minimum 86.5%) and one long examination test exceeded 20 s under load. Added REG_AUTH_027 (expired renewal, harmless logout with unknown token, too-short password, blank email, invitation without @); raised the per-test limit to 60 s (a quick fix that removed typing pauses broke two tests, so it was reverted). Attempt 3 running.</li><li><time>2026-10-03</time> Attempt 3 passed server (667 pass, 0 fail), coverage gate (264/264 routes, no package below its minimum) and browser journeys (10/10); two storage-blocked screen tests added for the last coverage minimums, then lint, typecheck and all 1,625 screen tests with minimums passed. Committed; not yet deployed. Waiting for the owner to verify.</li></ul></div>
     </div>
   </details>
 </article>
@@ -339,7 +340,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">9</span>
       <span class="sev">Critical</span>
       <span class="ttl">Retrying Collect at reception bills extras twice</span>
-      <span class="meta"><span class="id">APT-3</span> · Appointments &amp; front desk · effort M</span>
+      <span class="meta"><span class="id">APT-3</span> · Appointments &amp; front desk · effort M · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -1140,7 +1141,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>backend/internal/identity/service/auth_service.go:185</code></li><li><code>backend/internal/identity/service/auth_service.go:185-203</code></li><li><code>frontend/src/app/auth-context.tsx</code></li><li><code>frontend/src/lib/api-client.ts:40</code></li><li><code>frontend/src/lib/api-client.ts:41-80</code></li></ul>
         </details>
       </div>
-      
+      <div class="log"><b>History</b><ul><li><time>2026-10-03</time> Half fixed with SEC-10: a session that dies mid-use now signs the app out and the sign-in page says so (REG-FE-SESSION-002 is now a normal test). Still open: two tabs refreshing at once can revoke each other.</li></ul></div>
     </div>
   </details>
 </article>
@@ -1151,7 +1152,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">37</span>
       <span class="sev">High</span>
       <span class="ttl">No written, tested way to restore a backup</span>
-      <span class="meta"><span class="id">OPS-2</span> · Reliability · effort M</span>
+      <span class="meta"><span class="id">OPS-2</span> · Reliability · effort M · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -1180,7 +1181,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">38</span>
       <span class="sev">High</span>
       <span class="ttl">X-rays and uploaded files have no backup</span>
-      <span class="meta"><span class="id">OPS-3</span> · Reliability · effort M</span>
+      <span class="meta"><span class="id">OPS-3</span> · Reliability · effort M · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -1209,7 +1210,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">39</span>
       <span class="sev">High</span>
       <span class="ttl">Backups and the secrets file are not encrypted</span>
-      <span class="meta"><span class="id">OPS-6</span> · Reliability · effort S</span>
+      <span class="meta"><span class="id">OPS-6</span> · Reliability · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -1238,7 +1239,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">40</span>
       <span class="sev">High</span>
       <span class="ttl">No monitoring: problems are found when a clinic phones</span>
-      <span class="meta"><span class="id">OPS-4</span> · Reliability · effort S</span>
+      <span class="meta"><span class="id">OPS-4</span> · Reliability · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -1267,7 +1268,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">41</span>
       <span class="sev">High</span>
       <span class="ttl">Server door 8443 is open to the internet, bypassing Cloudflare</span>
-      <span class="meta"><span class="id">OPS-5</span> · Safety &amp; access · effort S</span>
+      <span class="meta"><span class="id">OPS-5</span> · Safety &amp; access · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -1296,7 +1297,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">42</span>
       <span class="sev">High</span>
       <span class="ttl">Test scripts run on the live system with full rights</span>
-      <span class="meta"><span class="id">TST-4</span> · Reliability · effort S</span>
+      <span class="meta"><span class="id">TST-4</span> · Reliability · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -1325,7 +1326,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">43</span>
       <span class="sev">High</span>
       <span class="ttl">A few slow reports can freeze the system for everyone</span>
-      <span class="meta"><span class="id">PERF-1</span> · Reliability · effort S</span>
+      <span class="meta"><span class="id">PERF-1</span> · Reliability · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -1412,7 +1413,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">46</span>
       <span class="sev">High</span>
       <span class="ttl">Deleting an X-ray destroys the file with no record</span>
-      <span class="meta"><span class="id">DEN-2</span> · Dental · effort M</span>
+      <span class="meta"><span class="id">DEN-2</span> · Dental · effort M · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -1615,7 +1616,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">53</span>
       <span class="sev">Medium</span>
       <span class="ttl">A single bill cannot be part-paid</span>
-      <span class="meta"><span class="id">FIN-8</span> · Money · effort L</span>
+      <span class="meta"><span class="id">FIN-8</span> · Money · effort L · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -1905,7 +1906,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">63</span>
       <span class="sev">Medium</span>
       <span class="ttl">Some security steps ignore their own failures</span>
-      <span class="meta"><span class="id">CQ-4</span> · Safety &amp; access · effort S</span>
+      <span class="meta"><span class="id">CQ-4</span> · Safety &amp; access · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -1963,7 +1964,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">65</span>
       <span class="sev">Medium</span>
       <span class="ttl">The app can edit or erase its own history records</span>
-      <span class="meta"><span class="id">DB-2</span> · Safety &amp; access · effort S</span>
+      <span class="meta"><span class="id">DB-2</span> · Safety &amp; access · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -1992,7 +1993,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">66</span>
       <span class="sev">Medium</span>
       <span class="ttl">Clinic database account can change vendor price lists</span>
-      <span class="meta"><span class="id">DB-3</span> · Safety &amp; access · effort S</span>
+      <span class="meta"><span class="id">DB-3</span> · Safety &amp; access · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -2108,7 +2109,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">70</span>
       <span class="sev">Medium</span>
       <span class="ttl">Website lacks standard browser security settings</span>
-      <span class="meta"><span class="id">SEC-7</span> · Safety &amp; access · effort S</span>
+      <span class="meta"><span class="id">SEC-7</span> · Safety &amp; access · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -2369,7 +2370,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">79</span>
       <span class="sev">Medium</span>
       <span class="ttl">Duplicate patients can still slip in at registration</span>
-      <span class="meta"><span class="id">PAT-4</span> · Patient records · effort M</span>
+      <span class="meta"><span class="id">PAT-4</span> · Patient records · effort M · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -2398,7 +2399,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">80</span>
       <span class="sev">Medium</span>
       <span class="ttl">Deleted patients still show in queue and appointment lists; no merge tool</span>
-      <span class="meta"><span class="id">PAT-5</span> · Patient records · effort L</span>
+      <span class="meta"><span class="id">PAT-5</span> · Patient records · effort L · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -2456,7 +2457,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">82</span>
       <span class="sev">Medium</span>
       <span class="ttl">Down payment can be set to zero unchecked</span>
-      <span class="meta"><span class="id">DEN-4</span> · Dental · effort S</span>
+      <span class="meta"><span class="id">DEN-4</span> · Dental · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -2485,7 +2486,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">83</span>
       <span class="sev">Medium</span>
       <span class="ttl">Visit numbers differ between screens</span>
-      <span class="meta"><span class="id">DEN-5</span> · Dental · effort M</span>
+      <span class="meta"><span class="id">DEN-5</span> · Dental · effort M · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -2514,7 +2515,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">84</span>
       <span class="sev">Medium</span>
       <span class="ttl">Fast taps on the tooth chart can undo a colleague&#x27;s change</span>
-      <span class="meta"><span class="id">DEN-6</span> · Dental · effort M</span>
+      <span class="meta"><span class="id">DEN-6</span> · Dental · effort M · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -2543,7 +2544,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">85</span>
       <span class="sev">Medium</span>
       <span class="ttl">Tooth chart is basic: no surfaces, no children&#x27;s teeth, no history</span>
-      <span class="meta"><span class="id">DEN-7</span> · Dental · effort L</span>
+      <span class="meta"><span class="id">DEN-7</span> · Dental · effort L · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -2572,7 +2573,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">86</span>
       <span class="sev">Medium</span>
       <span class="ttl">&quot;Finish treatment&quot; strands visits the patient already paid for</span>
-      <span class="meta"><span class="id">DEN-8</span> · Dental · effort M</span>
+      <span class="meta"><span class="id">DEN-8</span> · Dental · effort M · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -2601,7 +2602,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">87</span>
       <span class="sev">Medium</span>
       <span class="ttl">Visit notes can be edited by any dentist forever</span>
-      <span class="meta"><span class="id">DEN-9</span> · Dental · effort M</span>
+      <span class="meta"><span class="id">DEN-9</span> · Dental · effort M · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -2746,7 +2747,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">92</span>
       <span class="sev">Medium</span>
       <span class="ttl">Treatment notes lock while the bill waits; unsaved notes can be lost</span>
-      <span class="meta"><span class="id">UX-3</span> · Dental · effort M</span>
+      <span class="meta"><span class="id">UX-3</span> · Dental · effort M · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -2775,7 +2776,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">93</span>
       <span class="sev">Medium</span>
       <span class="ttl">The visit being recorded can switch under the dentist</span>
-      <span class="meta"><span class="id">UX-4</span> · Dental · effort S</span>
+      <span class="meta"><span class="id">UX-4</span> · Dental · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -2804,7 +2805,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">94</span>
       <span class="sev">Medium</span>
       <span class="ttl">Dental prescription needs a treatment and a paid fee</span>
-      <span class="meta"><span class="id">UX-5</span> · Dental · effort M</span>
+      <span class="meta"><span class="id">UX-5</span> · Dental · effort M · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -2920,7 +2921,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">98</span>
       <span class="sev">Medium</span>
       <span class="ttl">After a fee is paid, the queue card loses its booking link</span>
-      <span class="meta"><span class="id">APT-5</span> · Appointments &amp; front desk · effort M</span>
+      <span class="meta"><span class="id">APT-5</span> · Appointments &amp; front desk · effort M · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -3036,7 +3037,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">102</span>
       <span class="sev">Medium</span>
       <span class="ttl">Follow-ups &#x27;Missed&#x27; forgets visits older than 30 days</span>
-      <span class="meta"><span class="id">FE-5</span> · Appointments &amp; front desk · effort S</span>
+      <span class="meta"><span class="id">FE-5</span> · Appointments &amp; front desk · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -3297,7 +3298,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">111</span>
       <span class="sev">Medium</span>
       <span class="ttl">No &#x27;you are offline&#x27; signal; chart says saved when it wasn&#x27;t</span>
-      <span class="meta"><span class="id">FE-3</span> · Reliability · effort M</span>
+      <span class="meta"><span class="id">FE-3</span> · Reliability · effort M · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -3355,7 +3356,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">113</span>
       <span class="sev">Medium</span>
       <span class="ttl">Test database and another business share the live server</span>
-      <span class="meta"><span class="id">OPS-11</span> · Reliability · effort M</span>
+      <span class="meta"><span class="id">OPS-11</span> · Reliability · effort M · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -3384,7 +3385,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">114</span>
       <span class="sev">Medium</span>
       <span class="ttl">Updates go live in clinic hours, untested on a copy</span>
-      <span class="meta"><span class="id">OPS-7</span> · Reliability · effort M</span>
+      <span class="meta"><span class="id">OPS-7</span> · Reliability · effort M · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -3413,7 +3414,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">115</span>
       <span class="sev">Medium</span>
       <span class="ttl">A failed update can leave the system half-changed</span>
-      <span class="meta"><span class="id">OPS-8</span> · Reliability · effort M</span>
+      <span class="meta"><span class="id">OPS-8</span> · Reliability · effort M · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -3442,7 +3443,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">116</span>
       <span class="sev">Medium</span>
       <span class="ttl">Server logs vanish on every update and are not size-limited</span>
-      <span class="meta"><span class="id">OPS-9</span> · Reliability · effort S</span>
+      <span class="meta"><span class="id">OPS-9</span> · Reliability · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -3732,7 +3733,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">126</span>
       <span class="sev">Low</span>
       <span class="ttl">Old card-fee &quot;paid today&quot; uses the UTC day</span>
-      <span class="meta"><span class="id">CQ-6</span> · Money · effort S</span>
+      <span class="meta"><span class="id">CQ-6</span> · Money · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -3761,7 +3762,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">127</span>
       <span class="sev">Low</span>
       <span class="ttl">Day list compares all-method takings with a cash-only count</span>
-      <span class="meta"><span class="id">FIN-10</span> · Money · effort S</span>
+      <span class="meta"><span class="id">FIN-10</span> · Money · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -3790,7 +3791,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">128</span>
       <span class="sev">Low</span>
       <span class="ttl">Pharmacy counter sales are kept outside the main books</span>
-      <span class="meta"><span class="id">FIN-14</span> · Money · effort M</span>
+      <span class="meta"><span class="id">FIN-14</span> · Money · effort M · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -3877,7 +3878,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">131</span>
       <span class="sev">Low</span>
       <span class="ttl">Old Cloudinary secret copy still on the development computer</span>
-      <span class="meta"><span class="id">AUDIT-CLOUDINARY-1</span> · Safety &amp; access · effort S</span>
+      <span class="meta"><span class="id">AUDIT-CLOUDINARY-1</span> · Safety &amp; access · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -3906,7 +3907,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">132</span>
       <span class="sev">Low</span>
       <span class="ttl">Demo seed passwords are guessable and not blocked in production</span>
-      <span class="meta"><span class="id">CQ-7</span> · Safety &amp; access · effort S</span>
+      <span class="meta"><span class="id">CQ-7</span> · Safety &amp; access · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -4022,7 +4023,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">136</span>
       <span class="sev">Low</span>
       <span class="ttl">Two-step sign-in exists but staff cannot turn it on</span>
-      <span class="meta"><span class="id">SEC-11</span> · Safety &amp; access · effort M</span>
+      <span class="meta"><span class="id">SEC-11</span> · Safety &amp; access · effort M · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -4051,7 +4052,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">137</span>
       <span class="sev">Low</span>
       <span class="ttl">Anyone can lock staff out with deliberate wrong passwords</span>
-      <span class="meta"><span class="id">SEC-12</span> · Safety &amp; access · effort S</span>
+      <span class="meta"><span class="id">SEC-12</span> · Safety &amp; access · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -4080,7 +4081,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">138</span>
       <span class="sev">Low</span>
       <span class="ttl">AI assistant and voice transcription send patient details outside</span>
-      <span class="meta"><span class="id">SEC-14</span> · Safety &amp; access · effort S</span>
+      <span class="meta"><span class="id">SEC-14</span> · Safety &amp; access · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -4486,7 +4487,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">152</span>
       <span class="sev">Low</span>
       <span class="ttl">Small gaps in dental rules, reachable only by direct API calls</span>
-      <span class="meta"><span class="id">DEN-12</span> · Dental · effort S</span>
+      <span class="meta"><span class="id">DEN-12</span> · Dental · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -4602,7 +4603,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">156</span>
       <span class="sev">Low</span>
       <span class="ttl">Some lists don&#x27;t hide deleted records</span>
-      <span class="meta"><span class="id">APT-11</span> · Appointments &amp; front desk · effort S</span>
+      <span class="meta"><span class="id">APT-11</span> · Appointments &amp; front desk · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -4631,7 +4632,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">157</span>
       <span class="sev">Low</span>
       <span class="ttl">Yesterday&#x27;s queue cards never close; dental visits have no time or chair</span>
-      <span class="meta"><span class="id">APT-12</span> · Appointments &amp; front desk · effort M</span>
+      <span class="meta"><span class="id">APT-12</span> · Appointments &amp; front desk · effort M · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -4805,7 +4806,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">163</span>
       <span class="sev">Low</span>
       <span class="ttl">Some links between records are not enforced by the database</span>
-      <span class="meta"><span class="id">DB-4</span> · Reliability · effort S</span>
+      <span class="meta"><span class="id">DB-4</span> · Reliability · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -4834,7 +4835,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">164</span>
       <span class="sev">Low</span>
       <span class="ttl">Patient page reloads 12 things every 6 seconds while a bill waits</span>
-      <span class="meta"><span class="id">FE-4</span> · Reliability · effort S</span>
+      <span class="meta"><span class="id">FE-4</span> · Reliability · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -4863,7 +4864,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">165</span>
       <span class="sev">Low</span>
       <span class="ttl">Cancelled confirm-dialog actions cause hidden errors</span>
-      <span class="meta"><span class="id">FE-8</span> · Reliability · effort S</span>
+      <span class="meta"><span class="id">FE-8</span> · Reliability · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -5124,7 +5125,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">174</span>
       <span class="sev">Low</span>
       <span class="ttl">Background worker gives up if the database is briefly down</span>
-      <span class="meta"><span class="id">OPS-13</span> · Reliability · effort S</span>
+      <span class="meta"><span class="id">OPS-13</span> · Reliability · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -5153,7 +5154,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">175</span>
       <span class="sev">Low</span>
       <span class="ttl">A restore can lose a full day of work</span>
-      <span class="meta"><span class="id">OPS-14</span> · Reliability · effort S</span>
+      <span class="meta"><span class="id">OPS-14</span> · Reliability · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -5182,7 +5183,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">176</span>
       <span class="sev">Low</span>
       <span class="ttl">Dashboard and lists do much more database work than needed</span>
-      <span class="meta"><span class="id">PERF-2</span> · Reliability · effort L</span>
+      <span class="meta"><span class="id">PERF-2</span> · Reliability · effort L · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -5559,7 +5560,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">189</span>
       <span class="sev">Low</span>
       <span class="ttl">Mixed words for the same thing across screens</span>
-      <span class="meta"><span class="id">UX-8</span> · Screens &amp; usability · effort M</span>
+      <span class="meta"><span class="id">UX-8</span> · Screens &amp; usability · effort M · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -5588,7 +5589,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="num">190</span>
       <span class="sev">Low</span>
       <span class="ttl">Treatment plan window overflows on small phones</span>
-      <span class="meta"><span class="id">UX-9</span> · Screens &amp; usability · effort S</span>
+      <span class="meta"><span class="id">UX-9</span> · Screens &amp; usability · effort S · <i class="notest">No test yet</i></span>
       <span class="status">Open</span>
     </summary>
     <div class="body">
@@ -5611,7 +5612,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   </details>
 </article>
 
-<footer>Built 3 October 2026, 14:02 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
+<footer>Built 3 October 2026, 16:32 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
 </div>
 <script>
 (function () {

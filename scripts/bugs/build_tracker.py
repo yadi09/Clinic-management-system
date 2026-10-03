@@ -60,7 +60,7 @@ def card(i, n):
       <span class="num">{n}</span>
       <span class="sev">{SEV_LABEL[sev]}</span>
       <span class="ttl">{esc(i['title'])}</span>
-      <span class="meta"><span class="id">{esc(i['id'])}</span> · {esc(i['area'])} · effort {esc(i.get('effort', '?'))}</span>
+      <span class="meta"><span class="id">{esc(i['id'])}</span> · {esc(i['area'])} · effort {esc(i.get('effort', '?'))}{'' if i.get('tested') else ' · <i class="notest">No test yet</i>'}</span>
       <span class="status">{STATUS_LABEL[st]}</span>
     </summary>
     <div class="body">
@@ -109,6 +109,7 @@ def main():
     page = TEMPLATE.format(
         total=total, done=done, pct=pct, sev_cells=sev_cells, st_opts=st_opts, area_opts=area_opts,
         nxt=nxt_html, cards=cards, built=built,
+        tested=sum(1 for i in issues if i.get("tested")), untested=sum(1 for i in issues if not i.get("tested")),
         fixed=by_st["fixed"], verified=by_st["verified"], confirmed=by_st["confirmed"] + by_st["explained"],
         open=by_st["open"],
     )
@@ -144,7 +145,7 @@ h1 {{ font-family:Fraunces,Georgia,serif; font-weight:600; font-size:2.1rem; lin
 .how {{ background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 20px; margin:0 0 22px }}
 .how ol {{ margin:6px 0 0; padding-left:22px }} .how li {{ margin:2px 0 }}
 .tallies {{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:0 0 18px }}
-.tally {{ text-align:left; font:inherit; color:inherit; background:var(--card); border:1px solid var(--line); border-top:5px solid; border-radius:10px; padding:12px 14px; cursor:pointer }}
+.tally {{ display:flex; flex-direction:column; justify-content:flex-start; align-items:flex-start; text-align:left; font:inherit; color:inherit; background:var(--card); border:1px solid var(--line); border-top:5px solid; border-radius:10px; padding:12px 14px; cursor:pointer }}
 .tally b {{ font-size:1.9rem; line-height:1; display:block }} .tally span {{ font-weight:700 }}
 .tally small {{ display:block; color:var(--soft); font-size:.8rem; line-height:1.35; margin-top:4px }}
 .tally.on {{ outline:3px solid var(--teal); outline-offset:1px }}
@@ -167,6 +168,7 @@ h1 {{ font-family:Fraunces,Georgia,serif; font-weight:600; font-size:2.1rem; lin
 .sev-critical .sev {{ color:var(--crit); background:var(--crit-bg) }} .sev-high .sev {{ color:var(--high); background:var(--high-bg) }}
 .sev-medium .sev {{ color:var(--med); background:var(--med-bg) }} .sev-low .sev {{ color:var(--low); background:var(--low-bg) }}
 .ttl {{ font-weight:700 }}
+.notest {{ font-style:normal; color:var(--high) }}
 .meta {{ grid-column:3; color:var(--soft); font-size:.85rem }}
 .status {{ grid-row:1; grid-column:4; font-size:.8rem; font-weight:700; padding:2px 10px; border-radius:20px; background:var(--low-bg); color:var(--soft); white-space:nowrap }}
 .st-explained .status, .st-confirmed .status {{ background:var(--high-bg); color:var(--high) }}
@@ -192,7 +194,7 @@ footer {{ color:var(--soft); font-size:.85rem; margin-top:30px }}
 </style></head>
 <body><div class="wrap">
 <h1>ClinicOS bug tracker</h1>
-<p class="lede">Every known problem in the system, in plain words, most urgent first. Each one is already caught by an automated test, so when it is fixed the test proves it, and keeps proving it after every future change.</p>
+<p class="lede">Every known problem in the system, in plain words, most urgent first. {tested} of the {total} are already caught by an automated test, so when one is fixed its test proves it, and keeps proving it after every future change. The other {untested}, marked <i>No test yet</i>, came from the audit (mostly server and operations work); each gets a test or a written check when it is fixed.</p>
 
 <div class="progress"><div class="bar"><i></i></div><b>{done} of {total} closed</b></div>
 

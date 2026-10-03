@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { tokenStore } from "@/lib/token";
-import { trySilentRefresh } from "@/lib/api-client";
+import { SESSION_END_KEY, setSessionEndedHandler, trySilentRefresh } from "@/lib/api-client";
 import { logoutApi, meApi, switchBranchApi, type BranchRef, type UserDTO } from "@/features/auth/api";
 import { can as canPerm, hasRole as hasRoleFn, isFlagOn } from "@/lib/rbac";
 
@@ -54,6 +54,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     tokenStore.set(res.access_token);
     await loadMe();
   };
+
+  // A session the server ended mid-use signs the app out; the sign-in page reads
+  // the reason and says it (SEC-2, SEC-10).
+  useEffect(() => {
+    setSessionEndedHandler((why) => {
+      tokenStore.clear();
+      setUser(null);
+      setPermissions([]);
+      setFlags({});
+      setBranches([]);
+      setActiveBranchId(null);
+      setAllBranches(false);
+      setStatus("unauthenticated");
+      try {
+        sessionStorage.setItem(SESSION_END_KEY, why);
+      } catch {
+        /* the message is a courtesy; signing out is what matters */
+      }
+    });
+    return () => setSessionEndedHandler(null);
+  }, []);
 
   // On boot, restore the session from the refresh cookie.
   useEffect(() => {

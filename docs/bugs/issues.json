@@ -1027,9 +1027,14 @@
   "effort": "S",
   "decision": null,
   "tests": [
+   "REG-FE-STAFF-008",
    "TestREG_AUTH_013_DeactivatedUserCannotSignInOrRefresh",
    "TestREG_AUTH_014_SuspendedUserCannotSignInOrRefresh",
-   "TestREG_AUTH_015_DeactivatedUserCannotReactivateWithOldResetLink"
+   "TestREG_AUTH_015_DeactivatedUserCannotReactivateWithOldResetLink",
+   "TestREG_AUTH_023_ResetLinkStillCompletesAnUnacceptedInvitation",
+   "TestREG_AUTH_024_RenewalChecksTheAccountItself",
+   "TestREG_AUTH_025_UnexpiredLinkCannotSwitchALockedOutAccountOn",
+   "TestREG_AUTH_027_SignInEdgesAreRefusedCleanly"
   ],
   "files": [
    "backend/internal/identity/service/user_service.go:173",
@@ -1037,8 +1042,33 @@
    "backend/internal/identity/service/auth_service.go:352"
   ],
   "tested": true,
-  "status": "open",
-  "log": [],
+  "status": "fixed",
+  "log": [
+   {
+    "date": "2026-10-03",
+    "note": "Explained to the owner, who confirmed it is a problem to fix."
+   },
+   {
+    "date": "2026-10-03",
+    "note": "Fix written: locking someone out signs them out everywhere, retires their invite/reset links, renewals check the account is active, and a reset link can no longer switch a locked-out account back on. Full regression run in progress."
+   },
+   {
+    "date": "2026-10-03",
+    "note": "First full run: every behaviour test passed, but two checks failed: the backup test assumed a filled database, and two new safety checks were not reached by any test (coverage 86.5% to 86.0%). Fixed both, added tests REG_AUTH_024/025; full run repeated."
+   },
+   {
+    "date": "2026-10-03",
+    "note": "Full run for issues 2+3 failed: 1 screen test timed out under load, and coverage dropped in 4 packages (new code no test reached). Fixed: removed a renewal check that could never run, made suspend + sign-out (and staff lock-out + link retirement) single database statements so they cannot come apart, added a unit test for the per-request check (REG_KERNEL_HTTPX_020), raised the screen-test wait from 1 s to 5 s, and documented the SMS timer wobble in the coverage minimums. Full run repeated."
+   },
+   {
+    "date": "2026-10-03",
+    "note": "Attempt 2 failed: sign-in coverage 85.8% (minimum 86.5%) and one long examination test exceeded 20 s under load. Added REG_AUTH_027 (expired renewal, harmless logout with unknown token, too-short password, blank email, invitation without @); raised the per-test limit to 60 s (a quick fix that removed typing pauses broke two tests, so it was reverted). Attempt 3 running."
+   },
+   {
+    "date": "2026-10-03",
+    "note": "Attempt 3 passed server (667 pass, 0 fail), coverage gate (264/264 routes, no package below its minimum) and browser journeys (10/10); two storage-blocked screen tests added for the last coverage minimums, then lint, typecheck and all 1,625 screen tests with minimums passed. Committed; not yet deployed. Waiting for the owner to verify."
+   }
+  ],
   "order": 1
  },
  {
@@ -1054,8 +1084,16 @@
   "effort": "M",
   "decision": null,
   "tests": [
+   "REG-FE-API-017",
+   "REG-FE-LOGIN-009",
+   "REG-FE-LOGIN-010",
+   "REG-FE-SESSION-003",
+   "REG-FE-SESSION-004",
+   "REG-FE-SESSION-005",
    "TestREG_AUTH_021_SuspendedClinicRefreshIsRefused",
    "TestREG_AUTH_022_SuspendedClinicAccessTokenStopsWorking",
+   "TestREG_AUTH_026_LockedOutStaffStopAtTheirNextRequest",
+   "TestREG_KERNEL_HTTPX_020_AccountGuardDecidesEveryRequest",
    "TestREG_PLAT_016_SuspendingAClinicEndsItsSessions"
   ],
   "files": [
@@ -1064,8 +1102,29 @@
    "backend/internal/platform/service/service.go:190"
   ],
   "tested": true,
-  "status": "open",
-  "log": [],
+  "status": "fixed",
+  "log": [
+   {
+    "date": "2026-10-03",
+    "note": "Explained; owner confirmed: once a clinic is suspended, nobody in it should stay signed in."
+   },
+   {
+    "date": "2026-10-03",
+    "note": "Fix written: suspending a clinic signs out every session; renewal and every request check the clinic and the person are active (instant, no cache); the app signs out and the sign-in page says the workspace is suspended. Three existing tests updated where the stricter rule answers earlier (documented in each). Full run in progress, together with issue 2."
+   },
+   {
+    "date": "2026-10-03",
+    "note": "Full run for issues 2+3 failed: 1 screen test timed out under load, and coverage dropped in 4 packages (new code no test reached). Fixed: removed a renewal check that could never run, made suspend + sign-out (and staff lock-out + link retirement) single database statements so they cannot come apart, added a unit test for the per-request check (REG_KERNEL_HTTPX_020), raised the screen-test wait from 1 s to 5 s, and documented the SMS timer wobble in the coverage minimums. Full run repeated."
+   },
+   {
+    "date": "2026-10-03",
+    "note": "Attempt 2 failed: sign-in coverage 85.8% (minimum 86.5%) and one long examination test exceeded 20 s under load. Added REG_AUTH_027 (expired renewal, harmless logout with unknown token, too-short password, blank email, invitation without @); raised the per-test limit to 60 s (a quick fix that removed typing pauses broke two tests, so it was reverted). Attempt 3 running."
+   },
+   {
+    "date": "2026-10-03",
+    "note": "Attempt 3 passed server (667 pass, 0 fail), coverage gate (264/264 routes, no package below its minimum) and browser journeys (10/10); two storage-blocked screen tests added for the last coverage minimums, then lint, typecheck and all 1,625 screen tests with minimums passed. Committed; not yet deployed. Waiting for the owner to verify."
+   }
+  ],
   "order": 2
  },
  {
@@ -1839,7 +1898,12 @@
   ],
   "tested": true,
   "status": "open",
-  "log": [],
+  "log": [
+   {
+    "date": "2026-10-03",
+    "note": "Half fixed with SEC-10: a session that dies mid-use now signs the app out and the sign-in page says so (REG-FE-SESSION-002 is now a normal test). Still open: two tabs refreshing at once can revoke each other."
+   }
+  ],
   "order": 35
  },
  {
@@ -2072,8 +2136,8 @@
    "scripts/backup/lib.sh",
    "scripts/backup/restore-from-r2.sh"
   ],
-  "tested": false,
-  "status": "fixed",
+  "tested": true,
+  "status": "verified",
   "log": [
    {
     "date": "2026-10-03",
@@ -2086,6 +2150,10 @@
    {
     "date": "2026-10-03",
     "note": "Live: owner wrote r2.env; new scripts on the server; first encrypted backup uploaded (offsite: yes). Restore check from R2: decrypted, hash matched, loaded into a throwaway database: 9 clinics, 683 patients, 851 bills, 151 dental visits, identical to live. Bucket holds only encrypted files. Waiting for the owner to verify."
+   },
+   {
+    "date": "2026-10-03",
+    "note": "Owner verified: encrypted backups present in the Cloudflare bucket."
    }
   ],
   "order": 0

@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -514,16 +513,20 @@ func authStatusCase(t *testing.T, status string) {
 	}
 
 	// Correct: the old phone's refresh token is dead too.
-	ref := authRefresh(t, sess.Refresh)
-	live := authLiveSessions(t, st.ID)
-	present := ref.Status == 200 && ref.Access != ""
-	if !present && ref.Status != 401 {
-		t.Fatalf("refresh after %s: HTTP %d %s", status, ref.Status, ref.Code)
+	// (SEC-2, fixed 2026-10-03: the status change revokes every session.)
+	if live := authLiveSessions(t, st.ID); live != 0 {
+		t.Fatalf("%s user still has %d live session(s)", status, live)
 	}
-	testkit.KnownBug(t, "SEC-2", present,
-		"a "+status+" user's existing refresh session still issues access tokens (refresh HTTP "+
-			strconv.Itoa(ref.Status)+", "+strconv.Itoa(live)+" live session(s) after the status change): "+
-			"UpdateUserStatus does not revoke sessions and Refresh never checks users.status")
+	if ref := authRefresh(t, sess.Refresh); ref.Status != 401 || ref.Access != "" {
+		t.Fatalf("refresh after %s: HTTP %d %s, want 401 and no token", status, ref.Status, ref.Code)
+	}
+
+	// Reactivated, they sign in again with their own password: the lock-out was a
+	// status, not damage to the account.
+	authSetStatus(t, owner, st.ID, "active")
+	if r := authLogin(t, c.Slug, st.Email, testkit.StaffPassword); r.Status != 200 || r.Access == "" {
+		t.Fatalf("reactivated %s user cannot sign in: HTTP %d %s", status, r.Status, r.Code)
+	}
 }
 
 // TestREG_AUTH_013_DeactivatedUserCannotSignInOrRefresh: Given a receptionist signed
@@ -562,12 +565,149 @@ func TestREG_AUTH_015_DeactivatedUserCannotReactivateWithOldResetLink(t *testing
 	if acc.Access != "" || acc.Refresh != "" {
 		t.Fatalf("a reset link signed somebody in: %s", trimAuth(acc.Raw))
 	}
-	present := status == "active"
-	if !present && acc.Status < 400 {
-		t.Fatalf("accept-invite answered %d but status is %q", acc.Status, status)
+	// (SEC-2, fixed 2026-10-03: deactivating retires the link, and a link can no
+	// longer switch a locked-out account back on.)
+	if status != "deactivated" {
+		t.Fatalf("an old reset link changed a deactivated account to %q", status)
 	}
-	testkit.KnownBug(t, "SEC-2", present,
-		"an old reset link switched a deactivated account back to active (accept-invite HTTP "+strconv.Itoa(acc.Status)+")")
+	if acc.Status < 400 {
+		t.Fatalf("accept-invite of an old reset link answered %d, want a refusal", acc.Status)
+	}
+	// And the owner cannot hand them a fresh one while they are deactivated.
+	owner.Do("POST", "/users/"+id.Encode(id.PrefixUser, st.ID)+"/reset-link", nil).Expect(t, 400, "reset link for a deactivated account")
+}
+
+// TestREG_AUTH_024_RenewalChecksTheAccountItself: Given a signed-in receptionist
+// whose account is switched off without going through the Staff page (so nothing
+// revoked her session), When her phone renews its sign-in, Then the renewal is
+// refused and her sessions are ended: the second lock of SEC-2.
+func TestREG_AUTH_024_RenewalChecksTheAccountItself(t *testing.T) {
+	c := newClinic(t)
+	st := c.Staff["receptionist"]
+	sess := authMustLogin(t, c, st.Email)
+	if _, err := super.Pool.Exec(t.Context(), `UPDATE users SET status = 'suspended' WHERE id = $1`, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	if r := authRefresh(t, sess.Refresh); r.Status != 401 || r.Access != "" {
+		t.Fatalf("renewal for a suspended account: HTTP %d %s, want 401 and no token", r.Status, r.Code)
+	}
+	if n := authLiveSessions(t, st.ID); n != 0 {
+		t.Fatalf("the refused renewal left %d live session(s)", n)
+	}
+}
+
+// TestREG_AUTH_025_UnexpiredLinkCannotSwitchALockedOutAccountOn: Given a reset link
+// that is still valid, When the account is switched off without the Staff page
+// retiring the link, and the link is opened, Then it is refused with ACCOUNT_INACTIVE
+// and the account stays off; an invitation link likewise only completes an invited
+// account (SEC-2).
+func TestREG_AUTH_025_UnexpiredLinkCannotSwitchALockedOutAccountOn(t *testing.T) {
+	c := newClinic(t)
+	st := c.Staff["cashier"]
+	owner := srv.As(t, c, "owner")
+	var link struct {
+		InviteLink string `json:"invite_link"`
+	}
+	owner.Do("POST", "/users/"+id.Encode(id.PrefixUser, st.ID)+"/reset-link", nil).Expect(t, 201, "reset link").Decode(t, &link)
+	u, err := url.Parse(link.InviteLink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := super.Pool.Exec(t.Context(), `UPDATE users SET status = 'suspended' WHERE id = $1`, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	acc := authPost(t, "/auth/accept-invite", map[string]any{"token": u.Query().Get("token"), "password": "Comeback#2026"}, "", "")
+	if acc.Status != 403 || acc.Code != "ACCOUNT_INACTIVE" || acc.Access != "" {
+		t.Fatalf("live reset link on a suspended account: HTTP %d %s, want 403 ACCOUNT_INACTIVE", acc.Status, acc.Code)
+	}
+	var status string
+	one(t, `SELECT status FROM users WHERE id = $1`, &status, st.ID)
+	if status != "suspended" {
+		t.Fatalf("status after the refused link: %q, want suspended", status)
+	}
+	// An invitation-purpose link on an account that is already active is refused too.
+	if _, err := super.Pool.Exec(t.Context(),
+		`UPDATE users SET status = 'active' WHERE id = $1;`, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := super.Pool.Exec(t.Context(),
+		`UPDATE user_invitations SET purpose = 'invite' WHERE user_id = $1 AND accepted_at IS NULL`, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	inv := authPost(t, "/auth/accept-invite", map[string]any{"token": u.Query().Get("token"), "password": "Comeback#2026"}, "", "")
+	if inv.Status != 403 || inv.Code != "ACCOUNT_INACTIVE" {
+		t.Fatalf("invitation link on an active account: HTTP %d %s, want 403 ACCOUNT_INACTIVE", inv.Status, inv.Code)
+	}
+}
+
+// TestREG_AUTH_027_SignInEdgesAreRefusedCleanly: the sign-in rules nobody had pinned
+// down. A renewal past its 30 days is refused; signing out with an unknown or
+// garbled token is a harmless no-op that ends nobody else's session; a new password
+// under 8 characters, a blank new email, and an invitation to an address with no @
+// are each refused with 400 before anything is stored.
+func TestREG_AUTH_027_SignInEdgesAreRefusedCleanly(t *testing.T) {
+	c := newClinic(t)
+	st := c.Staff["receptionist"]
+	old := authMustLogin(t, c, st.Email)
+	if _, err := super.Pool.Exec(t.Context(),
+		`UPDATE sessions SET expires_at = now() - interval '1 minute' WHERE user_id = $1 AND revoked_at IS NULL`, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	if r := authRefresh(t, old.Refresh); r.Status != 401 || r.Access != "" {
+		t.Fatalf("renewal past its expiry: HTTP %d %s, want 401", r.Status, r.Code)
+	}
+
+	live := authMustLogin(t, c, st.Email)
+	for _, tok := range []string{"not-a-token", id.Encode(id.PrefixTenant, c.TenantID) + ".no-such-session"} {
+		if r := authPost(t, "/auth/logout", nil, tok, ""); r.Status >= 400 {
+			t.Fatalf("logout with %q: HTTP %d, want a quiet success", tok, r.Status)
+		}
+	}
+	if authSessionRevoked(t, live.Refresh) {
+		t.Fatalf("a logout with an unknown token ended someone else's session")
+	}
+
+	me := authBearer(t, live.Access)
+	me.Do("POST", "/auth/password", map[string]any{"current_password": testkit.StaffPassword, "new_password": "short"}).
+		Expect(t, 400, "a 5-character new password")
+	me.Do("POST", "/auth/email", map[string]any{"new_email": "   ", "current_password": testkit.StaffPassword}).
+		Expect(t, 400, "a blank new email")
+	if r := authLogin(t, c.Slug, st.Email, testkit.StaffPassword); r.Status != 200 {
+		t.Fatalf("the refused changes altered the sign-in: HTTP %d", r.Status)
+	}
+
+	srv.As(t, c, "owner").Do("POST", "/users", map[string]any{"email": "no-at-sign", "full_name": "Bad Address", "roles": []string{"nurse"}}).
+		Expect(t, 400, "an invitation to an address with no @")
+}
+
+// TestREG_AUTH_023_ResetLinkStillCompletesAnUnacceptedInvitation: Given someone
+// invited who never accepted, When the owner issues a reset link instead and they
+// open it, Then the account becomes active (the SEC-2 lock must not break the
+// "send the invitation again" path).
+func TestREG_AUTH_023_ResetLinkStillCompletesAnUnacceptedInvitation(t *testing.T) {
+	c := newClinic(t)
+	st := c.Staff["nurse"]
+	if _, err := super.Pool.Exec(t.Context(), `UPDATE users SET status = 'invited' WHERE id = $1`, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	owner := srv.As(t, c, "owner")
+	var link struct {
+		InviteLink string `json:"invite_link"`
+	}
+	owner.Do("POST", "/users/"+id.Encode(id.PrefixUser, st.ID)+"/reset-link", nil).Expect(t, 201, "reset link").Decode(t, &link)
+	u, err := url.Parse(link.InviteLink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	acc := authPost(t, "/auth/accept-invite", map[string]any{"token": u.Query().Get("token"), "password": "Welcome#2026"}, "", "")
+	if acc.Status >= 400 {
+		t.Fatalf("an invited person's reset link was refused: HTTP %d %s", acc.Status, acc.Code)
+	}
+	var status string
+	one(t, `SELECT status FROM users WHERE id = $1`, &status, st.ID)
+	if status != "active" {
+		t.Fatalf("after accepting, status %q, want active", status)
+	}
 }
 
 // TestREG_AUTH_016_DeletedUserLosesSessionsAndLogin: Given a signed-in user, When the
@@ -644,13 +784,15 @@ func TestREG_AUTH_018_SignOutOtherDevices(t *testing.T) {
 func TestREG_AUTH_019_OwnerCannotDeactivateThemselves(t *testing.T) {
 	c := newClinic(t)
 	owner := srv.As(t, c, "owner")
-	r := owner.Do("POST", "/users/"+id.Encode(id.PrefixUser, c.Owner.ID)+"/status", map[string]any{"status": "deactivated"})
-	var status string
-	one(t, `SELECT status FROM users WHERE id = $1`, &status, c.Owner.ID)
 	// Deleting yourself is refused (user_service.go DeleteUser); deactivating is not.
+	// Checked first: once the owner has deactivated themself, every request of
+	// theirs is refused at the door (SEC-2), so the guard could no longer be reached.
 	if d := owner.Do("DELETE", "/users/"+id.Encode(id.PrefixUser, c.Owner.ID), nil); d.Status != 400 {
 		t.Fatalf("self-delete guard changed: HTTP %d", d.Status)
 	}
+	r := owner.Do("POST", "/users/"+id.Encode(id.PrefixUser, c.Owner.ID)+"/status", map[string]any{"status": "deactivated"})
+	var status string
+	one(t, `SELECT status FROM users WHERE id = $1`, &status, c.Owner.ID)
 	present := r.Status == 204 && status == "deactivated"
 	if !present && r.Status < 400 {
 		t.Fatalf("self-deactivate answered %d, status %q", r.Status, status)

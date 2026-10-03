@@ -17,10 +17,11 @@ export default defineConfig({
     include: ["src/**/*.test.{ts,tsx}"],
     setupFiles: ["./src/test/setup.ts"],
     restoreMocks: true,
-    // Whole-page tests (the dental workspace, chairside, exams) take 5–10 s under
-    // coverage on a busy machine; at the 5 s default they failed at random during
-    // the time sweep. A slow test is not a broken behaviour.
-    testTimeout: 20_000,
+    // Whole-page tests (the dental workspace, chairside, exams) take 4–10 s alone and
+    // several times that when the full suite runs under coverage on a busy machine:
+    // at 20 s REG-FE-EXAM-030 timed out (2026-10-03) while the screen was fine. A
+    // slow test is not a broken behaviour; a hung one still fails, at 60 s.
+    testTimeout: 60_000,
     // `npm run test:coverage`: line/branch coverage of every screen a dental clinic can
     // open. The HTML report lands in coverage/ (gitignored). Excluded, mirroring the API
     // gate's scripts/test/dental-scope.txt: modules switched off in the dental preset

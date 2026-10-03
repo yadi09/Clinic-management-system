@@ -1,8 +1,11 @@
 package httpx_test
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +13,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 
+	"github.com/reicb/clinicsaas/internal/kernel/apperr"
 	"github.com/reicb/clinicsaas/internal/kernel/auth"
 	"github.com/reicb/clinicsaas/internal/kernel/httpx"
 	"github.com/reicb/clinicsaas/internal/kernel/tenancy"
@@ -286,5 +290,64 @@ func TestREG_KERNEL_HTTPX_008_GuardsForbiddenAndAllowed(t *testing.T) {
 			}
 			expectError(t, w, c.status, c.code, c.msg)
 		})
+	}
+}
+
+// Given an account guard installed (cmd/api installs AuthService.CheckActive), When
+// a valid token arrives, Then the guard is asked about that clinic and person: a
+// refusal it gives is passed through as-is (403 TENANT_INACTIVE, 401), an
+// unexpected error becomes 500 without its text, and a platform-admin token (no
+// clinic) is never sent to it (SEC-2, SEC-10).
+func TestREG_KERNEL_HTTPX_020_AccountGuardDecidesEveryRequest(t *testing.T) {
+	ts := tokenSvc()
+	r := authRouter(ts)
+	uid, tid := uuid.New(), uuid.New()
+	tok, _, err := ts.IssueAccess(uid, tid, "a@b.c", nil, nil, nil, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var verdict error
+	var asked []uuid.UUID
+	httpx.SetAccountGuard(func(_ context.Context, tenantID, userID uuid.UUID) error {
+		asked = append(asked, tenantID, userID)
+		return verdict
+	})
+	t.Cleanup(func() { httpx.SetAccountGuard(nil) })
+
+	for _, c := range []struct {
+		verdict error
+		status  int
+		code    string
+	}{
+		{nil, http.StatusOK, ""},
+		{apperr.Forbidden("TENANT_INACTIVE", "this workspace is not active"), http.StatusForbidden, "TENANT_INACTIVE"},
+		{apperr.Unauthenticated("account is not active"), http.StatusUnauthorized, "UNAUTHENTICATED"},
+		{errors.New("connection reset: secret detail"), http.StatusInternalServerError, "INTERNAL_ERROR"},
+	} {
+		verdict = c.verdict
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, bearer("/h", tok))
+		if w.Code != c.status || (c.code != "" && !strings.Contains(w.Body.String(), c.code)) {
+			t.Fatalf("guard verdict %v: HTTP %d %s, want %d %s", c.verdict, w.Code, w.Body.String(), c.status, c.code)
+		}
+		if strings.Contains(w.Body.String(), "secret detail") {
+			t.Fatalf("an internal error's text reached the client: %s", w.Body.String())
+		}
+	}
+	if len(asked) != 8 || asked[0] != tid || asked[1] != uid {
+		t.Fatalf("guard asked about %v, want (%s, %s) per request", asked, tid, uid)
+	}
+
+	// A platform admin's token carries no clinic: the guard is not consulted.
+	asked = nil
+	verdict = apperr.Forbidden("TENANT_INACTIVE", "x")
+	ptok, _, err := ts.IssueAccess(uuid.New(), uuid.Nil, "admin@vendor", nil, []string{"platform.admin"}, nil, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, bearer("/h", ptok))
+	if len(asked) != 0 {
+		t.Fatalf("the guard was asked about a platform-admin token")
 	}
 }

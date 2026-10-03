@@ -39,9 +39,11 @@ grep -q 'refusing to upload unencrypted' "$(dirname "$(readlink -f "$0")")/backu
 
 if [ -n "${TEST_DATABASE_URL:-}" ] && command -v pg_dump >/dev/null; then
   if pg_dump -Fc "$TEST_DATABASE_URL" > "$T/real.dump" 2>/dev/null; then
+    # The database may still be empty (regress.sh runs this before migrating), so
+    # compare what pg_restore reads from the restored copy with the original's.
     encrypt_verified "$T/real.dump" && decrypt_verified "$T/real.dump.enc" "$T/real.dump.sha256" "$T/real.back" \
-      && toc=$(pg_restore --list "$T/real.back") && grep -q 'TABLE DATA public patients ' <<<"$toc" \
-      && ok "a real database dump survives the round trip and still lists patients" \
+      && [ "$(pg_restore --list "$T/real.back")" = "$(pg_restore --list "$T/real.dump")" ] \
+      && ok "a real database dump survives the round trip and restores the same contents" \
       || bad "a real database dump did not survive the round trip"
   else
     echo "  - skipped the real-dump check: pg_dump could not read TEST_DATABASE_URL"

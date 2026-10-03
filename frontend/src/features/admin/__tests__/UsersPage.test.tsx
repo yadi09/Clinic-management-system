@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 // Whole-page flows with many clicks; the shared 5s budget is too tight when the full
 // suite runs in parallel (and under scripts/test/time-sweep.sh).
-vi.setConfig({ testTimeout: 20_000 });
+vi.setConfig({ testTimeout: 60_000 });
 
 vi.mock("@/app/auth-context", async () => (await import("@/test/admin")).authModule);
 vi.mock("@/components/ui/sonner", async (orig) => ({ ...(await orig<object>()), toast: (await import("@/test/admin")).toastSpy }));
@@ -82,6 +82,15 @@ describe("REG-FE-STAFF staff list", () => {
     await waitFor(() => expect(api.updateUserStatus).toHaveBeenCalledWith("usr_s", "active"));
     // A suspended member gets no reset link.
     expect(within(row("Old Staff")).queryByRole("button", { name: "Reset password" })).not.toBeInTheDocument();
+  });
+
+  test("REG-FE-STAFF-008 a deactivated member gets no reset link either (SEC-2: the server refuses it)", async () => {
+    api.listUsers.mockResolvedValue([OWNER_ROW, u({ id: "usr_x", email: "gone@cure.et", full_name: "Gone Staff", status: "deactivated", roles: [] }), INVITED]);
+    page();
+    await screen.findByText("Gone Staff");
+    expect(within(row("Gone Staff")).queryByRole("button", { name: "Reset password" })).not.toBeInTheDocument();
+    // An invited person who never joined can still be sent a fresh link.
+    expect(within(row("New Hire")).getByRole("button", { name: "Reset password" })).toBeInTheDocument();
   });
 
   // NEW-AUTH-1. The Delete button is hidden on your own row, but Suspend is not: the

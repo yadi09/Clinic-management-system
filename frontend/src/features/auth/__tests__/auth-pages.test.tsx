@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 // Whole-page flows with many clicks; the shared 5s budget is too tight when the full
 // suite runs in parallel (and under scripts/test/time-sweep.sh).
-vi.setConfig({ testTimeout: 20_000 });
+vi.setConfig({ testTimeout: 60_000 });
 
 vi.mock("@/app/auth-context", async () => (await import("@/test/admin")).authModule);
 const authApi = vi.hoisted(() => ({ loginApi: vi.fn(), verifyMfaApi: vi.fn() }));
@@ -55,6 +55,32 @@ async function fillLogin(user: ReturnType<typeof userEvent.setup>, ws = "cure", 
 }
 
 describe("REG-FE-LOGIN sign in", () => {
+  test("REG-FE-LOGIN-009 sent here because the session ended: the page says why, once", () => {
+    sessionStorage.setItem("clinicos.session_end", "clinic-suspended");
+    const first = app("/login");
+    expect(screen.getByText("This clinic's workspace has been suspended. Please contact ClinicOS support.")).toBeInTheDocument();
+    first.unmount();
+    sessionStorage.setItem("clinicos.session_end", "expired");
+    const second = app("/login");
+    expect(screen.getByText("Your session has ended. Please sign in again.")).toBeInTheDocument();
+    second.unmount();
+    // Read once: a later visit shows the plain form.
+    app("/login");
+    expect(screen.queryByText(/session has ended|has been suspended/)).not.toBeInTheDocument();
+  });
+
+  test("REG-FE-LOGIN-010 a browser that blocks storage still gets a working sign-in form", async () => {
+    const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new DOMException("blocked", "SecurityError");
+    });
+    authApi.loginApi.mockResolvedValue(TOKEN);
+    const { user } = app("/login");
+    expect(screen.queryByText(/session has ended|has been suspended/)).not.toBeInTheDocument();
+    await fillLogin(user);
+    await waitFor(() => expect(currentLocation()).toBe("/"));
+    get.mockRestore();
+  });
+
   test("REG-FE-LOGIN-001 each field says what is missing before anything is sent", async () => {
     const { user } = app("/login");
     expect(screen.getByText("ClinicOS")).toBeInTheDocument();

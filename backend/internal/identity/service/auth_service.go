@@ -19,8 +19,8 @@ import (
 	identitydb "github.com/reicb/clinicsaas/internal/identity/repo/gen"
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
 	"github.com/reicb/clinicsaas/internal/kernel/auth"
-	"github.com/reicb/clinicsaas/internal/kernel/entitlements"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
+	"github.com/reicb/clinicsaas/internal/kernel/entitlements"
 	"github.com/reicb/clinicsaas/internal/kernel/events"
 	"github.com/reicb/clinicsaas/internal/kernel/id"
 	"github.com/reicb/clinicsaas/internal/kernel/tenancy"
@@ -207,6 +207,16 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken, userAgent, ip s
 		return nil, apperr.Unauthenticated("refresh token expired")
 	}
 
+	// A suspended or deactivated account, or a suspended clinic, renews nothing,
+	// whatever its session says (SEC-2, SEC-10): both status changes revoke
+	// sessions too; this is the second lock.
+	if err := s.CheckActive(ctx, tenantID, sess.UserID); err != nil {
+		_ = s.db.WithTx(ctx, func(tx pgx.Tx) error {
+			return identitydb.New(tx).RevokeAllUserSessions(ctx, identitydb.RevokeAllUserSessionsParams{TenantID: tenantID, UserID: sess.UserID})
+		})
+		return nil, err
+	}
+
 	var email string
 	if err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		u, e := identitydb.New(tx).GetUserByID(ctx, identitydb.GetUserByIDParams{TenantID: tenantID, ID: sess.UserID})
@@ -231,6 +241,33 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken, userAgent, ip s
 	}
 	s.emit(ctx, tenantID, sess.UserID, "auth.user.refreshed", nil)
 	return tokens, nil
+}
+
+// CheckActive says whether this person, in this clinic, may act right now: the
+// clinic is active (or still onboarding) and the account is active. It backs the
+// per-request httpx.AccountGuard and the refresh path, so suspending a clinic or
+// locking out a member of staff takes effect on their very next request.
+func (s *AuthService) CheckActive(ctx context.Context, tenantID, userID uuid.UUID) error {
+	var tenantStatus, userStatus string
+	err := s.db.WithTenantTx(ctx, tenantID, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT t.status, u.status FROM users u JOIN tenants t ON t.id = u.tenant_id
+			  WHERE u.tenant_id = $1 AND u.id = $2 AND u.deleted_at IS NULL AND t.deleted_at IS NULL`,
+			tenantID, userID).Scan(&tenantStatus, &userStatus)
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return apperr.Unauthenticated("account not found")
+	}
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	if tenantStatus != "active" && tenantStatus != "onboarding" {
+		return apperr.Forbidden("TENANT_INACTIVE", "this workspace is not active")
+	}
+	if userStatus != "active" {
+		return apperr.Unauthenticated("account is not active")
+	}
+	return nil
 }
 
 // RevokeOtherSessions signs the user out of every device except the one holding
@@ -387,6 +424,19 @@ func (s *AuthService) AcceptInvite(ctx context.Context, token, password, userAge
 		}
 		if time.Now().After(inv.ExpiresAt) {
 			return apperr.Unauthenticated("invitation expired")
+		}
+		// A link may only do what it was issued for: an invitation completes an
+		// invited account, a reset re-keys an active one (or re-sends a lapsed
+		// invitation). Neither may switch a suspended or deactivated account back on
+		// (SEC-2): reactivating is the owner's decision, made on the Staff page.
+		var status string
+		if e := tx.QueryRow(ctx,
+			`SELECT status FROM users WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+			tenantID, inv.UserID).Scan(&status); e != nil {
+			return e
+		}
+		if (isReset && status != "active" && status != "invited") || (!isReset && status != "invited") {
+			return apperr.Forbidden("ACCOUNT_INACTIVE", "this account is not active; ask the clinic owner")
 		}
 		if e := checkUserLimit(ctx, tx, q, tenantID); e != nil {
 			return e

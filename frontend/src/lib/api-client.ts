@@ -36,6 +36,16 @@ interface RequestOptions {
   keepalive?: boolean;
 }
 
+// When the server ends a session mid-use (the account was locked out, the clinic
+// suspended, or the sign-in could not be renewed), the app must sign out and say
+// why, not leave every screen failing one request at a time (SEC-2, SEC-10).
+export type SessionEnd = "expired" | "clinic-suspended";
+export const SESSION_END_KEY = "clinicos.session_end";
+let onSessionEnded: ((why: SessionEnd) => void) | null = null;
+export function setSessionEndedHandler(fn: ((why: SessionEnd) => void) | null) {
+  onSessionEnded = fn;
+}
+
 // Coalesce concurrent refreshes so a burst of 401s triggers a single refresh.
 let refreshing: Promise<boolean> | null = null;
 
@@ -97,6 +107,10 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<{ da
   }
   if (!res.ok) {
     const e = json?.error ?? {};
+    if (auth && token) {
+      if (res.status === 401) onSessionEnded?.("expired");
+      else if (res.status === 403 && e.code === "TENANT_INACTIVE") onSessionEnded?.("clinic-suspended");
+    }
     throw new AppError(res.status, e.code ?? "ERROR", e.message ?? "Request failed", e.request_id, e.details, json);
   }
   return { data: (json?.data ?? json) as T, meta: json?.meta };

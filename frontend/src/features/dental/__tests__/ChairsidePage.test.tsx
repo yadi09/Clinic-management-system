@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 // These render the whole dental page and type into it; under a full parallel run
 // (with coverage) a test can take longer than the 5 s default.
-vi.setConfig({ testTimeout: 20000 });
+vi.setConfig({ testTimeout: 60_000 });
 
 const api = vi.hoisted(() => ({ chairside: vi.fn() }));
 vi.mock("@/features/dental/api", async (orig) => ({ ...(await orig<object>()), ...api }));

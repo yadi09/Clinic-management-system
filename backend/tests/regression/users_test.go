@@ -660,9 +660,11 @@ func TestREG_USER_016_AccountsWithoutAPasswordOrRowAreRefusedCleanly(t *testing.
 		}
 		return authBearer(t, tok)
 	}
+	// An invited account is not active yet, so a token for it is refused at the door
+	// (SEC-2, 2026-10-03): it never reaches the "no password set" check (was 400).
 	invited := mint(opUUID(t, id.PrefixUser, inv.ID), inv.Email)
-	invited.Do("POST", "/auth/password", map[string]any{"current_password": "whatever1", "new_password": "Brand#New2026"}).Expect(t, 400, "password change without a password")
-	invited.Do("POST", "/auth/email", map[string]any{"new_email": "x@" + c.Slug + ".test", "current_password": "whatever1"}).Expect(t, 400, "email change without a password")
+	invited.Do("POST", "/auth/password", map[string]any{"current_password": "whatever1", "new_password": "Brand#New2026"}).Expect(t, 401, "password change for an account not yet active")
+	invited.Do("POST", "/auth/email", map[string]any{"new_email": "x@" + c.Slug + ".test", "current_password": "whatever1"}).Expect(t, 401, "email change for an account not yet active")
 
 	ghost := mint(uuid.New(), "ghost@"+c.Slug+".test")
 	for _, call := range []struct {

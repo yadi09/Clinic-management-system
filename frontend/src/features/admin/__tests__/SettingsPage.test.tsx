@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 // Whole-page flows with many clicks; the shared 5s budget is too tight when the full
 // suite runs in parallel (and under scripts/test/time-sweep.sh).
-vi.setConfig({ testTimeout: 20_000 });
+vi.setConfig({ testTimeout: 60_000 });
 
 vi.mock("@/app/auth-context", async () => (await import("@/test/admin")).authModule);
 vi.mock("@/components/ui/sonner", async (orig) => ({ ...(await orig<object>()), toast: (await import("@/test/admin")).toastSpy }));

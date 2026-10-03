@@ -13,7 +13,7 @@ import { useState } from "react";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-vi.setConfig({ testTimeout: 30000 });
+vi.setConfig({ testTimeout: 60_000 });
 
 const sched = vi.hoisted(() => ({ bookAppointment: vi.fn(), rescheduleAppointment: vi.fn() }));
 vi.mock("@/features/scheduling/api", async (orig) => ({ ...(await orig<object>()), ...sched }));

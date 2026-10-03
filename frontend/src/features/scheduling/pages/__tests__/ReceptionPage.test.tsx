@@ -15,7 +15,7 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-vi.setConfig({ testTimeout: 30000 });
+vi.setConfig({ testTimeout: 60_000 });
 
 const auth = vi.hoisted(() => ({ perms: new Set<string>(), flags: new Set<string>() }));
 vi.mock("@/app/auth-context", () => ({

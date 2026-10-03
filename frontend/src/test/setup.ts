@@ -1,7 +1,14 @@
 // Shared setup for every Vitest file: DOM matchers, and cleanup between tests.
 import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
+
+// findBy*/waitFor give up after 1 s by default. A page that renders in 50 ms on a
+// quiet machine can take longer than that when the full suite runs under coverage,
+// and a test then fails while the screen is fine (REG-FE-TRIAGE-012, 2026-10-03).
+// Waiting longer costs a passing test nothing: it continues the moment the element
+// appears. Assertions that something must NOT appear are unaffected.
+configure({ asyncUtilTimeout: 5000 });
 
 afterEach(() => cleanup());
 

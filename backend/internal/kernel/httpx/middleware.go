@@ -1,6 +1,7 @@
 package httpx
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -123,6 +124,18 @@ func RequireAuthQuery(ts *auth.TokenService) gin.HandlerFunc {
 	}
 }
 
+// AccountGuard is asked, on every authenticated request, whether the clinic and
+// the person behind a valid token may still act. A signed token proves who someone
+// was when it was issued; suspending a clinic or locking out a member of staff has
+// to stop them now, not when the token runs out (SEC-2, SEC-10).
+type AccountGuard func(ctx context.Context, tenantID, userID uuid.UUID) error
+
+var accountGuard AccountGuard
+
+// SetAccountGuard installs the check (cmd/api, at start-up). Platform-admin tokens
+// carry no clinic and are not checked here.
+func SetAccountGuard(g AccountGuard) { accountGuard = g }
+
 func authenticate(c *gin.Context, ts *auth.TokenService, raw string) {
 	if raw == "" {
 		Fail(c, apperr.Unauthenticated("missing access token"))
@@ -155,6 +168,16 @@ func authenticate(c *gin.Context, ts *auth.TokenService, raw string) {
 	if claims.ActiveBranch != "" {
 		if id, e := uuid.Parse(claims.ActiveBranch); e == nil {
 			p.ActiveBranchID = &id
+		}
+	}
+	if accountGuard != nil && tenantID != uuid.Nil {
+		if err := accountGuard(c.Request.Context(), tenantID, userID); err != nil {
+			if ae, ok := apperr.As(err); ok {
+				Fail(c, ae)
+			} else {
+				Fail(c, apperr.Internal(err))
+			}
+			return
 		}
 	}
 	c.Set(principalCtxKey, p)

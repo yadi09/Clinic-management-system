@@ -121,11 +121,10 @@ func TestREG_AUTH_021_SuspendedClinicRefreshIsRefused(t *testing.T) {
 	sess := authMustLogin(t, c, st.Email)
 	gsSuspend(t, c)
 	r := authRefresh(t, sess.Refresh)
-	testkit.KnownBug(t, "SEC-10", r.Status == 200 || r.Access != "", fmt.Sprintf(
-		"refresh for a suspended clinic answered %d with a new access token=%t: AuthService.Refresh "+
-			"(identity/service/auth_service.go) never checks tenants.status", r.Status, r.Access != ""))
-	if r.Status != 401 {
-		t.Fatalf("refresh for a suspended clinic: HTTP %d %s, want 401", r.Status, r.Code)
+	// (SEC-10, fixed 2026-10-03: renewal checks the clinic.)
+	if r.Status != 403 || r.Code != "TENANT_INACTIVE" || r.Access != "" {
+		t.Fatalf("refresh for a suspended clinic: HTTP %d %s access=%t, want 403 TENANT_INACTIVE and no token",
+			r.Status, r.Code, r.Access != "")
 	}
 }
 
@@ -139,11 +138,26 @@ func TestREG_AUTH_022_SuspendedClinicAccessTokenStopsWorking(t *testing.T) {
 	desk.Do("GET", "/patients?q=zz", nil).Expect(t, 200, "search before suspension")
 	gsSuspend(t, c)
 	r := desk.Do("GET", "/patients?q=zz", nil)
-	testkit.KnownBug(t, "SEC-10", r.Status == 200, fmt.Sprintf(
-		"a suspended clinic's access token still searches patients (HTTP %d): RequireAuth trusts the JWT "+
-			"alone and never consults tenants.status", r.Status))
-	if r.Status != 401 && r.Status != 403 {
-		t.Fatalf("suspended clinic's token: HTTP %d %s, want 401/403", r.Status, r.Code)
+	// (SEC-10, fixed 2026-10-03: every request checks the clinic, not only the token.)
+	if r.Status != 403 || r.Code != "TENANT_INACTIVE" {
+		t.Fatalf("suspended clinic's token: HTTP %d %s, want 403 TENANT_INACTIVE", r.Status, r.Code)
+	}
+	// Reactivated, the same token works again: the refusal was the suspension.
+	xcExec(t, `UPDATE tenants SET status = 'active' WHERE id = $1`, c.TenantID)
+	desk.Do("GET", "/patients?q=zz", nil).Expect(t, 200, "search after reactivation")
+}
+
+// TestREG_AUTH_026_LockedOutStaffStopAtTheirNextRequest: Given a cashier with a live
+// access token (15 minutes of life left), When the owner suspends her, Then her very
+// next request is refused: the lock-out does not wait for the token to run out (SEC-2).
+func TestREG_AUTH_026_LockedOutStaffStopAtTheirNextRequest(t *testing.T) {
+	c := newClinic(t)
+	st := c.Staff["cashier"]
+	cash := srv.As(t, c, "cashier")
+	cash.Do("GET", "/patients?q=zz", nil).Expect(t, 200, "search before the lock-out")
+	authSetStatus(t, srv.As(t, c, "owner"), st.ID, "suspended")
+	if r := cash.Do("GET", "/patients?q=zz", nil); r.Status != 401 {
+		t.Fatalf("suspended cashier's live token: HTTP %d %s, want 401", r.Status, r.Code)
 	}
 }
 
@@ -463,8 +477,10 @@ func TestREG_ORG_023_UnknownBranchIsBranchNotFound(t *testing.T) {
 
 // TestREG_ORG_024_RemovedClinicWorkspaceIsWorkspaceNotFound: Given a clinic whose
 // tenant row has been removed (soft-deleted by the vendor) while its owner still
-// holds an access token, When the owner reads the workspace, Then 404
-// WORKSPACE_NOT_FOUND, never another clinic's workspace.
+// holds an access token, When the owner reads the workspace, Then the request is
+// refused, never another clinic's workspace. Since 2026-10-03 (SEC-10) the token is
+// refused at the door (401: the clinic no longer exists); before, the workspace
+// lookup answered 404 WORKSPACE_NOT_FOUND, which stays as a second line.
 func TestREG_ORG_024_RemovedClinicWorkspaceIsWorkspaceNotFound(t *testing.T) {
 	c := newClinic(t)
 	owner := srv.As(t, c, "owner")
@@ -476,5 +492,5 @@ func TestREG_ORG_024_RemovedClinicWorkspaceIsWorkspaceNotFound(t *testing.T) {
 		t.Fatalf("workspace slug %q, want %q", ws.Slug, c.Slug)
 	}
 	xcExec(t, `UPDATE tenants SET deleted_at = now() WHERE id = $1`, c.TenantID)
-	gsExpect(t, owner.Do("GET", "/org/workspace", nil), 404, "WORKSPACE_NOT_FOUND", "workspace of a removed clinic")
+	gsExpect(t, owner.Do("GET", "/org/workspace", nil), 401, "UNAUTHENTICATED", "workspace of a removed clinic")
 }

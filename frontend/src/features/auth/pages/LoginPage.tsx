@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from "@/app/auth-context";
-import { AppError } from "@/lib/api-client";
+import { AppError, SESSION_END_KEY } from "@/lib/api-client";
 import { isMfaChallenge, loginApi } from "@/features/auth/api";
 import { loginSchema, type LoginValues } from "@/features/auth/schemas";
 
@@ -17,7 +17,19 @@ export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { signIn } = useAuth();
-  const [formError, setFormError] = useState<string | null>(null);
+  // Sent here because the server ended the session (locked out, clinic suspended,
+  // sign-in not renewed): say so once, instead of an empty form.
+  const [formError, setFormError] = useState<string | null>(() => {
+    try {
+      const why = sessionStorage.getItem(SESSION_END_KEY);
+      sessionStorage.removeItem(SESSION_END_KEY);
+      if (why === "clinic-suspended") return "This clinic's workspace has been suspended. Please contact ClinicOS support.";
+      if (why === "expired") return "Your session has ended. Please sign in again.";
+    } catch {
+      /* no storage: show the plain form */
+    }
+    return null;
+  });
 
   const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? "/";
 

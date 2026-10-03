@@ -34,6 +34,32 @@ beforeEach(async () => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("REG-FE-API api client", () => {
+  test("REG-FE-API-017 the server ending a session is reported once, with the reason; other refusals are not", async () => {
+    const ended = vi.fn();
+    api.setSessionEndedHandler(ended);
+    tok.tokenStore.set("t0");
+    // A suspended clinic: 403 TENANT_INACTIVE.
+    fetchMock.mockResolvedValueOnce(json(403, { error: { code: "TENANT_INACTIVE", message: "this workspace is not active" } }));
+    await expect(api.apiFetch("/patients")).rejects.toMatchObject({ status: 403, code: "TENANT_INACTIVE" });
+    expect(ended).toHaveBeenLastCalledWith("clinic-suspended");
+    // A plain permission refusal is not a session end.
+    ended.mockClear();
+    fetchMock.mockResolvedValueOnce(json(403, { error: { code: "FORBIDDEN", message: "no" } }));
+    await expect(api.apiFetch("/patients")).rejects.toMatchObject({ status: 403 });
+    expect(ended).not.toHaveBeenCalled();
+    // A 401 whose refresh also fails: the session is over.
+    fetchMock.mockResolvedValueOnce(json(401, { error: { code: "UNAUTHENTICATED", message: "account is not active" } }));
+    fetchMock.mockResolvedValueOnce(json(401, {}));
+    await expect(api.apiFetch("/patients")).rejects.toMatchObject({ status: 401 });
+    expect(ended).toHaveBeenLastCalledWith("expired");
+    // Public calls (auth:false, like a wrong password at sign-in) never end a session.
+    ended.mockClear();
+    fetchMock.mockResolvedValueOnce(json(401, { error: { code: "UNAUTHENTICATED", message: "invalid credentials" } }));
+    await expect(api.apiFetch("/auth/login", { method: "POST", auth: false, retry: false })).rejects.toMatchObject({ status: 401 });
+    expect(ended).not.toHaveBeenCalled();
+    api.setSessionEndedHandler(null);
+  });
+
   test("REG-FE-API-001 the access token is attached, the body is JSON, cookies are sent", async () => {
     tok.tokenStore.set("tok-A");
     fetchMock.mockResolvedValueOnce(json(200, { data: { ok: 1 } }));

@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 // These render the whole dental page and type into it; under a full parallel run
 // (with coverage) a test can take longer than the 5 s default.
-vi.setConfig({ testTimeout: 20000 });
+vi.setConfig({ testTimeout: 60_000 });
 
 const api = vi.hoisted(() => ({
   dentalSummary: vi.fn(), createPlan: vi.fn(), saveChart: vi.fn(), listToothStatuses: vi.fn(), listDentalImages: vi.fn(),

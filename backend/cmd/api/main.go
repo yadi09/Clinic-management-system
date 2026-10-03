@@ -109,6 +109,7 @@ func main() {
 		AppBaseURL: cfg.AppBaseURL,
 		InviteTTL:  cfg.InviteTTL,
 	})
+	httpx.SetAccountGuard(authSvc.CheckActive)
 	identityHandlers := identityhttp.NewHandlers(authSvc, userSvc, identityhttp.Options{
 		SecureCookies: cfg.IsProd(),
 		CookiePath:    "/api/v1/auth",
