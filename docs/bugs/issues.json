@@ -328,6 +328,10 @@
    {
     "date": "2026-10-04",
     "note": "Full run passed at night (03:00 Addis): server 672 pass / 0 fail, screens 1,626, browser journeys 10/10, 264/264 routes; coverage gate re-run green after two older tests were given real file keys. Committed; not yet deployed. Waiting for the owner to verify."
+   },
+   {
+    "date": "2026-10-04",
+    "note": "Deployed to app.clinicos.cc (commit fd3805c, pre-deploy backup taken, API ready). Live check at 04:10 Addis: the fee day now starts 21:00 UTC (Addis midnight); the old expression started it at 06:00 Addis, still in the future at that moment."
    }
   ],
   "order": 9
@@ -1305,6 +1309,10 @@
    {
     "date": "2026-10-04",
     "note": "Full run passed at night (03:00 Addis): server 672 pass / 0 fail, screens 1,626, browser journeys 10/10, 264/264 routes; coverage gate re-run green after two older tests were given real file keys. Committed; not yet deployed. Waiting for the owner to verify."
+   },
+   {
+    "date": "2026-10-04",
+    "note": "Deployed to app.clinicos.cc (commit fd3805c, pre-deploy backup taken, API ready)."
    }
   ],
   "order": 3
@@ -4623,6 +4631,10 @@
    {
     "date": "2026-10-04",
     "note": "Full run passed at night (03:00 Addis): server 672 pass / 0 fail, screens 1,626, browser journeys 10/10, 264/264 routes; coverage gate re-run green after two older tests were given real file keys. Committed; not yet deployed. Waiting for the owner to verify."
+   },
+   {
+    "date": "2026-10-04",
+    "note": "Deployed to app.clinicos.cc (commit fd3805c, pre-deploy backup taken, API ready)."
    }
   ]
  },
@@ -4651,6 +4663,10 @@
    {
     "date": "2026-10-04",
     "note": "Found by a screen test that failed only under load during the SEC-1 full run. Two-line fix made at once (it blocked a reliable green run); the new test fails without it and passes with it. Committed with SEC-1; waiting for the owner to verify."
+   },
+   {
+    "date": "2026-10-04",
+    "note": "Deployed to app.clinicos.cc (commit fd3805c, pre-deploy backup taken, API ready)."
    }
   ]
  }
