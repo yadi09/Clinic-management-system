@@ -305,8 +305,31 @@ func TestREG_PATIENT_025_AttachmentKeyMustBeThisClinicsFolder(t *testing.T) {
 	r := srv.As(t, clinicA, "receptionist").Do("POST", "/patients/"+p.ID+"/attachments", map[string]any{
 		"type": "pdf", "storage_key": key, "filename": "theirs.pdf", "mime_type": "application/pdf", "size_bytes": 10,
 	})
-	testkit.KnownBug(t, "SEC-1", r.Status == 201,
-		"an attachment whose storage_key sits in another clinic's folder is recorded (HTTP 201): RecordAttachment trusts the client's key")
+	// (SEC-1, fixed 2026-10-03.)
+	r.Expect(t, 400, "an attachment key in another clinic's folder")
+	// Nor another patient's folder in this clinic, nor a path that climbs out of
+	// this patient's folder; the key the upload step hands out is accepted.
+	pid := opUUID(t, id.PrefixPatient, p.ID)
+	own := fmt.Sprintf("%s/patients/%s/", clinicA.TenantID, pid)
+	desk := srv.As(t, clinicA, "receptionist")
+	for _, bad := range []string{
+		fmt.Sprintf("%s/patients/%s/x.pdf", clinicA.TenantID, uuid.New()),
+		own + "../" + uuid.NewString() + "/x.pdf",
+		own,
+		"/" + own + "x.pdf",
+	} {
+		desk.Do("POST", "/patients/"+p.ID+"/attachments", map[string]any{
+			"type": "pdf", "storage_key": bad, "filename": "x.pdf", "mime_type": "application/pdf", "size_bytes": 10,
+		}).Expect(t, 400, "attachment key "+bad)
+	}
+	var stored int
+	one(t, `SELECT count(*) FROM attachments WHERE patient_id = $1`, &stored, pid)
+	if stored != 0 {
+		t.Fatalf("a refused key was stored (%d rows)", stored)
+	}
+	desk.Do("POST", "/patients/"+p.ID+"/attachments", map[string]any{
+		"type": "pdf", "storage_key": own + "referral.pdf", "filename": "referral.pdf", "mime_type": "application/pdf", "size_bytes": 10,
+	}).Expect(t, 201, "a key in this patient's own folder")
 }
 
 // TestREG_PATIENT_026_BadValuesAreRefusedNot500: Given a patient, When the desk sends a
@@ -317,7 +340,9 @@ func TestREG_PATIENT_026_BadValuesAreRefusedNot500(t *testing.T) {
 	rc := srv.As(t, clinicA, "receptionist")
 	p := opPatient(t, clinicA)
 	cond := rc.Do("POST", "/patients/"+p.ID+"/conditions", map[string]any{"description": "Asthma", "status": "chronic"})
-	att := rc.Do("POST", "/patients/"+p.ID+"/attachments", map[string]any{"type": "exe", "storage_key": "k", "filename": "a.exe", "mime_type": "application/x"})
+	// A real upload key, so the bad type is what the database sees (not the SEC-1 key check).
+	key := fmt.Sprintf("%s/patients/%s/a.exe", clinicA.TenantID, opUUID(t, id.PrefixPatient, p.ID))
+	att := rc.Do("POST", "/patients/"+p.ID+"/attachments", map[string]any{"type": "exe", "storage_key": key, "filename": "a.exe", "mime_type": "application/x"})
 	grd := rc.Do("POST", "/patients/"+p.ID+"/guardians", map[string]any{"guardian_patient_id": id.Encode(id.PrefixPatient, uuid.New()), "relationship": "father"})
 	prof := opProfileOf(t, rc, p.ID)
 	if len(prof.Conditions)+len(prof.Attachments)+len(prof.Guardians) != 0 {
@@ -340,7 +365,11 @@ func TestREG_PATIENT_027_ChildRecordsOnAnotherClinicsPatientAreRefused(t *testin
 	codes := []int{
 		oa.Do("POST", "/patients/"+pb.ID+"/conditions", map[string]any{"description": "Stray"}).Status,
 		oa.Do("POST", "/patients/"+pb.ID+"/guardians", map[string]any{"relationship": "stray"}).Status,
-		oa.Do("POST", "/patients/"+pb.ID+"/attachments", map[string]any{"type": "pdf", "storage_key": "k/stray.pdf", "filename": "s.pdf", "mime_type": "application/pdf"}).Status,
+		// A key in the caller's own folder for that patient id, so it passes the SEC-1
+		// key check and reaches the cross-clinic patient question this test is about.
+		oa.Do("POST", "/patients/"+pb.ID+"/attachments", map[string]any{"type": "pdf",
+			"storage_key": fmt.Sprintf("%s/patients/%s/stray.pdf", a.TenantID, opUUID(t, id.PrefixPatient, pb.ID)),
+			"filename": "s.pdf", "mime_type": "application/pdf"}).Status,
 		oa.Do("POST", "/patients/"+pb.ID+"/certificates", map[string]any{"kind": "attendance"}).Status,
 		oa.Do("POST", "/history-import", map[string]any{"patient_id": pb.ID, "date": "2020-01-01", "subjective": "stray"}).Status,
 	}

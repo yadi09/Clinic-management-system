@@ -494,6 +494,9 @@ func (s *Service) RaiseIntakeChargeIDsTx(ctx context.Context, tx pgx.Tx, in bill
 		// A fee already paid, waived, or agreed to be paid later is a fee dealt with.
 		// Pending ones are handed back to be collected; settled ones mean there is
 		// nothing left to raise and nothing left to take.
+		// "Today" starts at Addis midnight: the clinic day as a local timestamp, then
+		// read as Addis time. (Casting the date straight to timestamptz used the
+		// session zone, UTC, and put the start at 06:00 Addis: NEW-DAY-2.)
 		var pending, settled int
 		if e := tx.QueryRow(ctx, `
 			SELECT count(*) FILTER (WHERE status = 'pending' AND deferred_at IS NULL)::int,
@@ -501,7 +504,7 @@ func (s *Service) RaiseIntakeChargeIDsTx(ctx context.Context, tx pgx.Tx, in bill
 			  FROM charges
 			 WHERE tenant_id = $1 AND patient_id = $2 AND deleted_at IS NULL
 			   AND service_item_id = ANY($3::uuid[])
-			   AND created_at >= (((now() AT TIME ZONE 'Africa/Addis_Ababa')::date) AT TIME ZONE 'Africa/Addis_Ababa')`,
+			   AND created_at >= ((now() AT TIME ZONE 'Africa/Addis_Ababa')::date::timestamp AT TIME ZONE 'Africa/Addis_Ababa')`,
 			tenantID, in.PatientID, svc).Scan(&pending, &settled); e != nil {
 			return nil, e
 		}
@@ -512,7 +515,7 @@ func (s *Service) RaiseIntakeChargeIDsTx(ctx context.Context, tx pgx.Tx, in bill
 				  WHERE tenant_id = $1 AND patient_id = $2 AND status = 'pending' AND deleted_at IS NULL
 				    AND deferred_at IS NULL
 				    AND service_item_id = ANY($3::uuid[])
-				    AND created_at >= (((now() AT TIME ZONE 'Africa/Addis_Ababa')::date) AT TIME ZONE 'Africa/Addis_Ababa')
+				    AND created_at >= ((now() AT TIME ZONE 'Africa/Addis_Ababa')::date::timestamp AT TIME ZONE 'Africa/Addis_Ababa')
 				  ORDER BY created_at`,
 				tenantID, in.PatientID, svc)
 			if e != nil {

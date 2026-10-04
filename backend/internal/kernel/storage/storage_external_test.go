@@ -92,3 +92,35 @@ func TestREG_KERNEL_STORAGE_022_CloudinaryURLIgnoresResourceType(t *testing.T) {
 	testkit.KnownBug(t, "NEW-KERNEL-STORAGE-2", present,
 		"Cloudinary.URL/Delete hard-code the image resource type; raw uploads get "+got+" and destroy targets image/destroy")
 }
+
+// Given the folder the upload step hands out for one clinic and one patient, When a
+// key comes back to be recorded, Then only an object strictly inside that folder is
+// accepted: no sibling folder sharing the prefix, no "..", "." or empty segment, no
+// leading slash, and not the folder itself (SEC-1).
+func TestREG_KERNEL_STORAGE_KeyInFolder(t *testing.T) {
+	const folder = "t1/patients/p1"
+	for key, want := range map[string]bool{
+		"t1/patients/p1/x.pdf":       true,
+		"t1/patients/p1/sub/x.pdf":   true,
+		"t1/patients/p1":             false,
+		"t1/patients/p1/":            false,
+		"t1/patients/p10/x.pdf":      false,
+		"t2/patients/p1/x.pdf":       false,
+		"/t1/patients/p1/x.pdf":      false,
+		"t1/patients/p1/../p2/x.pdf": false,
+		"t1/patients/p1/./x.pdf":     false,
+		"t1/patients/p1//x.pdf":      false,
+		"":                           false,
+		"x.pdf":                      false,
+	} {
+		if got := storage.KeyInFolder(key, folder); got != want {
+			t.Errorf("KeyInFolder(%q) = %v, want %v", key, got, want)
+		}
+	}
+	if storage.KeyInFolder("anything/x", "") || storage.KeyInFolder("anything/x", "/") {
+		t.Errorf("an empty folder must accept nothing")
+	}
+	if !storage.KeyInFolder("t1/patients/p1/x.pdf", "/t1/patients/p1/") {
+		t.Errorf("surrounding slashes on the folder must not matter")
+	}
+}

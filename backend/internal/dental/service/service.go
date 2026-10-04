@@ -2675,8 +2675,8 @@ func (s *Service) UnbilledTreatment(ctx context.Context, from, to string, limit,
 			  AND sm.session_status <> 'cancelled'
 			  AND sm.pay_state IN ('unpaid','refunded')
 			  AND sm.owed_amount > 0.005
-			  AND ($2::date IS NULL OR sm.owed_since::date >= $2::date)
-			  AND ($3::date IS NULL OR sm.owed_since::date <= $3::date)`,
+			  AND ($2::date IS NULL OR (sm.owed_since AT TIME ZONE 'Africa/Addis_Ababa')::date >= $2::date)
+			  AND ($3::date IS NULL OR (sm.owed_since AT TIME ZONE 'Africa/Addis_Ababa')::date <= $3::date)`,
 			tid, fromPtr, toPtr).Scan(&out.Total, &out.Count, &out.PromisedTotal, &out.PromisedCount); e != nil {
 			return e
 		}
@@ -2685,11 +2685,13 @@ func (s *Service) UnbilledTreatment(ctx context.Context, from, to string, limit,
 
 		rows, e := tx.Query(ctx, sessionMoneyCTE+`,
 today AS (SELECT (now() AT TIME ZONE 'Africa/Addis_Ababa')::date AS d)
+-- Every date below is the clinic's (Addis) day: owed_since is a timestamptz, and a
+-- bare ::date would bucket it by UTC, filing night visits under yesterday (NEW-DAY-3).
 SELECT sm.session_id, sm.patient_id, pt.mrn,
        trim(pt.first_name || ' ' || coalesce(pt.last_name,'')),
        coalesce(pt.phone,''), pl.title, sm.procedure, sm.tooth, sm.seq, pl.session_count, sm.kind, coalesce(si.name,''),
-       sm.owed_since::date,
-       ((SELECT d FROM today) - sm.owed_since::date)::int,
+       (sm.owed_since AT TIME ZONE 'Africa/Addis_Ababa')::date,
+       ((SELECT d FROM today) - (sm.owed_since AT TIME ZONE 'Africa/Addis_Ababa')::date)::int,
        sm.owed_amount::text,
        CASE WHEN sm.pay_state = 'refunded' THEN 'refunded'
             WHEN sm.charge_id IS NOT NULL  THEN 'bill_withdrawn'
@@ -2707,8 +2709,8 @@ WHERE pt.deleted_at IS NULL AND pl.status <> 'cancelled'
   AND sm.owed_now
   AND sm.pay_state IN ('unpaid','refunded')
   AND sm.owed_amount > 0.005
-  AND ($2::date IS NULL OR sm.owed_since::date >= $2::date)
-  AND ($3::date IS NULL OR sm.owed_since::date <= $3::date)
+  AND ($2::date IS NULL OR (sm.owed_since AT TIME ZONE 'Africa/Addis_Ababa')::date >= $2::date)
+  AND ($3::date IS NULL OR (sm.owed_since AT TIME ZONE 'Africa/Addis_Ababa')::date <= $3::date)
 ORDER BY sm.owed_since ASC
 LIMIT $4 OFFSET $5`, tid, fromPtr, toPtr, limit+1, offset)
 		if e != nil {
@@ -2845,7 +2847,7 @@ func (s *Service) SignImageUpload(ctx context.Context, patientID uuid.UUID, file
 		return storage.UploadTarget{}, apperr.Internal(err)
 	}
 	target, err := s.store.SignUpload(ctx, storage.UploadOptions{
-		Folder: fmt.Sprintf("%s/dental/%s", tid, patientID), ResourceType: "image", Tags: []string{"dental"},
+		Folder: imageFolder(tid, patientID), ResourceType: "image", Tags: []string{"dental"},
 	})
 	if err != nil {
 		return storage.UploadTarget{}, apperr.Internal(err)
@@ -2857,6 +2859,26 @@ func (s *Service) RecordImage(ctx context.Context, patientID uuid.UUID, sessionI
 	tid, actor := actorOf(ctx)
 	if in.StorageKey == "" {
 		return nil, apperr.Validation("a storage key is required")
+	}
+	// Only a key the upload step handed out for this clinic and this patient (SEC-1).
+	if !storage.KeyInFolder(in.StorageKey, imageFolder(tid, patientID)) {
+		return nil, apperr.Validation("that image was not uploaded for this patient").WithField("storage_key", "invalid")
+	}
+	// A visit it is filed on must be one of this patient's treatment visits, never
+	// another patient's and never the down payment.
+	if sessionID != nil {
+		var ok bool
+		if err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+			return tx.QueryRow(ctx,
+				`SELECT EXISTS (SELECT 1 FROM treatment_sessions ts JOIN treatment_plans p ON p.id = ts.plan_id
+				  WHERE ts.tenant_id = $1 AND ts.id = $2 AND p.patient_id = $3 AND ts.kind <> 'deposit')`,
+				tid, *sessionID, patientID).Scan(&ok)
+		}); err != nil {
+			return nil, apperr.Internal(err)
+		}
+		if !ok {
+			return nil, apperr.Validation("that visit is not one of this patient's treatment visits").WithField("session_id", "invalid")
+		}
 	}
 	size := in.SizeBytes
 	if sizer, ok := s.store.(storage.Sizer); ok {
@@ -2896,6 +2918,11 @@ func (s *Service) RecordImage(ctx context.Context, patientID uuid.UUID, sessionI
 		im.SessionID = &sid
 	}
 	return im, nil
+}
+
+// imageFolder is where a patient's dental images live: one folder per clinic per patient.
+func imageFolder(tid, patientID uuid.UUID) string {
+	return fmt.Sprintf("%s/dental/%s", tid, patientID)
 }
 
 // ListImages returns a session's images (sessionID set) or the general,

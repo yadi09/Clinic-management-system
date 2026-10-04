@@ -326,7 +326,7 @@ func TestREG_PLAN_012_BranchCapIsExact(t *testing.T) {
 func xcRecordImage(t *testing.T, doc *testkit.Client, c *testkit.Clinic, patientID string, size int64) {
 	t.Helper()
 	doc.Do("POST", "/dental/patients/"+patientID+"/images", map[string]any{
-		"storage_key": c.TenantID.String() + "/dental/" + uuid.NewString() + ".jpg",
+		"storage_key": c.TenantID.String() + "/dental/" + xcID(t, id.PrefixPatient, patientID).String() + "/" + uuid.NewString() + ".jpg",
 		"filename":    "pa.jpg", "mime_type": "image/jpeg", "size_bytes": size, "category": "xray",
 	}).Expect(t, 201, "record image")
 }
@@ -442,7 +442,7 @@ func TestREG_PLAN_016_RecordingAFileRespectsTheStorageCap(t *testing.T) {
 		"storage_key": c.TenantID.String() + "/patients/" + pid.String() + "/over.pdf", "filename": "over.pdf",
 		"mime_type": "application/pdf", "size_bytes": 4096})
 	img := doc.Do("POST", "/dental/patients/"+p.ID+"/images", map[string]any{
-		"storage_key": c.TenantID.String() + "/dental/" + uuid.NewString() + ".jpg", "filename": "over.jpg",
+		"storage_key": c.TenantID.String() + "/dental/" + pid.String() + "/" + uuid.NewString() + ".jpg", "filename": "over.jpg",
 		"mime_type": "image/jpeg", "size_bytes": 4096, "category": "xray"})
 	var used int64
 	one(t, `SELECT coalesce(sum(size_bytes), 0)::bigint FROM attachments WHERE tenant_id = $1 AND deleted_at IS NULL`, &used, c.TenantID)

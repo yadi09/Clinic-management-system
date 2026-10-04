@@ -383,7 +383,7 @@ func TestREG_BRANCH_007_DentalCalendarOfAnotherBranch(t *testing.T) {
 	var rows []struct {
 		SessionID string `json:"session_id"`
 	}
-	d := time.Now().Format("2006-01-02")
+	d := payAddisToday()
 	deskA.Do("GET", "/dental/sessions?from="+d+"&to="+d, nil).Expect(t, 200, "calendar").Decode(t, &rows)
 	seen := false
 	for _, r := range rows {

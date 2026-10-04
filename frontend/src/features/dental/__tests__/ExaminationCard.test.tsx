@@ -311,7 +311,7 @@ describe("REG-FE-EXAM the examination card", () => {
     await waitFor(() => expect(tst.success).toHaveBeenCalledWith("Examination recorded"));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Record examination" })).not.toBeInTheDocument());
     expect(api.listExams).toHaveBeenCalledTimes(2);
-  }, 20000);
+  });
 
   test("REG-FE-EXAM-031 while saving the button reads Saving… and is disabled; a failure keeps the form and says why", async () => {
     let reject!: (e: unknown) => void;

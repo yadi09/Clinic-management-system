@@ -223,12 +223,25 @@ func payDashboard(t *testing.T, c *testkit.Client) payDashMoney {
 }
 
 // payAddisToday is today's date in the clinic's timezone.
-func payAddisToday() string {
+func payAddisToday() string { return time.Now().In(addisLoc()).Format("2006-01-02") }
+
+// addisLoc is the clinic's time zone. Every "today" a test computes must come from
+// it: the test host and the database run in UTC, three hours behind.
+func addisLoc() *time.Location {
 	loc, err := time.LoadLocation("Africa/Addis_Ababa")
 	if err != nil {
 		loc = time.FixedZone("EAT", 3*3600)
 	}
-	return time.Now().In(loc).Format("2006-01-02")
+	return loc
+}
+
+// addisAt is h:m Addis time on the clinic's day dayOffset days from today. A row
+// stamped 00:30 Addis today sits on yesterday's date in UTC at every hour, so a
+// product query that buckets days in UTC fails whenever the suite runs, not only at
+// night (the way TestREG_PAY_011 and TestREG_BILL_096 catch it).
+func addisAt(dayOffset, h, m int) time.Time {
+	now := time.Now().In(addisLoc())
+	return time.Date(now.Year(), now.Month(), now.Day()+dayOffset, h, m, 0, 0, addisLoc())
 }
 
 // payPaidVisit is the standard arrangement: a 1-visit course of `fee`, done,

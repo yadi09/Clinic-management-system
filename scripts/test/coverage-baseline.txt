@@ -36,7 +36,7 @@ internal/kernel/sms 99.3
 internal/kernel/storage 100.0
 internal/kernel/tenancy 100.0
 internal/kernel/verifyet 99.0
-internal/messaging/dispatch 90.0 slack=0.5  # the SMS planner/dispatcher run on timers inside the API under test; identical runs measured 89.7-90.0 (2026-10-03)
+internal/messaging/dispatch 90.4 slack=0.5  # the SMS planner/dispatcher run on timers inside the API under test; identical runs measured 89.7-90.0 (2026-10-03)
 internal/messaging/http 92.2
 internal/messaging/service 87.5
 internal/notification/http 97.4

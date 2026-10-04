@@ -121,6 +121,18 @@ describe("REG-FE-RECORD recording a visit", () => {
     await waitFor(() => expect(sessionStorage.getItem("dental-draft:s2")).toBeNull());
   });
 
+  test("REG-FE-RECORD-017 a draft save still pending when the visit is recorded does not bring the draft back (NEW-DRAFT-1)", async () => {
+    sessionStorage.setItem("dental-draft:s2", JSON.stringify({ procedure: [], tooth: [], notes: "Earlier" }));
+    const { user } = form(S("s2", T, 2, "planned", { pay_later: true }), T);
+    expect(await screen.findByText(/Draft restored/)).toBeInTheDocument();
+    // Save at once, while the 800 ms draft timer from the restore is still pending.
+    await user.click(saveBtn());
+    await waitFor(() => expect(sessionStorage.getItem("dental-draft:s2")).toBeNull());
+    // Past the moment the pending timer would have fired: still no draft.
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(sessionStorage.getItem("dental-draft:s2")).toBeNull();
+  });
+
   test("REG-FE-RECORD-011 a failed save keeps the form open and does not report saved", async () => {
     api.updateSession.mockRejectedValue(new Error("boom"));
     const { user, onSaved } = form(S("s2", T, 2, "planned", { pay_later: true }), T);

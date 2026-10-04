@@ -196,12 +196,11 @@ func TestREG_BILL_093_ConcurrentArrivalsRaiseOneIntakeFee(t *testing.T) {
 		srv.As(t, clinic, "receptionist"), srv.As(t, clinic, "receptionist"),
 		srv.As(t, clinic, "branch_manager"), srv.As(t, clinic, "owner"),
 	}
-	// Control: two presses one after the other must already hand back the same fee.
-	// When they do not, the day-boundary bug NEW-DAY-2 (REG_BILL_096) is hiding today's
-	// fee at this hour, and a race cannot be told apart from it.
+	// Control: two presses one after the other must hand back the same fee, or a
+	// race below could not be told apart from a broken "today" (NEW-DAY-2).
+	// (NEW-DAY-2, fixed 2026-10-04: sequential presses are idempotent at every hour.)
 	if !gmSequentialPressIsIdempotent(t, clinic, desks[0]) {
-		testkit.KnownBug(t, "NEW-DAY-2", true,
-			"two sequential walk-ins already raise two fees at this hour, so FIN-6 cannot be judged (see REG_BILL_096)")
+		t.Fatal("two sequential walk-ins raised two registration fees")
 	}
 	const rounds = 6
 	worst, dupPatients := 0, 0
@@ -276,12 +275,10 @@ func TestREG_BILL_096_TodaysFeeCountsFromAddisMidnight(t *testing.T) {
 	}
 	blExec(t, `UPDATE charges SET created_at = $2 WHERE id = $1`, blUUID(t, id.PrefixCharge, first.ChargeIDs[0]), early)
 	desk.Do("POST", "/queue/walk-in", body).Expect(t, 201, "press again").Decode(t, &again)
+	// (NEW-DAY-2, fixed 2026-10-04.)
 	if n := gmFees(t, p, svc); n != 1 || len(again.ChargeIDs) != 1 || again.ChargeIDs[0] != first.ChargeIDs[0] {
-		testkit.KnownBug(t, "NEW-DAY-2", true, fmt.Sprintf(
-			"a fee raised at 00:01 Addis today was not found by the next press: %d fees, handed back %v — "+
-				"billing/service/service.go RaiseIntakeChargeIDsTx's Addis-midnight expression is read in the session time zone", n, again.ChargeIDs))
+		t.Fatalf("a fee raised at 00:01 Addis today was not found by the next press: %d fees, handed back %v", n, again.ChargeIDs)
 	}
-	testkit.KnownBug(t, "NEW-DAY-2", false, "today's registration fee is found from midnight Addis")
 }
 
 // ---- the follow-up free window ------------------------------------------------------------

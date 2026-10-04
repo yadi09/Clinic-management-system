@@ -7,10 +7,14 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { apiAs, login, uniq } from "./stack";
 
+// A date on the clinic's calendar (Addis), the same calendar the browser runs on
+// (playwright.config.ts timezoneId). The test process itself runs on the host's zone,
+// so a plain new Date() here disagreed with the browser for part of every night.
 const iso = (offsetDays = 0) => {
-  const d = new Date();
-  d.setDate(d.getDate() + offsetDays);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Addis_Ababa" }).format(new Date());
+  const d = new Date(`${today}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  return d.toISOString().slice(0, 10);
 };
 
 interface Plan { id: string; sessions: { id: string; seq: number; scheduled_date: string }[] }

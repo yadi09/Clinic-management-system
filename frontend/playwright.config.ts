@@ -27,6 +27,10 @@ export default defineConfig({
     // installed by `npx playwright install chromium`.
     channel: process.env.E2E_BROWSER_CHANNEL === "chromium" ? undefined : (process.env.E2E_BROWSER_CHANNEL || "chrome"),
     headless: true,
+    // The browser runs on the clinic's clock, as every clinic computer does. On the
+    // test host's own zone (New York here, UTC in CI) the app's "today" was a day
+    // behind Addis for part of every night, and REG-E2E-010 failed (2026-10-04).
+    timezoneId: "Africa/Addis_Ababa",
     baseURL: `http://127.0.0.1:${E2E_PORT}`,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",

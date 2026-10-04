@@ -406,8 +406,7 @@ func (s *Service) SignAttachmentUpload(ctx context.Context, patientID uuid.UUID,
 	if in.Type == "image" {
 		resourceType = "image"
 	}
-	folder := fmt.Sprintf("%s/patients/%s", tenantID, patientID)
-	return s.store.SignUpload(ctx, storage.UploadOptions{Folder: folder, ResourceType: resourceType, Tags: []string{"patient"}})
+	return s.store.SignUpload(ctx, storage.UploadOptions{Folder: attachmentFolder(tenantID, patientID), ResourceType: resourceType, Tags: []string{"patient"}})
 }
 
 // RecordAttachment persists attachment metadata after a direct upload. It prefers
@@ -415,6 +414,11 @@ func (s *Service) SignAttachmentUpload(ctx context.Context, patientID uuid.UUID,
 // a client can't under-report its size to dodge the storage quota.
 func (s *Service) RecordAttachment(ctx context.Context, patientID uuid.UUID, in patient.AttachmentInput) (*patient.Attachment, error) {
 	tenantID, actor := actor(ctx)
+	// Only a key the upload step handed out for this clinic and this patient (SEC-1):
+	// anything else could point the record, and a later delete, at another clinic's file.
+	if !storage.KeyInFolder(in.StorageKey, attachmentFolder(tenantID, patientID)) {
+		return nil, apperr.Validation("that file was not uploaded for this patient").WithField("storage_key", "invalid")
+	}
 	size := in.SizeBytes
 	if sizer, ok := s.store.(storage.Sizer); ok {
 		if real, e := sizer.Size(ctx, in.StorageKey); e == nil && real > 0 {
@@ -461,6 +465,11 @@ func (s *Service) RemoveAttachment(ctx context.Context, patientID, id uuid.UUID)
 }
 
 // --- helpers ---
+
+// attachmentFolder is where a patient's files live: one folder per clinic per patient.
+func attachmentFolder(tenantID, patientID uuid.UUID) string {
+	return fmt.Sprintf("%s/patients/%s", tenantID, patientID)
+}
 
 func actor(ctx context.Context) (uuid.UUID, *uuid.UUID) {
 	if p, ok := tenancy.PrincipalFromContext(ctx); ok {

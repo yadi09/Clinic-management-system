@@ -884,7 +884,7 @@ func TestREG_AUTHZ_002_RefusedWritesChangeNothing(t *testing.T) {
 	p := createPatient(t, owner, uniq("Authz"), "Matrix")
 	for _, role := range []string{"receptionist", "cashier", "nurse"} {
 		r := srv.As(t, clinicA, role).Do("POST", "/dental/patients/"+p.ID+"/plans", map[string]any{
-			"title": "Crown", "tooth": "UL6", "total_amount": "3000", "start_date": time.Now().Format("2006-01-02"),
+			"title": "Crown", "tooth": "UL6", "total_amount": "3000", "start_date": payAddisToday(),
 			"interval_unit": "week", "interval_count": 1, "session_count": 2,
 		})
 		if r.Status != 403 || r.Code != "FORBIDDEN_PERMISSION" {

@@ -133,6 +133,10 @@ export function RecordVisitForm({
       ...(savedAs !== session.scheduled_date ? { scheduled_date: savedAs } : {}),
     }),
     onSuccess: () => {
+      // The visit is recorded, so its draft is finished: stop a pending draft save
+      // first, or it fires after the removal and brings the draft back (NEW-DRAFT-1).
+      if (timer.current) clearTimeout(timer.current);
+      setDirty(false);
       sessionStorage.removeItem(draftKey);
       toast.success("Visit recorded");
       // Refresh only. Dismissing here is what made the fee question unreachable:

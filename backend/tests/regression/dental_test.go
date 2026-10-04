@@ -64,9 +64,14 @@ type denPlan struct {
 	} `json:"deposit"`
 }
 
-func denToday() string { return time.Now().Format("2006-01-02") }
+// denToday and denDay are dates on the clinic's calendar (Addis). The test host
+// runs in UTC, so its own date is yesterday's between 00:00 and 03:00 Addis, and
+// fixtures built from it failed only at night (2026-10-04).
+func denToday() string { return denDay(0) }
 
-func denDay(offset int) string { return time.Now().AddDate(0, 0, offset).Format("2006-01-02") }
+func denDay(offset int) string {
+	return time.Now().In(addisLoc()).AddDate(0, 0, offset).Format("2006-01-02")
+}
 
 func denMoney(t *testing.T, s string) float64 {
 	t.Helper()
@@ -875,7 +880,7 @@ func denRecordImage(t *testing.T, doc *testkit.Client, c *testkit.Clinic, patien
 	var im struct {
 		ID string `json:"id"`
 	}
-	key := c.TenantID.String() + "/dental/" + uuid.NewString() + ".jpg"
+	key := c.TenantID.String() + "/dental/" + denUUID(t, id.PrefixPatient, patientID).String() + "/" + uuid.NewString() + ".jpg"
 	doc.Do("POST", "/dental/patients/"+patientID+"/images", map[string]any{
 		"storage_key": key, "filename": "pa-ll6.jpg", "mime_type": "image/jpeg", "size_bytes": 2048, "category": "xray",
 	}).Expect(t, 201, "record image").Decode(t, &im)

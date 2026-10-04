@@ -293,7 +293,7 @@
  {
   "id": "NEW-DAY-2",
   "title": "Early-morning arrivals can get a second registration fee",
-  "severity": "medium",
+  "severity": "high",
   "area": "Money",
   "who": "Receptionist, Patient",
   "simple": "To avoid charging the registration fee twice in one day, the system looks for a fee raised \"today\". Because of a time-zone slip, \"today\" starts at 6 a.m. Addis, so a fee raised before 6 a.m. is not found.",
@@ -303,16 +303,34 @@
   "effort": "S",
   "decision": null,
   "tests": [
-   "TestREG_BILL_096_TodaysFeeCountsFromAddisMidnight",
-   "TestREG_BILL_093_ConcurrentArrivalsRaiseOneIntakeFee"
+   "TestREG_BILL_080_IntakeFeeRaisedOnceAndGatesTheDoor",
+   "TestREG_BILL_093_ConcurrentArrivalsRaiseOneIntakeFee",
+   "TestREG_BILL_096_TodaysFeeCountsFromAddisMidnight"
   ],
   "files": [
    "backend/internal/billing/service/service.go:504"
   ],
   "tested": true,
-  "status": "open",
-  "log": [],
-  "order": 100
+  "status": "fixed",
+  "log": [
+   {
+    "date": "2026-10-04",
+    "note": "Confirmed live in the night window: the 'today' cut-off is 06:00 Addis, so every check-in from 00:00 to 06:00 can raise the fee again (TestREG_BILL_080 now reports it as this bug in that window)."
+   },
+   {
+    "date": "2026-10-04",
+    "note": "Raised from medium to high: from 00:00 to 06:00 Addis every check-in can charge the registration fee again."
+   },
+   {
+    "date": "2026-10-04",
+    "note": "Owner confirmed. Fixed: today's registration fee is looked up from Addis midnight (the date read as Addis time, not the session zone). Known-bug tests now plain; the night-window guards removed. Passed at 02:59 Addis."
+   },
+   {
+    "date": "2026-10-04",
+    "note": "Full run passed at night (03:00 Addis): server 672 pass / 0 fail, screens 1,626, browser journeys 10/10, 264/264 routes; coverage gate re-run green after two older tests were given real file keys. Committed; not yet deployed. Waiting for the owner to verify."
+   }
+  ],
+  "order": 9
  },
  {
   "id": "NEW-FU-1",
@@ -1042,7 +1060,7 @@
    "backend/internal/identity/service/auth_service.go:352"
   ],
   "tested": true,
-  "status": "fixed",
+  "status": "verified",
   "log": [
    {
     "date": "2026-10-03",
@@ -1071,6 +1089,10 @@
    {
     "date": "2026-10-03",
     "note": "Deployed to app.clinicos.cc with SEC-10 (commit 0d82f9c). Waiting for the owner to verify."
+   },
+   {
+    "date": "2026-10-03",
+    "note": "Owner verified on the live system."
    }
   ],
   "order": 1
@@ -1106,7 +1128,7 @@
    "backend/internal/platform/service/service.go:190"
   ],
   "tested": true,
-  "status": "fixed",
+  "status": "verified",
   "log": [
    {
     "date": "2026-10-03",
@@ -1131,6 +1153,10 @@
    {
     "date": "2026-10-03",
     "note": "Deployed to app.clinicos.cc (commit 0d82f9c, pre-deploy backup taken, API ready). Live check on the suspended test-clinic: sign-in refused 403 TENANT_INACTIVE, and a valid pass for it refused on its next request (before the fix: 200). No other refusals in the API log since the deploy."
+   },
+   {
+    "date": "2026-10-03",
+    "note": "Owner verified on the live system."
    }
   ],
   "order": 2
@@ -1248,16 +1274,39 @@
   "effort": "S",
   "decision": null,
   "tests": [
-   "TestREG_PATIENT_025_AttachmentKeyMustBeThisClinicsFolder",
-   "TestREG_DENTAL_221_RecordImageTrustsTheClientsKeyAndSession"
+   "TestREG_DENTAL_221_RecordImageTrustsTheClientsKeyAndSession",
+   "TestREG_KERNEL_STORAGE_KeyInFolder",
+   "TestREG_PATIENT_025_AttachmentKeyMustBeThisClinicsFolder"
   ],
   "files": [
-   "backend/internal/patient/service/service.go:416",
-   "backend/internal/dental/service/service.go:2856"
+   "backend/internal/dental/service/service.go:2856",
+   "backend/internal/kernel/storage/storage.go",
+   "backend/internal/patient/service/service.go:416"
   ],
   "tested": true,
-  "status": "open",
-  "log": [],
+  "status": "fixed",
+  "log": [
+   {
+    "date": "2026-10-03",
+    "note": "Explained; owner confirmed it is critical and to fix it."
+   },
+   {
+    "date": "2026-10-04",
+    "note": "Fix written: recording a patient file or a dental image accepts only a storage location inside this clinic's folder for this patient (no climbing out with ../), the size lookup happens only after that check, and an image may only be filed on one of this patient's treatment visits (never another patient's, never the down payment). All 6 files on the live system already follow the rule. Known-bug tests now plain; ~10 tests that invented locations corrected. Full run scheduled after 03:00 Addis."
+   },
+   {
+    "date": "2026-10-04",
+    "note": "Full run attempt 1 failed, none of it from the SEC-1 fix: (1) my night-hours change to a test helper commented out the plan interval, making test plans monthly (4 dental tests); (2) one exam screen test still carried its own 20 s limit; (3) skipping the waiting-alert test at night dropped dashboard coverage. Fixed all three; the waiting-alert test now runs at any hour with waits that fit inside the clinic day. The whole API suite passed at 01:15 Addis. Attempt 2 running."
+   },
+   {
+    "date": "2026-10-04",
+    "note": "Attempt 2: all 667 server tests passed. Remaining failures were outside SEC-1: a draft race in the visit form (fixed, NEW-DRAFT-1), and the browser journeys running on the host clock (New York) instead of the clinic clock (now Addis, 10/10 pass at 02:00 Addis). Coverage dips are the night-time known-bug checks for NEW-DAY-2 / NEW-DAY-3 stopping tests early; SEC-1 code itself is fully reached except one database-failure branch."
+   },
+   {
+    "date": "2026-10-04",
+    "note": "Full run passed at night (03:00 Addis): server 672 pass / 0 fail, screens 1,626, browser journeys 10/10, 264/264 routes; coverage gate re-run green after two older tests were given real file keys. Committed; not yet deployed. Waiting for the owner to verify."
+   }
+  ],
   "order": 3
  },
  {
@@ -2692,7 +2741,7 @@
   "why": "A drug the patient is known to react to can be prescribed with no warning, while staff trust that the system would have stopped it. That is a direct patient-harm risk.",
   "fix": "Make the match work both ways and ignore simple plural endings (Penicillins = Penicillin), and warn on drug families using the drug list's allergen tags. Add a short list of common families (penicillins, sulfa, NSAIDs) so they are caught even when a drug was typed freely.",
   "effort": "S",
-  "decision": "How wide should the allergy warning be? Option A (recommended): catch plurals and spelling variants plus a fixed list of drug families (a Penicillin allergy warns on Amoxicillin, Ampicillin, Augmentin; a Sulfa allergy on co-trimoxazole; an NSAID allergy on Ibuprofen and Diclofenac) - more warnings, a few will be false alarms. Option B: catch plurals and spellings only, and rely on the drug list being tagged correctly. Also: should the allergy field be pick-from-list only (no free typing) so every allergy uses one spelling? A missed warning can hurt a patient; a false alarm costs one click, so A is the safer choice.",
+  "decision": null,
   "tests": [
    "TestREG_KERNEL_ALLERGY_005_PluralSubstanceStillMatches"
   ],
@@ -2703,8 +2752,13 @@
    "backend/internal/clinical/service/service.go:763"
   ],
   "tested": true,
-  "status": "open",
-  "log": [],
+  "status": "confirmed",
+  "log": [
+   {
+    "date": "2026-10-04",
+    "note": "Owner confirmed and chose option A: warn on plurals and spelling variants plus a fixed list of common drug families (penicillins, sulfonamides, NSAIDs and others); keep free typing of the allergy name but suggest the standard names while typing."
+   }
+  ],
   "order": 4
  },
  {
@@ -3976,7 +4030,16 @@
   ],
   "tested": true,
   "status": "open",
-  "log": [],
+  "log": [
+   {
+    "date": "2026-10-04",
+    "note": "Owner question added from the night-hours test findings."
+   },
+   {
+    "date": "2026-10-04",
+    "note": "Decided (owner delegated the choice): a patient still waiting counts on today's waiting alerts whatever time they arrived. The alert describes who is in the waiting room now; someone waiting since 23:00 is the most urgent, not hidden. To be built when APT-9 is fixed, with a test that queues a patient at 23:00 Addis yesterday."
+   }
+  ],
   "order": 500
  },
  {
@@ -4522,5 +4585,73 @@
   "status": "open",
   "log": [],
   "order": 600
+ },
+ {
+  "id": "NEW-DAY-3",
+  "title": "Unbilled list dates night visits to the day before",
+  "severity": "high",
+  "area": "Money",
+  "who": "Dentist, Cashier, Owner",
+  "simple": "The Unbilled treatment report works out each visit's date in world time (UTC), not Addis time. A visit given between midnight and 03:00 is dated the day before, counted as a day older, and left out when you filter for today.",
+  "example": "Dr Selam finishes an emergency extraction at 00:40 on Sunday. On Sunday's Unbilled list it shows as treated Saturday, 1 day unbilled, and the 'today' filter does not show it at all, so the cashier misses it at closing.",
+  "why": "Night work goes missing from 'today' and looks older than it is, so money owed is followed up late or not at all.",
+  "fix": "Date every visit on the report by the clinic's Addis day, the same way the Finance page already does.",
+  "effort": "S",
+  "decision": null,
+  "tests": [
+   "TestREG_DENTAL_276_UnbilledDatesAreTheClinicDay",
+   "TestREG_DENTAL_243_UnbilledRowsAndLanes",
+   "TestREG_DENTAL_244_UnbilledPagingAndDates"
+  ],
+  "files": [
+   "backend/internal/dental/service/service.go:2678",
+   "backend/internal/dental/service/service.go:2691",
+   "backend/internal/dental/service/service.go:2710"
+  ],
+  "tested": true,
+  "status": "fixed",
+  "order": 11,
+  "log": [
+   {
+    "date": "2026-10-04",
+    "note": "Found by a regression run at 00:10 Addis; held at every hour by TestREG_DENTAL_276 (a visit stamped 00:30 Addis)."
+   },
+   {
+    "date": "2026-10-04",
+    "note": "Owner confirmed. Fixed: the unbilled report dates every visit by the clinic's Addis day (6 places). Known-bug tests now plain; the night-window guards removed. Passed at 02:59 Addis."
+   },
+   {
+    "date": "2026-10-04",
+    "note": "Full run passed at night (03:00 Addis): server 672 pass / 0 fail, screens 1,626, browser journeys 10/10, 264/264 routes; coverage gate re-run green after two older tests were given real file keys. Committed; not yet deployed. Waiting for the owner to verify."
+   }
+  ]
+ },
+ {
+  "id": "NEW-DRAFT-1",
+  "title": "An old visit draft can come back after recording",
+  "severity": "low",
+  "area": "Dental",
+  "who": "Dentist",
+  "simple": "While a dentist types a visit record, the form saves a draft 0.8 seconds after typing. If the visit was saved before that timer fired, the save cleared the draft and then the timer wrote it back, so an old 'Draft restored' note could reappear later on a visit already recorded.",
+  "example": "Dr Selam opens visit 2, the earlier draft is restored, and she presses Save straight away. Next week, reopening that visit shows 'Draft restored' with last week's text.",
+  "why": "Confusing: it looks as if the record was not saved, and old text can be saved over the real record by mistake.",
+  "fix": "When a visit is recorded, cancel any pending draft save before clearing the draft.",
+  "effort": "S",
+  "decision": null,
+  "tests": [
+   "REG-FE-RECORD-017"
+  ],
+  "files": [
+   "frontend/src/features/dental/visit/RecordVisitForm.tsx"
+  ],
+  "tested": true,
+  "status": "fixed",
+  "order": 3,
+  "log": [
+   {
+    "date": "2026-10-04",
+    "note": "Found by a screen test that failed only under load during the SEC-1 full run. Two-line fix made at once (it blocked a reliable green run); the new test fails without it and passes with it. Committed with SEC-1; waiting for the owner to verify."
+   }
+  ]
  }
 ]

@@ -4,7 +4,10 @@
 // application changes (infra override / ADR-001 conflict 5).
 package storage
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 // UploadOptions parameterise a signed direct-upload request.
 type UploadOptions struct {
@@ -42,4 +45,23 @@ type Provider interface {
 // the client-declared size.
 type Sizer interface {
 	Size(ctx context.Context, key string) (int64, error)
+}
+
+// KeyInFolder reports whether key names an object inside folder: folder + "/" +
+// something, with no empty, "." or ".." segment that could step outside it. The
+// server hands out upload targets inside a clinic's own folder for one patient;
+// recording an upload must check the key the client sends back is one of those,
+// or a client could point a record (and a later delete) at another clinic's object
+// (SEC-1).
+func KeyInFolder(key, folder string) bool {
+	folder = strings.Trim(folder, "/")
+	if folder == "" || !strings.HasPrefix(key, folder+"/") {
+		return false
+	}
+	for _, seg := range strings.Split(strings.TrimPrefix(key, folder+"/"), "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return false
+		}
+	}
+	return true
 }

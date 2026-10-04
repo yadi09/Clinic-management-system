@@ -613,6 +613,15 @@ func TestREG_FIN_020_TakingsChartWindows(t *testing.T) {
 // names the longest wait ("over 2 hours"), counts the missed visit, and orders danger
 // (overdue) before warnings.
 func TestREG_FIN_021_HomeAlertsLoudestFirst(t *testing.T) {
+	// The home screen counts today's queue on the clinic's (Addis) day, so a wait must
+	// start after Addis midnight. In the small hours the 150/30/75-minute waits are
+	// capped to fit inside today; the wording expected follows the wait actually used.
+	since := int(time.Since(addisAt(0, 0, 0)).Minutes())
+	if since < 2 {
+		t.Skip("the clinic day is under two minutes old")
+	}
+	fit := func(m int) int { return min(m, since-1) }
+	longMin, shortMin, hourMin := fit(150), fit(30), fit(75)
 	clinic := payClinic(t)
 	doctor, cashier, owner := srv.As(t, clinic, "doctor"), srv.As(t, clinic, "cashier"), srv.As(t, clinic, "owner")
 	recp := srv.As(t, clinic, "receptionist")
@@ -621,7 +630,7 @@ func TestREG_FIN_021_HomeAlertsLoudestFirst(t *testing.T) {
 	for _, w := range []struct {
 		p   patientRef
 		min int
-	}{{long, 150}, {short, 30}} {
+	}{{long, longMin}, {short, shortMin}} {
 		blExec(t, `INSERT INTO queue_entries (tenant_id, branch_id, department_id, patient_id, enqueued_at, assigned_provider_id)
 		           VALUES ($1, $2, $3, $4, now() - make_interval(mins => $5), $6)`,
 			clinic.TenantID, clinic.BranchID, clinic.DeptID, blPatientUUID(t, w.p), w.min, clinic.Staff["doctor"].ID)
@@ -634,14 +643,7 @@ func TestREG_FIN_021_HomeAlertsLoudestFirst(t *testing.T) {
 	blExec(t, `UPDATE charges SET created_at = now() - interval '70 days' WHERE id = $1`, blUUID(t, id.PrefixCharge, debt))
 
 	var d struct {
-		Attention []struct {
-			Kind      string `json:"kind"`
-			Tone      string `json:"tone"`
-			Text      string `json:"text"`
-			Detail    string `json:"detail"`
-			PatientID string `json:"patient_id"`
-			Count     int    `json:"count"`
-		} `json:"attention"`
+		Attention []fin21Alert `json:"attention"`
 	}
 	owner.Do("GET", "/dashboard/today", nil).Expect(t, 200, "today").Decode(t, &d)
 	seenWarn, kinds := false, map[string]int{}
@@ -653,30 +655,66 @@ func TestREG_FIN_021_HomeAlertsLoudestFirst(t *testing.T) {
 			t.Fatalf("a danger alert comes after a warning: %+v", d.Attention)
 		}
 		kinds[a.Kind] = a.Count
-		if a.Kind == "long_wait" && (a.PatientID != long.ID || !strings.HasSuffix(a.Text, "has waited over 2 hours") || !strings.Contains(a.Detail, "Waiting for")) {
-			t.Fatalf("long-wait alert %+v, want %s waiting over 2 hours for the dentist", a, long.ID)
+		if a.Kind == "long_wait" && (a.PatientID != long.ID || !strings.HasSuffix(a.Text, "has waited "+fin21Waited(longMin)) || !strings.Contains(a.Detail, "Waiting for")) {
+			t.Fatalf("long-wait alert %+v, want %s waiting %s for the dentist", a, long.ID, fin21Waited(longMin))
 		}
 		if a.Kind == "missed_visit" && a.Text != "1 patient missed a treatment visit this week" {
 			t.Fatalf("missed-visit text %q", a.Text)
 		}
 	}
-	if _, ok := kinds["long_wait"]; !ok || kinds["missed_visit"] != 1 || kinds["overdue"] != 1 {
-		t.Fatalf("alerts %v, want long_wait, missed_visit (1) and overdue (1)", kinds)
+	if _, ok := kinds["long_wait"]; ok != (longMin >= 20) || kinds["missed_visit"] != 1 || kinds["overdue"] != 1 {
+		t.Fatalf("alerts %v, want long_wait only past 20 minutes (longest %d), missed_visit (1) and overdue (1)", kinds, longMin)
 	}
 	// Wait wording: under an hour in minutes, then "over an hour".
 	blExec(t, `UPDATE queue_entries SET state = 'done' WHERE patient_id = $1`, blPatientUUID(t, long))
 	owner.Do("GET", "/dashboard/today", nil).Expect(t, 200, "today 2").Decode(t, &d)
-	for _, a := range d.Attention {
-		if a.Kind == "long_wait" && !strings.HasSuffix(a.Text, "has waited 30 minutes") {
-			t.Fatalf("30-minute wait reads %q", a.Text)
+	fin21ExpectWait(t, d.Attention, shortMin)
+	blExec(t, `UPDATE queue_entries SET enqueued_at = now() - make_interval(mins => $2) WHERE patient_id = $1`, blPatientUUID(t, short), hourMin)
+	owner.Do("GET", "/dashboard/today", nil).Expect(t, 200, "today 3").Decode(t, &d)
+	fin21ExpectWait(t, d.Attention, hourMin)
+}
+
+// fin21Alert is one entry of the home screen's attention list.
+type fin21Alert struct {
+	Kind      string `json:"kind"`
+	Tone      string `json:"tone"`
+	Text      string `json:"text"`
+	Detail    string `json:"detail"`
+	PatientID string `json:"patient_id"`
+	Count     int    `json:"count"`
+}
+
+// fin21Waited is how the home screen words a wait: minutes under an hour, then
+// "over an hour", then "over N hours" (dashboard/service waited).
+func fin21Waited(m int) string {
+	switch {
+	case m == 1:
+		return "1 minute"
+	case m < 60:
+		return fmt.Sprintf("%d minutes", m)
+	case m < 120:
+		return "over an hour"
+	default:
+		return fmt.Sprintf("over %d hours", m/60)
+	}
+}
+
+// fin21ExpectWait checks the long-wait alert for a longest wait of m minutes: none
+// under 20, and worded as the home screen words it above.
+func fin21ExpectWait(t *testing.T, alerts []fin21Alert, m int) {
+	t.Helper()
+	found := false
+	for _, a := range alerts {
+		if a.Kind != "long_wait" {
+			continue
+		}
+		found = true
+		if !strings.HasSuffix(a.Text, "has waited "+fin21Waited(m)) {
+			t.Fatalf("a %d-minute wait reads %q, want ...has waited %s", m, a.Text, fin21Waited(m))
 		}
 	}
-	blExec(t, `UPDATE queue_entries SET enqueued_at = now() - interval '75 minutes' WHERE patient_id = $1`, blPatientUUID(t, short))
-	owner.Do("GET", "/dashboard/today", nil).Expect(t, 200, "today 3").Decode(t, &d)
-	for _, a := range d.Attention {
-		if a.Kind == "long_wait" && !strings.HasSuffix(a.Text, "has waited over an hour") {
-			t.Fatalf("75-minute wait reads %q", a.Text)
-		}
+	if found != (m >= 20) {
+		t.Fatalf("long-wait alert shown=%v for a %d-minute wait (threshold 20)", found, m)
 	}
 }
 

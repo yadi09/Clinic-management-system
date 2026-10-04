@@ -71,7 +71,7 @@ func dn2Rx(drug string) map[string]any {
 
 func dn2Image(t *testing.T, doc *testkit.Client, c *testkit.Clinic, patientID, sessionID string) string {
 	t.Helper()
-	body := map[string]any{"storage_key": c.TenantID.String() + "/dental/" + uuid.NewString() + ".jpg",
+	body := map[string]any{"storage_key": c.TenantID.String() + "/dental/" + denUUID(t, id.PrefixPatient, patientID).String() + "/" + uuid.NewString() + ".jpg",
 		"filename": "bw.jpg", "mime_type": "image/jpeg", "size_bytes": 1000, "category": "xray"}
 	if sessionID != "" {
 		body["session_id"] = sessionID
@@ -493,12 +493,11 @@ func TestREG_DENTAL_221_RecordImageTrustsTheClientsKeyAndSession(t *testing.T) {
 	other := createPlan(t, k.doc, denPatient(t, k.c).ID, "1000", 1, "")
 	path := k.path("/images")
 	foreignKey := k.doc.Do("POST", path, map[string]any{"storage_key": clinicB.TenantID.String() + "/dental/" + uuid.NewString() + "/xray.jpg"})
-	otherVisit := k.doc.Do("POST", path, map[string]any{"storage_key": "x", "session_id": other.Sessions[0].ID})
-	deposit := k.doc.Do("POST", path, map[string]any{"storage_key": "y", "session_id": k.plan.Deposit.ID})
-	if foreignKey.Status == 201 || otherVisit.Status == 201 || deposit.Status == 201 {
-		testkit.KnownBug(t, "SEC-1", true, "RecordImage accepted: another clinic's key HTTP "+itoa(foreignKey.Status)+
-			", another patient's visit HTTP "+itoa(otherVisit.Status)+", the deposit HTTP "+itoa(deposit.Status)+" (service.go:2856-2891)")
-	}
+	own := k.c.TenantID.String() + "/dental/" + denUUID(t, id.PrefixPatient, k.p.ID).String() + "/"
+	otherVisit := k.doc.Do("POST", path, map[string]any{"storage_key": own + "x.jpg", "session_id": other.Sessions[0].ID})
+	deposit := k.doc.Do("POST", path, map[string]any{"storage_key": own + "y.jpg", "session_id": k.plan.Deposit.ID})
+	// (SEC-1, fixed 2026-10-03: the key must sit in this clinic's folder for this
+	// patient, and the visit must be one of this patient's treatment visits.)
 	for _, r := range []testkit.Resp{foreignKey, otherVisit, deposit} {
 		r.Expect(t, 400, "untrusted image")
 	}
@@ -581,7 +580,7 @@ func TestREG_DENTAL_224_RecordImageRespectsTheCap(t *testing.T) {
 		dn2Image(t, doc, c, p.ID, "")
 	}
 	r := doc.Do("POST", "/dental/patients/"+p.ID+"/images", map[string]any{
-		"storage_key": c.TenantID.String() + "/dental/" + uuid.NewString(), "filename": "ninth.jpg"})
+		"storage_key": c.TenantID.String() + "/dental/" + denUUID(t, id.PrefixPatient, p.ID).String() + "/" + uuid.NewString(), "filename": "ninth.jpg"})
 	var n int
 	one(t, `SELECT count(*) FROM attachments WHERE patient_id = $1 AND deleted_at IS NULL`, &n, denUUID(t, id.PrefixPatient, p.ID))
 	if r.Status == 201 || n > 8 {
@@ -778,8 +777,11 @@ func TestREG_DENTAL_243_UnbilledRowsAndLanes(t *testing.T) {
 	}
 	v := dn2Row(u.Rows, s(0))
 	if v.Kind != "visit" || v.Procedure != "Access opening" || v.Tooth != "UR5" || !strings.HasPrefix(v.Clinician, "Doctor ") ||
-		v.TreatmentDate != payAddisToday() || v.DaysUnbilled != 0 || v.PlanTitle != "Root canal" || denMoney(t, v.Amount) != 1000 {
+		v.PlanTitle != "Root canal" || denMoney(t, v.Amount) != 1000 {
 		t.Fatalf("visit row %+v", v)
+	}
+	if v.TreatmentDate != payAddisToday() || v.DaysUnbilled != 0 {
+		t.Fatalf("a visit given today reads treated %s, %d day(s) unbilled", v.TreatmentDate, v.DaysUnbilled)
 	}
 	if d := dn2Row(u.Rows, pl.Deposit.ID); d.Kind != "deposit" || denMoney(t, d.Amount) != 500 {
 		t.Fatalf("deposit row %+v", d)
@@ -1179,7 +1181,7 @@ func TestREG_DENTAL_265_CreatePlanSchedulesAndPrices(t *testing.T) {
 	doc := srv.As(t, c, "doctor")
 	p := denPatient(t, c)
 	path := "/dental/patients/" + p.ID + "/plans"
-	start := time.Now()
+	start := time.Now().In(addisLoc()) // the clinic's day, as denToday
 	mk := func(body map[string]any) denPlan {
 		var pl denPlan
 		doc.Do("POST", path, body).Expect(t, 201, "create").Decode(t, &pl)
@@ -1342,5 +1344,32 @@ func TestREG_DENTAL_270_DepositIsCollectedAsADownPayment(t *testing.T) {
 	}
 	if b := payBalance(t, k.doc, k.p.ID); denMoney(t, b.Due) != 0 || denMoney(t, b.AtCashier) != 800 {
 		t.Fatalf("after collecting the deposit: due %s at cashier %s", b.Due, b.AtCashier)
+	}
+}
+
+// TestREG_DENTAL_276_UnbilledDatesAreTheClinicDay: Given a visit given at 00:30 Addis
+// this morning and not yet billed, When the unbilled report is read, Then it was
+// treated today, has waited 0 days, and a today..today filter finds it. NEW-DAY-3
+// (fixed 2026-10-04) dated it by owed_since::date, a UTC cast, filing a visit given
+// between midnight and 03:00 Addis under yesterday. 00:30 Addis is yesterday in UTC
+// at every hour, so this test catches that mistake whenever it runs.
+func TestREG_DENTAL_276_UnbilledDatesAreTheClinicDay(t *testing.T) {
+	if time.Now().In(addisLoc()).Before(addisAt(0, 0, 31)) {
+		t.Skip("00:30 Addis today has not happened yet")
+	}
+	k := dn2NewCourse(t, 1, "")
+	denRecord(t, k.doc, k.p.ID, k.sid(0), "given")
+	blExec(t, `UPDATE treatment_sessions SET completed_at = $1 WHERE id = $2`,
+		addisAt(0, 0, 30), denUUID(t, id.PrefixTreatmentSession, k.sid(0)))
+	today := payAddisToday()
+	row := dn2Row(dn2GetUnbilled(t, k.doc, "").Rows, k.sid(0))
+	if row == nil {
+		t.Fatalf("the visit is not on the unbilled report")
+	}
+	filtered := dn2GetUnbilled(t, k.doc, "?from="+today+"&to="+today)
+	// (NEW-DAY-3, fixed 2026-10-04.)
+	if row.TreatmentDate != today || row.DaysUnbilled != 0 || dn2Row(filtered.Rows, k.sid(0)) == nil {
+		t.Fatalf("a visit given at 00:30 Addis today reads treated %s, %d day(s) unbilled, in today's filter=%t",
+			row.TreatmentDate, row.DaysUnbilled, dn2Row(filtered.Rows, k.sid(0)) != nil)
 	}
 }

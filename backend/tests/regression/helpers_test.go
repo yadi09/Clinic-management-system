@@ -55,9 +55,10 @@ type planRef struct {
 // createPlan creates a dental treatment of n visits (needs dental.manage).
 func createPlan(t *testing.T, c *testkit.Client, patientID string, total string, visits int, deposit string) planRef {
 	t.Helper()
+	// The start is the clinic's day (Addis), not the test host's (UTC).
 	body := map[string]any{
 		"title": "Root canal", "tooth": "UR5", "total_amount": total,
-		"start_date": time.Now().Format("2006-01-02"), "interval_unit": "week", "interval_count": 2,
+		"start_date": payAddisToday(), "interval_unit": "week", "interval_count": 2,
 		"session_count": visits,
 	}
 	if deposit != "" {
