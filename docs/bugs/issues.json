@@ -5040,5 +5040,37 @@
    }
   ],
   "order": 31
+ },
+ {
+  "id": "FEAT-PRINT-1",
+  "title": "Printed documents: no clinic identity, logo, layout choice or preview",
+  "severity": "high",
+  "area": "Printing",
+  "who": "Owner, Admin, Cashier, Dentist, Doctor",
+  "simple": "Twelve things are printed (three receipts, Z-report, statement, two prescriptions, two lab papers, certificate, dental examination, pharmacy print). Each carries only the clinic name, has no logo, tax number or layout choice, and the pharmacy Print prints the whole web page. The lab report has no clinic identity at all.",
+  "example": "A clinic with a printed letterhead and a TIN prints a receipt: it shows 'Abeba Dental Clinic' in monospace, no logo, no TIN, no duplicate marking on a reprint, and a refunded visit receipt reprints as a normal payment receipt.",
+  "why": "Documents handed to patients, pharmacies, employers and tax officers look unofficial and cannot be checked; reprints cannot be told from originals.",
+  "fix": "Set the clinic identity once (logo, EN/AM name, address, phones, TIN, licence, footer), choose a template and paper per document family with live preview, a few content toggles, duplicate marking, and fix the accuracy gaps. Analysis: docs/printing-templates-analysis.html.",
+  "effort": "L",
+  "decision": "Discuss each document and answer the ten questions in section 6 of docs/printing-templates-analysis.html.",
+  "tests": [],
+  "files": [
+   "frontend/src/features/billing/print.ts",
+   "frontend/src/features/clinical/print.ts",
+   "frontend/src/features/clinical/printCertificate.ts",
+   "frontend/src/features/dental/printExam.ts",
+   "frontend/src/features/lab/pages/LabOrderItemPage.tsx",
+   "frontend/src/features/pharmacy/pages/DispensePage.tsx",
+   "docs/printing-templates-analysis.html"
+  ],
+  "tested": false,
+  "status": "explained",
+  "log": [
+   {
+    "date": "2026-10-10",
+    "note": "Inventory and analysis written; nothing built."
+   }
+  ],
+  "order": 32
  }
 ]

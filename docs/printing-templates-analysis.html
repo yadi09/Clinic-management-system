@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Printed documents: analysis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+
+:root{--paper:#fbfaf7;--card:#fff;--ink:#1f2a33;--soft:#5d6b76;--line:#e3e0d8;--teal:#0f6e6a;--warn:#b45309;--warn-bg:#fdf1e3;--bad:#b42318;--bad-bg:#fdecea;--ok:#1d7a46;--ok-bg:#e5f4ea;--sky:#1d4e89;--sky-bg:#e8f0fa}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--paper:#14181c;--card:#1b2026;--ink:#e7e9ea;--soft:#9aa6b0;--line:#2c333a;--teal:#4fb3ad;--warn:#f0a85a;--warn-bg:#3a2a18;--bad:#f2867c;--bad-bg:#3a1f1d;--ok:#6cc792;--ok-bg:#1a3325;--sky:#86b3e0;--sky-bg:#1c2a38}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.6 "Atkinson Hyperlegible",system-ui,sans-serif}
+.wrap{max-width:960px;margin:0 auto;padding:32px 16px 90px}
+h1{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:2.1rem;line-height:1.15;margin:0 0 8px}
+h2{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:1.5rem;margin:46px 0 10px}
+h3{font-size:1.05rem;margin:24px 0 6px}
+.lede{color:var(--soft);max-width:68ch}
+.box{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:14px 0}
+.key{border-left:6px solid var(--teal)}.warn{border-left:6px solid var(--warn)}
+table{border-collapse:collapse;width:100%;font-size:.94rem;margin:10px 0;background:var(--card)}
+th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--paper)}
+.scroll{overflow-x:auto}
+.tag{display:inline-block;font-size:.76rem;font-weight:700;padding:1px 9px;border-radius:20px;margin-right:4px}
+.s{background:var(--ok-bg);color:var(--ok)}.m{background:var(--warn-bg);color:var(--warn)}.l{background:var(--bad-bg);color:var(--bad)}
+.scene{background:var(--paper);border-radius:8px;padding:10px 14px;font-style:italic;margin:8px 0}
+ul,ol{padding-left:22px}li{margin:3px 0}
+footer{color:var(--soft);font-size:.85rem;margin-top:44px}
+code{font-size:.88em;background:var(--paper);padding:1px 5px;border-radius:4px}
+
+
+.wrap{max-width:1040px}
+.doc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:18px 0}
+.doc h3{margin:0 0 2px;font-size:1.15rem}
+.doc .where{color:var(--soft);font-size:.9rem;margin-bottom:10px}
+.five{display:grid;grid-template-columns:150px 1fr;gap:6px 14px;font-size:.95rem}
+.five dt{font-weight:700;color:var(--teal)}
+.five dd{margin:0}
+.gap{color:var(--bad);font-weight:700}
+.pill{display:inline-block;font-size:.72rem;font-weight:700;padding:1px 8px;border-radius:20px;margin-right:4px}
+.pill.red{background:var(--bad-bg);color:var(--bad)}.pill.amb{background:var(--warn-bg);color:var(--warn)}.pill.grn{background:var(--ok-bg);color:var(--ok)}
+.mocks{display:flex;flex-wrap:wrap;gap:18px;justify-content:center;margin:14px 0;font-family:Inter,system-ui,sans-serif;color:#1c2733}
+.paper{background:#fff;border:1px solid #cfd6df;box-shadow:0 2px 8px rgba(20,30,40,.12);padding:12px 14px;font-size:11px;line-height:1.4}
+.paper .cap{font:700 10px Inter;color:#5a6b7d;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.slip{width:230px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px}
+.slip hr{border:none;border-top:1px dashed #aaa;margin:6px 0}
+.slip .c{text-align:center}.slip .r{text-align:right}.slip .b{font-weight:700}
+.slip .row{display:flex;justify-content:space-between;gap:8px}
+.slip .logo{width:34px;height:34px;border-radius:8px;background:#14532d;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;margin:0 auto 4px}
+.slip .stamp{border:2px solid #b42318;color:#b42318;font-weight:800;text-align:center;padding:2px;transform:rotate(-4deg);margin:6px 18px}
+.a5{width:300px;font-family:Inter,system-ui,sans-serif}
+.a5 .hd{display:flex;gap:8px;align-items:center;border-bottom:3px solid #14532d;padding-bottom:6px;margin-bottom:6px}
+.a5 .lg{width:36px;height:36px;border-radius:8px;background:#14532d;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px}
+.a5 .blank{height:44px;border:1.5px dashed #b6c0cc;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#7a8a9a;font-size:10px;margin-bottom:6px}
+.a5 .rx{font-size:20px;font-weight:700;color:#14532d}
+.a5 .med{border-bottom:1px dashed #cfd6df;padding:5px 0}
+.a5 .sg{display:flex;justify-content:space-between;margin-top:14px;align-items:flex-end}
+.a5 .sg div:not(.box){border-top:1px solid #333;width:120px;text-align:center;font-size:9px;padding-top:2px}
+.a5 .box{border:1px dashed #9aa8b6;width:70px;height:46px;text-align:center;font-size:9px;color:#7a8a9a;padding-top:14px}
+.gridtable td:first-child{font-weight:700;white-space:nowrap}
+.q li{margin:6px 0}
+</style></head>
+<body><div class="wrap">
+
+<h1>Printed documents: what exists, and how to make each one the clinic's own</h1>
+<p class="lede">An inventory of everything the system prints, taken from the code, with what each paper is for, what is wrong or missing on it today, and what a good, clinic-branded version would look like. Nothing is built or changed: this is the map we discuss from.</p>
+
+<div class="box key"><b>In one paragraph.</b> The system prints <b>11 things</b>: three kinds of receipt, the end-of-day cash report, the patient statement, two kinds of prescription, two lab papers, the medical certificate and the dental examination record. (One of the eleven, the pharmacy "Print", is not really a document: it prints the whole web page.) Every one carries only the <b>clinic's name</b> and, on some, the branch address. There is <b>no logo</b> (the database has a column for one that nothing uses), <b>no choice of layout or paper</b>, no tax number, and no way to say "we print on our own letterhead". Each document has its own copy of the styling, so the clinic's identity is not one thing set once. The aim is: set the clinic's identity once, pick a template per document, tweak a few things, and see it before printing.</div>
+
+<h2>1. The inventory</h2>
+<div class="scroll"><table>
+<tr><th>#</th><th>Document</th><th>Where it is printed from</th><th>Paper it assumes</th><th>Clinic identity on it today</th></tr>
+<tr><td>1</td><td><b>Payment receipt</b> (one charge)</td><td>Patient billing history; patient profile</td><td>Till slip in a 420 px pop-up, monospace</td><td>Name only</td></tr>
+<tr><td>2</td><td><b>Visit receipt</b> (several lines, one number)</td><td>Cashier, "Paid today" list</td><td>Same till slip</td><td>Name only</td></tr>
+<tr><td>3</td><td><b>Refund slip</b></td><td>Same as 1 (a variant of it)</td><td>Same till slip</td><td>Name only</td></tr>
+<tr><td>4</td><td><b>End-of-day Z-report</b></td><td>Cashier, day close</td><td>Till slip</td><td>Name only</td></tr>
+<tr><td>5</td><td><b>Statement of account</b></td><td>Patient billing history</td><td>A4</td><td>Name + first branch's address and phone</td></tr>
+<tr><td>6</td><td><b>Prescription</b> (general clinic)</td><td>Consultation workspace</td><td>Sheet, about A5 to A4</td><td>Name + branch contact; a fixed ℞ box instead of a logo</td></tr>
+<tr><td>7</td><td><b>Prescription</b> (dental visit)</td><td>Visit record</td><td>Same sheet</td><td>Same</td></tr>
+<tr><td>8</td><td><b>Lab request</b> (outside lab)</td><td>Consultation workspace</td><td>Same sheet</td><td>Name + branch contact; a 🧪 emoji as logo</td></tr>
+<tr><td>9</td><td><b>Lab report</b> (in-house lab)</td><td>Lab result page</td><td>A4, its own style</td><td><span class="gap">None at all</span> (no clinic name)</td></tr>
+<tr><td>10</td><td><b>Medical certificate</b></td><td>Patient certificates</td><td>A4</td><td>Name + branch name and contact</td></tr>
+<tr><td>11</td><td><b>Dental examination record</b></td><td>Examination card</td><td>A4</td><td>Name + branch contact</td></tr>
+<tr><td>12</td><td><b>Pharmacy "Print"</b></td><td>Dispense page</td><td><span class="gap">Prints the whole app page</span> (menus included)</td><td>None</td></tr>
+</table></div>
+<p class="mini">Twelve rows because the refund slip is a variant of the receipt. No PDF is generated on the server: every print is built in the browser and sent to whatever printer the computer has.</p>
+
+<h2>2. What is true of all of them</h2>
+<div class="scroll"><table class="gridtable">
+<tr><th>Theme</th><th>What I found</th></tr>
+<tr><td>Identity</td><td>The clinic is a name, and a contact line taken from <b>one branch's</b> address and phone. In one place it is the <i>first</i> branch in the list, not the branch where the money was taken. The clinic profile in Settings holds only name, timezone and language. No logo, no tax/TIN number, no licence or registration number, no email, no second phone, no Amharic name. The accent colour is a fixed dark green everywhere.</td></tr>
+<tr><td>Logo</td><td>The database already has a logo field on the clinic (<code>logo_storage_key</code>), added at the start and never used by any screen or print.</td></tr>
+<tr><td>Paper</td><td>No paper-size choice. Receipts assume a till slip by opening a narrow window, which does not guarantee 58 mm or 80 mm paper. Prescriptions are one fixed size, no "pre-printed letterhead" mode, which is how many clinics actually work (they already have a printed pad).</td></tr>
+<tr><td>Technique</td><td>Each document opens a new browser window, writes its own page into it and prints at once. There is no preview. Pop-up blockers can silently stop it (worse for the ones that wait for a QR code to be drawn first). Six separate copies of the styling exist, and the "escape text" helper is copied five times.</td></tr>
+<tr><td>Accuracy</td><td>(a) A general-clinic prescription prints <b>whoever pressed Print</b> as the prescriber, and <b>today's date</b> even when reprinted later (the dental one was already fixed to use the author and the original date). (b) The QR on prescriptions says "Scan to verify" but encodes plain text: nothing on the internet answers it. (c) A refunded visit receipt reprints as a normal "PAYMENT RECEIPT". (d) A reprint is indistinguishable from the original: nothing says DUPLICATE.</td></tr>
+<tr><td>Language and dates</td><td>English only. Dates use the computer's own locale, so the same receipt can read differently on two machines. The Ethiopian date appears on the certificate only. Amounts are "ETB 2000.00" on a receipt and "ETB 2,000.00" on a statement.</td></tr>
+<tr><td>Accountability</td><td>Receipts carry a number, cashier, method and reference (good). They carry no tax identification, no branch, no receipt copy marking, and no balance after payment.</td></tr>
+</table></div>
+
+<h2>3. Each document: purpose, today, how it should be, how it can be better, how to make it the clinic's</h2>
+
+<div class="doc"><h3>1 and 2. Payment receipts (one charge, and a visit with several lines)</h3>
+<div class="where">Patient billing history · patient profile · cashier "Paid today"</div>
+<dl class="five">
+<dt>Purpose</dt><dd>Proof of payment for the patient, and the clinic's evidence of what it took, from whom, how, and who took it. The most printed paper in the building.</dd>
+<dt>Today</dt><dd>Clinic name, "PAYMENT RECEIPT", number (RCP-000123), date, patient and card number, the line(s), total, method, reference, cashier, a thank-you. Monospace slip.</dd>
+<dt>How it should be</dt><dd>One page a patient, an accountant and a tax officer would all accept: the clinic's full identity and tax number, number and Addis date/time, patient, what for, how paid (and the reference for a transfer), who took it, and a clear total.</dd>
+<dt>How it can be better</dt><dd>
+ <b>DUPLICATE</b> on every reprint (a control, not decoration).
+ · <b>Balance after payment</b> and, for a dental plan, "plan balance remaining".
+ · <b>Amount in words</b> ("Birr two thousand only"), which many clinics and some offices expect.
+ · Waived or discounted lines shown as such.
+ · The refunded visit reprints as REFUNDED.
+ · Thousands separators and the Addis time zone, the same on every computer.
+ · Optional short verification code or QR that a clinic can look up.</dd>
+<dt>Make it the clinic's</dt><dd>Logo and name (English and Amharic), address, phones, TIN, licence number, a footer line ("Payments are not refundable after 7 days"). Pick a layout: <b>slip 58 mm, slip 80 mm, A5, A4</b>. Choose which optional parts show: cashier, reference, amount in words, balance, QR.</dd>
+</dl>
+<div class="mocks">
+ <div class="paper slip"><div class="cap">Today</div>
+  <div class="c b" style="font-size:13px">Abeba Dental Clinic</div><div class="c">PAYMENT RECEIPT</div><hr>
+  <div class="row"><span>Receipt</span><b>RCP-004217</b></div><div class="row"><span>Date</span><span>10/10/2026, 9:41 AM</span></div><div class="row"><span>Patient</span><span>A. Kebede (P000033)</span></div><hr>
+  <div class="row"><span>Root canal, visit 2</span><span>ETB 1500.00</span></div><hr>
+  <div class="row b"><span>TOTAL</span><span>ETB 1500.00</span></div><div class="row"><span>Method</span><span>Cash</span></div><div class="row"><span>Cashier</span><span>Hana</span></div><hr>
+  <div class="c">Thank you.</div></div>
+ <div class="paper slip"><div class="cap">Proposed (80 mm)</div>
+  <div class="logo">AD</div><div class="c b" style="font-size:13px">Abeba Dental Clinic</div><div class="c">አበባ የጥርስ ክሊኒክ</div>
+  <div class="c" style="font-size:10px">Bole, Addis Ababa · 0911 00 00 00<br>TIN 0012345678 · Reg. no. AA/1234</div><hr>
+  <div class="c b">PAYMENT RECEIPT</div>
+  <div class="row"><span>Receipt</span><b>RCP-004217</b></div><div class="row"><span>Date</span><span>10 Oct 2026 · 09:41<br>(ጥቅምት 1, 2019)</span></div><div class="row"><span>Patient</span><span>A. Kebede · P000033</span></div><hr>
+  <div class="row"><span>Root canal, visit 2</span><span>1,500.00</span></div><hr>
+  <div class="row b"><span>TOTAL ETB</span><span>1,500.00</span></div>
+  <div style="font-size:10px">Birr one thousand five hundred only</div>
+  <div class="row"><span>Paid by</span><span>Telebirr · CJ47X92KLM</span></div>
+  <div class="row"><span>Plan balance</span><span>3,000.00</span></div><div class="row"><span>Received by</span><span>Hana</span></div>
+  <div class="stamp">DUPLICATE</div><hr><div class="c" style="font-size:10px">Payments are not refundable after 7 days.</div></div>
+</div></div>
+
+<div class="doc"><h3>3. Refund slip</h3>
+<div class="where">Same places as the single-charge receipt (a variant)</div>
+<dl class="five">
+<dt>Purpose</dt><dd>Evidence that money went back, to whom, why, and who approved it.</dd>
+<dt>Today</dt><dd>The receipt with the heading "REFUND SLIP". No reason, no reference to the original receipt, no approver. The <b>visit</b> receipt has no refund variant at all.</dd>
+<dt>How it should be</dt><dd>Says "Refund", names the original receipt number, the amount returned, the reason, who authorised it and who paid it out, and carries a patient signature line.</dd>
+<dt>Better</dt><dd>Original receipt number and date; reason; approver; a signature line for the patient receiving it; a negative total clearly marked.</dd>
+<dt>Make it the clinic's</dt><dd>Same identity block as the receipt; the wording of the signature line and policy text.</dd>
+</dl></div>
+
+<div class="doc"><h3>4. End-of-day Z-report</h3>
+<div class="where">Cashier, day close</div>
+<dl class="five">
+<dt>Purpose</dt><dd>The cashier's and the manager's record that the drawer was counted and balanced for the day. Filed, not given to patients.</dd>
+<dt>Today</dt><dd>Name, cashier, business date, takings by method, expected cash, counted cash, variance (BALANCED / OVER / SHORT), a note, one signature line.</dd>
+<dt>How it should be</dt><dd>A page a manager signs and files: branch, who closed and when, how many receipts, refunds and voids, expected against counted, and two signatures.</dd>
+<dt>Better</dt><dd>Branch; opened/closed time; receipt count and number range (first to last); refunds and voids totals; second signature (manager); printed-at time; optional A4 layout for filing.</dd>
+<dt>Make it the clinic's</dt><dd>Identity block; choose slip or A4; which sections show; number of signature lines and their captions.</dd>
+</dl></div>
+
+<div class="doc"><h3>5. Statement of account</h3>
+<div class="where">Patient billing history</div>
+<dl class="five">
+<dt>Purpose</dt><dd>What a patient has been charged, paid and still owes; also handed to employers and insurers who reimburse. Dental treatment over months makes this routine.</dd>
+<dt>Today</dt><dd>A4: clinic name and first branch's contact, patient, a table of charges with status, totals, balance owed now, treatment given but not billed, signature and stamp area.</dd>
+<dt>How it should be</dt><dd>An official-looking statement with a number and date range, in the clinic's identity, that a third party can check.</dd>
+<dt>Better</dt><dd>Statement number and period; opening balance; Ethiopian dates; <b>"how to pay" block listing the clinic's own bank and wallet accounts</b> (the system already knows them); contact of the branch the patient uses, not the first branch.</dd>
+<dt>Make it the clinic's</dt><dd>Letterhead area or full header; payment-instruction block on/off; footer terms.</dd>
+</dl></div>
+
+<div class="doc"><h3>6 and 7. Prescription (general consultation, and dental visit)</h3>
+<div class="where">Consultation workspace · visit record</div>
+<dl class="five">
+<dt>Purpose</dt><dd>The authority for a pharmacy to dispense, and the patient's instructions. The paper most often read by a stranger, so it has to be unambiguous.</dd>
+<dt>Today</dt><dd>One sheet: clinic name and contact, a green ℞ box, "Prescription", a QR and short reference, patient (card number, age/sex, weight), date, prescriber, diagnosis, numbered medicines with dose · frequency · duration and instructions, a note, allergies, a validity line, signature and stamp line.</dd>
+<dt>How it should be</dt><dd>The prescriber's identity and professional registration number, the patient's identity, a clear numbered list a pharmacist can read at once, and room for the signature and stamp.</dd>
+<dt>How it can be better</dt>
+<dd><b>Fix first:</b> in the general clinic the prescriber printed is whoever clicks Print and the date is the day it is printed (dental already uses the author and original date).
+ · The dental script prints the <i>procedure</i> under the heading "Diagnosis".
+ · <b>Quantity to dispense</b> per medicine and the number of days supplied.
+ · Prescriber's licence number; "valid for N days".
+ · Diagnosis can be hidden: many patients do not want it on a script they hand to a pharmacy.
+ · QR that really verifies (a short public page that confirms the script, without patient details).
+ · Pre-printed pad mode: no header, leave the top blank, and a framed stamp box.</dd>
+<dt>Make it the clinic's</dt><dd>Logo, name (EN/AM), contact, licence line, footer text; layout <b>Classic</b>, <b>Compact A5</b> or <b>Pad (no header)</b>; show or hide diagnosis, weight, allergies, QR.</dd>
+</dl>
+<div class="mocks">
+ <div class="paper a5"><div class="cap">Layout: full header</div>
+  <div class="hd"><div class="lg">AD</div><div><b style="font-size:13px">Abeba Dental Clinic</b><br><span style="color:#5a6b7d">Bole, Addis Ababa · 0911 00 00 00</span></div></div>
+  <div style="display:flex;justify-content:space-between"><b>Abebe Kebede</b><span>10 Oct 2026</span></div>
+  <div style="color:#5a6b7d">P000033 · 29 M · 62 kg</div>
+  <div class="rx">℞</div>
+  <div class="med"><b>1. Amoxicillin 500 mg</b><br>1 capsule · 3 times a day · 7 days · <b>Qty 21</b></div>
+  <div class="med"><b>2. Ibuprofen 400 mg</b><br>1 tablet · 3 times a day after food · 3 days · <b>Qty 9</b></div>
+  <div style="margin-top:6px;color:#9a3412">Allergies: <b>Penicillin</b></div>
+  <div class="sg"><div class="box">Stamp</div><div>Dr Yonas · Lic. 12345</div></div></div>
+ <div class="paper a5"><div class="cap">Layout: pre-printed pad (no header)</div>
+  <div class="blank">Space for the clinic's own letterhead</div>
+  <div style="display:flex;justify-content:space-between"><b>Abebe Kebede</b><span>10 Oct 2026</span></div>
+  <div style="color:#5a6b7d">P000033 · 29 M · 62 kg</div>
+  <div class="rx">℞</div>
+  <div class="med"><b>1. Amoxicillin 500 mg</b><br>1 capsule · 3 times a day · 7 days · <b>Qty 21</b></div>
+  <div class="med"><b>2. Ibuprofen 400 mg</b><br>1 tablet · 3 times a day after food · 3 days · <b>Qty 9</b></div>
+  <div class="sg"><div class="box">Stamp</div><div>Dr Yonas · Lic. 12345</div></div></div>
+</div></div>
+
+<div class="doc"><h3>8. Lab request (outside laboratory)</h3>
+<div class="where">Consultation workspace, general clinics without an in-house lab</div>
+<dl class="five">
+<dt>Purpose</dt><dd>The patient carries it to another laboratory: which tests, why, from whom.</dd>
+<dt>Today</dt><dd>The prescription sheet with a 🧪 emoji for a logo, the tests as a numbered list, clinical indication, signature.</dd>
+<dt>How it should be</dt><dd>A form a lab can act on without phoning: patient identity, tests, urgency, any preparation (fasting), specimen, requesting clinician and contact.</dd>
+<dt>Better</dt><dd>Urgency; fasting/preparation line; clinician's licence number; a field for the destination lab; the same real verification as prescriptions.</dd>
+<dt>Make it the clinic's</dt><dd>Same identity block and layouts as the prescription.</dd>
+</dl></div>
+
+<div class="doc"><h3>9. Lab report (in-house laboratory)</h3>
+<div class="where">Lab result page</div>
+<dl class="five">
+<dt>Purpose</dt><dd>The result handed to the patient and doctor: the laboratory's formal statement.</dd>
+<dt>Today</dt><dd>A plain page: "Laboratory Report", test, sample number, patient, a table of analytes with result, reference range and flag, a critical-value note, "Generated…". <span class="gap">No clinic name, address, logo, who performed or validated it, signature, or collection time.</span> It prints the moment you click.</dd>
+<dt>How it should be</dt><dd>On the clinic's identity, naming who performed and who validated, when collected and reported, with the specimen, reference ranges and flags, and a signature.</dd>
+<dt>Better</dt><dd>Everything above plus a validated-by line (the lab already records validation), sample collected/reported times, an interpretive comment field, and the report number or QR to look it up.</dd>
+<dt>Make it the clinic's</dt><dd>Identity and logo; lab accreditation/registration number; footer disclaimer; layout A4 or A5.</dd>
+</dl></div>
+
+<div class="doc"><h3>10. Medical certificate</h3>
+<div class="where">Patient certificates (issue, and reprint)</div>
+<dl class="five">
+<dt>Purpose</dt><dd>Read by an employer or school that does not trust it by default, so it must be checkable.</dd>
+<dt>Today</dt><dd>The best-built paper in the system: reference number, clinic identity, QR, the sentence the document exists to say, rest period with Ethiopian dates, diagnosis only if ticked, signer, VOID watermark if withdrawn.</dd>
+<dt>How it should be</dt><dd>Exactly this, plus a way for the reader to actually verify it.</dd>
+<dt>Better</dt><dd>Real verification (the QR currently encodes text only); licence number of the signing clinician; stamp box; an Amharic or bilingual wording option; the statement text editable by the clinic within safe limits.</dd>
+<dt>Make it the clinic's</dt><dd>Logo and identity; letterhead mode; wording blocks per certificate kind; language.</dd>
+</dl></div>
+
+<div class="doc"><h3>11. Dental examination record</h3>
+<div class="where">Examination card</div>
+<dl class="five">
+<dt>Purpose</dt><dd>Leaves the building for a referral, a second opinion or an insurer: the assessment on one page.</dd>
+<dt>Today</dt><dd>A4 with sections omitted when empty: complaint, history, extraoral and intraoral findings, investigations, diagnosis, treatment plan, treatment given, post-op instructions, signature.</dd>
+<dt>How it should be</dt><dd>What it is, with the tooth chart and who it is addressed to.</dd>
+<dt>Better</dt><dd>Include the <b>tooth chart picture</b> (the new chart makes this easy); "To: Dr … / Hospital …" for a referral; reason for referral; optional X-ray thumbnails; consent line.</dd>
+<dt>Make it the clinic's</dt><dd>Identity and letterhead; choose which sections print; footer confidentiality text.</dd>
+</dl></div>
+
+<div class="doc"><h3>12. Pharmacy "Print"</h3>
+<div class="where">Dispense page</div>
+<dl class="five">
+<dt>Purpose</dt><dd>Presumably a dispensing slip: what was given, how to take it. At present it is a button that prints whatever is on screen.</dd>
+<dt>Today</dt><dd><span class="gap">Calls the browser's print on the whole web page</span>, menus, sidebar and all. There is no print styling anywhere in the app, so this is not a document.</dd>
+<dt>How it should be</dt><dd>A dispense slip for the patient and file, and a <b>medicine label</b> per item (patient, drug, dose, how often, date, clinic).</dd>
+<dt>Better</dt><dd>Slip with batch and quantity; counselling notes; a small label template (for adhesive label paper).</dd>
+<dt>Make it the clinic's</dt><dd>Identity block; label size; which fields print.</dd>
+</dl></div>
+
+<h2>4. Papers a clinic usually expects that the system does not print yet</h2>
+<div class="scroll"><table>
+<tr><th>Candidate</th><th>Why a clinic would want it</th><th>Note</th></tr>
+<tr><td><b>Patient card</b></td><td>The "card" is central to how Ethiopian clinics work (the system even charges a card fee) but there is nothing to print: no card with name, card number, QR/barcode.</td><td><span class="pill red">High value</span> small</td></tr>
+<tr><td><b>Treatment estimate / quotation</b></td><td>"How much will the root canal and crown cost?" in writing, before agreeing. The plan already has the figures.</td><td><span class="pill red">High value</span> dental</td></tr>
+<tr><td><b>Referral letter</b></td><td>To a hospital or specialist; the examination print covers some of it.</td><td><span class="pill amb">Medium</span></td></tr>
+<tr><td><b>Queue or appointment slip</b></td><td>A ticket with a number, or the next appointment on paper.</td><td><span class="pill amb">Medium</span></td></tr>
+<tr><td><b>Medicine and sample labels</b></td><td>Adhesive labels for dispensed medicine and lab tubes.</td><td><span class="pill amb">Medium</span> needs label size</td></tr>
+<tr><td><b>Consent form</b></td><td>Dental procedures, anaesthesia, extraction.</td><td><span class="pill grn">Later</span></td></tr>
+<tr><td><b>Discharge summary</b></td><td>For inpatient beds.</td><td><span class="pill grn">Later</span></td></tr>
+</table></div>
+
+<h2>5. How the customisation could work</h2>
+<p>Four layers, so a clinic sets things once and each document inherits them:</p>
+<div class="scroll"><table>
+<tr><th>Layer</th><th>What the clinic sets</th><th>Where</th></tr>
+<tr><td><b>1. Identity</b> (once)</td><td>Logo; name in English and Amharic; address lines; phones; email; website; TIN; licence or registration number; a footer line; accent colour.</td><td>Settings → Printing → Clinic identity (one place, used by everything). A branch may override address and phone.</td></tr>
+<tr><td><b>2. Paper</b></td><td>Default paper per kind of document: slip 58 mm, slip 80 mm, A5, A4; <b>letterhead mode</b> (leave the top blank).</td><td>Settings → Printing → Paper</td></tr>
+<tr><td><b>3. Template</b></td><td>For each document family (receipts, prescriptions, lab, certificate, statement) pick one of 2 to 4 built-in templates, with a live preview on sample data.</td><td>Settings → Printing → Templates</td></tr>
+<tr><td><b>4. Content toggles</b></td><td>Show or hide: diagnosis, weight, allergies, QR, cashier, amount in words, balance, signature line, stamp box, thank-you text; edit a few wording slots ("footer", "terms").</td><td>Per template</td></tr>
+</table></div>
+<p><b>What I would not do</b> in the first version is a free-form designer where a clinic drags boxes around or edits raw HTML: it is large to build, easy to break, and a security risk. Choose a template, change the identity and the toggles, see the preview. That covers almost every real request.</p>
+<p><b>At the moment of printing</b> the user sees a preview of the exact paper and may change "Print as" (for example from slip to A4 for one receipt the patient asked for in full), instead of a window that prints at once.</p>
+
+<h2>6. Questions for you</h2>
+<ol class="q">
+<li><b>Paper.</b> What do your clinics actually print receipts on: a thermal slip (58 or 80 mm), A5, or A4? And do they already have <b>pre-printed letterhead or prescription pads</b>?</li>
+<li><b>Tax and legal lines.</b> Should receipts carry a TIN, and a VAT or turnover-tax line? Do any clinics have to use a government-approved cash register instead? (This decides what a "receipt" is allowed to be.)</li>
+<li><b>Language.</b> English only, Amharic only, or both on the same paper? Ethiopian date next to every date?</li>
+<li><b>Duplicates.</b> OK to mark every reprint DUPLICATE, with the reprint count and who reprinted it?</li>
+<li><b>Verification.</b> Do you want the QR on prescriptions and certificates to <i>really</i> verify (a short public page confirming "issued by X on date Y", without patient details)? Or remove the "Scan to verify" wording until then?</li>
+<li><b>Diagnosis on a prescription.</b> Print it by default, or leave it off unless the prescriber ticks it (as the certificate already does)?</li>
+<li><b>Prescriber's licence number.</b> Should each clinician have a professional registration number on their profile so it prints under their name?</li>
+<li><b>Branches.</b> Does each branch have its own letterhead, phone and TIN, or is it one identity for the whole clinic?</li>
+<li><b>Which gaps first.</b> Pharmacy Print and the lab report are the roughest; receipts and prescriptions are the most used. Where should we begin?</li>
+<li><b>New papers.</b> Of section 4, which would you add first (my guess: patient card and treatment estimate)?</li>
+</ol>
+
+<footer>Based on: every print helper in the front end (billing, clinical, dental, lab, pharmacy), where each is called from and what data it is given, the clinic and branch profile fields in the back end, and the existing database column for a logo. Nothing in the system was changed to produce this document.</footer>
+</div></body></html>
