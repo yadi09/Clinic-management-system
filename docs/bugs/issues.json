@@ -966,7 +966,9 @@
   "fix": "Raise extras only once per arrival (reuse the first attempt's bills on retry).",
   "effort": "M",
   "decision": null,
-  "tests": [],
+  "tests": [
+   "REG-FE-RECEP-018"
+  ],
   "files": [
    "backend/internal/billing/service/service.go:1497-1506",
    "backend/internal/billing/service/service.go:415-430",
@@ -974,8 +976,13 @@
    "frontend/src/features/scheduling/pages/ReceptionPage.tsx:349"
   ],
   "tested": false,
-  "status": "open",
-  "log": [],
+  "status": "fixed",
+  "log": [
+   {
+    "date": "2026-10-10",
+    "note": "Explained. Owner decided reception does not need \"Add a service\" (no clinic uses it; discuss again if one asks). Removed it from the reception page: the section, its tick boxes, the \"Added services\" line and the request that raised each extra. With no extras raised at reception there is nothing to bill twice. Only the arrival fee is raised, which the server already hands back on a repeat press. The server capability is untouched; if the feature returns, it must be built as one all-or-nothing receive action. REG-FE-RECEP-018 now asserts no extra is raised. Frontend checks green (lint, types, 1,644 screen tests with minimums, 10 of 10 journeys); no server change. Not yet deployed."
+   }
+  ],
   "order": 8
  },
  {
@@ -4906,6 +4913,10 @@
    {
     "date": "2026-10-10",
     "note": "Owner asked for an analysis of the reception page and an example: show a patient's earlier unpaid bills and let the desk add them to today's payment. Analysis written: docs/reception-improvement-plan.html. Waiting for approval of the plan and decisions."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Scope change from the owner: \"Add a service\" removed from reception; the plan's money panel no longer needs the all-or-nothing extras action. Old bills with tick boxes remain the first step."
    }
   ]
  }

@@ -36,7 +36,7 @@ import { useIsLargeScreen } from "@/hooks/useMediaQuery";
 import { searchPatients, type PatientSummary } from "@/features/patients/api";
 import { listDepartments, listProviders, getSettings } from "@/features/admin/api";
 import {
-  deferVisit, getRegistrationStatus, listServices, raiseCharge, settleVisit, waiveCharge, waiverReasons,
+  deferVisit, getRegistrationStatus, listServices, settleVisit, waiveCharge, waiverReasons,
   type RegistrationStatus, type ServiceItem,
 } from "@/features/billing/api";
 import { statusLine } from "@/features/billing/registration";
@@ -273,7 +273,6 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
   const triageRequired = !!settings.data?.triage_required;
   const [dept, setDept] = useState(p.department_id ?? "");
   const [provider, setProvider] = useState(p.provider_id ?? "");
-  const [extras, setExtras] = useState<Record<string, boolean>>({});
   const [pay, setPay] = useState<PaymentChoice>(EMPTY_PAYMENT);
   const [waiveOpen, setWaiveOpen] = useState(false);
   const [deferOpen, setDeferOpen] = useState(false);
@@ -292,17 +291,15 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
     () => (services.data ?? []).filter((s: ServiceItem) => s.is_default),
     [services.data],
   );
-  const chosenExtras = useMemo(
-    () => (services.data ?? []).filter((s: ServiceItem) => extras[s.id] && !s.is_default),
-    [services.data, extras],
-  );
-  const extrasTotal = chosenExtras.reduce((a, s) => a + (parseFloat(s.price) || 0), 0);
   const reg = registration.data;
   const regFree = !!reg?.service_id && !reg.due;
   const feeDue = covered ? 0 : defaults
     .filter((s) => !(regFree && s.id === reg?.service_id))
     .reduce((a, s) => a + (parseFloat(s.price) || 0), 0);
-  const total = feeDue + extrasTotal;
+  // Only the clinic's arrival fee is raised at reception. Choosing extra services
+  // here was removed (2026-10-10): no clinic uses it, and raising them was a separate
+  // request that a failed payment left behind to be raised again (APT-3).
+  const total = feeDue;
   const routeReady = !!dept && (triageRequired || !!provider || booked);
   const mustPay = total > 0.005;
   const blocked = mustPay && canCollect && paymentIncomplete(rails.data, pay);
@@ -357,14 +354,6 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
       // they never appeared at the cashier.
       const res = await walkIn({ patient_id: p.patient_id, ...routing, department_id: dept });
       mine.push(...res.charge_ids);
-    }
-    for (const s of chosenExtras) {
-      const { id: cid } = await raiseCharge({
-        patient_id: p.patient_id, service_item_id: s.id, source: "consultation",
-        description: s.name, amount: parseFloat(s.price) || 0,
-        ...routing, department_id: dept || undefined,
-      });
-      mine.push(cid);
     }
     return mine;
   };
@@ -483,27 +472,8 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
               </p>
             </div>
           ) : canCollect ? (
-            <FeeBlock defaults={defaults} extrasTotal={extrasTotal} total={total} registration={covered ? undefined : reg} />
+            <FeeBlock defaults={defaults} total={total} registration={covered ? undefined : reg} />
           ) : null}
-
-          {/* anything extra done at the desk */}
-          {canCollect && (services.data?.length ?? 0) > 0 && (
-            <details className="rounded-md border px-3 py-2">
-              <summary className="cursor-pointer text-sm font-medium">
-                Add a service{chosenExtras.length > 0 && ` · ${chosenExtras.length} added`}
-              </summary>
-              <div className="mt-2 space-y-1">
-                {(services.data ?? []).map((s: ServiceItem) => (
-                  <label key={s.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 text-sm hover:bg-muted/50 max-md:min-h-10">
-                    <input type="checkbox" checked={!!extras[s.id]}
-                      onChange={(e) => setExtras((x) => ({ ...x, [s.id]: e.target.checked }))} />
-                    <span className="min-w-0 flex-1 truncate">{s.name}</span>
-                    <span className="shrink-0 font-mono text-xs">{etb(s.price)}</span>
-                  </label>
-                ))}
-              </div>
-            </details>
-          )}
 
           {/* Old debt: surfaced, never folded into today's payment. Money the clinic
               AGREED to be owed is not the same fact as a charge nobody collected —
@@ -602,10 +572,10 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
 }
 
 /** What this visit costs, line by line — the same services the server will raise. */
-function FeeBlock({ defaults, extrasTotal, total, registration }: {
-  defaults: ServiceItem[]; extrasTotal: number; total: number; registration?: RegistrationStatus;
+function FeeBlock({ defaults, total, registration }: {
+  defaults: ServiceItem[]; total: number; registration?: RegistrationStatus;
 }) {
-  if (defaults.length === 0 && extrasTotal <= 0) {
+  if (defaults.length === 0) {
     return (
       <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
         <p className="font-medium">No fee for this visit</p>
@@ -630,12 +600,6 @@ function FeeBlock({ defaults, extrasTotal, total, registration }: {
           </div>
         );
       })}
-      {extrasTotal > 0 && (
-        <div className="mt-1 flex items-baseline justify-between gap-2 text-sm">
-          <span className="text-muted-foreground">Added services</span>
-          <span className="font-mono">{etb(extrasTotal)}</span>
-        </div>
-      )}
       <div className="mt-1.5 flex items-baseline justify-between gap-2 border-t pt-1.5 text-sm font-semibold">
         <span>Total</span><span className="font-mono">{etb(total)}</span>
       </div>

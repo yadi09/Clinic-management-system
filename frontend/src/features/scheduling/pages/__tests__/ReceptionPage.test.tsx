@@ -451,10 +451,10 @@ describe("REG-FE-RECEP reception desk", () => {
     expect(screen.queryByText(/Booked/)).not.toBeInTheDocument();
   });
 
-  test("REG-FE-RECEP-018 a walk-in must be routed; extras are raised and collected with the visit", async () => {
+  test("REG-FE-RECEP-018 a walk-in must be routed; only the arrival fee is collected, and no extra service is ever raised", async () => {
     pats.searchPatients.mockResolvedValue({ items: [PS("pat_g", "Genet", "Bekele")], meta: {} });
     sched.walkIn.mockResolvedValue({ status: "waiting", gated: true, charge_ids: ["chg_walk"] });
-    bill.settleVisit.mockResolvedValue({ receipt_no: 8, total: "350", count: 2 });
+    bill.settleVisit.mockResolvedValue({ receipt_no: 8, total: "100", count: 1 });
     const { user } = page();
     await user.type(searchBox(), "genet");
     await user.click(await screen.findByRole("button", { name: /Genet Bekele/ }));
@@ -465,23 +465,18 @@ describe("REG-FE-RECEP reception desk", () => {
     await choose(user, combos()[1], "Dr Yonas");
     expect(collect).toBeEnabled();
 
-    await user.click(screen.getByText("Add a service"));
-    await user.click(screen.getByRole("checkbox", { name: /X-ray/ }));
-    expect(screen.getByText(/Add a service · 1 added/)).toBeInTheDocument();
-    expect(screen.getByText("Added services").parentElement).toHaveTextContent("ETB 250.00");
-    // The default fee cannot be added twice as an "extra".
-    await user.click(screen.getByRole("checkbox", { name: /Registration/ }));
-    expect(screen.getByText(/Add a service · 1 added/)).toBeInTheDocument();
-    await user.click(btn("Collect ETB 350.00 & send through"));
+    // "Add a service" was removed from reception (2026-10-10): nothing to tick, and the
+    // total is the clinic's arrival fee alone.
+    expect(screen.queryByText(/Add a service/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    await user.click(btn("Collect ETB 100.00 & send through"));
 
     await waitFor(() => expect(bill.settleVisit).toHaveBeenCalled());
     expect(sched.walkIn).toHaveBeenCalledWith({ patient_id: "pat_g", to_triage: false, provider_id: "doc2", department_id: "dep2" });
     expect(sched.checkInAppointment).not.toHaveBeenCalled();
-    expect(bill.raiseCharge).toHaveBeenCalledWith(expect.objectContaining({
-      patient_id: "pat_g", service_item_id: "svc_xray", amount: 250, description: "X-ray", department_id: "dep2", provider_id: "doc2",
-    }));
-    expect(bill.settleVisit).toHaveBeenCalledWith("pat_g", expect.objectContaining({ charge_ids: ["chg_walk", "chg_extra"] }));
-    expect(tst.success).toHaveBeenCalledWith("Genet Bekele: ETB 350.00 collected · sent through");
+    expect(bill.raiseCharge).not.toHaveBeenCalled();
+    expect(bill.settleVisit).toHaveBeenCalledWith("pat_g", expect.objectContaining({ charge_ids: ["chg_walk"] }));
+    expect(tst.success).toHaveBeenCalledWith("Genet Bekele: ETB 100.00 collected · sent through");
   });
 
   test("REG-FE-RECEP-019 a clinic that triages everyone: no clinician picker, routed to triage", async () => {
@@ -564,7 +559,7 @@ describe("REG-FE-RECEP reception desk", () => {
     expect(bill.waiverReasons).not.toHaveBeenCalled();
   });
 
-  test("REG-FE-RECEP-024 a desk without payment.collect sees no fee breakdown, payment picker, extras or waive", async () => {
+  test("REG-FE-RECEP-024 a desk without payment.collect sees no fee breakdown, payment picker or waive", async () => {
     as(["patient.read", "payment.charge"]);
     const { user } = page();
     await pick(user, /Almaz Haile/);
@@ -572,7 +567,6 @@ describe("REG-FE-RECEP reception desk", () => {
     await screen.findByRole("button", { name: "Send to cashier" });
     expect(screen.queryByText("Total")).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Payment method" })).not.toBeInTheDocument();
-    expect(screen.queryByText("Add a service")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Waive|Pay later/ })).not.toBeInTheDocument();
   });
 

@@ -86,16 +86,16 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 <li><b>Fix:</b> I change the code; its test turns from "known bug" to a normal passing test, and the whole suite must still pass.</li>
 <li><b>Verify:</b> you check it and accept it. Then the next one.</li>
 </ol>
-<p style="margin:8px 0 0;color:var(--soft)">Right now: 180 open · 1 explained or confirmed · 3 fixed, waiting for your check · 11 verified.</p>
+<p style="margin:8px 0 0;color:var(--soft)">Right now: 179 open · 1 explained or confirmed · 4 fixed, waiting for your check · 11 verified.</p>
 </div>
 
-<a class="next" href="#APT-3" data-open="APT-3"><span>Next up</span><b>Retrying Collect at reception bills extras twice</b><em>Critical · APT-3 · Open</em></a>
+<a class="next" href="#FEAT-RECEP-1" data-open="FEAT-RECEP-1"><span>Next up</span><b>Reception page: itemised old bills and faster desk work</b><em>High · FEAT-RECEP-1 · Explained</em></a>
 
 <div class="tallies"><button class="tally sev-critical" data-filter-sev="critical"><b>9</b><span>Critical</span><small>Money lost or created wrongly, a patient-safety risk, or someone reaching data they must not.</small></button><button class="tally sev-high" data-filter-sev="high"><b>46</b><span>High</span><small>Wrong figures, changes nobody can trace, or permission holes inside a clinic.</small></button><button class="tally sev-medium" data-filter-sev="medium"><b>73</b><span>Medium</span><small>Wrong but recoverable, or a screen that misleads about what is real.</small></button><button class="tally sev-low" data-filter-sev="low"><b>67</b><span>Low</span><small>Cosmetic, a wrong error message, or a rare edge.</small></button></div>
 
 <div class="filters">
   <input id="q" type="search" placeholder="Search: cashier, follow-up, refund…" aria-label="Search issues">
-  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (180)</option><option value="explained">Explained (1)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (3)</option><option value="verified">Verified (11)</option><option value="wontfix">Won't fix (0)</option></select>
+  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (179)</option><option value="explained">Explained (1)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (4)</option><option value="verified">Verified (11)</option><option value="wontfix">Won't fix (0)</option></select>
   <select id="ar" aria-label="Area"><option value="">Every area</option><option value="Appointments &amp; front desk">Appointments &amp; front desk</option><option value="Dental">Dental</option><option value="Money">Money</option><option value="Patient records">Patient records</option><option value="Reliability">Reliability</option><option value="Safety &amp; access">Safety &amp; access</option><option value="Screens &amp; usability">Screens &amp; usability</option></select>
 </div>
 <p class="count" id="count"></p>
@@ -333,7 +333,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
     </div>
   </details>
 </article>
-<article class="issue sev-critical st-open" id="APT-3" data-sev="critical" data-status="open"
+<article class="issue sev-critical st-fixed" id="APT-3" data-sev="critical" data-status="fixed"
   data-area="Appointments &amp; front desk" data-q="apt-3 retrying collect at reception bills extras twice if a payment at reception fails (for example the transfer check refuses it) and the desk presses collect again, any extra services chosen are billed a second time. the first set stays unpaid, which also keeps the patient out of the dentist&#x27;s queue. hana adds a 300 birr x-ray for abebe. the first collect is refused by the bank check; she presses again with cash. a second x-ray bill is raised and paid; the first stays unpaid, so abebe never appears in the dentist&#x27;s queue. receptionist, patient, dentist appointments &amp; front desk">
   <details>
     <summary>
@@ -341,7 +341,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">Critical</span>
       <span class="ttl">Retrying Collect at reception bills extras twice</span>
       <span class="meta"><span class="id">APT-3</span> · Appointments &amp; front desk · effort M · <i class="notest">No test yet</i></span>
-      <span class="status">Open</span>
+      <span class="status">Fixed</span>
     </summary>
     <div class="body">
       
@@ -354,11 +354,11 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       </dl>
       <div class="tech">
         <details><summary>For the developer: tests and code</summary>
-          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li>No automated test yet: an operational item</li></ul>
+          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li><code>REG-FE-RECEP-018</code></li></ul>
           <p>Where in the code:</p><ul><li><code>backend/internal/billing/service/service.go:1497-1506</code></li><li><code>backend/internal/billing/service/service.go:415-430</code></li><li><code>frontend/src/features/scheduling/pages/ReceptionPage.tsx:326-370</code></li><li><code>frontend/src/features/scheduling/pages/ReceptionPage.tsx:349</code></li></ul>
         </details>
       </div>
-      
+      <div class="log"><b>History</b><ul><li><time>2026-10-10</time> Explained. Owner decided reception does not need &quot;Add a service&quot; (no clinic uses it; discuss again if one asks). Removed it from the reception page: the section, its tick boxes, the &quot;Added services&quot; line and the request that raised each extra. With no extras raised at reception there is nothing to bill twice. Only the arrival fee is raised, which the server already hands back on a repeat press. The server capability is untouched; if the feature returns, it must be built as one all-or-nothing receive action. REG-FE-RECEP-018 now asserts no extra is raised. Frontend checks green (lint, types, 1,644 screen tests with minimums, 10 of 10 journeys); no server change. Not yet deployed.</li></ul></div>
     </div>
   </details>
 </article>
@@ -387,7 +387,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>frontend/src/features/scheduling/pages/ReceptionPage.tsx</code></li><li><code>frontend/src/features/scheduling/reception/ArrivalList.tsx</code></li><li><code>backend/internal/scheduling/service/reception.go</code></li></ul>
         </details>
       </div>
-      <div class="log"><b>History</b><ul><li><time>2026-10-10</time> Owner asked for an analysis of the reception page and an example: show a patient&#x27;s earlier unpaid bills and let the desk add them to today&#x27;s payment. Analysis written: docs/reception-improvement-plan.html. Waiting for approval of the plan and decisions.</li></ul></div>
+      <div class="log"><b>History</b><ul><li><time>2026-10-10</time> Owner asked for an analysis of the reception page and an example: show a patient&#x27;s earlier unpaid bills and let the desk add them to today&#x27;s payment. Analysis written: docs/reception-improvement-plan.html. Waiting for approval of the plan and decisions.</li><li><time>2026-10-10</time> Scope change from the owner: &quot;Add a service&quot; removed from reception; the plan&#x27;s money panel no longer needs the all-or-nothing extras action. Old bills with tick boxes remain the first step.</li></ul></div>
     </div>
   </details>
 </article>
@@ -5757,7 +5757,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   </details>
 </article>
 
-<footer>Built 10 October 2026, 07:44 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
+<footer>Built 10 October 2026, 08:34 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
 </div>
 <script>
 (function () {
