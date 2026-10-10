@@ -57,7 +57,7 @@ export function RecordShelf({ patientId, panels }: { patientId: string; panels: 
   if (!current) return null;
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-clip">
       <div className="flex flex-col lg:flex-row">
         <nav
           aria-label="Patient record"

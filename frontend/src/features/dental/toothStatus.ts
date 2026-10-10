@@ -30,8 +30,6 @@ export interface ToothStatuses {
   list: ToothStatusDef[];
   labelOf: (code: string) => string;
   styleOf: (code: string) => { background: string; borderColor: string; color: string };
-  /** Tapping a tooth walks the clinic's own conditions, then back to unmarked. */
-  next: (current: string) => string;
   loading: boolean;
   /** The condition list has loaded and has entries. Until it has, the chart must
    *  not be edited: a tap would compute its next mark from an empty list. */
@@ -63,17 +61,6 @@ export function useToothStatuses(): ToothStatuses {
       const s = by.get(code);
       if (!s) return UNKNOWN;
       return { background: tint(s.color, 0.14), borderColor: s.color, color: s.color };
-    },
-    next: (current) => {
-      // Never compute a mark from a list that is not there: that is how a failed
-      // 200-byte request turned the next tap into an erased tooth (audit D12/W21).
-      if (!ready) return current;
-      const codes = ["", ...list.map((s) => s.code)];
-      const i = codes.indexOf(current || "");
-      // A retired or unknown mark steps to the first condition instead of being
-      // erased; the toast after the tap offers Undo (audit D12/W20).
-      if (i < 0) return codes[1];
-      return codes[(i + 1) % codes.length];
     },
   };
 }

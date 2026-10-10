@@ -37,6 +37,7 @@ import { AllergyDialog } from "@/features/dental/AllergyDialog";
 import { ExaminationCard } from "@/features/dental/ExaminationCard";
 import { invalidateDental } from "@/features/dental/invalidate";
 import { ToothChart } from "@/features/dental/ToothChart";
+import { pushEntry, type HistoryEntry } from "@/features/dental/chart/chartModel";
 import { useToothStatuses } from "@/features/dental/toothStatus";
 import { FLAT_TEETH, ToothMultiSelect } from "@/features/dental/shared/pickers";
 import { PriceAgainstList, ServicePicker } from "@/features/dental/shared/ServicePicker";
@@ -202,6 +203,9 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
   //   queued      — the map waiting on the debounce. While it is non-null the chart
   //                 belongs to the clinician, and no refetch may overwrite it.
   const [teeth, setTeeth] = useState<Record<string, string>>({});
+  // The last save failed and the chart went back to the server's copy. Shown in the
+  // chart's bar until the next change, so the failure outlives the pop-up.
+  const [chartFailed, setChartFailed] = useState(false);
   const draft = useRef<Record<string, string>>({});
   const confirmed = useRef<Record<string, string>>({});
   const queued = useRef<Record<string, string> | null>(null);
@@ -234,6 +238,7 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
       if (timer.current) { clearTimeout(timer.current); timer.current = null; }
       queued.current = null;
       showChart(confirmed.current);
+      setChartFailed(true);
       toast.error(e instanceof AppError ? e.message : "Could not save the tooth chart — your last changes were undone");
       qc.invalidateQueries({ queryKey: ["dental-summary", patientId] });
     },
@@ -272,11 +277,32 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
     return () => window.removeEventListener("beforeunload", onLeave);
   }, [patientId]);
 
-  // One status onto one tooth, through the debounced save. Both a tap and its Undo
-  // come through here, so an undo is saved exactly like the edit it reverts.
-  const applyTooth = (code: string, status: string) => {
+  // --- undo / redo ----------------------------------------------------------
+  //
+  // One entry per change the clinician made — a tap, a drag, a group, a clear — so a
+  // single Undo reverses exactly what they just did, not the last tooth of it. Kept
+  // for this visit to the page (twenty steps) and replayed through the same debounced
+  // save as an edit, so an undo is saved like the edit it reverts.
+  const undoStack = useRef<HistoryEntry[]>([]);
+  const redoStack = useRef<HistoryEntry[]>([]);
+  const [, setHistoryTick] = useState(0);
+  useEffect(() => { undoStack.current = []; redoStack.current = []; setHistoryTick((n) => n + 1); }, [patientId]);
+
+  // Several teeth onto the draft in one step, through the debounced save. Returns what
+  // actually changed (a tooth already holding the condition is not an edit).
+  const writeTeeth = (changes: Record<string, string>) => {
     const map = { ...draft.current };
-    if (status) map[code] = status; else delete map[code];
+    const before: Record<string, string> = {};
+    const after: Record<string, string> = {};
+    for (const [code, status] of Object.entries(changes)) {
+      const prev = map[code] ?? "";
+      if (prev === status) continue;
+      before[code] = prev;
+      after[code] = status;
+      if (status) map[code] = status; else delete map[code];
+    }
+    if (Object.keys(after).length === 0) return null;
+    setChartFailed(false);
     showChart(map);
     queued.current = map;
     if (timer.current) clearTimeout(timer.current);
@@ -285,24 +311,42 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
       const send = queued.current;
       if (send) chartSave.mutate({ map: send, seq: ++sentSeq.current });
     }, 700);
+    return { before, after };
   };
 
-  const toggleTooth = (code: string) => {
-    // Computed outside the state updater: React may run an updater more than once,
-    // and starting a save from inside one is a side effect in a place that promises
-    // to be pure.
-    const prev = draft.current[code] ?? "";
-    // The chart is read-only until the conditions load; this is the second lock.
-    if (!toothSts.ready) return;
-    const next = toothSts.next(prev);
-    applyTooth(code, next);
-    // Tap-to-cycle with autosave means a stray thumb-tap silently rewrites the
-    // record. Name what just changed and offer the way back; one toast id per
-    // tooth, so re-taps update the toast instead of stacking five of them.
-    toast(`${code} → ${next ? toothSts.labelOf(next) : "Cleared"}`, {
-      id: `tooth-${code}`,
-      action: { label: "Undo", onClick: () => applyTooth(code, prev) },
-    });
+  const applyChanges = (changes: Record<string, string>, label: string) => {
+    if (!toothSts.ready) return; // the chart is read-only until the conditions load
+    const done = writeTeeth(changes);
+    if (!done) return;
+    undoStack.current = pushEntry(undoStack.current, { label, ...done });
+    redoStack.current = [];
+    setHistoryTick((n) => n + 1);
+    // One pop-up, for a group only: a single tooth visibly changes and Undo is in
+    // the bar. The id means a second group replaces the first instead of stacking.
+    if (Object.keys(done.after).length > 1) {
+      toast(label, { id: "chart-batch", action: { label: "Undo", onClick: () => undo() } });
+    } else {
+      toast.dismiss("chart-batch");
+    }
+  };
+
+  const undo = () => {
+    const entry = undoStack.current.at(-1);
+    if (!entry) return;
+    undoStack.current = undoStack.current.slice(0, -1);
+    writeTeeth(entry.before);
+    redoStack.current = [...redoStack.current, entry];
+    setHistoryTick((n) => n + 1);
+    toast.dismiss("chart-batch");
+  };
+
+  const redo = () => {
+    const entry = redoStack.current.at(-1);
+    if (!entry) return;
+    redoStack.current = redoStack.current.slice(0, -1);
+    writeTeeth(entry.after);
+    undoStack.current = pushEntry(undoStack.current, entry);
+    setHistoryTick((n) => n + 1);
   };
 
   const [newPlan, setNewPlan] = useState(false);
@@ -466,8 +510,9 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
             badge: Object.keys(teeth).length || undefined,
             render: () => (
               <div className="space-y-2">
-                <p className="text-xs text-muted-foreground">Tap a tooth to cycle its condition. Saved automatically.</p>
-                <div className="overflow-x-auto"><ToothChart teeth={teeth} editable={editable} onToggle={toggleTooth} /></div>
+                <ToothChart teeth={teeth} editable={editable} onApply={applyChanges}
+                  onUndo={undo} onRedo={redo} canUndo={undoStack.current.length > 0} canRedo={redoStack.current.length > 0}
+                  saving={chartSave.isPending || queued.current !== null} failed={chartFailed} />
               </div>
             ),
           }] : []),

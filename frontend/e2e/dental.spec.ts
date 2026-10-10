@@ -137,6 +137,8 @@ test("REG-E2E-013 a tooth set on the chart is still there after a reload", async
   await expect(ur6).toHaveAccessibleName("UR6");
 
   const saved = page.waitForResponse((r) => r.url().includes(`/dental/patients/${p.id}/chart`) && r.request().method() === "PUT");
+  // Pick a condition, then tap the tooth: no cycling.
+  await page.getByRole("group", { name: "Conditions" }).getByRole("button", { name: /^Healthy$/ }).click();
   await ur6.click();
   await expect(ur6).toHaveAccessibleName(/^UR6 — .+/);
   const label = await ur6.getAttribute("aria-label");
@@ -165,4 +167,67 @@ test("REG-E2E-014 a missed visit is on Follow-ups → Missed, and Rebook opens t
   await expect(dlg).toBeVisible();
   await expect(dlg.getByText(title)).toBeVisible();
   await expect(dlg.getByText(/missed 10 days ago/)).toBeVisible();
+});
+
+const chartChips = (page: import("@playwright/test").Page) => page.getByRole("group", { name: "Conditions" });
+const tooth = (page: import("@playwright/test").Page, code: string) => page.getByRole("button", { name: new RegExp(`^${code}( —|$)`) });
+
+test("REG-E2E-021 a whole mouth is charted in a few taps, survives a reload, and can be cleared and undone", async ({ page }) => {
+  const p = await newPatient();
+  await login(page, "doctor");
+  await page.goto(`/patients/${p.id}`);
+  await page.getByRole("button", { name: /^Tooth chart/ }).click();
+  await expect(tooth(page, "UR1")).toBeEnabled();
+
+  // Two decayed teeth and one extracted, then everything else healthy.
+  await chartChips(page).getByRole("button", { name: /^Decayed$/ }).click();
+  await tooth(page, "UR6").click();
+  await tooth(page, "LL5").click();
+  await chartChips(page).getByRole("button", { name: /^Extracted$/ }).click();
+  await tooth(page, "UL8").click();
+  await page.getByRole("tab", { name: "Select" }).click();
+  await page.getByRole("group", { name: "Quick selects" }).getByRole("button", { name: "Not marked" }).click();
+  await expect(page.getByText("29 teeth selected")).toBeVisible();
+  const saved = page.waitForResponse((r) => r.url().includes(`/dental/patients/${p.id}/chart`) && r.request().method() === "PUT"
+    && (r.request().postData() ?? "").includes("UR1"));
+  await chartChips(page).getByRole("button", { name: /^Healthy$/ }).click();
+  expect((await saved).ok()).toBe(true);
+  await expect(tooth(page, "UR1")).toHaveAccessibleName("UR1 — Healthy");
+  await expect(tooth(page, "UR6")).toHaveAccessibleName("UR6 — Decayed");
+  await expect(page.getByText(/32 marked: 29 Healthy/)).toBeVisible();
+
+  await page.reload();
+  await page.getByRole("button", { name: /^Tooth chart/ }).click();
+  await expect(tooth(page, "LL5")).toHaveAccessibleName("LL5 — Decayed");
+  await expect(tooth(page, "UL8")).toHaveAccessibleName("UL8 — Extracted");
+
+  // Clear it all, then take it back.
+  await page.getByRole("button", { name: "Clear all" }).click();
+  const cleared = page.waitForResponse((r) => r.url().includes(`/dental/patients/${p.id}/chart`) && r.request().method() === "PUT");
+  await page.getByRole("button", { name: /^Clear 32 marks$/ }).click();
+  expect((await cleared).ok()).toBe(true);
+  await expect(tooth(page, "UR6")).toHaveAccessibleName("UR6");
+  const back = page.waitForResponse((r) => r.url().includes(`/dental/patients/${p.id}/chart`) && r.request().method() === "PUT");
+  await page.getByRole("button", { name: "Undo" }).first().click();
+  expect((await back).ok()).toBe(true);
+  await expect(tooth(page, "UR6")).toHaveAccessibleName("UR6 — Decayed");
+});
+
+test("REG-E2E-022 on a phone the condition bar is at the bottom and a tap on a tooth with nothing chosen offers a menu", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const p = await newPatient();
+  await login(page, "doctor");
+  await page.goto(`/patients/${p.id}`);
+  await page.getByRole("button", { name: /^Tooth chart/ }).click();
+  await expect(tooth(page, "UR1")).toBeEnabled();
+  const bar = chartChips(page);
+  await expect(bar).toBeVisible();
+  const chart = await tooth(page, "UR1").boundingBox();
+  const barBox = await bar.boundingBox();
+  expect(barBox!.y).toBeGreaterThan(chart!.y);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  await tooth(page, "LR3").click();
+  await page.getByRole("menuitem", { name: "Filled" }).click();
+  await expect(tooth(page, "LR3")).toHaveAccessibleName("LR3 — Filled");
 });
