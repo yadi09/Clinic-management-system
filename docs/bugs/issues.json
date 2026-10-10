@@ -31,6 +31,10 @@
    {
     "date": "2026-10-10",
     "note": "Full run green first time: server 695/0, screens 1,644, journeys 10/10, routes 267/267, all coverage minimums. Committed; not yet deployed. Waiting for the owner to verify."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Deployed to app.clinicos.cc (commit 03bee73, pre-deploy backup taken, API ready, no errors in the log). No migration. Ordinary payments are unaffected: the rule applies only to a reference the bank confirmed with an amount."
    }
   ],
   "order": 5
