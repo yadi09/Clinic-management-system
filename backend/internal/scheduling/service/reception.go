@@ -72,6 +72,7 @@ func (s *Service) ReceptionToday(ctx context.Context) (*scheduling.ReceptionToda
 		Expected: []scheduling.ReceptionPatient{},
 		Waiting:  []scheduling.ReceptionPatient{},
 		Seen:     []scheduling.ReceptionPatient{},
+		Recent:   []scheduling.ReceptionPatient{},
 	}
 
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
@@ -171,7 +172,53 @@ func (s *Service) ReceptionToday(ctx context.Context) (*scheduling.ReceptionToda
 				out.Waiting = append(out.Waiting, r)
 			}
 		}
-		return qrows.Err()
+		if e := qrows.Err(); e != nil {
+			return e
+		}
+		qrows.Close() // the connection is needed for the two small queries below
+
+		// --- for an empty day: returning patients, and when the diary fills again ----
+		c := &cardTx{ctx: ctx, tx: tx}
+		c.each(`
+			SELECT p.id, trim(coalesce(p.first_name,'') || ' ' || coalesce(p.last_name,'')), coalesce(p.mrn,''),
+			       coalesce(date_part('year', age(p.dob))::int, 0), coalesce(p.gender,''), coalesce(p.phone,''),
+			       max(q.enqueued_at)
+			  FROM queue_entries q
+			  JOIN patients p ON p.id = q.patient_id AND p.tenant_id = q.tenant_id AND p.deleted_at IS NULL
+			 WHERE q.tenant_id = $1 AND q.deleted_at IS NULL AND q.state = 'done'
+			   AND (q.enqueued_at AT TIME ZONE $2)::date < (now() AT TIME ZONE $2)::date
+			   AND ($3::uuid IS NULL OR q.branch_id = $3)
+			 GROUP BY p.id ORDER BY max(q.enqueued_at) DESC LIMIT 5`,
+			[]any{tenantID, addisTZ, branchArg(branch)}, func(r pgx.Rows) error {
+				var x scheduling.ReceptionPatient
+				var pid uuid.UUID
+				var at time.Time
+				if e := r.Scan(&pid, &x.Name, &x.MRN, &x.Age, &x.Sex, &x.Phone, &at); e != nil {
+					return e
+				}
+				x.PatientID, x.WaitingSince = id.Encode(id.PrefixPatient, pid), at.Format(time.RFC3339)
+				out.Recent = append(out.Recent, x)
+				return nil
+			})
+		var nb scheduling.NextBooking
+		var nbAt *time.Time
+		if c.one(`
+			SELECT min(a.starts_at), count(*) FILTER (
+			         WHERE (a.starts_at AT TIME ZONE $2)::date = (d.first AT TIME ZONE $2)::date)::int
+			  FROM appointments a
+			  CROSS JOIN LATERAL (
+			    SELECT min(b.starts_at) AS first FROM appointments b
+			     WHERE b.tenant_id = $1 AND b.status IN ('booked','confirmed')
+			       AND (b.starts_at AT TIME ZONE $2)::date > (now() AT TIME ZONE $2)::date
+			       AND ($3::uuid IS NULL OR b.branch_id = $3)) d
+			 WHERE a.tenant_id = $1 AND a.status IN ('booked','confirmed')
+			   AND (a.starts_at AT TIME ZONE $2)::date > (now() AT TIME ZONE $2)::date
+			   AND ($3::uuid IS NULL OR a.branch_id = $3)`,
+			[]any{tenantID, addisTZ, branchArg(branch)}, &nbAt, &nb.Count) && nbAt != nil && nb.Count > 0 {
+			nb.StartsAt = nbAt.Format(time.RFC3339)
+			out.NextBooking = &nb
+		}
+		return c.err
 	})
 	if ae, ok := apperr.As(err); ok {
 		return nil, ae

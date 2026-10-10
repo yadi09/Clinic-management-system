@@ -14,7 +14,7 @@
 // whether this visit is already covered — because each of those changes what happens
 // next, and all three were invisible at the exact moment they mattered.
 import { invalidateDental } from "@/features/dental/invalidate";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { CheckCircle2, HandCoins, Search, UserPlus, Users } from "lucide-react";
@@ -51,6 +51,7 @@ import { ArrivalRow, clock, coveredNow, day } from "@/features/scheduling/recept
 import {
   CardSkeleton, TodaySection, UnpaidBills, VisitsSection,
 } from "@/features/scheduling/reception/PatientCard";
+import { EmptyList, NoMatch } from "@/features/scheduling/reception/EmptyStates";
 
 type Lens = "expected" | "waiting" | "seen" | "settle";
 const etb = (n: number | string) => `ETB ${Number(n || 0).toFixed(2)}`;
@@ -89,8 +90,15 @@ export function ReceptionPage() {
   // Unbilled dental treatment counts too: it is not at the cashier yet, so "owed"
   // alone let a patient leave with it unbilled (audit D10).
   const settling = (lists?.seen ?? []).filter((r) => Number(r.owed || 0) > 0 || Number(r.unbilled || 0) > 0.005);
+  const searchRef = useRef<HTMLInputElement>(null);
   const rows = (lens === "settle" ? settling : (lists?.[lens] ?? [])) as ReceptionPatient[];
   const searching = debounced.trim().length >= 2;
+  // With nobody booked the next thing the desk does is search, so the box is ready.
+  // Not on a phone, where focusing would raise the keyboard over the empty screen.
+  const emptyDay = today.isSuccess && lens === "expected" && rows.length === 0;
+  useEffect(() => {
+    if (wide && emptyDay && !picked) searchRef.current?.focus();
+  }, [wide, emptyDay]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Someone found by search may already be in today's clinic.
   //
@@ -149,13 +157,14 @@ export function ReceptionPage() {
               <div className="relative min-w-0 flex-1">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
+                  ref={searchRef}
                   className="pl-8"
                   placeholder="Search any patient — name, card number…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
-              <Button asChild variant="outline"><Link to="/patients?new=1"><UserPlus className="h-4 w-4" /> New</Link></Button>
+              <Button asChild variant="outline"><Link to="/patients/new"><UserPlus className="h-4 w-4" /> New</Link></Button>
             </div>
 
             {/* Search takes over the list while it has a term: the desk is looking for
@@ -178,21 +187,15 @@ export function ReceptionPage() {
                     </p>
                   </button>
                 ))}
-                {!found.isFetching && (found.data?.items.length ?? 0) === 0 && (
-                  <p className="py-6 text-center text-sm text-muted-foreground">
-                    Nobody matches. <Link to="/patients?new=1" className="font-medium text-brand underline">Register them</Link>.
-                  </p>
+                {!found.isFetching && !found.isError && (found.data?.items.length ?? 0) === 0 && (
+                  <NoMatch term={debounced.trim()} />
                 )}
               </div>
             ) : today.isLoading ? (
               <div className="space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-20 w-full" />)}</div>
             ) : rows.length === 0 ? (
-              <p className="py-10 text-center text-sm text-muted-foreground">
-                {lens === "expected" ? "Nobody booked today — search for a walk-in."
-                  : lens === "settle" ? "Everyone treated today has paid."
-                  : lens === "waiting" ? "Nobody is waiting."
-                    : "Nobody has been seen yet today."}
-              </p>
+              <EmptyList lens={lens} today={lists}
+                onPick={(r) => setPicked(alreadyHere(r.patient_id) ?? r)} />
             ) : (
               <div className="space-y-2">
                 {rows.map((p) => (
@@ -227,7 +230,10 @@ export function ReceptionPage() {
       </div>
 
       <Dialog open={!wide && !!picked} onOpenChange={(o) => !o && setPicked(null)}>
-        <DialogContent fullOnMobile>
+        {/* A bottom sheet on a phone (the page stays visible above it), a centred modal
+            from tablet up. Not fullOnMobile: that is a whole new screen, and the desk
+            needs to keep its place in the list. */}
+        <DialogContent>
           <DialogHeader><DialogTitle>Receive patient</DialogTitle></DialogHeader>
           {!wide && picked && (
             <ReceivePanel key={panelKey(picked)} p={picked} canCollect={canCollect} bare
@@ -605,8 +611,9 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
             </div>
           )}
 
-          {/* the exits, named for what they do */}
-          <div className="space-y-2">
+          {/* the exits, named for what they do. Pinned to the bottom of the phone sheet,
+              so the one button the desk needs is never below a long card. */}
+          <div className={cn("space-y-2", bare && "max-sm:sticky max-sm:bottom-[calc(-1*max(1.25rem,env(safe-area-inset-bottom)))] max-sm:-mx-6 max-sm:-mb-[max(1.25rem,env(safe-area-inset-bottom))] max-sm:border-t max-sm:bg-card max-sm:px-6 max-sm:py-3 max-sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]")}>
             {refused ? (
               <PaymentRefused canOverride={canOverride} pending={receive.isPending}
                 onForce={() => receive.mutate({ mode: "collect", force: true })} />

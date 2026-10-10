@@ -438,3 +438,49 @@ func TestREG_RECEP_011_VoidingATickedBillDoesNotTrapThePatient(t *testing.T) {
 		t.Fatalf("queue entries = %d, want 1", n)
 	}
 }
+
+// TestREG_RECEP_012_EmptyDayGuidesTheDesk: Given nobody booked today, a patient
+// finished on an earlier day and a booking next week, When the desk opens Reception,
+// Then the lists are empty, the returning patient is offered, and the next booking day
+// is given with how many are booked that day.
+func TestREG_RECEP_012_EmptyDayGuidesTheDesk(t *testing.T) {
+	k := rcvNewKit(t)
+	e := &apptEnv{c: k.c, desk: k.recp, doc: k.doc, branch: payBranch(t, k.c), dept: blDept(k.c), docID: k.docID}
+
+	var none struct {
+		Expected []any `json:"expected"`
+		Recent   []struct {
+			PatientID string `json:"patient_id"`
+			Name      string `json:"name"`
+		} `json:"recent"`
+		NextBooking *struct {
+			StartsAt string `json:"starts_at"`
+			Count    int    `json:"count"`
+		} `json:"next_booking"`
+	}
+	k.recp.Do("GET", "/reception/today", nil).Expect(t, 200, "empty day").Decode(t, &none)
+	if len(none.Recent) != 0 || none.NextBooking != nil {
+		t.Fatalf("brand-new clinic: recent %+v, next booking %+v, want neither", none.Recent, none.NextBooking)
+	}
+
+	p := e.patient(t)
+	pu := blPatientUUID(t, p)
+	wr, _ := k.walkIn(t, p)
+	wr.Expect(t, 201, "walk-in")
+	blExec(t, `UPDATE queue_entries SET state = 'done', enqueued_at = now() - interval '3 days' WHERE patient_id = $1`, pu)
+	day := apptTomorrowAt(9, 0).AddDate(0, 0, 5)
+	e.book(t, e.patient(t).ID, day, 30)
+	e.book(t, e.patient(t).ID, day.Add(time.Hour), 30)
+	e.book(t, e.patient(t).ID, day.AddDate(0, 0, 3), 30)
+
+	k.recp.Do("GET", "/reception/today", nil).Expect(t, 200, "day with history").Decode(t, &none)
+	if len(none.Expected) != 0 {
+		t.Fatalf("expected list = %d, want an empty day", len(none.Expected))
+	}
+	if len(none.Recent) != 1 || none.Recent[0].PatientID != p.ID {
+		t.Fatalf("recent = %+v, want the one returning patient", none.Recent)
+	}
+	if none.NextBooking == nil || none.NextBooking.Count != 2 {
+		t.Fatalf("next booking = %+v, want the first booked day with 2 bookings", none.NextBooking)
+	}
+}

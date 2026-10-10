@@ -34,8 +34,8 @@ const input = (label: RegExp) => within(fieldBox(label)).getByRole("textbox");
 const btn = (name: string | RegExp) => screen.getByRole("button", { name });
 const ageBox = () => screen.getByRole("textbox", { name: "Age in years" });
 
-function show() {
-  return renderUI(<PatientRegisterPage />, { route: "/patients/new" });
+function show(route = "/patients/new") {
+  return renderUI(<PatientRegisterPage />, { route });
 }
 
 async function fillStep1(user: User, { first = "Abebe", middle = "", last = "Kebede", age = "40" } = {}) {
@@ -307,6 +307,18 @@ describe("REG-FE-PREG patient registration wizard", () => {
     // birthdate" with no message and the wizard moves on.
     expect(screen.getByText(/Step 1 of 3/)).toBeInTheDocument();
   });
+  test("REG-FE-PREG-040 a name typed into reception search arrives pre-filled: first word first, the rest last", async () => {
+    show("/patients/new?name=Abeba%20Kebede%20Tola");
+    expect(input(/^First name/)).toHaveValue("Abeba");
+    expect(input(/^Last name/)).toHaveValue("Kebede Tola");
+  });
+
+  test("REG-FE-PREG-041 a single typed word is only the first name; no name leaves the form empty", async () => {
+    show("/patients/new?name=Abeba");
+    expect(input(/^First name/)).toHaveValue("Abeba");
+    expect(input(/^Last name/)).toHaveValue("");
+  });
+
 });
 
 describe("REG-FE-PREG patient schema", () => {

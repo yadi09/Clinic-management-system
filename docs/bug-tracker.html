@@ -86,7 +86,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 <li><b>Fix:</b> I change the code; its test turns from "known bug" to a normal passing test, and the whole suite must still pass.</li>
 <li><b>Verify:</b> you check it and accept it. Then the next one.</li>
 </ol>
-<p style="margin:8px 0 0;color:var(--soft)">Right now: 176 open · 0 explained or confirmed · 8 fixed, waiting for your check · 11 verified.</p>
+<p style="margin:8px 0 0;color:var(--soft)">Right now: 175 open · 0 explained or confirmed · 9 fixed, waiting for your check · 11 verified.</p>
 </div>
 
 <a class="next" href="#FIN-15" data-open="FIN-15"><span>Next up</span><b>A listed service can be billed at any price</b><em>High · FIN-15 · Open</em></a>
@@ -95,7 +95,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 
 <div class="filters">
   <input id="q" type="search" placeholder="Search: cashier, follow-up, refund…" aria-label="Search issues">
-  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (176)</option><option value="explained">Explained (0)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (8)</option><option value="verified">Verified (11)</option><option value="wontfix">Won't fix (0)</option></select>
+  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (175)</option><option value="explained">Explained (0)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (9)</option><option value="verified">Verified (11)</option><option value="wontfix">Won't fix (0)</option></select>
   <select id="ar" aria-label="Area"><option value="">Every area</option><option value="Appointments &amp; front desk">Appointments &amp; front desk</option><option value="Dental">Dental</option><option value="Money">Money</option><option value="Patient records">Patient records</option><option value="Reliability">Reliability</option><option value="Safety &amp; access">Safety &amp; access</option><option value="Screens &amp; usability">Screens &amp; usability</option></select>
 </div>
 <p class="count" id="count"></p>
@@ -387,7 +387,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>backend/internal/scheduling/service/reception.go</code></li><li><code>docs/reception-redesign-plan.html</code></li><li><code>frontend/src/features/scheduling/pages/ReceptionPage.tsx</code></li><li><code>frontend/src/features/scheduling/reception/ArrivalList.tsx</code></li></ul>
         </details>
       </div>
-      <div class="log"><b>History</b><ul><li><time>2026-10-10</time> Owner asked for an analysis of the reception page and an example: show a patient&#x27;s earlier unpaid bills and let the desk add them to today&#x27;s payment. Analysis written: docs/reception-improvement-plan.html. Waiting for approval of the plan and decisions.</li><li><time>2026-10-10</time> Scope change from the owner: &quot;Add a service&quot; removed from reception; the plan&#x27;s money panel no longer needs the all-or-nothing extras action. Old bills with tick boxes remain the first step.</li><li><time>2026-10-10</time> Owner asked for a redesign of the reception page like the dashboard, with a patient card (missed visits, next visit, today&#x27;s booking and treatment session, itemised unpaid bills the patient can choose to pay), sending to the cashier and then automatically to the chosen doctor. Implementation plan written: docs/reception-redesign-plan.html (look, UX, functions, backend, test plan, phases, decisions). Waiting for approval; nothing built. &quot;Add a service&quot; was removed from reception earlier the same day (APT-3 closed).</li><li><time>2026-10-10</time> Plan approved. Phases 1 and 2 built: GET /reception/patients/:id/card (today&#x27;s booking and session, missed visits in the last 90 days, next visit, itemised unpaid bills, usual dentist); tick boxes on earlier bills (none ticked by default); ticked bills hold the patient at the cashier and then send them to the dentist the receptionist chose, whatever order things are paid in (migration 00092: charges.desk_selected_*, reception_routes); cashier worklist marks the ticked bills with who ticked them and who the patient goes to; Pay later and Waive never sweep ticked bills. Built on the existing check-in and walk-in calls (select_charge_ids), so no separate receive endpoint. Tests: server REG_RECEP_001-011, screens RECEP-046-056 and CASHIER-043/044, browser journey REG-E2E-020. Phases 3-5 (search ranking, register-and-receive, treatment sessions on Expected, emergency, receipt at desk, cash change, correct payment details) remain.</li></ul></div>
+      <div class="log"><b>History</b><ul><li><time>2026-10-10</time> Owner asked for an analysis of the reception page and an example: show a patient&#x27;s earlier unpaid bills and let the desk add them to today&#x27;s payment. Analysis written: docs/reception-improvement-plan.html. Waiting for approval of the plan and decisions.</li><li><time>2026-10-10</time> Scope change from the owner: &quot;Add a service&quot; removed from reception; the plan&#x27;s money panel no longer needs the all-or-nothing extras action. Old bills with tick boxes remain the first step.</li><li><time>2026-10-10</time> Owner asked for a redesign of the reception page like the dashboard, with a patient card (missed visits, next visit, today&#x27;s booking and treatment session, itemised unpaid bills the patient can choose to pay), sending to the cashier and then automatically to the chosen doctor. Implementation plan written: docs/reception-redesign-plan.html (look, UX, functions, backend, test plan, phases, decisions). Waiting for approval; nothing built. &quot;Add a service&quot; was removed from reception earlier the same day (APT-3 closed).</li><li><time>2026-10-10</time> Plan approved. Phases 1 and 2 built: GET /reception/patients/:id/card (today&#x27;s booking and session, missed visits in the last 90 days, next visit, itemised unpaid bills, usual dentist); tick boxes on earlier bills (none ticked by default); ticked bills hold the patient at the cashier and then send them to the dentist the receptionist chose, whatever order things are paid in (migration 00092: charges.desk_selected_*, reception_routes); cashier worklist marks the ticked bills with who ticked them and who the patient goes to; Pay later and Waive never sweep ticked bills. Built on the existing check-in and walk-in calls (select_charge_ids), so no separate receive endpoint. Tests: server REG_RECEP_001-011, screens RECEP-046-056 and CASHIER-043/044, browser journey REG-E2E-020. Phases 3-5 (search ranking, register-and-receive, treatment sessions on Expected, emergency, receipt at desk, cash change, correct payment details) remain.</li><li><time>2026-10-10</time> After the first look on a phone and desktop: (1) the patient sheet was a full-screen takeover on phones; now the normal bottom sheet (85% height, page visible above, buttons pinned at the bottom). (2) Guided empty screens built: no-bookings with search focused, Register/Book buttons, recent patients and next booking day; waiting/seen/settled messages; no-match offers to register the typed name. Full run green.</li></ul></div>
     </div>
   </details>
 </article>
@@ -5669,7 +5669,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
     </div>
   </details>
 </article>
-<article class="issue sev-low st-open" id="UX-6" data-sev="low" data-status="open"
+<article class="issue sev-low st-fixed" id="UX-6" data-sev="low" data-status="fixed"
   data-area="Screens &amp; usability" data-q="ux-6 reception &#x27;new&#x27; and &#x27;register them&#x27; open the list, not the form reception&#x27;s &#x27;new&#x27; button and the &#x27;register them&#x27; link go to the patients list with a &#x27;new&#x27; marker the list ignores. the desk lands on the list, not the registration form, and the name they typed in search is lost. hanna searches &#x27;genet&#x27;, finds nobody and clicks &#x27;register them&#x27;. she lands on the patient list and has to click &#x27;new patient&#x27; and type genet again. receptionist screens &amp; usability">
   <details>
     <summary>
@@ -5677,7 +5677,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">Low</span>
       <span class="ttl">Reception &#x27;New&#x27; and &#x27;Register them&#x27; open the list, not the form</span>
       <span class="meta"><span class="id">UX-6</span> · Screens &amp; usability · effort S</span>
-      <span class="status">Open</span>
+      <span class="status">Fixed</span>
     </summary>
     <div class="body">
       
@@ -5694,7 +5694,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>frontend/src/features/scheduling/pages/ReceptionPage.tsx:154</code></li><li><code>frontend/src/features/scheduling/pages/ReceptionPage.tsx:179</code></li></ul>
         </details>
       </div>
-      
+      <div class="log"><b>History</b><ul><li><time>2026-10-10</time> Fixed with the reception empty screens: &#x27;New&#x27; and the no-match &#x27;Register&#x27; now open /patients/new, and the typed name pre-fills the form (REG-FE-RECEP-035/036, REG-FE-PREG-040/041). Full run green.</li></ul></div>
     </div>
   </details>
 </article>
@@ -5757,7 +5757,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   </details>
 </article>
 
-<footer>Built 10 October 2026, 10:59 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
+<footer>Built 10 October 2026, 12:11 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
 </div>
 <script>
 (function () {

@@ -4375,8 +4375,13 @@
    "frontend/src/features/scheduling/pages/ReceptionPage.tsx:179"
   ],
   "tested": true,
-  "status": "open",
-  "log": [],
+  "status": "fixed",
+  "log": [
+   {
+    "date": "2026-10-10",
+    "note": "Fixed with the reception empty screens: 'New' and the no-match 'Register' now open /patients/new, and the typed name pre-fills the form (REG-FE-RECEP-035/036, REG-FE-PREG-040/041). Full run green."
+   }
+  ],
   "order": 700
  },
  {
@@ -4941,6 +4946,10 @@
    {
     "date": "2026-10-10",
     "note": "Plan approved. Phases 1 and 2 built: GET /reception/patients/:id/card (today's booking and session, missed visits in the last 90 days, next visit, itemised unpaid bills, usual dentist); tick boxes on earlier bills (none ticked by default); ticked bills hold the patient at the cashier and then send them to the dentist the receptionist chose, whatever order things are paid in (migration 00092: charges.desk_selected_*, reception_routes); cashier worklist marks the ticked bills with who ticked them and who the patient goes to; Pay later and Waive never sweep ticked bills. Built on the existing check-in and walk-in calls (select_charge_ids), so no separate receive endpoint. Tests: server REG_RECEP_001-011, screens RECEP-046-056 and CASHIER-043/044, browser journey REG-E2E-020. Phases 3-5 (search ranking, register-and-receive, treatment sessions on Expected, emergency, receipt at desk, cash change, correct payment details) remain."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "After the first look on a phone and desktop: (1) the patient sheet was a full-screen takeover on phones; now the normal bottom sheet (85% height, page visible above, buttons pinned at the bottom). (2) Guided empty screens built: no-bookings with search focused, Register/Book buttons, recent patients and next booking day; waiting/seen/settled messages; no-match offers to register the typed name. Full run green."
    }
   ]
  }

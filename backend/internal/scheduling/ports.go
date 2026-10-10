@@ -242,6 +242,18 @@ type ReceptionToday struct {
 	Waiting []ReceptionPatient `json:"waiting"`
 	// Seen: finished today.
 	Seen []ReceptionPatient `json:"seen"`
+	// Recent: the last patients received on earlier days, newest first. What a desk with
+	// nobody booked reaches for: returning patients are the usual walk-ins.
+	Recent []ReceptionPatient `json:"recent"`
+	// NextBooking: the next day with anyone booked, so an empty day can say when the
+	// diary fills again.
+	NextBooking *NextBooking `json:"next_booking,omitempty"`
+}
+
+// NextBooking is the first day after today that has bookings, and how many.
+type NextBooking struct {
+	StartsAt string `json:"starts_at"`
+	Count    int    `json:"count"`
 }
 
 // ReceptionCard answers, for one patient, what the receptionist needs before deciding.

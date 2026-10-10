@@ -215,6 +215,10 @@ export interface ReceptionToday {
   expected: ReceptionPatient[];
   waiting: ReceptionPatient[];
   seen: ReceptionPatient[];
+  /** Patients last received on earlier days, newest first (for an empty day). */
+  recent?: ReceptionPatient[];
+  /** The next day with anyone booked, and how many. */
+  next_booking?: { starts_at: string; count: number };
 }
 
 export function receptionToday() {

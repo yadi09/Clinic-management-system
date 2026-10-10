@@ -170,17 +170,19 @@ describe("REG-FE-RECEP reception desk", () => {
 
   test("REG-FE-RECEP-002 each empty list says what empty means", async () => {
     const { user } = page({ expected: [], waiting: [], seen: [fikir()] });
-    expect(await screen.findByText("Nobody booked today — search for a walk-in.")).toBeInTheDocument();
+    expect(await screen.findByText("No one is booked for today")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Register a new patient/ })).toHaveAttribute("href", "/patients/new");
+    expect(screen.getByRole("link", { name: /Book an appointment/ })).toHaveAttribute("href", "/appointments");
     await user.click(tab(/Waiting/));
-    expect(screen.getByText("Nobody is waiting.")).toBeInTheDocument();
+    expect(screen.getByText("No one is waiting")).toBeInTheDocument();
     await user.click(tab(/To settle/));
-    expect(screen.getByText("Everyone treated today has paid.")).toBeInTheDocument();
+    expect(screen.getByText("Everything is settled")).toBeInTheDocument();
   });
 
   test("REG-FE-RECEP-003 nobody seen yet; and while the day loads there is no empty-state claim", async () => {
     const { user } = page({ expected: [], waiting: [], seen: [] });
     await user.click(await screen.findByRole("tab", { name: /^Seen/ }));
-    expect(screen.getByText("Nobody has been seen yet today.")).toBeInTheDocument();
+    expect(screen.getByText("No one has been seen yet")).toBeInTheDocument();
   });
 
   test("REG-FE-RECEP-004 while loading, no list and no 'nobody booked'", async () => {
@@ -673,20 +675,21 @@ describe("REG-FE-RECEP reception desk", () => {
   test("REG-FE-RECEP-034 an empty search offers registration", async () => {
     const { user } = page();
     await user.type(searchBox(), "zzz");
-    expect(await screen.findByText(/Nobody matches/)).toBeInTheDocument();
+    expect(await screen.findByText("No patient matches “zzz”")).toBeInTheDocument();
     expect(screen.getByText("0 matching")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Register them" })).toBeInTheDocument();
+    // One tap registers exactly what was typed.
+    expect(screen.getByRole("link", { name: /Register “zzz” as a new patient/ })).toHaveAttribute("href", "/patients/new?name=zzz");
   });
 
-  test.fails("REG-FE-RECEP-035 KNOWN BUG UX-6 'New' opens registration (/patients/new), not the list page that ignores ?new=1", async () => {
+  test("REG-FE-RECEP-035 'New' opens registration (/patients/new), not the list page that ignores ?new=1", async () => {
     page();
     expect(await screen.findByRole("link", { name: "New" })).toHaveAttribute("href", "/patients/new");
   });
 
-  test.fails("REG-FE-RECEP-036 KNOWN BUG UX-6 'Register them' opens registration (/patients/new)", async () => {
+  test("REG-FE-RECEP-036 a search with no match offers registration of the typed name, with spaces kept", async () => {
     const { user } = page();
-    await user.type(searchBox(), "zzz");
-    expect(await screen.findByRole("link", { name: "Register them" })).toHaveAttribute("href", "/patients/new");
+    await user.type(searchBox(), "abeba tola");
+    expect(await screen.findByRole("link", { name: /Register “abeba tola”/ })).toHaveAttribute("href", "/patients/new?name=abeba%20tola");
   });
 
   test.fails("REG-FE-RECEP-037 KNOWN BUG FIN-5 settling a waiting patient's debt names the charges shown, not 'everything owed'", async () => {
@@ -893,5 +896,36 @@ describe("REG-FE-RECEP reception desk", () => {
     await pick(user, /Almaz Haile/);
     expect(await screen.findByText("No missed visits in the last 90 days.")).toBeInTheDocument();
     expect(screen.getByText(/from earlier visits/)).toHaveTextContent("Owes ETB 300.00");
+  });
+
+  test("REG-FE-RECEP-057 an empty day offers returning patients and says when the diary fills again", async () => {
+    const { user } = page({
+      expected: [], waiting: [], seen: [],
+      recent: [P({ patient_id: "pat_r", name: "Meron Haile", mrn: "MRN-R", waiting_since: at(-3 * DAY) })],
+      next_booking: { starts_at: at(2 * DAY), count: 4 },
+    });
+    expect(await screen.findByText(/Next booking:/)).toHaveTextContent("4 booked");
+    expect(screen.getByText("Seen before · tap to receive again")).toBeInTheDocument();
+    expect(searchBox()).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: /Meron Haile/ }));
+    expect(await screen.findByRole("heading", { name: "Meron Haile" })).toBeInTheDocument();
+  });
+
+  test("REG-FE-RECEP-058 on a phone the empty day does not steal focus (the keyboard would cover it)", async () => {
+    media.wide = false;
+    page({ expected: [], waiting: [], seen: [] });
+    expect(await screen.findByText("No one is booked for today")).toBeInTheDocument();
+    expect(searchBox()).not.toHaveFocus();
+  });
+
+  test("REG-FE-RECEP-059 the phone sheet is a bottom sheet capped below full height, with its buttons pinned", async () => {
+    media.wide = false;
+    const { user } = page();
+    await pick(user, /Almaz Haile/);
+    const sheet = await screen.findByRole("dialog", { name: "Receive patient" });
+    expect(sheet.className).toContain("max-h-[85dvh]");
+    expect(sheet.className).not.toContain("h-[100dvh]");
+    const exits = within(sheet).getByRole("button", { name: "Send to cashier" }).parentElement!.parentElement!;
+    expect(exits.className).toContain("max-sm:sticky");
   });
 });

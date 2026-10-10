@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useForm, Controller, type Path } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate } from "react-router-dom";
@@ -49,6 +50,7 @@ export function PatientRegisterPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [step, setStep] = useState(0);
+  const typed = useSearchParams()[0].get("name") ?? "";
   const [formError, setFormError] = useState<string | null>(null);
   const [duplicates, setDuplicates] = useState<Duplicate[] | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -65,7 +67,12 @@ export function PatientRegisterPage() {
     getValues,
     setValue,
     formState: { errors },
-  } = useForm<PatientValues>({ resolver: zodResolver(patientSchema), defaultValues: { gender: "unknown", dob: "", dob_estimated: true } });
+  } = useForm<PatientValues>({
+    resolver: zodResolver(patientSchema),
+    // A name typed into a search that found nobody arrives here, so the desk does not
+    // type it twice: first word is the first name, the rest the last.
+    defaultValues: { gender: "unknown", dob: "", dob_estimated: true, ...typedName(typed) },
+  });
 
   const next = async () => {
     if (await trigger(STEP_FIELDS[step])) setStep((s) => Math.min(s + 1, STEPS.length - 1));
@@ -360,4 +367,11 @@ function Review({ label, value }: { label: string; value?: string }) {
       <dd className="mt-0.5 font-medium capitalize">{value || "—"}</dd>
     </div>
   );
+}
+
+/** "Abeba Kebede Tola" typed into search becomes first "Abeba", last "Kebede Tola". */
+function typedName(raw: string): { first_name?: string; last_name?: string } {
+  const [first, ...rest] = raw.trim().split(/\s+/).filter(Boolean);
+  if (!first) return {};
+  return rest.length ? { first_name: first, last_name: rest.join(" ") } : { first_name: first };
 }
