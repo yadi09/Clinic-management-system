@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/reicb/clinicsaas/internal/kernel/verifyet"
-	"github.com/reicb/clinicsaas/internal/testkit"
 )
 
 // Given a fake Verify.ET that confirms a matched receipt but sends NO amount (absent or null),
@@ -20,7 +20,9 @@ import (
 // so a missing/null amount silently skips the amount gate and the payment is ACCEPTED for
 // an unknown sum (fail-open on the one gate that proves it is the right money).
 func TestREG_KERNEL_VERIFYET_040_MissingAmountIsNotAccepted(t *testing.T) {
-	for _, amount := range []string{``, `"amount":null,`} {
+	// NEW-KERNEL-VERIFYET-1, fixed 2026-10-10: an absent, null or blank amount is "review",
+	// never "verified"; when the caller gave no expected amount the gate is still skipped.
+	for _, amount := range []string{``, `"amount":null,`, `"amount":"",`, `"amount":"  ",`} {
 		body := `{"requestId":"r","verification":{"processingStatus":"completed","status":"success","verified":true},
 		  "data":[{"status":"success","verified":true,` + amount + `"currency":"ETB",
 		  "settlementAccountMatch":{"matched":true,"matchConfidence":"high","reason":"receiver_account_exact_match"},
@@ -35,12 +37,18 @@ func TestREG_KERNEL_VERIFYET_040_MissingAmountIsNotAccepted(t *testing.T) {
 			t.Fatal(err)
 		}
 		v := verifyet.Decide(res, "100.00")
-		if v.State != verifyet.Accept {
-			continue // correct behaviour
+		if v.State != verifyet.Review || !strings.Contains(v.Detail, "no_amount") || !strings.Contains(v.Reason, "confirm it by hand") {
+			t.Errorf("amount %q against a 100.00 bill: %+v, want review naming the missing amount and a hand check", amount, v)
 		}
-		testkit.KnownBug(t, "NEW-KERNEL-VERIFYET-1", true,
-			"a verified receipt with no amount is ACCEPTED against a 100.00 bill (decide.go amount gate skips when r.Amount==\"\")")
-		return
+		// With no expected amount the gate is the caller's deliberate skip. Only the two
+		// shapes whose settlement data still decodes can be accepted on the other gates;
+		// a blank-string amount also loses the account details and stays in review.
+		if skipped := verifyet.Decide(res, ""); strings.Contains(amount, `null`) || amount == `` {
+			if skipped.State != verifyet.Accept {
+				t.Errorf("amount %q with no expected amount: %+v, want accepted", amount, skipped)
+			}
+		} else if skipped.State == verifyet.Accept {
+			t.Errorf("amount %q (blank text) was accepted with no expected amount", amount)
+		}
 	}
-	testkit.KnownBug(t, "NEW-KERNEL-VERIFYET-1", false, "missing amount now reviewed")
 }

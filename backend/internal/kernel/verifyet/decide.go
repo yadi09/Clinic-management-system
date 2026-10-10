@@ -118,8 +118,18 @@ func Decide(r *Result, expected string) Verdict {
 
 	// 3. It has to be the right money. Compared as fixed-point text: a float here is
 	//    how 1,000.00 and 999.99999 become the same number.
-	if expected != "" && r.Amount != "" && Fmt(r.Amount) != Fmt(expected) {
-		fail(Review, "The bank shows "+Fmt(r.Amount)+" but this bill is "+Fmt(expected)+".", "amount_mismatch")
+	//
+	//    An amount the bank did not give is not an amount that matched. This gate used
+	//    to be skipped when the amount was absent, so a receipt confirmed "to your
+	//    account" with no sum earned the green tick for any bill (NEW-KERNEL-VERIFYET-1).
+	//    It goes to a person instead: the desk can still collect once it has looked.
+	if expected != "" {
+		switch {
+		case strings.TrimSpace(r.Amount) == "":
+			fail(Review, "The bank did not say how much this was for — confirm it by hand.", "no_amount")
+		case Fmt(r.Amount) != Fmt(expected):
+			fail(Review, "The bank shows "+Fmt(r.Amount)+" but this bill is "+Fmt(expected)+".", "amount_mismatch")
+		}
 	}
 	if r.Currency != "" && !strings.EqualFold(r.Currency, "ETB") {
 		fail(Review, "That payment is in "+r.Currency+", not ETB.", "currency_mismatch")

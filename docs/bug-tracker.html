@@ -86,16 +86,16 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 <li><b>Fix:</b> I change the code; its test turns from "known bug" to a normal passing test, and the whole suite must still pass.</li>
 <li><b>Verify:</b> you check it and accept it. Then the next one.</li>
 </ol>
-<p style="margin:8px 0 0;color:var(--soft)">Right now: 182 open · 1 explained or confirmed · 1 fixed, waiting for your check · 11 verified.</p>
+<p style="margin:8px 0 0;color:var(--soft)">Right now: 180 open · 1 explained or confirmed · 3 fixed, waiting for your check · 11 verified.</p>
 </div>
 
-<a class="next" href="#NEW-KERNEL-PAY-2" data-open="NEW-KERNEL-PAY-2"><span>Next up</span><b>Same Telebirr payment accepted twice through two accounts</b><em>Critical · NEW-KERNEL-PAY-2 · Open</em></a>
+<a class="next" href="#APT-3" data-open="APT-3"><span>Next up</span><b>Retrying Collect at reception bills extras twice</b><em>Critical · APT-3 · Open</em></a>
 
 <div class="tallies"><button class="tally sev-critical" data-filter-sev="critical"><b>9</b><span>Critical</span><small>Money lost or created wrongly, a patient-safety risk, or someone reaching data they must not.</small></button><button class="tally sev-high" data-filter-sev="high"><b>46</b><span>High</span><small>Wrong figures, changes nobody can trace, or permission holes inside a clinic.</small></button><button class="tally sev-medium" data-filter-sev="medium"><b>73</b><span>Medium</span><small>Wrong but recoverable, or a screen that misleads about what is real.</small></button><button class="tally sev-low" data-filter-sev="low"><b>67</b><span>Low</span><small>Cosmetic, a wrong error message, or a rare edge.</small></button></div>
 
 <div class="filters">
   <input id="q" type="search" placeholder="Search: cashier, follow-up, refund…" aria-label="Search issues">
-  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (182)</option><option value="explained">Explained (1)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (1)</option><option value="verified">Verified (11)</option><option value="wontfix">Won't fix (0)</option></select>
+  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (180)</option><option value="explained">Explained (1)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (3)</option><option value="verified">Verified (11)</option><option value="wontfix">Won't fix (0)</option></select>
   <select id="ar" aria-label="Area"><option value="">Every area</option><option value="Appointments &amp; front desk">Appointments &amp; front desk</option><option value="Dental">Dental</option><option value="Money">Money</option><option value="Patient records">Patient records</option><option value="Reliability">Reliability</option><option value="Safety &amp; access">Safety &amp; access</option><option value="Screens &amp; usability">Screens &amp; usability</option></select>
 </div>
 <p class="count" id="count"></p>
@@ -275,7 +275,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
     </div>
   </details>
 </article>
-<article class="issue sev-critical st-open" id="NEW-KERNEL-PAY-2" data-sev="critical" data-status="open"
+<article class="issue sev-critical st-fixed" id="NEW-KERNEL-PAY-2" data-sev="critical" data-status="fixed"
   data-area="Money" data-q="new-kernel-pay-2 same telebirr payment accepted twice through two accounts a payment reference is only checked against the payment method it was entered under. if the clinic has two telebirr numbers set up, one real payment can be entered once under each. abebe pays 500 birr by telebirr. selam enters the reference under &quot;telebirr 1&quot; for one bill; later it is entered under &quot;telebirr 2&quot; for another 500 birr bill. both are accepted. cashier, owner money">
   <details>
     <summary>
@@ -283,7 +283,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">Critical</span>
       <span class="ttl">Same Telebirr payment accepted twice through two accounts</span>
       <span class="meta"><span class="id">NEW-KERNEL-PAY-2</span> · Money · effort S</span>
-      <span class="status">Open</span>
+      <span class="status">Fixed</span>
     </summary>
     <div class="body">
       
@@ -296,15 +296,15 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       </dl>
       <div class="tech">
         <details><summary>For the developer: tests and code</summary>
-          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li><code>TestREG_KERNEL_PAY_014_SameReceiptOnTwoRailsOfOneProvider</code></li></ul>
+          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li><code>TestREG_BILL_032_OneTransferCannotPayTwiceThroughTwoMethods</code></li><li><code>TestREG_KERNEL_PAY_014_SameReceiptOnTwoRailsOfOneProvider</code></li><li><code>TestREG_KERNEL_PAY_016_SameSourceOfMoneyIsOneSource</code></li><li><code>TestREG_KERNEL_PAY_017_AReferenceOnlyCheckedIsNotUsed</code></li><li><code>TestREG_KERNEL_PAY_018_SimultaneousClaimsOnDifferentMethodsTakeOnce</code></li><li><code>TestREG_KERNEL_PAY_019_ABrokenClaimRecordsNothing</code></li></ul>
           <p>Where in the code:</p><ul><li><code>backend/internal/kernel/payments/payments.go:96</code></li></ul>
         </details>
       </div>
-      
+      <div class="log"><b>History</b><ul><li><time>2026-10-10</time> Owner confirmed option A (by source). Built in ClaimReference: a reference that already paid a receipt is refused under any method of the same source (two numbers of one provider; a generic bank/mobile method beside any named one of its kind); different named providers and a wallet beside a bank stay separate; a row that was only checked is not use; claims on one reference are serialised by a lock so simultaneous desks cannot both win. The old insert-race fallback is gone with the race. Live check beforehand: no clinic had two methods of one provider, no reference under two methods; Joy Speciality has a generic bank beside CBE and Zemen (the real exposure). Full run in progress.</li><li><time>2026-10-10</time> Full run green: server 702/0, screens 1,644, journeys 10/10, routes 267/267, all coverage minimums (run together with the other of issues 7 and 8). Committed; not yet deployed. Waiting for the owner to verify.</li></ul></div>
     </div>
   </details>
 </article>
-<article class="issue sev-critical st-open" id="NEW-KERNEL-VERIFYET-1" data-sev="critical" data-status="open"
+<article class="issue sev-critical st-fixed" id="NEW-KERNEL-VERIFYET-1" data-sev="critical" data-status="fixed"
   data-area="Money" data-q="new-kernel-verifyet-1 bank check passes a payment when amount is missing when the payment-check service confirms a receipt but does not say how much it was for, the system skips the amount check and accepts the payment. almaz shows a transfer reference for a 1,000 birr bill. the check service says &quot;verified&quot; but gives no amount (the real transfer was 100 birr). the system accepts it as full payment. cashier, owner money">
   <details>
     <summary>
@@ -312,7 +312,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">Critical</span>
       <span class="ttl">Bank check passes a payment when amount is missing</span>
       <span class="meta"><span class="id">NEW-KERNEL-VERIFYET-1</span> · Money · effort S</span>
-      <span class="status">Open</span>
+      <span class="status">Fixed</span>
     </summary>
     <div class="body">
       
@@ -329,7 +329,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>backend/internal/kernel/verifyet/decide.go:121</code></li></ul>
         </details>
       </div>
-      
+      <div class="log"><b>History</b><ul><li><time>2026-10-10</time> Explained; owner agreed. Built: when an expected amount is given and the bank gave none (absent, null, or blank) the verdict is review (&quot;did not say how much this was for&quot;), never verified; no expected amount still skips the gate. Live check: the one bank-confirmed payment had an amount. Same full run as NEW-KERNEL-PAY-2.</li><li><time>2026-10-10</time> Full run green: server 702/0, screens 1,644, journeys 10/10, routes 267/267, all coverage minimums (run together with the other of issues 7 and 8). Committed; not yet deployed. Waiting for the owner to verify.</li></ul></div>
     </div>
   </details>
 </article>
@@ -5757,7 +5757,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   </details>
 </article>
 
-<footer>Built 10 October 2026, 06:26 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
+<footer>Built 10 October 2026, 07:41 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
 </div>
 <script>
 (function () {

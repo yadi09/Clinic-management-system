@@ -527,14 +527,28 @@
   "effort": "S",
   "decision": null,
   "tests": [
-   "TestREG_KERNEL_PAY_014_SameReceiptOnTwoRailsOfOneProvider"
+   "TestREG_BILL_032_OneTransferCannotPayTwiceThroughTwoMethods",
+   "TestREG_KERNEL_PAY_014_SameReceiptOnTwoRailsOfOneProvider",
+   "TestREG_KERNEL_PAY_016_SameSourceOfMoneyIsOneSource",
+   "TestREG_KERNEL_PAY_017_AReferenceOnlyCheckedIsNotUsed",
+   "TestREG_KERNEL_PAY_018_SimultaneousClaimsOnDifferentMethodsTakeOnce",
+   "TestREG_KERNEL_PAY_019_ABrokenClaimRecordsNothing"
   ],
   "files": [
    "backend/internal/kernel/payments/payments.go:96"
   ],
   "tested": true,
-  "status": "open",
-  "log": [],
+  "status": "fixed",
+  "log": [
+   {
+    "date": "2026-10-10",
+    "note": "Owner confirmed option A (by source). Built in ClaimReference: a reference that already paid a receipt is refused under any method of the same source (two numbers of one provider; a generic bank/mobile method beside any named one of its kind); different named providers and a wallet beside a bank stay separate; a row that was only checked is not use; claims on one reference are serialised by a lock so simultaneous desks cannot both win. The old insert-race fallback is gone with the race. Live check beforehand: no clinic had two methods of one provider, no reference under two methods; Joy Speciality has a generic bank beside CBE and Zemen (the real exposure). Full run in progress."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Full run green: server 702/0, screens 1,644, journeys 10/10, routes 267/267, all coverage minimums (run together with the other of issues 7 and 8). Committed; not yet deployed. Waiting for the owner to verify."
+   }
+  ],
   "order": 6
  },
  {
@@ -556,8 +570,17 @@
    "backend/internal/kernel/verifyet/decide.go:121"
   ],
   "tested": true,
-  "status": "open",
-  "log": [],
+  "status": "fixed",
+  "log": [
+   {
+    "date": "2026-10-10",
+    "note": "Explained; owner agreed. Built: when an expected amount is given and the bank gave none (absent, null, or blank) the verdict is review (\"did not say how much this was for\"), never verified; no expected amount still skips the gate. Live check: the one bank-confirmed payment had an amount. Same full run as NEW-KERNEL-PAY-2."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Full run green: server 702/0, screens 1,644, journeys 10/10, routes 267/267, all coverage minimums (run together with the other of issues 7 and 8). Committed; not yet deployed. Waiting for the owner to verify."
+   }
+  ],
   "order": 7
  },
  {
