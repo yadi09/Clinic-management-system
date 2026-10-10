@@ -12,16 +12,27 @@
   "effort": "M",
   "decision": null,
   "tests": [
+   "REG-FE-RECEP-037",
    "TestREG_BILL_030_CheckoutTakesOnlyWhatTheButtonSays",
-   "REG-FE-RECEP-037"
+   "TestREG_BILL_031_ASettlementNeverExceedsWhatTheBankConfirmed"
   ],
   "files": [
    "backend/internal/billing/service/settle_scope.go:31",
+   "backend/internal/kernel/payments/payments.go",
    "frontend/src/features/scheduling/pages/ReceptionPage.tsx:305"
   ],
   "tested": true,
-  "status": "open",
-  "log": [],
+  "status": "fixed",
+  "log": [
+   {
+    "date": "2026-10-10",
+    "note": "Explained; owner said fix it (no manager override). Built: a settlement can never exceed the amount the bank confirmed for its reference (code AMOUNT_EXCEEDS_VERIFIED, refused whole, nothing marked paid, reference stays free); one rule in ClaimReference covers the whole-visit, single-charge and pharmacy doors; a reference with no bank answer is not compared. Live check beforehand: no payment had settled above its confirmed amount. Full run in progress."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Full run green first time: server 695/0, screens 1,644, journeys 10/10, routes 267/267, all coverage minimums. Committed; not yet deployed. Waiting for the owner to verify."
+   }
+  ],
   "order": 5
  },
  {
@@ -4828,6 +4839,34 @@
    {
     "date": "2026-10-10",
     "note": "Owner verified on the live system."
+   }
+  ]
+ },
+ {
+  "id": "FEAT-RECEP-1",
+  "title": "Reception page: itemised old bills and faster desk work",
+  "severity": "high",
+  "area": "Appointments & front desk",
+  "who": "Receptionist, Cashier, Patients",
+  "simple": "The reception page shows a patient owes money but only as one total with a link to the cashier. The desk cannot see which visits it is for, cannot tell the patient what it covers, and cannot add old bills to today's payment. Search puts the right person anywhere in the list, and every walk-in needs the same two choices made again.",
+  "example": "Abebe owes 2,000 birr from two visits. The desk sees 'Owes 2,000 · 38d', cannot say what for, and sends him to the cashier to find him again.",
+  "why": "Old debt goes uncollected when the patient is in front of the desk and willing to pay.",
+  "fix": "Itemised old bills with tick boxes and one receipt, best-match-first search with richer rows, one-tap check-in defaults, an emergency switch, receipt at the desk. Full plan: docs/reception-improvement-plan.html.",
+  "effort": "L",
+  "decision": "Approve the plan, its order, and the six decisions in section 4 of the document.",
+  "tests": [],
+  "files": [
+   "frontend/src/features/scheduling/pages/ReceptionPage.tsx",
+   "frontend/src/features/scheduling/reception/ArrivalList.tsx",
+   "backend/internal/scheduling/service/reception.go"
+  ],
+  "tested": false,
+  "status": "explained",
+  "order": 9,
+  "log": [
+   {
+    "date": "2026-10-10",
+    "note": "Owner asked for an analysis of the reception page and an example: show a patient's earlier unpaid bills and let the desk add them to today's payment. Analysis written: docs/reception-improvement-plan.html. Waiting for approval of the plan and decisions."
    }
   ]
  }

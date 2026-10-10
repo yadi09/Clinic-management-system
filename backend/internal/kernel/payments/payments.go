@@ -96,13 +96,28 @@ func ClaimReference(ctx context.Context, tx pgx.Tx, tid uuid.UUID, railID *uuid.
 	// Only a row that already carries a receipt is a real double-spend.
 	var existing *int64
 	var checked bool
+	// The bank's own answer, when the desk asked it (FIN-5): a payment the bank
+	// confirmed for 300 must not be marked as having paid 1,500.
+	var exceeds bool
+	var confirmed *string
 	switch e := tx.QueryRow(ctx,
-		`SELECT receipt_no, true FROM payment_references
+		`SELECT receipt_no, true,
+		        coalesce(verify_state = 'verified' AND verified_amount IS NOT NULL
+		                 AND $4::numeric > verified_amount + 0.005, false),
+		        verified_amount::text
+		   FROM payment_references
 		  WHERE tenant_id=$1 AND payment_rail_id=$2 AND reference_norm=upper(btrim($3))`,
-		tid, *railID, ref).Scan(&existing, &checked); {
+		tid, *railID, ref, amount).Scan(&existing, &checked, &exceeds, &confirmed); {
 	case e == pgx.ErrNoRows:
 	case e != nil:
 		return e
+	case existing == nil && exceeds:
+		// Refused whole: this runs in the settlement's transaction, so nothing is
+		// marked paid. The words are for the desk, who can still do the right thing:
+		// collect the part the transfer covers and take the rest another way.
+		return apperr.Conflict("AMOUNT_EXCEEDS_VERIFIED",
+			"the bank confirmed "+*confirmed+" for this reference, but this would mark "+amount+
+				" as paid. Collect only up to "+*confirmed+" with this transfer, and take the rest another way.")
 	case existing == nil:
 		_, e = tx.Exec(ctx,
 			`UPDATE payment_references

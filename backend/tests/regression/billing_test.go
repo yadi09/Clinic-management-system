@@ -919,22 +919,87 @@ func TestREG_BILL_030_CheckoutTakesOnlyWhatTheButtonSays(t *testing.T) {
 	blExpect(t, cashier.Do("POST", "/billing/checkout", map[string]any{"patient_id": p.ID, "rail_id": "bad"}), 400, "VALIDATION_FAILED", "bad rail")
 	blExpect(t, recp.Do("POST", "/billing/checkout", map[string]any{"patient_id": p.ID}), 403, "FORBIDDEN_PERMISSION", "reception checks out")
 
-	// The sweep: a transfer the bank verified as 300 settles the whole 1,500.
+	// The sweep (FIN-5, fixed 2026-10-10): a transfer the bank confirmed as 300 must
+	// not settle 1,500. Refused whole, nothing marked paid, the reference still free.
 	p2 := createPatient(t, recp, uniq("Sweep"), "Debt")
-	payRaise(t, cashier, clinic, p2.ID, 1200)
-	payRaise(t, cashier, clinic, p2.ID, 300)
+	oldDebt := payRaise(t, cashier, clinic, p2.ID, 1200)
+	todaysFee := payRaise(t, cashier, clinic, p2.ID, 300)
 	ref := "FT" + strings.ToUpper(uniq(""))
 	blExec(t, `INSERT INTO payment_references (tenant_id, payment_rail_id, reference, reference_norm, verify_state, verified_amount)
 	           VALUES ($1, $2, $3, upper(btrim($3)), 'verified', 300)`, clinic.TenantID, blUUID(t, id.PrefixPaymentRail, rails["transfer"]), ref)
 	r := cashier.Do("POST", "/billing/checkout", map[string]any{"patient_id": p2.ID, "rail_id": rails["transfer"], "reference": ref})
-	if r.Status == 200 {
-		r.Decode(t, &out)
-		if payEq(payNum(t, out.Total), 1500) {
-			testkit.KnownBug(t, "FIN-5", true,
-				"a checkout with no charge_ids settled 1,500 against a transfer the bank verified as 300 — the verified amount is never compared with the total (settle_scope.go:31-35)")
+	blExpect(t, r, 409, "AMOUNT_EXCEEDS_VERIFIED", "a 1,500 sweep against a 300 confirmed transfer")
+	if !strings.Contains(r.Message, "300.00") || !strings.Contains(r.Message, "1500.00") {
+		t.Fatalf("the refusal does not say what the bank confirmed and what was being settled: %q", r.Message)
+	}
+	if blStatus(t, oldDebt) != "pending" || blStatus(t, todaysFee) != "pending" {
+		t.Fatalf("a refused sweep left charges settled: old=%s today=%s", blStatus(t, oldDebt), blStatus(t, todaysFee))
+	}
+	var receipt *int64
+	one(t, `SELECT receipt_no FROM payment_references WHERE tenant_id = $1 AND reference_norm = upper(btrim($2))`, &receipt, clinic.TenantID, ref)
+	if receipt != nil {
+		t.Fatalf("a refused sweep still claimed the reference for receipt %d", *receipt)
+	}
+	// The right way: today's 300 against the transfer, the old debt by cash.
+	cashier.Do("POST", "/billing/checkout", map[string]any{"patient_id": p2.ID, "rail_id": rails["transfer"], "reference": ref, "charge_ids": []string{todaysFee}}).
+		Expect(t, 200, "collect exactly what the transfer covers").Decode(t, &out)
+	if !payEq(payNum(t, out.Total), 300) || blStatus(t, todaysFee) != "paid" || blStatus(t, oldDebt) != "pending" {
+		t.Fatalf("scoped collect %+v: today=%s old=%s", out, blStatus(t, todaysFee), blStatus(t, oldDebt))
+	}
+	cashier.Do("POST", "/billing/checkout", map[string]any{"patient_id": p2.ID, "rail_id": rails["cash"]}).
+		Expect(t, 200, "the old debt by cash").Decode(t, &out)
+	if !payEq(payNum(t, out.Total), 1200) || blStatus(t, oldDebt) != "paid" {
+		t.Fatalf("old debt by cash %+v: %s", out, blStatus(t, oldDebt))
+	}
+}
+
+// TestREG_BILL_031_ASettlementNeverExceedsWhatTheBankConfirmed (FIN-5): the rule at its
+// edges and on every door that records a reference. A bill equal to the confirmed
+// amount goes through; one cent over is refused; a reference the bank did NOT
+// confirm, or confirmed with no amount, is not compared (nothing to compare with);
+// a single-charge settle is held to the same rule as a whole-visit one.
+func TestREG_BILL_031_ASettlementNeverExceedsWhatTheBankConfirmed(t *testing.T) {
+	clinic := payClinic(t)
+	cashier := srv.As(t, clinic, "cashier")
+	rails := blRails(t, cashier)
+	recp := srv.As(t, clinic, "receptionist")
+	rail := blUUID(t, id.PrefixPaymentRail, rails["transfer"])
+	mk := func(state string, amount any) string {
+		ref := "FT" + strings.ToUpper(uniq(""))
+		blExec(t, `INSERT INTO payment_references (tenant_id, payment_rail_id, reference, reference_norm, verify_state, verified_amount)
+		           VALUES ($1, $2, $3, upper(btrim($3)), $4, $5)`, clinic.TenantID, rail, ref, state, amount)
+		return ref
+	}
+	settle := func(chg, ref string) testkit.Resp {
+		return cashier.Do("POST", "/billing/charges/"+chg+"/settle", map[string]any{"rail_id": rails["transfer"], "reference": ref})
+	}
+	pat := func() patientRef { return createPatient(t, recp, uniq("Edge"), "Case") }
+
+	// Equal to the confirmed amount: settled.
+	exact := payRaise(t, cashier, clinic, pat().ID, 300)
+	settle(exact, mk("verified", 300)).Expect(t, 204, "bill equals the confirmed amount")
+	if blStatus(t, exact) != "paid" {
+		t.Fatalf("an exact-amount settle did not settle")
+	}
+	// One cent over: refused, on the single-charge door.
+	over := payRaise(t, cashier, clinic, pat().ID, 300.01)
+	blExpect(t, settle(over, mk("verified", 300)), 409, "AMOUNT_EXCEEDS_VERIFIED", "one cent over the confirmed amount")
+	if blStatus(t, over) != "pending" {
+		t.Fatalf("a refused settle marked the charge paid")
+	}
+	// Under the confirmed amount (the patient sent more than was owed): settled.
+	under := payRaise(t, cashier, clinic, pat().ID, 250)
+	settle(under, mk("verified", 400)).Expect(t, 204, "bill under the confirmed amount")
+	// No bank answer to compare with: not held to an amount that does not exist.
+	for _, c := range []struct {
+		state  string
+		amount any
+	}{{"pending", nil}, {"review", 100}, {"verified", nil}} {
+		chg := payRaise(t, cashier, clinic, pat().ID, 300)
+		if r := settle(chg, mk(c.state, c.amount)); r.Status != 204 {
+			t.Fatalf("state %q amount %v: HTTP %d %s, want the old behaviour (settled)", c.state, c.amount, r.Status, r.Code)
 		}
 	}
-	testkit.KnownBug(t, "FIN-5", false, "a 1,500 sweep is refused against a 300 verified transfer")
 }
 
 // ---- defer, waive, void, refund ----

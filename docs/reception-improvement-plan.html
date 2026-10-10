@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reception page: what to improve</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Fraunces:opsz,wght@9..144,600&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#fbfaf7;--card:#fff;--ink:#1f2a33;--soft:#5d6b76;--line:#e3e0d8;--teal:#0f6e6a;--warn:#b45309;--warn-bg:#fdf1e3;--bad:#b42318;--bad-bg:#fdecea;--ok:#1d7a46;--ok-bg:#e5f4ea}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--paper:#14181c;--card:#1b2026;--ink:#e7e9ea;--soft:#9aa6b0;--line:#2c333a;--teal:#4fb3ad;--warn:#f0a85a;--warn-bg:#3a2a18;--bad:#f2867c;--bad-bg:#3a1f1d;--ok:#6cc792;--ok-bg:#1a3325}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.6 "Atkinson Hyperlegible",system-ui,sans-serif}
+.wrap{max-width:900px;margin:0 auto;padding:32px 16px 80px}
+h1{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:2.1rem;line-height:1.15;margin:0 0 8px}
+h2{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:1.45rem;margin:42px 0 10px}
+h3{font-size:1.05rem;margin:24px 0 6px}
+.lede{color:var(--soft);max-width:66ch}
+.box{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:14px 0}
+.key{border-left:6px solid var(--teal)}.warn{border-left:6px solid var(--warn)}.bad{border-left:6px solid var(--bad)}
+table{border-collapse:collapse;width:100%;font-size:.95rem;margin:10px 0;background:var(--card)}
+th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--paper)}
+.scene{background:var(--paper);border-radius:8px;padding:10px 14px;font-style:italic;margin:8px 0}
+.mock{font-family:ui-monospace,Menlo,monospace;font-size:.86rem;background:var(--card);border:1px dashed var(--line);border-radius:8px;padding:12px 14px;white-space:pre-wrap;line-height:1.5;overflow-x:auto}
+.tag{display:inline-block;font-size:.78rem;font-weight:700;padding:1px 9px;border-radius:20px;margin-right:4px}
+.s{background:var(--ok-bg);color:var(--ok)}.m{background:var(--warn-bg);color:var(--warn)}.l{background:var(--bad-bg);color:var(--bad)}
+.scroll{overflow-x:auto}
+ul,ol{padding-left:22px}li{margin:3px 0}
+footer{color:var(--soft);font-size:.85rem;margin-top:40px}
+</style></head>
+<body><div class="wrap">
+<h1>Reception: what to improve</h1>
+<p class="lede">A read-through of the reception page, the server behind it and the tests around it (6 October 2026), turned into a list of things worth changing, most valuable first. It starts with the feature you described, because that one is the biggest, and then everything else I found.</p>
+
+<div class="box key"><b>In short.</b> The page is already built around the right idea: the day's list first, search second, and one panel for the person in front of you. What it lacks is <b>help with the money conversation</b> (it tells the desk a patient owes, but cannot itemise it or take it in the same payment), <b>a search that puts the right person first</b>, and <b>speed for the common case</b> (the same two dropdowns chosen again and again). Seven known problems on the tracker also sit on this page and should be fixed together with it.</div>
+
+<h2>1. Your example: old unpaid bills, at the desk</h2>
+
+<h3>What the page does today</h3>
+<ul>
+<li>A patient with earlier unpaid bills shows a red or amber tag in the list ("Owes 2,000 ETB · 38d") and a box in the panel: <i>"Owes ETB 2,000.00 from earlier visits · oldest 38 days"</i> with a <b>See it</b> button.</li>
+<li><b>See it</b> sends the receptionist to the Cashier page. From there they must find the patient again.</li>
+<li>The amount is a single total. The desk <b>cannot see which visits or services</b> it is made of, so cannot tell the patient what the 2,000 birr is for.</li>
+<li>Old debt is only collectable for a patient who has <b>already been received</b> (the "Collect ETB … still to pay" box). For a patient being received now, the old debt is deliberately kept out of today's payment, and there is no way to add it.</li>
+</ul>
+
+<h3>What it should do</h3>
+<div class="mock">Abebe Kebede  P000033  ·  29y male  ·  0916 …
+
+TODAY
+  Registration / visit fee   No charge. Registered 26 Aug 2026 (Nehase 20, 2018 EC). One time only.
+  Consultation                                                                    300.00
+
+EARLIER UNPAID                                2 bills · 2,000.00 · oldest 38 days     [Select all]
+  [ ] 3 Sep   Root canal, visit 2                   unpaid at the cashier             1,200.00
+  [ ] 12 Sep  Extraction UR8                        agreed to pay later                 800.00
+
+  Today                                                                             300.00
+  Earlier bills selected                                                              0.00
+  ───────────────────────────────────────────────────────────────────────────────
+  To pay now                                                                         300.00
+                                           [ Collect 300.00 & send through ]</div>
+
+<p>Ticking a bill adds it to the same payment. One receipt covers everything.</p>
+
+<h3>How it works, step by step</h3>
+<ol>
+<li>The receptionist opens the patient. The panel lists <b>each</b> unpaid bill: date, what it was for, amount, and whether it is waiting at the cashier or was agreed to be paid later.</li>
+<li>The desk says it aloud: <i>"Abebe, you have two unpaid bills, 2,000 birr in total, from 3 and 12 September."</i></li>
+<li>If the patient agrees to pay now, the receptionist ticks one bill, both, or uses <b>Select all</b>. The total at the bottom updates.</li>
+<li>One payment method, one receipt, one press of Collect. If the patient will pay only part, they choose which <b>bills</b> to settle.</li>
+<li>Nothing is ticked by default, so a patient is never charged for old debt they did not agree to pay.</li>
+</ol>
+
+<h3>Rules I would build in</h3>
+<ul>
+<li><b>Bank transfers stay honest.</b> With the fix for issue 6 (done), a transfer the bank confirmed as 2,300 can pay up to 2,300 and no more. If the patient pays 300 by transfer and ticks 2,000 of old debt, the desk is told exactly that and unticks, or pays the old bills another way.</li>
+<li><b>Only people who may collect money see tick boxes.</b> A receptionist without the cashier permission still sees the list and the total (so they can tell the patient), but is told the bills are at the cashier.</li>
+<li><b>Unbilled treatment is shown separately.</b> Dental treatment the dentist has not yet sent to the cashier is not a bill yet. It shows as <i>"Not yet billed · 1,500"</i> with the existing <b>Open to bill it</b> link.</li>
+<li><b>Pay later stays a separate decision</b> and does not touch old debt. Today's "Pay later…" on this panel also defers old debt (a known problem, see section 3), which would conflict with this feature.</li>
+<li><b>Every bill is still recorded</b> with who took it and when, as now.</li>
+</ul>
+
+<h3>Effort and what it needs</h3>
+<p><span class="tag m">Medium</span> About a day. The server can already settle an exact list of bills in one receipt (the same call reception uses today for today's charges), and already lists a patient's bills. The work is mostly the panel, plus tests: ticking, totals, the bank-amount refusal, a desk without collect rights, a patient with nothing owed.</p>
+<p><b>Not included:</b> paying <i>part</i> of a single bill (for example 500 of a 1,200-birr bill). The system settles whole bills. It is tracked as FIN-8 and would be its own piece of work.</p>
+
+<h2>2. Everything else I found</h2>
+
+<h3>A. Finding the right patient</h3>
+<div class="scroll"><table>
+<tr><th>What is wrong</th><th>Evidence</th><th>Proposal</th><th>Effort</th></tr>
+<tr><td><b>The best match is not first</b></td><td>Searching "Abebe kebede" lists 12 people with <i>Abebe Kebede</i> in 6th place. Betel Abebe, Henok Abebe and Marta Abebe come first.</td><td>Rank exact full name, then card number and phone, then partial matches.</td><td><span class="tag s">Small</span></td></tr>
+<tr><td><b>Results show too little to tell people apart</b></td><td>Each row shows gender, date of birth and phone. Many dates read 1997-01-01, which looks like an estimate. Nothing says whether the person is here today or owes money.</td><td>Show age, last visit date, balance owed, and today's state (waiting, seen 10:05, expected 14:30). Last four digits of the phone help with common names.</td><td><span class="tag s">Small</span></td></tr>
+<tr><td><b>Capped at 12, silently</b></td><td>The search asks for the first 12 and says "12 matching" even if there are more.</td><td>"12 of 40 · show more", or a search that narrows as you type.</td><td><span class="tag s">Small</span></td></tr>
+<tr><td><b>A new patient takes you away</b></td><td>The <b>New</b> button and "Register them" open the patients list, not the registration form (UX-6). After registering, the receptionist has to come back and search again.</td><td>A short <b>Register &amp; receive</b> form inside the panel: name, phone, sex, age, then straight to the fee and check-in.</td><td><span class="tag m">Medium</span></td></tr>
+</table></div>
+
+<h3>B. Receiving faster</h3>
+<div class="scroll"><table>
+<tr><th>What is wrong</th><th>Evidence</th><th>Proposal</th><th>Effort</th></tr>
+<tr><td><b>The same two choices, every time</b></td><td>A walk-in always starts with Department and Clinician on "Choose" and Check in greyed out (your second screenshot). A clinic with one department and two dentists still picks them for every patient.</td><td>Pre-select the only department; pre-select the patient's usual dentist (the last one they saw). One tap to check in; change only when needed.</td><td><span class="tag s">Small</span></td></tr>
+<tr><td><b>No way to mark an emergency</b></td><td>The server accepts a priority for a walk-in, but the page never sets it. A patient in pain waits in arrival order.</td><td>An <b>Emergency</b> switch that puts the patient first in the queue and marks it for the dentist.</td><td><span class="tag s">Small</span></td></tr>
+<tr><td><b>No reason for the visit</b></td><td>Booked patients carry a reason. A walk-in carries none, so the dentist calls a patient in without knowing why they came.</td><td>One optional line ("toothache, upper right", "check-up", "denture repair") that travels with the queue entry.</td><td><span class="tag s">Small</span></td></tr>
+<tr><td><b>The desk learns the patient's phone is wrong too late</b></td><td>The phone is shown, but nothing prompts the desk to confirm it. Reminders and bills go to that number.</td><td>"Confirm phone: 0916…" with a one-tap edit for patients not seen in 6 months or with no phone.</td><td><span class="tag s">Small</span></td></tr>
+</table></div>
+
+<h3>C. After the money</h3>
+<div class="scroll"><table>
+<tr><th>What is wrong</th><th>Evidence</th><th>Proposal</th><th>Effort</th></tr>
+<tr><td><b>No receipt at the desk</b></td><td>After Collect, the screen shows a short message ("ETB 300 collected · sent through"). The receipt number is returned by the server but never shown; printing exists only on the Cashier page.</td><td>"Receipt #4821 · Print · Send by SMS" after every collection.</td><td><span class="tag s">Small</span></td></tr>
+<tr><td><b>Mistakes cannot be undone from here</b></td><td>A patient received into the wrong department stays there until the clinic fixes it elsewhere.</td><td>Needs a closer look before I propose anything; I have not confirmed how it behaves.</td><td>to check</td></tr>
+</table></div>
+
+<h3>D. Knowing what is going on</h3>
+<div class="scroll"><table>
+<tr><th>What is wrong</th><th>Evidence</th><th>Proposal</th><th>Effort</th></tr>
+<tr><td><b>Dental treatment visits are missing from "Expected"</b></td><td>The expected list reads appointments only. A patient due for visit 2 of a root canal today is not on it (APT-1, high).</td><td>Include today's planned treatment visits, with "Visit 2 of 3 · Root canal".</td><td><span class="tag m">Medium</span></td></tr>
+<tr><td><b>Late patients have no quick actions</b></td><td>A row turns amber and says "20 min late"; the only thing to do is open it.</td><td>On a late row: call (tap to dial), mark no-show, rebook.</td><td><span class="tag s">Small</span></td></tr>
+<tr><td><b>Debtors only appear on the day they were seen</b></td><td>"To settle" lists patients treated today who still owe. A patient who owes from last month and is not booked does not appear anywhere on this page.</td><td>An "Owes from before" list, oldest first, with call and message actions.</td><td><span class="tag m">Medium</span></td></tr>
+<tr><td><b>The panel does not say what the visit is</b></td><td>For a returning treatment patient, the desk sees fee lines but not "visit 2 of 3" or the next planned visit.</td><td>One line under the name: current treatment and which visit.</td><td><span class="tag s">Small</span></td></tr>
+</table></div>
+
+<h3>E. Problems already on the tracker that live on this page</h3>
+<p>These should be done together with the work above, because several change the same buttons.</p>
+<div class="scroll"><table>
+<tr><th>Tracker</th><th>What it is</th><th>Why it matters here</th></tr>
+<tr><td><b>APT-3</b> · critical</td><td>Pressing <b>Collect</b> again after a failed attempt raises the extra services a second time.</td><td>A slow connection and a second press double-bills a patient.</td></tr>
+<tr><td><b>NEW-RECEP-1</b> · high</td><td>"Pay later…" at reception also defers the patient's <b>old</b> debt, and skips the check-in.</td><td>Conflicts directly with section 1.</td></tr>
+<tr><td><b>NEW-RECEP-2</b> · high</td><td>A patient in "To settle" is offered a new visit fee instead of their debt.</td><td>The most common reason to open a "To settle" row is to take the debt.</td></tr>
+<tr><td><b>NEW-RECEP-3</b> · medium</td><td>A desk without the collect permission is still shown <b>Collect</b>, which then fails.</td><td>This is the standard receptionist role.</td></tr>
+<tr><td><b>APT-1</b> · high</td><td>Dental treatment visits missing from "Expected" (see D).</td><td>Dental clinics are the live users.</td></tr>
+<tr><td><b>UX-6</b> · low</td><td><b>New</b> and "Register them" open the list, not the form (see A).</td><td>Every new walk-in hits it.</td></tr>
+<tr><td><b>NEW-FU-1</b> · high</td><td>The desk can mark any booking as a free follow-up.</td><td>The booking dialog is reached from here; the rule that follow-ups are the doctor's call is not enforced.</td></tr>
+</table></div>
+
+<h3>F. Behind the scenes</h3>
+<ul>
+<li><b>The page asks the server a heavy question every 30 seconds, per open screen.</b> The three lists each recompute the clinic's whole treatment-money picture (the same one Finance uses) and then keep only today's people. With 600 patients it is fast; it grows with every patient and every treatment. <span class="tag s">Small</span> First measure it with real clinic data; then limit the calculation to the people being shown.</li>
+<li><b>Updates by polling.</b> A patient finished by the dentist appears at reception up to 30 seconds late. A live feed already exists for the queue; reception could use it. <span class="tag m">Medium</span></li>
+<li><b>The panel makes a handful of separate requests when a patient is opened</b> (settings, departments, clinicians, services, payment methods, registration status). Most are cached after the first patient. One request that returns everything the panel needs would be tidier but is not urgent. <span class="tag s">Small</span></li>
+</ul>
+
+<h2>3. Suggested order</h2>
+<div class="scroll"><table>
+<tr><th>Step</th><th>What</th><th>Why first</th><th>Effort</th></tr>
+<tr><td><b>1</b></td><td>The money panel: itemised old bills with tick boxes, one receipt (section 1), plus the reception tracker items APT-3, NEW-RECEP-1/2/3</td><td>Your example, and it removes the money risks on this page in the same change</td><td><span class="tag m">Medium</span> ~1.5 days</td></tr>
+<tr><td><b>2</b></td><td>Search: best match first, richer rows, "show more", Register &amp; receive; fix UX-6</td><td>Every patient goes through it</td><td><span class="tag m">Medium</span> ~1 day</td></tr>
+<tr><td><b>3</b></td><td>One-tap check-in: default department and usual dentist, Emergency, reason for visit</td><td>Saves seconds on every patient, all day</td><td><span class="tag s">Small</span> ~0.5 day</td></tr>
+<tr><td><b>4</b></td><td>Receipt at the desk (print / SMS); dental visits in "Expected" (APT-1); visit line in the panel</td><td>Completes the daily round trip for dental clinics</td><td><span class="tag m">Medium</span> ~1 day</td></tr>
+<tr><td><b>5</b></td><td>Late-patient actions; "Owes from before" list; phone confirmation</td><td>Helps the desk work the whole day, not just who is in front of it</td><td><span class="tag m">Medium</span> ~1 day</td></tr>
+<tr><td><b>6</b></td><td>Measure and lighten the page's server work; live updates</td><td>Not urgent today; prevents the page slowing down as clinics grow</td><td><span class="tag s">Small</span> ~0.5 day</td></tr>
+</table></div>
+<p>Each step ends the way every fix has: tests written first or with it, the full test run, then your check on a test clinic before anything else.</p>
+
+<h2>4. Decisions for you</h2>
+<ol>
+<li><b>Old bills on the receptionist's screen:</b> may a receptionist <b>without</b> the cashier permission see the itemised list (to tell the patient), or only a total? <i>My recommendation: see the list, no tick boxes.</i></li>
+<li><b>Old bills ticked by default?</b> <i>My recommendation: none ticked, with a Select all button.</i></li>
+<li><b>Paying part of an old bill</b> (an amount, not a whole bill): worth building now, or later? <i>My recommendation: later; choosing whole bills covers most cases.</i></li>
+<li><b>Usual dentist as the default:</b> pre-select the dentist the patient saw last time? <i>My recommendation: yes, always changeable.</i></li>
+<li><b>Emergency:</b> who may mark a patient as an emergency, any receptionist or only with a reason? <i>My recommendation: any receptionist; it is recorded.</i></li>
+<li><b>Receipt by SMS:</b> use the existing patient SMS (it has a cost per message), or print only? <i>My recommendation: print by default, SMS on request.</i></li>
+</ol>
+
+<footer>Sources: frontend/src/features/scheduling/pages/ReceptionPage.tsx and reception/ArrivalList.tsx; backend/internal/scheduling/service/reception.go; the patient search in the patient service; the regression tests REG-FE-RECEP-001 to 045; the tracker items named above; the two screenshots of the page. Nothing in the system was changed to produce this document.</footer>
+</div></body></html>
