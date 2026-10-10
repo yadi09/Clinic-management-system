@@ -59,6 +59,27 @@ code{font-size:.88em;background:var(--paper);padding:1px 5px;border-radius:4px}
 .steps{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:10px 0}
 .step{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 11px;font-size:.93rem}
 .arrow{color:var(--soft)}
+
+.phones{display:flex;flex-wrap:wrap;gap:14px;justify-content:center}
+.ph{width:300px;background:#fff;border:1px solid #d8e0ea;border-radius:22px;padding:10px 10px 0;position:relative;display:flex;flex-direction:column;min-height:520px}
+.ph .top{display:flex;justify-content:space-between;align-items:center;font-weight:700;padding:2px 4px 8px}
+.ph .body{flex:1}
+.ph .sticky{border-top:1px solid #e6ecf3;margin:8px -10px 0;padding:10px;background:#fff;border-radius:0 0 22px 22px}
+.ph .tabs{display:flex;justify-content:space-around;border-top:1px solid #e6ecf3;margin:0 -10px;padding:7px 0;font-size:11px;color:#5a6b7d;border-radius:0 0 22px 22px}
+.ph .tabs b{color:#1a9a7c}
+.ph .grab{width:38px;height:4px;border-radius:4px;background:#c9d4e0;margin:2px auto 8px}
+.ph .dim{position:absolute;inset:0;background:rgba(20,30,40,.35);border-radius:22px}
+.ph .sheetp{position:absolute;left:0;right:0;bottom:0;top:70px;background:#fff;border-radius:18px 18px 22px 22px;padding:8px 10px 0;display:flex;flex-direction:column}
+.tap{min-height:44px;display:flex;align-items:center}
+.fld{border:1px solid #c9d4e0;border-radius:8px;padding:9px 10px;background:#f6f9fc;margin:4px 0}
+.fld small{display:block;color:#5a6b7d;font-size:11px}
+.seg{display:flex;gap:4px;margin:6px 0}.seg span{flex:1;text-align:center;border:1px solid #c9d4e0;border-radius:8px;padding:9px 2px;font-weight:600;background:#fff}
+.seg span.on{background:#e6f3ef;border-color:#1a9a7c;color:#0f6e6a}
+.tablet{max-width:620px;margin:0 auto;display:grid;grid-template-columns:1fr 1.2fr;gap:10px}
+.ok2{border:1px solid #bfe3cd;background:#f0faf4;border-radius:10px;padding:8px 10px;margin-top:6px;color:#17703f}
+.no2{border:1px solid #f0c9c4;background:#fff8f7;border-radius:10px;padding:8px 10px;margin-top:6px;color:#b42318}
+.am2{border:1px solid #f0dcb4;background:#fffaf0;border-radius:10px;padding:8px 10px;margin-top:6px;color:#9a5b0c}
+.mini{font-size:12px;color:#5a6b7d}
 </style></head>
 <body><div class="wrap">
 
@@ -158,7 +179,103 @@ code{font-size:.88em;background:var(--paper);padding:1px 5px;border-radius:4px}
 <li><b>Action bar.</b> The total to pay now and one primary button. The label says what will happen: <i>"Send to cashier · then to Dr Yonas"</i>.</li>
 </ol>
 
-<h2>3. The cashier and doctor handoff, as you described it</h2>
+
+<h2>3. On a phone and a tablet</h2>
+<p>Reception is used on whatever is at hand: a desktop at the desk, a tablet on the counter, a phone while walking the waiting room. The redesign is designed <b>phone first</b> and widened, not shrunk from the desktop. It follows the mobile conventions already shipped (bottom-sheet dialogs, the tab bar, 16 px inputs, 44 px touch targets).</p>
+
+<div class="scroll"><table>
+<tr><th>Screen width</th><th>Layout</th><th>What changes</th></tr>
+<tr><td><b>Phone</b> (under 640 px)</td><td>One column. The list is the page. Tapping a person opens the card as a <b>full-height bottom sheet</b>.</td><td>Stats become a scrolling strip of four tiles. Search is pinned under the header. The action bar is stuck to the bottom of the sheet, always in thumb reach. The page behind keeps its scroll position when the sheet closes.</td></tr>
+<tr><td><b>Tablet</b> (640 to 1023 px)</td><td>Two panes, list about 40% and card about 60%. In portrait the card replaces the list with a back arrow.</td><td>Same card as desktop, larger touch targets, sticky action bar under the card.</td></tr>
+<tr><td><b>Desktop</b> (1024 px and up)</td><td>Two panes side by side as drawn in section 2.</td><td>Keyboard shortcuts, hover warms a card, rows show more detail.</td></tr>
+</table></div>
+
+<div class="device">
+<p class="cap">Phone · the four screens of one receipt of a patient</p>
+<div class="phones">
+
+<div class="ph"><div class="top"><span>Reception</span><span class="mini">Fri 10 Oct</span></div>
+ <div class="body">
+  <div class="stats"><div class="stat on"><b>9</b><span>Expected</span></div><div class="stat"><b>3</b><span>Waiting</span></div><div class="stat"><b>14</b><span>Seen</span></div></div>
+  <div class="search"><div>🔍 Name, card or phone</div></div>
+  <div class="row"><b>Meron Haile</b> <small>09:00</small><br><small>Dr Sara · Cleaning</small></div>
+  <div class="row sel"><b>Abebe Kebede</b> <small>09:30 · 12 min late</small><br><span class="chip c-red">Owes 2,000</span><span class="chip c-amb">Missed 1</span><span class="chip c-blu">Treatment</span></div>
+  <div class="row"><b>Selam Tesfaye</b> <small>10:00</small><br><span class="chip c-grn">Free follow-up</span></div>
+ </div>
+ <div class="tabs"><b>Reception</b><span>Patients</span><span>Cashier</span><span>More</span></div>
+</div>
+
+<div class="ph"><div class="dim"></div>
+ <div class="top"><span>Reception</span></div>
+ <div class="sheetp">
+  <div class="grab"></div>
+  <div class="h">Abebe Kebede <small style="font-weight:400;color:#5a6b7d">P000033 · 29y M</small></div>
+  <div><span class="chip c-red">Owes 2,000</span><span class="chip c-amb">Missed 1</span></div>
+  <div class="body" style="overflow:hidden">
+   <div class="sec"><div class="k">Earlier unpaid · 2,000.00</div>
+    <div class="line chk tap"><span>☑ 3 Sep · Root canal v1</span><b>1,200</b></div>
+    <div class="line chk tap"><span>☑ 12 Sep · Extraction UR8</span><b>800</b></div></div>
+   <div class="sec"><div class="k">Today</div><div class="line"><span>Root canal, visit 2 of 3</span><small>Dr Yonas</small></div></div>
+   <div class="sec"><div class="k">Visits</div><div class="line"><span>Missed Mon 5 Oct</span><small>📞 Call</small></div><div class="line"><span>Next Thu 15 Oct 10:00</span></div></div>
+   <div class="sec"><div class="k">Send to</div><div class="fld">Dentist · <b>Dr Yonas</b><small>usual dentist</small></div></div>
+  </div>
+  <div class="sticky"><div class="line"><span>To pay now</span><b>2,000.00</b></div><div class="btn p w">Send to cashier</div><div class="mini" style="text-align:center;margin-top:4px">then to Dr Yonas</div></div>
+ </div>
+</div>
+
+<div class="ph"><div class="dim"></div>
+ <div class="top"><span>Reception</span></div>
+ <div class="sheetp">
+  <div class="grab"></div>
+  <div class="h">Take payment · 2,000.00</div>
+  <div class="mini">Abebe Kebede · 2 bills</div>
+  <div class="body">
+   <div class="seg"><span>Cash</span><span class="on">Telebirr</span><span>CBE</span></div>
+   <div class="fld"><small>Telebirr account · 0911 00 00 00</small>Abeba Clinic</div>
+   <div class="fld"><small>Transaction reference</small><b>CJ47X92KLM</b></div>
+   <div class="btn w tap" style="justify-content:center">Check with the bank</div>
+   <div class="ok2"><b>Verified · 2,000.00</b><br><small>Sent by A. Kebede to your Telebirr</small></div>
+  </div>
+  <div class="sticky"><div class="btn p w">Collect 2,000.00 and queue for Dr Yonas</div></div>
+ </div>
+</div>
+
+<div class="ph">
+ <div class="top"><span>Reception</span></div>
+ <div class="body" style="text-align:center;padding-top:60px">
+  <div style="font-size:42px">✅</div>
+  <div class="h">Paid · RCP-004217</div>
+  <div class="mini">Abebe Kebede is now in Dr Yonas's queue, position 3.</div>
+  <div style="margin-top:18px"><div class="btn w tap" style="justify-content:center">Print receipt</div><div class="btn w tap" style="justify-content:center;margin-top:6px">Send receipt by SMS</div><div class="btn p w tap" style="justify-content:center;margin-top:6px">Next patient</div></div>
+ </div>
+ <div class="tabs"><b>Reception</b><span>Patients</span><span>Cashier</span><span>More</span></div>
+</div>
+
+</div></div>
+
+<h3>Tablet</h3>
+<div class="device"><p class="cap">Tablet, landscape · list and card side by side, card scrolls, action bar fixed</p>
+<div class="tablet">
+ <div class="pane"><div class="stats"><div class="stat on"><b>9</b><span>Expected</span></div><div class="stat"><b>3</b><span>Waiting</span></div></div>
+  <div class="row sel"><b>Abebe Kebede</b><br><span class="chip c-red">Owes 2,000</span></div><div class="row"><b>Meron Haile</b><br><small>09:00 · Dr Sara</small></div><div class="row"><b>Selam Tesfaye</b><br><small>10:00</small></div></div>
+ <div class="pane"><div class="h">Abebe Kebede</div><div><span class="chip c-red">Owes 2,000</span><span class="chip c-amb">Missed 1</span></div>
+  <div class="sec"><div class="k">Earlier unpaid</div><div class="line"><span>☑ Root canal v1</span><b>1,200</b></div><div class="line"><span>☑ Extraction UR8</span><b>800</b></div></div>
+  <div class="bar"><span>To pay now</span><span>2,000.00</span></div><div class="btn p w" style="margin-top:6px">Send to cashier</div></div>
+</div></div>
+
+<h3>Phone rules, written down so they are tested</h3>
+<ul>
+<li><b>Thumb reach:</b> the primary button lives in the sticky bar at the bottom, never at the top of a long card. Destructive or rare actions (waive, pay later) are in a "More" menu, not beside the main button.</li>
+<li><b>Touch targets:</b> at least 44 px tall. Tick boxes are the whole row, not the small square.</li>
+<li><b>Keyboards:</b> search opens the normal keyboard; phone fields the number pad; the payment reference the letters-and-digits keyboard with auto-capitalise off and no autocorrect; amounts the decimal pad.</li>
+<li><b>No horizontal scroll</b> at 320 px (the smallest phone we support). Long names and bill descriptions wrap or truncate with the full text one tap away.</li>
+<li><b>The sheet cannot lose work:</b> accidental swipe-down asks "Discard your selection?" only if bills are ticked or a reference is typed.</li>
+<li><b>Slow or dropped connection:</b> the button shows "Sending…" and stays disabled; if the connection fails the sheet stays open with the ticks and the reference intact and a plain message ("Not sent. Check the connection and press again; pressing again is safe"). Pressing twice never charges twice (the same safe-to-repeat rule as the server).</li>
+<li><b>Landscape and rotation:</b> rotating mid-entry keeps everything typed.</li>
+<li><b>Dark mode</b> and large-text settings are respected; nothing relies on colour alone.</li>
+</ul>
+
+<h2>4. The cashier and doctor handoff, as you described it</h2>
 <div class="steps">
 <span class="step">Receptionist ticks the bills the patient agrees to pay</span><span class="arrow">→</span>
 <span class="step">Chooses department and dentist</span><span class="arrow">→</span>
@@ -174,7 +291,72 @@ code{font-size:.88em;background:var(--paper);padding:1px 5px;border-radius:4px}
 <li><b>A desk that is allowed to collect</b> (receptionist who is also cashier) gets a second button, <b>Collect here</b>, which takes the payment and queues the patient in the same step.</li>
 </ul>
 
-<h2>4. New things for the receptionist</h2>
+
+<h2>5. Taking the payment: the method chosen</h2>
+<p><b>How I read "payment modification and the payment method chosen":</b> what the person pays <i>with</i> (cash, Telebirr, bank), the proof they bring (a transaction reference), the clinic checking it, and what happens when the method or amount turns out to be wrong. If you meant something more, tell me and I will add it. Almost all of this <b>already exists</b> in the cashier; the redesign puts the same picker at the desk, unchanged, so there is one behaviour in both places and not two.</p>
+
+<h3>Where payment happens</h3>
+<div class="scroll"><table>
+<tr><th>Who</th><th>What they see</th></tr>
+<tr><td>Receptionist <b>without</b> collect rights</td><td>No payment step. They tick the bills and press "Send to cashier". The cashier chooses the method.</td></tr>
+<tr><td>Receptionist <b>with</b> collect rights</td><td>Both "Send to cashier" and "Collect here". "Collect here" opens the payment step below, then queues the patient in the same action.</td></tr>
+<tr><td>Cashier</td><td>The same payment step, with the receptionist's ticked bills already selected.</td></tr>
+</table></div>
+
+<div class="device">
+<p class="cap">Desktop · the payment step (shown here with a transfer that the bank confirmed)</p>
+<div class="pane" style="max-width:460px;margin:0 auto">
+ <div class="h">Take payment · 2,000.00</div><div class="mini">Abebe Kebede · Root canal v1 1,200 · Extraction UR8 800</div>
+ <div class="sec"><div class="k">How is the patient paying?</div>
+  <div class="seg"><span>Cash</span><span class="on">Telebirr</span><span>CBE</span><span>Card</span></div>
+  <div class="fld"><small>Account that receives it</small>Telebirr · 0911 00 00 00</div>
+  <div class="fld"><small>Transaction reference (from the patient's SMS)</small><b>CJ47X92KLM</b></div>
+  <div class="btn" style="display:inline-block">Check with the bank</div>
+  <div class="ok2"><b>Verified</b> · 2,000.00 · from A. Kebede · to Telebirr 0911…<br><small>The amount matches. Collect.</small></div>
+ </div>
+ <div class="bar"><span>Total</span><span>2,000.00</span></div>
+ <div class="btn p w" style="margin-top:8px">Collect 2,000.00 · queue for Dr Yonas</div>
+</div></div>
+
+<h3>The method, step by step</h3>
+<ol>
+<li><b>Method.</b> The list is the clinic's own payment accounts (set in Settings → Payments), each with its account number so the receptionist picks the right one. The first account the clinic set up is pre-selected; for a clinic that is paid mostly by Telebirr, "cash" is not the default. The last method the desk used is remembered for the next patient.</li>
+<li><b>Generic accounts are flagged.</b> If a clinic has a plain "Bank" or "Mobile money" account with no bank named, an amber warning says so, with a link to name it (needs the clinic-manage permission), because an unnamed bank cannot be checked.</li>
+<li><b>Reference.</b> Shown only for mobile-money and bank methods, never for cash. The hint under the box says what that provider's reference looks like (Telebirr, M-Pesa, CBE Birr, Kaafi, CBE, Abyssinia, Dashen, Awash, Siinqee). If the method needs a reference and the box is empty, the Collect button stays off and says why.</li>
+<li><b>Check with the bank</b> (only when the clinic has bank verification switched on and the method names a provider). The result is one of the five states below.</li>
+<li><b>One method per receipt.</b> A receipt is paid by one method. A patient paying part cash and part transfer is two separate collections, each with its own receipt, so the books and the bank agree line by line.</li>
+<li><b>Collect.</b> One press: the payment, the receipt number, and (from the desk) the queue entry for the chosen dentist, all together or not at all.</li>
+</ol>
+
+<h3>What the bank check can say, and what the desk does</h3>
+<div class="scroll"><table>
+<tr><th>Result</th><th>Plain words on screen</th><th>Can the money be collected?</th></tr>
+<tr><td><span class="tag s">Verified</span></td><td>"The bank confirms 2,000.00 from A. Kebede."</td><td>Yes, up to the confirmed amount. A total above it is refused (issue 6, already live).</td></tr>
+<tr><td><span class="tag l">Rejected</span></td><td>"The bank does not confirm this", with the reason</td><td><b>No.</b> Collect is off. A manager with the waive permission may "Take it anyway", which is recorded against their name.</td></tr>
+<tr><td><span class="tag m">Needs a look</span></td><td>"Needs a second look", e.g. the bank did not say how much it was for</td><td>Yes, and it is not blocked today. The reason is shown so the person confirms by hand.</td></tr>
+<tr><td><span class="tag m">Pending</span></td><td>"The bank has not answered yet" (spinner)</td><td>Yes, not blocked today. The person can press Check again first.</td></tr>
+<tr><td><span class="tag s" style="background:#eef1f5;color:#4a5a6a">Not checked</span></td><td>"Not checked", shown when the method has no check or the check could not be run</td><td>Yes. The reference is stored for the books.</td></tr>
+</table></div>
+
+<h3>Mistakes and changes after the money is taken</h3>
+<div class="scroll"><table>
+<tr><th>Situation</th><th>What exists today</th><th>What the plan does</th></tr>
+<tr><td>Wrong amount keyed, or patient left (still unpaid)</td><td>Cashier "Void" with a reason (keying error, duplicate, wrong patient…).</td><td><b>Kept.</b> Reachable from the card's bill row for people with the permission.</td></tr>
+<tr><td>Paid, then a refund is needed</td><td>Cashier "Refund" (needs billing manage), kept on the receipt, shown struck-through.</td><td><b>Kept.</b> The card's receipt line links to it.</td></tr>
+<tr><td>Wrong <b>method</b> or reference chosen, and the money is right</td><td>Not possible: the only way is refund and collect again, which looks like two sales.</td><td><b>New, proposed:</b> "Correct payment details" for billing managers, same day only, changing method or reference but never the amount, with the old value and the reason kept in the audit trail. The bank check runs again on the new reference.</td></tr>
+<tr><td>Cash handed over is more than the bill</td><td>No change calculation.</td><td><b>New, proposed:</b> an optional "Cash received" box that shows "Change due: 300.00". Not stored as revenue; only the bill amount is.</td></tr>
+<tr><td>Patient says they will pay by Telebirr later</td><td>Nothing on the bill.</td><td><b>New, optional:</b> an "Expected method" note on the sent-to-cashier bills so the cashier is ready.</td></tr>
+</table></div>
+
+<h3>After collecting</h3>
+<ul>
+<li>The receipt number appears at once (RCP-004217), with Print and "Send by SMS".</li>
+<li>The patient is shown in the chosen dentist's queue with their position.</li>
+<li>The card refreshes: paid bills disappear from "Earlier unpaid", the day's "To settle" count drops, and Finance's receivables move by the same amount (one definition of "owed" everywhere).</li>
+<li>If the dentist has no free slot, the patient is still queued; the message says who is ahead.</li>
+</ul>
+
+<h2>6. New things for the receptionist</h2>
 <div class="scroll"><table>
 <tr><th>Feature</th><th>What the receptionist gets</th><th>Priority</th></tr>
 <tr><td>Itemised unpaid bills with tick boxes</td><td>Tell the patient exactly what they owe; take it now or not.</td><td><span class="tag l">Must</span></td></tr>
@@ -194,13 +376,51 @@ code{font-size:.88em;background:var(--paper);padding:1px 5px;border-radius:4px}
 </table></div>
 <p><b>Kept exactly as it is:</b> Expected / Waiting / Seen / To settle lists, the registration fee rule and its explanation, covered follow-ups, Pay later, Waive, bank-transfer checks, and every permission rule.</p>
 
-<h2>5. How it is built</h2>
+
+<h2>7. Everything the current page does, and what happens to it</h2>
+<p>I checked the current page and its tests line by line so nothing the desk relies on is lost. <b>Kept</b> means behaviour is identical; <b>Improved</b> means same job, better presentation; <b>Replaced</b> means the old way goes away on purpose.</p>
+<div class="scroll"><table>
+<tr><th>Today's capability</th><th>After</th></tr>
+<tr><td>Expected, Waiting, Seen, To settle lists with counts, refreshed every 30 s</td><td><span class="tag s">Kept</span> plus treatment sessions on Expected</td></tr>
+<tr><td>Arrival rows: time, how late, owed, covered follow-up</td><td><span class="tag s">Improved</span> chips with words, not just colour</td></tr>
+<tr><td>Search by name, card number, phone (2+ characters, debounced)</td><td><span class="tag s">Improved</span> best match first, richer rows, no match leads to Register &amp; receive</td></tr>
+<tr><td>Patient already here today recognised from search (no double fee)</td><td><span class="tag s">Kept</span> and shown on the result row</td></tr>
+<tr><td>Check in an expected patient, with the booking linked</td><td><span class="tag s">Kept</span></td></tr>
+<tr><td>Walk-in with department and clinician choice</td><td><span class="tag s">Improved</span> defaults pre-selected</td></tr>
+<tr><td>Registration fee rule, explanation line, per-clinic policy</td><td><span class="tag s">Kept</span></td></tr>
+<tr><td>Covered follow-up goes in free</td><td><span class="tag s">Kept</span></td></tr>
+<tr><td>Collect at the desk with payment method, reference, bank check</td><td><span class="tag s">Kept</span> the same picker (section 5)</td></tr>
+<tr><td>Treat now, pay later (with a reason, stays owed)</td><td><span class="tag s">Kept</span> and now also covers the older bills (NEW-RECEP-1)</td></tr>
+<tr><td>Waive the fee with a recorded reason</td><td><span class="tag s">Kept</span></td></tr>
+<tr><td>"Add a service" at the desk</td><td><span class="tag l">Removed</span> on your instruction, already deployed</td></tr>
+<tr><td>Permission rules (collect, waive, defer)</td><td><span class="tag s">Kept</span>; a desk without collect rights is shown "Send to cashier" (NEW-RECEP-3)</td></tr>
+<tr><td>Phone layout: sheet, 16 px inputs</td><td><span class="tag s">Improved</span> section 3</td></tr>
+<tr><td>Ethiopian dates on bookings</td><td><span class="tag s">Kept</span> and added to the card</td></tr>
+<tr><td>Link to register a new patient</td><td><span class="tag s">Replaced</span> by Register &amp; receive in the panel (the full form stays reachable)</td></tr>
+</table></div>
+
+<h3>What the screen shows while waiting, when empty, and when it fails</h3>
+<div class="scroll"><table>
+<tr><th>State</th><th>What the receptionist sees</th></tr>
+<tr><td>Loading the day</td><td>Skeleton rows and tiles in the final positions, so the page does not jump.</td></tr>
+<tr><td>Loading a card</td><td>The header shows at once from the row; sections fill in as they arrive.</td></tr>
+<tr><td>Nobody expected</td><td>"Nobody is booked for today. Search for a patient, or register a new one." with the search focused.</td></tr>
+<tr><td>Nothing owed, no missed visits</td><td>The section is not shown. A calm "Nothing owed" chip, not a blank hole.</td></tr>
+<tr><td>Patient has no phone</td><td>Amber chip "No phone on file" with "Add phone" so reminders can work.</td></tr>
+<tr><td>Day list failed</td><td>"Could not load today's list. Try again" with a button; the last good list stays visible.</td></tr>
+<tr><td>Card failed</td><td>The header and Check in still work; the missing sections say "Could not load this" with a retry. The desk is never blocked by a failed side-section.</td></tr>
+<tr><td>Payment refused or bank unreachable</td><td>Plain reason, ticks and reference kept, nothing recorded, safe to press again. If the bank cannot be reached the result reads "Not checked" (The check could not be run) and the desk can still collect.</td></tr>
+<tr><td>Someone else paid or changed this patient meanwhile</td><td>"This patient was updated by another desk." The card refreshes; nothing is double-charged.</td></tr>
+<tr><td>Session ended</td><td>Signed out with the reason on the sign-in page (already live).</td></tr>
+</table></div>
+
+<h2>8. How it is built</h2>
 
 <h3>Frontend</h3>
 <ul>
 <li><b>No new libraries.</b> What is already installed is enough: Radix (tabs, dialog, popover, scroll area, tooltip), <code>cmdk</code> for the keyboard-driven search, React Query for data and prefetching (hovering a row warms its card), <code>@number-flow/react</code> for the animated total (as on the dashboard), lucide icons, sonner toasts, react-hook-form + zod for Register &amp; receive, Tailwind.</li>
 <li><b>Components</b> (the page is now one 700-line file; it becomes small pieces, each tested alone): <code>DayStats</code>, <code>PatientSearch</code>, <code>ArrivalList</code>, <code>PatientCard</code> with <code>CardHeader</code>, <code>TodaySection</code>, <code>UnpaidBills</code>, <code>VisitsSection</code>, <code>RouteSection</code>, <code>ActionBar</code>, and <code>RegisterAndReceive</code>.</li>
-<li><b>Mobile:</b> follows the shipped conventions: the card is a bottom sheet below 640 px (<code>fullOnMobile</code>), the list is the page, the action bar is sticky in the sheet, inputs are 16 px.</li>
+<li><b>Mobile and tablet:</b> designed in section 3; the card is a bottom sheet below 640 px (<code>fullOnMobile</code>), two panes from 640 px, the action bar sticky, inputs 16 px, targets 44 px.</li><li><b>Payment:</b> the existing <code>PaymentRailPicker</code> is reused as is, so the desk and the cashier cannot drift apart.</li>
 <li><b>Dates:</b> every date shows the Gregorian date with the Ethiopian date beside it (the existing helper), on the clinic's Addis day.</li>
 <li><b>Accessibility:</b> everything reachable by keyboard; state is never colour alone (chips carry words); focus returns to the search after a patient is received.</li>
 </ul>
@@ -218,7 +438,7 @@ code{font-size:.88em;background:var(--paper);padding:1px 5px;border-radius:4px}
 </table></div>
 <p><b>Tracker items closed along the way:</b> APT-1, NEW-RECEP-1 ("Pay later" also defers old debt), NEW-RECEP-2 (a "To settle" patient is offered a new visit fee instead of their debt), NEW-RECEP-3 (a desk without collect rights is shown Collect), UX-6 (New opens the list), and the reception search and polling items.</p>
 
-<h2>6. Functional testing plan</h2>
+<h2>9. Functional testing plan</h2>
 <p>Every phase ships with its tests, and the full run (server tests, screen tests with coverage minimums, browser journeys) must be green before it is deployed, as with every fix so far.</p>
 <div class="scroll"><table>
 <tr><th>Layer</th><th>What is proved</th></tr>
@@ -232,6 +452,8 @@ code{font-size:.88em;background:var(--paper);padding:1px 5px;border-radius:4px}
 <li>Bank transfers: a total above the confirmed amount refused, nothing marked paid.</li>
 <li>Permissions: with and without collect rights; another clinic's patient and bills refused.</li>
 <li>The Addis day around midnight for "today", "missed", "next".</li>
+<li>Payment at the desk: each method; reference required only where it should be; rejected blocks; manager override recorded with name; pending refuses; an amount above the bank-confirmed one refused; one reference cannot pay twice.</li>
+<li>Correct payment details (if approved): only same day, only with permission, amount never changes, audit row written, re-check runs.</li>
 </ul></td></tr>
 <tr><td><b>Screen tests</b></td><td>
 <ul>
@@ -240,7 +462,10 @@ code{font-size:.88em;background:var(--paper);padding:1px 5px;border-radius:4px}
 <li>Both exits (send to cashier, collect here), the refused-payment path, and the desk without collect rights.</li>
 <li>Search: best match first, keyboard use, no match leads to Register &amp; receive.</li>
 <li>Defaults: single department and usual dentist pre-selected, and changeable.</li>
-<li>Phone layout: sheet opens, sticky action bar, nothing clipped.</li>
+<li>Phone layout at 320, 375 and 414 px and tablet portrait and landscape: sheet opens, sticky action bar, nothing clipped, no sideways scroll, 44 px targets.</li>
+<li>Payment step: the five bank-check states render the right words and the right buttons; cash change due calculates; the unnamed-bank warning appears; keyboard type per field.</li>
+<li>Failure states: each row of the states table in section 7 has a test.</li>
+<li>A parity test per row of the checklist in section 7, migrated from the current page's tests.</li>
 </ul></td></tr>
 <tr><td><b>Browser journeys</b> (real browser, real server)</td><td>
 <ol>
@@ -248,31 +473,33 @@ code{font-size:.88em;background:var(--paper);padding:1px 5px;border-radius:4px}
 <li>A walk-in found by search, registration paid, one tap to check in.</li>
 <li>A new patient: Register &amp; receive.</li>
 <li>A patient whose old bills are declined: unticked, checked in without them.</li>
-<li>The same journeys at phone width.</li>
+<li>A transfer paid by Telebirr: reference typed, bank check verified, collected, receipt shown, patient queued.</li>
+<li>A rejected transfer: Collect is off, manager override works, the override is visible in the audit trail.</li>
+<li>The same journeys at phone width and on a tablet.</li>
 </ol></td></tr>
 <tr><td><b>Safety checks</b></td><td>Repeat presses, a connection dropped mid-action, two desks on one patient, a clinic's data never visible to another, and the page staying fast with a full day's list.</td></tr>
 </table></div>
 
-<h2>7. Phases</h2>
+<h2>10. Phases</h2>
 <p>Each phase can be deployed and checked by you on its own.</p>
 <div class="scroll"><table>
 <tr><th>Phase</th><th>What you get</th><th>Effort</th></tr>
 <tr><td><b>1. The patient card</b></td><td>The card endpoint and the new right-hand panel: today, missed visits, next visit, itemised unpaid bills (read-only). Existing buttons unchanged.</td><td><span class="tag m">Medium</span> ~1.5 days</td></tr>
-<tr><td><b>2. Pay old bills at the desk</b></td><td>Tick boxes, the receive endpoint, the cashier highlight, the gate to the dentist. Closes NEW-RECEP-1, 2, 3.</td><td><span class="tag m">Medium</span> ~2 days</td></tr>
+<tr><td><b>2. Pay old bills at the desk</b></td><td>Tick boxes, the receive endpoint, the payment step at the desk (the existing picker), the cashier highlight, the gate to the dentist. Closes NEW-RECEP-1, 2, 3.</td><td><span class="tag m">Medium</span> ~2 days</td></tr>
 <tr><td><b>3. Find and register</b></td><td>Better search, richer result rows, Register &amp; receive, treatment sessions on the Expected list.</td><td><span class="tag m">Medium</span> ~1.5 days</td></tr>
-<tr><td><b>4. Fast desk</b></td><td>Usual dentist and department pre-selected, emergency, reason for visit, receipt at the desk, late-patient actions, keyboard shortcuts.</td><td><span class="tag m">Medium</span> ~1.5 days</td></tr>
-<tr><td><b>5. Polish</b></td><td>"Owes from before" list, phone confirmation, live updates, performance pass, phone-layout review.</td><td><span class="tag s">Small</span> ~1 day</td></tr>
+<tr><td><b>4. Fast desk</b></td><td>Usual dentist and department pre-selected, emergency, reason for visit, receipt at the desk, cash change due, correct payment details, late-patient actions, keyboard shortcuts.</td><td><span class="tag m">Medium</span> ~1.5 days</td></tr>
+<tr><td><b>5. Polish</b></td><td>"Owes from before" list, phone confirmation, live updates, performance pass, a final phone and tablet review on real devices.</td><td><span class="tag s">Small</span> ~1 day</td></tr>
 </table></div>
-<p>About <b>7 to 8 working days</b> in total. I would start with phase 1 and phase 2 together, because the card's unpaid bills and the tick boxes are one thing to you.</p>
+<p>About <b>8 to 9 working days</b> in total. I would start with phase 1 and phase 2 together, because the card's unpaid bills and the tick boxes are one thing to you.</p>
 
-<h2>8. Risks, and how each is handled</h2>
+<h2>11. Risks, and how each is handled</h2>
 <ul>
 <li><b>Queue gating is money-sensitive.</b> Changing which bills hold a patient at the cashier must never let someone skip payment, nor leave a paid patient stuck. It is covered by server tests for both directions before anything is shown on screen, and phase 2 is deployed and checked on a test clinic first.</li>
 <li><b>Performance.</b> The day lists already recompute a heavy amount every 30 seconds. The card is a single patient's data, so it is light; the list query is measured and slimmed in phase 5, and in phase 1 the card is not part of the polling.</li>
 <li><b>Behaviour the desk relies on.</b> Nothing the desk does today is removed. The old page's tests are migrated, not deleted.</li>
 </ul>
 
-<h2>9. Decisions for you</h2>
+<h2>12. Decisions for you</h2>
 <p>My recommendation is first in each line.</p>
 <ol>
 <li><b>Patient not reaching the dentist until the ticked bills are paid.</b> <i>Recommend: hold until paid, or until the cashier uses Pay later.</i> The alternative lets the patient through and leaves the bills on the cashier's list.</li>
@@ -281,6 +508,9 @@ code{font-size:.88em;background:var(--paper);padding:1px 5px;border-radius:4px}
 <li><b>How far back is a missed visit?</b> <i>Recommend: 90 days, the three most recent, with the date and dentist.</i></li>
 <li><b>Medical alerts on the reception card</b> (allergies and similar). <i>Recommend: not shown; the desk does not need clinical information and the dentist sees it at the chair.</i></li>
 <li><b>Replace the page in place, in phases</b> (same address, no switch to flip), or build it beside the old one and swap at the end? <i>Recommend: in place, one phase at a time, each checked by you before the next.</i></li>
+<li><b>Correct payment details</b> (fix a wrong method or reference without refunding). <i>Recommend: yes, billing managers, same day only, amount never editable, audited.</i> It is new work on the payment side, about one day.</li>
+<li><b>Cash received and change due</b> at the desk and cashier. <i>Recommend: yes, optional box, not stored as revenue.</i></li>
+<li><b>"Expected method" note</b> on bills sent to the cashier. <i>Recommend: skip for now; cashiers pick the method in two taps.</i></li>
 <li><b>Order:</b> start with phases 1 and 2 together? <i>Recommend: yes.</i></li>
 </ol>
 

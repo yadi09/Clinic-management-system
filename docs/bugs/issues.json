@@ -4899,7 +4899,7 @@
   "why": "Old debt goes uncollected when the patient is in front of the desk and willing to pay.",
   "fix": "Itemised old bills with tick boxes and one receipt, best-match-first search with richer rows, one-tap check-in defaults, an emergency switch, receipt at the desk. Full plan: docs/reception-improvement-plan.html.",
   "effort": "L",
-  "decision": "Approve docs/reception-redesign-plan.html: the patient card, the cashier-then-dentist handoff, the five phases, and the seven decisions in its section 9.",
+  "decision": "Approve docs/reception-redesign-plan.html (now with the phone and tablet design, the payment-method step, a parity checklist and the failure states): the patient card, the cashier-then-dentist handoff, the five phases, and the ten decisions in its section 12.",
   "tests": [],
   "files": [
    "backend/internal/scheduling/service/reception.go",
