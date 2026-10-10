@@ -47,7 +47,7 @@ internal/org/service 90.2
 internal/patient/http 87.0
 internal/patient/service 88.4
 internal/platform/http 92.9
-internal/platform/provision 72.9
+internal/platform/provision 73.9
 internal/platform/service 83.8
 internal/scheduling/http 81.9
 internal/scheduling/service 86.4

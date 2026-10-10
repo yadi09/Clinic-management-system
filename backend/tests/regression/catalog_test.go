@@ -80,6 +80,7 @@ func opNewDrug(t *testing.T, c *testkit.Client, name string, allergenIDs ...stri
 // hidden unless all=1; When deleted, Then it is gone and the name can be reused.
 func TestREG_CAT_001_AllergenLibraryCreateSearchUpdateDelete(t *testing.T) {
 	c := newClinic(t)
+	catEmptyAllergenLibrary(t, c)
 	doc, desk := srv.As(t, c, "doctor"), srv.As(t, c, "receptionist")
 	var pen opAllergen
 	doc.Do("POST", "/allergens", map[string]any{"name": "  Penicillin ", "default_reaction": " rash ", "default_severity": "severe"}).
@@ -132,6 +133,15 @@ func TestREG_CAT_001_AllergenLibraryCreateSearchUpdateDelete(t *testing.T) {
 	}
 	opNewAllergen(t, doc, "Latex") // a deleted name is free again
 	doc.Do("DELETE", "/allergens/x", nil).Expect(t, 400, "delete malformed id")
+}
+
+// catEmptyAllergenLibrary clears the standard allergy names every new clinic starts
+// with (FEAT: NEW-KERNEL-ALLERGY-1), so a test that counts entries or reuses a
+// common name like "Latex" starts from an empty library. REG_DENTAL_279 covers the
+// seeded list itself.
+func catEmptyAllergenLibrary(t *testing.T, c *testkit.Clinic) {
+	t.Helper()
+	blExec(t, `UPDATE allergen_catalog SET deleted_at = now() WHERE tenant_id = $1 AND deleted_at IS NULL`, c.TenantID)
 }
 
 // ---- drugs ------------------------------------------------------------------------
@@ -200,6 +210,7 @@ func TestREG_CAT_002_DrugLibraryWithAllergenTags(t *testing.T) {
 // unchanged and live.
 func TestREG_CAT_003_CataloguesAreClinicScoped(t *testing.T) {
 	a := newClinic(t)
+	catEmptyAllergenLibrary(t, a)
 	docA := srv.As(t, a, "doctor")
 	al := opNewAllergen(t, docA, "Chlorhexidine")
 	dr := opNewDrug(t, docA, "Metronidazole", al.ID)

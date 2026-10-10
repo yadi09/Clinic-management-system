@@ -1373,3 +1373,75 @@ func TestREG_DENTAL_276_UnbilledDatesAreTheClinicDay(t *testing.T) {
 			row.TreatmentDate, row.DaysUnbilled, dn2Row(filtered.Rows, k.sid(0)) != nil)
 	}
 }
+
+// TestREG_DENTAL_277_AllergyWarnsOnPluralsAndFamilies: Given patients with an
+// allergy written the way staff really write it, When a drug of that substance or
+// family is prescribed, typed by name and not from the library, Then it is refused
+// 409 ALLERGY_CONFLICT (NEW-KERNEL-ALLERGY-1, fixed 2026-10-10): "Penicillins" (the
+// plural) catches Penicillin V; "Penicillin" catches Amoxicillin; "Sulfa drugs"
+// catches co-trimoxazole; "Local anaesthetics" catches articaine; "NSAIDs" catches
+// ibuprofen.
+func TestREG_DENTAL_277_AllergyWarnsOnPluralsAndFamilies(t *testing.T) {
+	for _, c := range []struct{ allergy, drug string }{
+		{"Penicillins", "Penicillin V 500mg"},
+		{"Penicillin", "Amoxicillin 500mg"},
+		{"Amoxycillin", "Amoxicillin 250mg"},
+		{"Sulfa drugs", "Co-trimoxazole 480mg"},
+		{"Local anaesthetics", "Articaine 4% with adrenaline"},
+		{"NSAIDs", "Ibuprofen 400mg"},
+	} {
+		k := dn2NewCourse(t, 1, "")
+		dn2Allergy(t, k.c, k.p.ID, c.allergy, "severe")
+		path := k.path("/sessions/" + k.sid(0) + "/prescriptions")
+		r := k.doc.Do("POST", path, map[string]any{"items": []map[string]any{{"drug_name": c.drug}}})
+		dn2Code(t, r, 409, "ALLERGY_CONFLICT", c.allergy+" -> "+c.drug)
+		if !strings.Contains(r.Message, c.allergy) {
+			t.Fatalf("%s -> %s: the conflict does not name the allergy: %q", c.allergy, c.drug, r.Message)
+		}
+	}
+}
+
+// TestREG_DENTAL_278_AllergyDoesNotCryWolf: Given a patient allergic to sulfa drugs
+// (or penicillin), When the dentist prescribes ferrous sulfate (iron), a penicillamine
+// or paracetamol, Then it goes through: those are not what the allergy is about.
+func TestREG_DENTAL_278_AllergyDoesNotCryWolf(t *testing.T) {
+	k := dn2NewCourse(t, 1, "")
+	dn2Allergy(t, k.c, k.p.ID, "Sulfa drugs", "moderate")
+	dn2Allergy(t, k.c, k.p.ID, "Penicillin", "severe")
+	path := k.path("/sessions/" + k.sid(0) + "/prescriptions")
+	k.doc.Do("POST", path, map[string]any{"items": []map[string]any{
+		{"drug_name": "Ferrous sulfate 200mg"}, {"drug_name": "Penicillamine 250mg"}, {"drug_name": "Paracetamol 1g"},
+	}}).Expect(t, 201, "prescribe three unrelated drugs")
+}
+
+// TestREG_DENTAL_279_EveryClinicStartsWithTheStandardAllergens: Given a new clinic,
+// When staff open the allergy picker, Then the standard names are already there, so
+// "Penicillins" is chosen rather than typed four ways; and the clinic's own entry of
+// the same name (any case) is not duplicated.
+func TestREG_DENTAL_279_EveryClinicStartsWithTheStandardAllergens(t *testing.T) {
+	c := newClinic(t)
+	doc := srv.As(t, c, "doctor")
+	var list []struct {
+		Name string `json:"name"`
+	}
+	doc.Do("GET", "/allergens", nil).Expect(t, 200, "allergens").Decode(t, &list)
+	have := map[string]bool{}
+	for _, a := range list {
+		have[strings.ToLower(a.Name)] = true
+	}
+	for _, want := range []string{"penicillins", "sulfa drugs", "nsaids", "local anaesthetics", "latex", "chlorhexidine"} {
+		if !have[want] {
+			t.Errorf("a new clinic's allergy picker lacks %q (has %d names)", want, len(list))
+		}
+	}
+	// One name once: adding "PENICILLINS" again is refused as a duplicate, not stored twice.
+	r := doc.Do("POST", "/allergens", map[string]any{"name": "PENICILLINS"})
+	if r.Status < 400 {
+		t.Fatalf("a duplicate of a standard allergen was accepted: HTTP %d", r.Status)
+	}
+	var n int
+	one(t, `SELECT count(*) FROM allergen_catalog WHERE tenant_id = $1 AND lower(name) = 'penicillins' AND deleted_at IS NULL`, &n, c.TenantID)
+	if n != 1 {
+		t.Fatalf("%d 'penicillins' entries, want 1", n)
+	}
+}

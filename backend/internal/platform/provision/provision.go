@@ -10,6 +10,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/reicb/clinicsaas/internal/kernel/allergy"
 )
 
 // TenantRoles are the tenant-side system roles (Part 1 §3.7.1).
@@ -335,6 +337,17 @@ func BootstrapTenant(ctx context.Context, tx pgx.Tx, p Params) (Result, error) {
 		}
 	} else if e != nil {
 		return res, fmt.Errorf("department lookup: %w", e)
+	}
+
+	// The allergy picker starts with the standard names (idempotent; a clinic's own
+	// entries are never overwritten).
+	for _, name := range allergy.StandardAllergens {
+		if _, e := tx.Exec(ctx,
+			`INSERT INTO allergen_catalog (tenant_id, name) VALUES ($1, $2)
+			 ON CONFLICT (tenant_id, lower(name)) WHERE deleted_at IS NULL DO NOTHING`,
+			res.TenantID, name); e != nil {
+			return res, fmt.Errorf("standard allergens: %w", e)
+		}
 	}
 
 	// Default intake services. A general clinic charges Registration + Consultation

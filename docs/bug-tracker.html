@@ -86,16 +86,16 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 <li><b>Fix:</b> I change the code; its test turns from "known bug" to a normal passing test, and the whole suite must still pass.</li>
 <li><b>Verify:</b> you check it and accept it. Then the next one.</li>
 </ol>
-<p style="margin:8px 0 0;color:var(--soft)">Right now: 183 open · 1 explained or confirmed · 7 fixed, waiting for your check · 3 verified.</p>
+<p style="margin:8px 0 0;color:var(--soft)">Right now: 183 open · 0 explained or confirmed · 8 fixed, waiting for your check · 3 verified.</p>
 </div>
 
-<a class="next" href="#NEW-KERNEL-ALLERGY-1" data-open="NEW-KERNEL-ALLERGY-1"><span>Next up</span><b>Allergy written as a plural does not warn on prescriptions</b><em>Critical · NEW-KERNEL-ALLERGY-1 · Confirmed</em></a>
+<a class="next" href="#FIN-5" data-open="FIN-5"><span>Next up</span><b>Collecting debt can mark more paid than bank confirmed</b><em>Critical · FIN-5 · Open</em></a>
 
 <div class="tallies"><button class="tally sev-critical" data-filter-sev="critical"><b>9</b><span>Critical</span><small>Money lost or created wrongly, a patient-safety risk, or someone reaching data they must not.</small></button><button class="tally sev-high" data-filter-sev="high"><b>45</b><span>High</span><small>Wrong figures, changes nobody can trace, or permission holes inside a clinic.</small></button><button class="tally sev-medium" data-filter-sev="medium"><b>73</b><span>Medium</span><small>Wrong but recoverable, or a screen that misleads about what is real.</small></button><button class="tally sev-low" data-filter-sev="low"><b>67</b><span>Low</span><small>Cosmetic, a wrong error message, or a rare edge.</small></button></div>
 
 <div class="filters">
   <input id="q" type="search" placeholder="Search: cashier, follow-up, refund…" aria-label="Search issues">
-  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (183)</option><option value="explained">Explained (0)</option><option value="confirmed">Confirmed (1)</option><option value="fixed">Fixed (7)</option><option value="verified">Verified (3)</option><option value="wontfix">Won't fix (0)</option></select>
+  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (183)</option><option value="explained">Explained (0)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (8)</option><option value="verified">Verified (3)</option><option value="wontfix">Won't fix (0)</option></select>
   <select id="ar" aria-label="Area"><option value="">Every area</option><option value="Appointments &amp; front desk">Appointments &amp; front desk</option><option value="Dental">Dental</option><option value="Money">Money</option><option value="Patient records">Patient records</option><option value="Reliability">Reliability</option><option value="Safety &amp; access">Safety &amp; access</option><option value="Screens &amp; usability">Screens &amp; usability</option></select>
 </div>
 <p class="count" id="count"></p>
@@ -217,7 +217,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
     </div>
   </details>
 </article>
-<article class="issue sev-critical st-confirmed" id="NEW-KERNEL-ALLERGY-1" data-sev="critical" data-status="confirmed"
+<article class="issue sev-critical st-fixed" id="NEW-KERNEL-ALLERGY-1" data-sev="critical" data-status="fixed"
   data-area="Safety &amp; access" data-q="new-kernel-allergy-1 allergy written as a plural does not warn on prescriptions when a prescription is written, the system compares the drug name with the patient&#x27;s recorded allergies. it only warns if the allergy word appears whole inside the drug name. so an allergy recorded as &quot;penicillins&quot; (plural) does not warn for &quot;penicillin v&quot;, because &quot;penicillins&quot; is not inside &quot;penicillin v&quot;. the same happens for other longer spellings, and the check also does not know drug families (a &quot;penicillin&quot; allergy only catches amoxicillin if the clinic&#x27;s drug list has tagged amoxicillin as a penicillin). reception records almaz&#x27;s allergy as &quot;penicillins – severe&quot;. two weeks later dr selam prescribes penicillin v 250 mg for an abscess. no warning appears, the prescription prints, and the only protection left is whether dr selam happens to look at the allergy line on the card. dentist, doctor, patient safety &amp; access">
   <details>
     <summary>
@@ -225,7 +225,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">Critical</span>
       <span class="ttl">Allergy written as a plural does not warn on prescriptions</span>
       <span class="meta"><span class="id">NEW-KERNEL-ALLERGY-1</span> · Safety &amp; access · effort S</span>
-      <span class="status">Confirmed</span>
+      <span class="status">Fixed</span>
     </summary>
     <div class="body">
       
@@ -238,11 +238,11 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       </dl>
       <div class="tech">
         <details><summary>For the developer: tests and code</summary>
-          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li><code>TestREG_KERNEL_ALLERGY_005_PluralSubstanceStillMatches</code></li></ul>
-          <p>Where in the code:</p><ul><li><code>backend/internal/kernel/allergy/allergy.go:25-36</code></li><li><code>backend/internal/kernel/allergy/allergy.go:46-66</code></li><li><code>backend/internal/dental/service/service.go:2103</code></li><li><code>backend/internal/clinical/service/service.go:763</code></li></ul>
+          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li><code>TestBootstrapStopsCleanlyWhenTheStandardAllergensCannotBeSeeded</code></li><li><code>TestREG_DENTAL_277_AllergyWarnsOnPluralsAndFamilies</code></li><li><code>TestREG_DENTAL_278_AllergyDoesNotCryWolf</code></li><li><code>TestREG_DENTAL_279_EveryClinicStartsWithTheStandardAllergens</code></li><li><code>TestREG_KERNEL_ALLERGY_005_PluralSubstanceStillMatches</code></li><li><code>TestREG_KERNEL_ALLERGY_006_FamiliesWarnOnEveryMember</code></li><li><code>TestREG_KERNEL_ALLERGY_007_SpellingVariantsAreTheSameSubstance</code></li><li><code>TestREG_KERNEL_ALLERGY_008_NoFalseAlarms</code></li><li><code>TestREG_KERNEL_ALLERGY_009_StandardAllergenList</code></li></ul>
+          <p>Where in the code:</p><ul><li><code>backend/db/migrations/00091_standard_allergens.sql</code></li><li><code>backend/internal/clinical/service/service.go:763</code></li><li><code>backend/internal/dental/service/service.go:2103</code></li><li><code>backend/internal/kernel/allergy/allergy.go</code></li><li><code>backend/internal/kernel/allergy/allergy.go:25-36</code></li><li><code>backend/internal/kernel/allergy/allergy.go:46-66</code></li><li><code>backend/internal/platform/provision/provision.go</code></li></ul>
         </details>
       </div>
-      <div class="log"><b>History</b><ul><li><time>2026-10-04</time> Owner confirmed and chose option A: warn on plurals and spelling variants plus a fixed list of common drug families (penicillins, sulfonamides, NSAIDs and others); keep free typing of the allergy name but suggest the standard names while typing.</li></ul></div>
+      <div class="log"><b>History</b><ul><li><time>2026-10-04</time> Owner confirmed and chose option A: warn on plurals and spelling variants plus a fixed list of common drug families (penicillins, sulfonamides, NSAIDs and others); keep free typing of the allergy name but suggest the standard names while typing.</li><li><time>2026-10-10</time> Built (option A). Plurals and spellings are the same substance; drug families (penicillins, cephalosporins, carbapenems, sulfonamides, NSAIDs incl. aspirin/ASA, macrolides, tetracyclines, quinolones, nitroimidazoles, local anaesthetics, opioids) warn on every member; short names ASA and PCN count; &quot;sulfa&quot; no longer fires on iron (ferrous sulfate); filler words (&quot;severe&quot;, &quot;drugs&quot;) are ignored. Every clinic, existing and new, starts with 26 standard allergy names (suggested as staff type). Four older test rows changed on purpose: aspirin now warns on ibuprofen and penicillin on amoxicillin. Full run in progress.</li><li><time>2026-10-10</time> Full run green: server 692/0, screens 1,644, journeys 10/10, routes 267/267; coverage gate green after adding a test for the failure path of seeding (provisioning leaves no half-made clinic). The allergy matcher is 100% tested. Committed; not yet deployed. Waiting for the owner to verify.</li></ul></div>
     </div>
   </details>
 </article>
@@ -5728,7 +5728,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   </details>
 </article>
 
-<footer>Built 10 October 2026, 00:55 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
+<footer>Built 10 October 2026, 01:48 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
 </div>
 <script>
 (function () {

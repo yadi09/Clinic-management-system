@@ -2765,20 +2765,39 @@
   "effort": "S",
   "decision": null,
   "tests": [
-   "TestREG_KERNEL_ALLERGY_005_PluralSubstanceStillMatches"
+   "TestBootstrapStopsCleanlyWhenTheStandardAllergensCannotBeSeeded",
+   "TestREG_DENTAL_277_AllergyWarnsOnPluralsAndFamilies",
+   "TestREG_DENTAL_278_AllergyDoesNotCryWolf",
+   "TestREG_DENTAL_279_EveryClinicStartsWithTheStandardAllergens",
+   "TestREG_KERNEL_ALLERGY_005_PluralSubstanceStillMatches",
+   "TestREG_KERNEL_ALLERGY_006_FamiliesWarnOnEveryMember",
+   "TestREG_KERNEL_ALLERGY_007_SpellingVariantsAreTheSameSubstance",
+   "TestREG_KERNEL_ALLERGY_008_NoFalseAlarms",
+   "TestREG_KERNEL_ALLERGY_009_StandardAllergenList"
   ],
   "files": [
+   "backend/db/migrations/00091_standard_allergens.sql",
+   "backend/internal/clinical/service/service.go:763",
+   "backend/internal/dental/service/service.go:2103",
+   "backend/internal/kernel/allergy/allergy.go",
    "backend/internal/kernel/allergy/allergy.go:25-36",
    "backend/internal/kernel/allergy/allergy.go:46-66",
-   "backend/internal/dental/service/service.go:2103",
-   "backend/internal/clinical/service/service.go:763"
+   "backend/internal/platform/provision/provision.go"
   ],
   "tested": true,
-  "status": "confirmed",
+  "status": "fixed",
   "log": [
    {
     "date": "2026-10-04",
     "note": "Owner confirmed and chose option A: warn on plurals and spelling variants plus a fixed list of common drug families (penicillins, sulfonamides, NSAIDs and others); keep free typing of the allergy name but suggest the standard names while typing."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Built (option A). Plurals and spellings are the same substance; drug families (penicillins, cephalosporins, carbapenems, sulfonamides, NSAIDs incl. aspirin/ASA, macrolides, tetracyclines, quinolones, nitroimidazoles, local anaesthetics, opioids) warn on every member; short names ASA and PCN count; \"sulfa\" no longer fires on iron (ferrous sulfate); filler words (\"severe\", \"drugs\") are ignored. Every clinic, existing and new, starts with 26 standard allergy names (suggested as staff type). Four older test rows changed on purpose: aspirin now warns on ibuprofen and penicillin on amoxicillin. Full run in progress."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Full run green: server 692/0, screens 1,644, journeys 10/10, routes 267/267; coverage gate green after adding a test for the failure path of seeding (provisioning leaves no half-made clinic). The allergy matcher is 100% tested. Committed; not yet deployed. Waiting for the owner to verify."
    }
   ],
   "order": 4
