@@ -4952,5 +4952,34 @@
     "note": "After the first look on a phone and desktop: (1) the patient sheet was a full-screen takeover on phones; now the normal bottom sheet (85% height, page visible above, buttons pinned at the bottom). (2) Guided empty screens built: no-bookings with search focused, Register/Book buttons, recent patients and next booking day; waiting/seen/settled messages; no-match offers to register the typed name. Full run green."
    }
   ]
+ },
+ {
+  "id": "FEAT-CHART-1",
+  "title": "Tooth chart: marking takes many taps; no select-many or clear",
+  "severity": "high",
+  "area": "Dental",
+  "who": "Dentist, Dental assistant",
+  "simple": "A tap on a tooth cycles through every condition one at a time, so a Crown takes five taps and one tap too many means going round again. There is no way to mark several teeth together and no clear button.",
+  "example": "Dr Yonas examines a new patient: 28 healthy, 2 decayed, 1 filled, 1 extracted. Today that is about 39 taps plus 32 pop-ups; a slip means going round the list again.",
+  "why": "Slow at the chair, easy to mis-mark, and a clinical record that is hard to correct.",
+  "fix": "Condition bar above the chart (pick a condition, then tap or drag teeth), select mode with quick selects, Clear for a tooth, a group or the whole chart, persistent Undo and Redo, clearer chart layout. Plan: docs/tooth-chart-plan.html.",
+  "effort": "L",
+  "decision": "Review docs/tooth-chart-plan.html and answer the eight decisions in its section 11.",
+  "tests": [],
+  "files": [
+   "frontend/src/features/dental/ToothChart.tsx",
+   "frontend/src/features/dental/DentalWorkspace.tsx",
+   "frontend/src/features/dental/toothStatus.ts",
+   "docs/tooth-chart-plan.html"
+  ],
+  "tested": false,
+  "status": "explained",
+  "log": [
+   {
+    "date": "2026-10-10",
+    "note": "Plan written and sent for review; nothing built."
+   }
+  ],
+  "order": 30
  }
 ]

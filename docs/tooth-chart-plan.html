@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tooth chart: improvement plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+
+:root{--paper:#fbfaf7;--card:#fff;--ink:#1f2a33;--soft:#5d6b76;--line:#e3e0d8;--teal:#0f6e6a;--warn:#b45309;--warn-bg:#fdf1e3;--bad:#b42318;--bad-bg:#fdecea;--ok:#1d7a46;--ok-bg:#e5f4ea;--sky:#1d4e89;--sky-bg:#e8f0fa}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--paper:#14181c;--card:#1b2026;--ink:#e7e9ea;--soft:#9aa6b0;--line:#2c333a;--teal:#4fb3ad;--warn:#f0a85a;--warn-bg:#3a2a18;--bad:#f2867c;--bad-bg:#3a1f1d;--ok:#6cc792;--ok-bg:#1a3325;--sky:#86b3e0;--sky-bg:#1c2a38}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.6 "Atkinson Hyperlegible",system-ui,sans-serif}
+.wrap{max-width:960px;margin:0 auto;padding:32px 16px 90px}
+h1{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:2.1rem;line-height:1.15;margin:0 0 8px}
+h2{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:1.5rem;margin:46px 0 10px}
+h3{font-size:1.05rem;margin:24px 0 6px}
+.lede{color:var(--soft);max-width:68ch}
+.box{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:14px 0}
+.key{border-left:6px solid var(--teal)}.warn{border-left:6px solid var(--warn)}
+table{border-collapse:collapse;width:100%;font-size:.94rem;margin:10px 0;background:var(--card)}
+th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--paper)}
+.scroll{overflow-x:auto}
+.tag{display:inline-block;font-size:.76rem;font-weight:700;padding:1px 9px;border-radius:20px;margin-right:4px}
+.s{background:var(--ok-bg);color:var(--ok)}.m{background:var(--warn-bg);color:var(--warn)}.l{background:var(--bad-bg);color:var(--bad)}
+.scene{background:var(--paper);border-radius:8px;padding:10px 14px;font-style:italic;margin:8px 0}
+ul,ol{padding-left:22px}li{margin:3px 0}
+footer{color:var(--soft);font-size:.85rem;margin-top:44px}
+code{font-size:.88em;background:var(--paper);padding:1px 5px;border-radius:4px}
+
+
+.device{background:#e9eef5;border:1px solid var(--line);border-radius:14px;padding:14px;margin:16px 0;font-family:Inter,system-ui,sans-serif;color:#1c2733;font-size:13px;line-height:1.45;overflow-x:auto}
+.cap{font:600 12px Inter;color:#4a5b6d;margin:0 0 8px}
+.pane{background:#fff;border:1px solid #d8e0ea;border-radius:12px;padding:12px}
+.btn{display:inline-block;border:1px solid #c9d4e0;border-radius:8px;padding:7px 11px;background:#fff;font-weight:600}
+.btn.d{background:#b42318;border-color:#b42318;color:#fff}
+.mini{font-size:12px;color:#5a6b7d}
+.cross{min-width:560px}
+.axis{display:flex;justify-content:space-around;font-size:11px;color:#6a7b8c;margin-bottom:4px}
+.arch{display:flex;justify-content:center;padding:6px 0}
+.arch.top{border-bottom:2px solid #9aa8b6}
+.q{display:flex;gap:7px}
+.mid{width:2px;background:#9aa8b6;margin:0 8px;border-radius:2px}
+.t{position:relative;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;width:34px;height:42px;border:1.5px solid;border-radius:8px;font-size:13px}
+.t b{font-weight:700}
+.t i{font-style:normal;font-size:10px;font-weight:700;line-height:1;margin-bottom:1px}
+.t.big{width:38px;height:48px}
+.t.sel{outline:2px solid #1d4e89;outline-offset:1px}
+.t.sel::after{content:"✓";position:absolute;top:-8px;right:-8px;width:16px;height:16px;border-radius:50%;background:#1d4e89;color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center}
+.pal{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.pal.pal-ph{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px}
+.chip2{display:inline-flex;align-items:center;gap:6px;border:1.5px solid;border-radius:999px;padding:7px 12px;font-weight:600;white-space:nowrap}
+.chip2 u{width:10px;height:10px;border-radius:3px;display:inline-block}
+.chip2.on{box-shadow:0 0 0 3px rgba(26,154,124,.3)}
+.chip2.er{border-color:#9aa8b6;color:#4a5b6d;background:#f4f6f8}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;border:1px solid #d8e0ea;background:#f6f9fc;border-radius:10px;padding:8px 10px;margin-bottom:10px}
+.qs{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 12px}
+.qs span{border:1px solid #c9d4e0;background:#fff;border-radius:8px;padding:5px 9px;font-weight:600;white-space:nowrap}
+.qs span.on{background:#1d4e89;border-color:#1d4e89;color:#fff}
+.armed{display:inline-flex;align-items:center;gap:6px;color:#0f6e6a;font-weight:600}
+.seg{display:inline-flex;border:1px solid #c9d4e0;border-radius:9px;overflow:hidden;background:#fff}
+.seg span{padding:6px 12px;font-weight:600}
+.seg span.on{background:#e6f3ef;color:#0f6e6a}
+.sum{font-size:12px;color:#5a6b7d;margin:10px 0 0}
+.phones{display:flex;flex-wrap:wrap;gap:14px;justify-content:center}
+.ph{width:310px;background:#fff;border:1px solid #d8e0ea;border-radius:22px;padding:10px;display:flex;flex-direction:column}
+.ph .q{justify-content:center;margin:4px 0 8px;gap:5px}
+.ph .t{width:30px;height:38px}
+.stick{border-top:1px solid #e6ecf3;margin:10px -10px -10px;padding:10px;background:#fff;border-radius:0 0 22px 22px}
+.dlg{max-width:400px;margin:0 auto;background:#fff;border:1px solid #d8e0ea;border-radius:14px;padding:16px;box-shadow:0 10px 30px rgba(20,30,40,.18)}
+.cmp td:nth-child(2){color:var(--bad)} .cmp td:nth-child(3){color:var(--ok);font-weight:700}
+@media (max-width:640px){h1{font-size:1.6rem}}
+</style></head>
+<body><div class="wrap">
+
+<h1>Tooth chart: easier to mark, select and clear</h1>
+<p class="lede">A plan to change how the dentist marks the tooth chart so it takes a few taps instead of dozens, supports marking many teeth at once, and can clear one tooth, a group, or the whole chart safely. Written from the current code and your description. Nothing is built yet: this is for your review, feedback and approval.</p>
+
+<div class="box key"><b>In one paragraph.</b> Today you tap a tooth and it <i>cycles</i> through the conditions one at a time, so reaching "Crown" takes five taps and going one too far means going all the way round again. There is no way to mark many teeth together and no clear button. The redesign puts the conditions in a <b>bar above the chart</b>. You <b>pick a condition once, then tap or drag across teeth</b> and they take it. Or you <b>select teeth first</b> (all, upper, lower, one side, only the unmarked, every decayed one) and apply a condition to the whole group in one move. <b>Clear</b> removes marks from one tooth, a selection, or the whole chart, and every change can be undone. Saving stays automatic. The server needs no change.</div>
+
+<h2>1. What it does today, and why it is hard</h2>
+<div class="scroll"><table>
+<tr><th>You do</th><th>What happens today</th><th>Why it hurts</th></tr>
+<tr><td>Want "Crown" on a tooth</td><td>Tap, tap, tap, tap, tap. A tap walks the list: empty, Healthy, Decayed, Filled, Extracted, Crown, Bridge, empty.</td><td>Five taps for one condition. One tap too many and you go round the whole list again. You must watch the colour after every tap.</td></tr>
+<tr><td>Mark a whole mouth healthy</td><td>One tap on each of 32 teeth.</td><td>32 taps and 32 pop-up messages ("UR5 → Healthy"), each with its own Undo.</td></tr>
+<tr><td>Mark six teeth the same</td><td>Each one separately.</td><td>No selecting several, no "this quadrant", no "all the decayed ones".</td></tr>
+<tr><td>Remove a mark</td><td>Keep tapping until it comes back round to empty.</td><td>There is no Clear. Clearing a Crown takes two taps, clearing Healthy takes six. No way to clear everything.</td></tr>
+<tr><td>Read the chart</td><td>Small numbered boxes in two rows, colour only, and a legend underneath that looks clickable but is not.</td><td>No right/left labels, no centre line, lots of empty space. "Extracted" (pale grey) is hard to tell from "not marked" (white). Colour is the only signal, which fails for colour-blind staff and on a black-and-white print.</td></tr>
+<tr><td>Make a mistake</td><td>A message appears for a few seconds with Undo, then it is gone.</td><td>Undo works only for the last tooth and only while the message is on screen.</td></tr>
+</table></div>
+<p class="mini">What is already good and will be kept: the chart saves by itself, only the teeth you changed are sent, two people editing the same patient do not overwrite each other, and a failed save puts the chart back to what the server has.</p>
+
+<h2>2. The idea: two simple ways in, one bar for both</h2>
+<div class="box"><b>A. Condition first, then teeth (for marking).</b> Tap <b>Decayed</b> in the bar. It lights up as the active condition ("Marking: Decayed"). Now every tooth you tap, or drag a finger or mouse across, becomes Decayed. Tap <b>Filled</b> and carry on. One tap per tooth, no cycling, no going round. Tap the condition again, or press Esc, to stop.</div>
+<div class="box"><b>B. Teeth first, then condition (for groups).</b> Press <b>Select</b>. Tap teeth to select them, or use the quick buttons: <i>All, Upper, Lower, each quadrant, Unmarked only, Same as this tooth, Invert</i>. Then tap a condition in the bar (or Clear) and every selected tooth changes at once, as one save and one Undo.</div>
+<div class="box"><b>Tapping a tooth with nothing chosen</b> opens a small menu right at the tooth with the conditions and Clear. Two taps, no cycling, no mode to learn. That is how a casual single change works.</div>
+
+<h2>3. How it will look</h2>
+<p>The conditions are the clinic's own list from Settings, so the bar always matches what the clinic uses.</p>
+
+<div class="device"><p class="cap">Desktop · condition first. "Decayed" is active and the dentist is tapping teeth. Letters on the teeth mean it is not colour alone.</p>
+<div class="pane">
+ <div class="bar"><span class="seg"><span class="on">Mark</span><span>Select</span></span>
+  <span class="armed">● Marking: Decayed <span class="mini">· tap teeth or drag across them · Esc to stop</span></span>
+  <span><span class="btn">↶ Undo</span> <span class="mini" style="margin-left:6px">✓ Saved</span></span></div>
+ <div class="pal"><span class="chip2" style="background:#e3f4ea;border-color:#1a9a7c;color:#1a9a7c"><u style="background:#1a9a7c"></u>Healthy</span><span class="chip2 on" style="background:#c0392b;border-color:#c0392b;color:#fff"><u style="background:#fff"></u>Decayed</span><span class="chip2" style="background:#e6effa;border-color:#2f5fd0;color:#2f5fd0"><u style="background:#2f5fd0"></u>Filled</span><span class="chip2" style="background:#eef1f5;border-color:#7a8794;color:#7a8794"><u style="background:#7a8794"></u>Extracted</span><span class="chip2" style="background:#fdf1e3;border-color:#d69a1a;color:#d69a1a"><u style="background:#d69a1a"></u>Crown</span><span class="chip2" style="background:#fbe8f7;border-color:#c026a8;color:#c026a8"><u style="background:#c026a8"></u>Bridge</span><span class="chip2 er">⌫ Clear</span></div>
+ <div style="height:14px"></div>
+ <div class="cross"><div class="axis"><span>Patient's right</span><span>Patient's left</span></div><div class="arch top"><div class="q"><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>8</b></span><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>7</b></span><span class="t big" style="border-color:#2f5fd0;background:#e6effa;color:#2f5fd0"><i>F</i><b>6</b></span><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>5</b></span><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>4</b></span><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>3</b></span><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>2</b></span><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>1</b></span></div><div class="mid"></div><div class="q"><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>1</b></span><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>2</b></span><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>3</b></span><span class="t big" style="border-color:#c0392b;background:#fde8e6;color:#c0392b"><i>D</i><b>4</b></span><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>5</b></span><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>6</b></span><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>7</b></span><span class="t big" style="border-color:#7a8794;background:#eef1f5;color:#7a8794"><i>✕</i><b>8</b></span></div></div><div class="arch"><div class="q"><span class="t big" style="border-color:#7a8794;background:#eef1f5;color:#7a8794"><i>✕</i><b>8</b></span><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>7</b></span><span class="t big" style="border-color:#d69a1a;background:#fdf1e3;color:#d69a1a"><i>C</i><b>6</b></span><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>5</b></span><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>4</b></span><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>3</b></span><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>2</b></span><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>1</b></span></div><div class="mid"></div><div class="q"><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>1</b></span><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>2</b></span><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>3</b></span><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>4</b></span><span class="t big" style="border-color:#c0392b;background:#fde8e6;color:#c0392b"><i>D</i><b>5</b></span><span class="t big" style="border-color:#2f5fd0;background:#e6effa;color:#2f5fd0"><i>F</i><b>6</b></span><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>7</b></span><span class="t big" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>8</b></span></div></div></div>
+ <p class="sum">22 marked: 16 Healthy · 2 Decayed · 2 Filled · 2 Extracted · 1 Crown · 1 Bridge &nbsp;·&nbsp; 10 not marked</p>
+</div></div>
+
+<div class="device"><p class="cap">Desktop · teeth first. The whole upper arch is selected; one tap on "Healthy" marks all 16, as a single save and a single Undo.</p>
+<div class="pane">
+ <div class="bar"><span class="seg"><span>Mark</span><span class="on">Select</span></span>
+  <span style="font-weight:600">16 teeth selected</span>
+  <span class="btn">Clear selection</span></div>
+ <div class="qs"><span>All</span><span class="on">Upper</span><span>Lower</span><span>Upper right</span><span>Upper left</span><span>Lower right</span><span>Lower left</span><span>Unmarked only</span><span>Same as: Decayed</span><span>Invert</span></div>
+ <div class="cross"><div class="axis"><span>Patient's right</span><span>Patient's left</span></div><div class="arch top"><div class="q"><span class="t sel big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>8</b></span><span class="t sel big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>7</b></span><span class="t sel big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>6</b></span><span class="t sel big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>5</b></span><span class="t sel big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>4</b></span><span class="t sel big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>3</b></span><span class="t sel big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>2</b></span><span class="t sel big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>1</b></span></div><div class="mid"></div><div class="q"><span class="t sel big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>1</b></span><span class="t sel big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>2</b></span><span class="t sel big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>3</b></span><span class="t sel big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>4</b></span><span class="t sel big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>5</b></span><span class="t sel big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>6</b></span><span class="t sel big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>7</b></span><span class="t sel big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>8</b></span></div></div><div class="arch"><div class="q"><span class="t big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>8</b></span><span class="t big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>7</b></span><span class="t big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>6</b></span><span class="t big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>5</b></span><span class="t big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>4</b></span><span class="t big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>3</b></span><span class="t big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>2</b></span><span class="t big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>1</b></span></div><div class="mid"></div><div class="q"><span class="t big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>1</b></span><span class="t big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>2</b></span><span class="t big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>3</b></span><span class="t big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>4</b></span><span class="t big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>5</b></span><span class="t big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>6</b></span><span class="t big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>7</b></span><span class="t big" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>8</b></span></div></div></div>
+ <div class="mini" style="margin:12px 0 6px">Apply to the 16 selected teeth:</div>
+ <div class="pal"><span class="chip2" style="background:#e3f4ea;border-color:#1a9a7c;color:#1a9a7c"><u style="background:#1a9a7c"></u>Healthy</span><span class="chip2" style="background:#fde8e6;border-color:#c0392b;color:#c0392b"><u style="background:#c0392b"></u>Decayed</span><span class="chip2" style="background:#e6effa;border-color:#2f5fd0;color:#2f5fd0"><u style="background:#2f5fd0"></u>Filled</span><span class="chip2" style="background:#eef1f5;border-color:#7a8794;color:#7a8794"><u style="background:#7a8794"></u>Extracted</span><span class="chip2" style="background:#fdf1e3;border-color:#d69a1a;color:#d69a1a"><u style="background:#d69a1a"></u>Crown</span><span class="chip2" style="background:#fbe8f7;border-color:#c026a8;color:#c026a8"><u style="background:#c026a8"></u>Bridge</span><span class="chip2 er">⌫ Clear</span></div>
+</div></div>
+
+<div class="device"><p class="cap">Removing marks. "Clear" works on one tooth, on the selection, or on the whole chart. The whole chart asks first and says how many marks.</p>
+<div class="dlg">
+ <div style="font-weight:700;font-size:15px">Clear the whole chart?</div>
+ <p style="margin:8px 0">This removes <b>22 marks</b> from Abebe Kebede's tooth chart. Visit notes, treatments and payments are not touched.</p>
+ <p class="mini">You can undo this straight afterwards. The old marks also stay in the audit history.</p>
+ <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><span class="btn">Cancel</span><span class="btn d">Clear 22 marks</span></div>
+</div></div>
+
+<div class="device"><p class="cap">Phone · the bar sits at the bottom where the thumb is; the chart is four rows of eight large teeth, each row labelled</p>
+<div class="phones">
+ <div class="ph"><div style="font-weight:700;margin-bottom:4px">Tooth chart</div>
+  <div class="mini" style="margin-bottom:6px">Marking: <b style="color:#c0392b">Decayed</b> · tap or drag across teeth</div>
+  <div class="mini">Upper right</div><div class="q"><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>8</b></span><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>7</b></span><span class="t" style="border-color:#2f5fd0;background:#e6effa;color:#2f5fd0"><i>F</i><b>6</b></span><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>5</b></span><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>4</b></span><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>3</b></span><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>2</b></span><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>1</b></span></div><div class="mini">Upper left</div><div class="q"><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>1</b></span><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>2</b></span><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>3</b></span><span class="t sel" style="border-color:#c0392b;background:#fde8e6;color:#c0392b"><i>D</i><b>4</b></span><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>5</b></span><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>6</b></span><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>7</b></span><span class="t" style="border-color:#7a8794;background:#eef1f5;color:#7a8794"><i>✕</i><b>8</b></span></div><div class="mini">Lower right</div><div class="q"><span class="t" style="border-color:#7a8794;background:#eef1f5;color:#7a8794"><i>✕</i><b>8</b></span><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>7</b></span><span class="t" style="border-color:#d69a1a;background:#fdf1e3;color:#d69a1a"><i>C</i><b>6</b></span><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>5</b></span><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>4</b></span><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>3</b></span><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>2</b></span><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>1</b></span></div><div class="mini">Lower left</div><div class="q"><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>1</b></span><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>2</b></span><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>3</b></span><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>4</b></span><span class="t" style="border-color:#c0392b;background:#fde8e6;color:#c0392b"><i>D</i><b>5</b></span><span class="t" style="border-color:#2f5fd0;background:#e6effa;color:#2f5fd0"><i>F</i><b>6</b></span><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>7</b></span><span class="t" style="border-color:#1a9a7c;background:#e3f4ea;color:#1a9a7c"><b>8</b></span></div>
+  <div class="stick"><div class="pal pal-ph"><span class="chip2" style="background:#e3f4ea;border-color:#1a9a7c;color:#1a9a7c"><u style="background:#1a9a7c"></u>Healthy</span><span class="chip2 on" style="background:#c0392b;border-color:#c0392b;color:#fff"><u style="background:#fff"></u>Decayed</span><span class="chip2" style="background:#e6effa;border-color:#2f5fd0;color:#2f5fd0"><u style="background:#2f5fd0"></u>Filled</span><span class="chip2" style="background:#eef1f5;border-color:#7a8794;color:#7a8794"><u style="background:#7a8794"></u>Extracted</span><span class="chip2" style="background:#fdf1e3;border-color:#d69a1a;color:#d69a1a"><u style="background:#d69a1a"></u>Crown</span><span class="chip2" style="background:#fbe8f7;border-color:#c026a8;color:#c026a8"><u style="background:#c026a8"></u>Bridge</span><span class="chip2 er">⌫ Clear</span></div><div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><span class="btn">↶ Undo</span><span class="seg"><span class="on">Mark</span><span>Select</span></span><span class="mini">✓ Saved</span></div></div>
+ </div>
+ <div class="ph"><div style="font-weight:700;margin-bottom:4px">Tooth chart · Select</div>
+  <div class="mini" style="margin-bottom:6px"><b>8 teeth selected</b></div>
+  <div class="qs" style="flex-wrap:nowrap;overflow-x:auto"><span>All</span><span class="on">Upper right</span><span>Upper left</span><span>Lower</span><span>Unmarked</span></div>
+  <div class="mini">Upper right</div><div class="q"><span class="t sel" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>8</b></span><span class="t sel" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>7</b></span><span class="t sel" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>6</b></span><span class="t sel" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>5</b></span><span class="t sel" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>4</b></span><span class="t sel" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>3</b></span><span class="t sel" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>2</b></span><span class="t sel" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>1</b></span></div><div class="mini">Upper left</div><div class="q"><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>1</b></span><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>2</b></span><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>3</b></span><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>4</b></span><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>5</b></span><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>6</b></span><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>7</b></span><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>8</b></span></div><div class="mini">Lower right</div><div class="q"><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>8</b></span><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>7</b></span><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>6</b></span><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>5</b></span><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>4</b></span><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>3</b></span><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>2</b></span><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>1</b></span></div><div class="mini">Lower left</div><div class="q"><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>1</b></span><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>2</b></span><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>3</b></span><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>4</b></span><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>5</b></span><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>6</b></span><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>7</b></span><span class="t" style="border-color:#d5dbe3;background:#fff;color:#aab4c0"><b>8</b></span></div>
+  <div class="stick"><div class="mini" style="margin-bottom:6px">Apply to 8 teeth</div><div class="pal pal-ph"><span class="chip2" style="background:#e3f4ea;border-color:#1a9a7c;color:#1a9a7c"><u style="background:#1a9a7c"></u>Healthy</span><span class="chip2" style="background:#fde8e6;border-color:#c0392b;color:#c0392b"><u style="background:#c0392b"></u>Decayed</span><span class="chip2" style="background:#e6effa;border-color:#2f5fd0;color:#2f5fd0"><u style="background:#2f5fd0"></u>Filled</span><span class="chip2" style="background:#eef1f5;border-color:#7a8794;color:#7a8794"><u style="background:#7a8794"></u>Extracted</span><span class="chip2" style="background:#fdf1e3;border-color:#d69a1a;color:#d69a1a"><u style="background:#d69a1a"></u>Crown</span><span class="chip2" style="background:#fbe8f7;border-color:#c026a8;color:#c026a8"><u style="background:#c026a8"></u>Bridge</span><span class="chip2 er">⌫ Clear</span></div></div>
+ </div>
+</div></div>
+
+<h3>Small things that make it clearer</h3>
+<ul>
+<li><b>Right and left are labelled</b> and a centre line is drawn, so it reads like the paper chart.</li>
+<li><b>Each condition has a letter or symbol</b> on the tooth (D, F, ✕, C, B), so it still reads in black and white and for colour-blind staff.</li>
+<li><b>"Not marked" and "Healthy" stay different.</b> Not marked means nobody has looked; Healthy means somebody did. A quick button marks all the unmarked teeth Healthy after a normal check-up.</li>
+<li><b>The legend becomes the bar</b>, so it is no longer a decoration that looks clickable.</li>
+<li><b>A one-line summary</b> under the chart: how many are marked and how many of each condition.</li>
+<li><b>"Saved" in the bar</b> instead of a pop-up for every tooth. One pop-up only when a group is applied, with Undo.</li>
+<li><b>Condition names start with a capital</b> ("Bridge", not "bridge"), whatever the clinic typed.</li>
+</ul>
+
+<h2>4. A morning at the chair</h2>
+<div class="scene">Dr Yonas examines a new patient. 28 teeth look fine, two are decayed, one is filled and one was extracted years ago.</div>
+<div class="scroll"><table class="cmp">
+<tr><th>Step</th><th>Today</th><th>New</th></tr>
+<tr><td>Mark the 28 healthy teeth</td><td>28 taps, 28 messages</td><td>2 taps: "Unmarked only", then "Healthy" (done after the other four are marked, so only the untouched ones change)</td></tr>
+<tr><td>2 decayed teeth</td><td>4 taps (2 each)</td><td>3 taps: "Decayed", then the two teeth</td></tr>
+<tr><td>1 filled tooth</td><td>3 taps</td><td>2 taps</td></tr>
+<tr><td>1 extracted tooth</td><td>4 taps</td><td>2 taps</td></tr>
+<tr><td><b>Total</b></td><td><b>39 taps</b>, and any slip means going round again</td><td><b>9 taps</b>, and a slip is one Undo</td></tr>
+</table></div>
+<div class="scene">The dentist taps the wrong tooth and marks UR5 "Filled" instead of UR4.</div>
+<p>Today: tap UR5 until it cycles back to empty, then fix UR4. New: press <b>Undo</b> (it stays in the bar, not only in a pop-up), or tap UR5 and choose <b>Clear</b>, then mark UR4.</p>
+<div class="scene">A patient returns after a year with a new dentist who wants a clean start.</div>
+<p>New: <b>Clear whole chart</b>, confirm, done. The old marks stay in the audit history, and the dentist can undo straight away if it was a mistake.</p>
+
+<h2>5. Everything it will do</h2>
+<div class="scroll"><table>
+<tr><th>Function</th><th>How</th><th>Priority</th></tr>
+<tr><td>Pick a condition once, tap teeth to apply it</td><td>Bar above the chart</td><td><span class="tag l">Must</span></td></tr>
+<tr><td>Clear a tooth</td><td>"Clear" in the bar, or in the tooth menu</td><td><span class="tag l">Must</span></td></tr>
+<tr><td>Clear the whole chart</td><td>"Clear all" with the count and a confirmation</td><td><span class="tag l">Must</span></td></tr>
+<tr><td>Select several teeth, apply one condition</td><td>Select mode, tap teeth, tap a condition</td><td><span class="tag l">Must</span></td></tr>
+<tr><td>Quick selects</td><td>All, Upper, Lower, each quadrant, Unmarked only, Same as this tooth, Invert</td><td><span class="tag l">Must</span></td></tr>
+<tr><td>Clear the selection</td><td>"Clear selection" or Esc</td><td><span class="tag l">Must</span></td></tr>
+<tr><td>Undo and redo</td><td>Buttons in the bar and Ctrl+Z / Ctrl+Shift+Z; keeps the last 20 actions of this session</td><td><span class="tag l">Must</span></td></tr>
+<tr><td>Single tooth menu</td><td>Tap a tooth with nothing chosen</td><td><span class="tag l">Must</span></td></tr>
+<tr><td>Labels, centre line, bigger teeth, letters on teeth</td><td>Redrawn chart</td><td><span class="tag l">Must</span></td></tr>
+<tr><td>Drag across teeth to mark them</td><td>Mouse or finger</td><td><span class="tag m">Should</span></td></tr>
+<tr><td>Saved / Saving / Failed indicator</td><td>In the bar, replaces a pop-up per tooth</td><td><span class="tag m">Should</span></td></tr>
+<tr><td>Keyboard</td><td>1 to 7 pick a condition, arrows move between teeth, Space applies, A selects all, Esc stops</td><td><span class="tag m">Should</span></td></tr>
+<tr><td>Summary line</td><td>Counts per condition</td><td><span class="tag m">Should</span></td></tr>
+<tr><td>Chart history view</td><td>Who changed what, and when (the server already records it)</td><td><span class="tag s">Could</span></td></tr>
+<tr><td>Children's (milk) teeth</td><td>A to E per quadrant, shown for young patients</td><td><span class="tag s">Could</span></td></tr>
+</table></div>
+
+<h2>6. Safety: nothing is lost by accident</h2>
+<ul>
+<li><b>Selecting is never saved.</b> It only highlights. Only applying a condition changes the record.</li>
+<li><b>Clearing a group or the chart always says how many marks</b> before it happens. The whole chart needs a confirmation; one tooth does not.</li>
+<li><b>Every change, including a group, is one Undo</b> that stays in the bar, not only for a few seconds.</li>
+<li><b>Same protections as today:</b> a failed save puts the chart back to what the server confirmed; two people editing different teeth both keep their work; the chart is read-only while the clinic's conditions are loading or failed to load; people without edit rights see the chart without the bar.</li>
+<li><b>The history stays.</b> Every save already writes each tooth's old and new condition to the audit trail; a group change writes one entry per tooth.</li>
+</ul>
+
+<h2>7. How it is built</h2>
+<h3>Frontend</h3>
+<ul>
+<li><b>No new libraries.</b> The existing popover, dialog and toast, plus Tailwind.</li>
+<li><b>New pieces:</b> a condition bar, a selection layer on the chart, a tooth menu, and a small history of actions for Undo and Redo. The chart component is rewritten. The save logic in the dental workspace (the draft, the confirmed copy, the queue, the delay, the revert on failure) is kept and extended from "one tooth" to "many teeth in one change".</li>
+<li><b>Tap-to-cycle is removed.</b> Nothing else depends on it.</li>
+<li><b>The tooth picker used by visits</b> already has quadrant and "all decayed" shortcuts. It keeps working and will share the same quick-select code, so the two behave alike.</li>
+<li><b>Phone:</b> follows the shipped mobile conventions (bottom bar above the tab bar, 16 px text, teeth at least 40 px, bottom-sheet dialogs). Horizontal drag is captured only inside the chart.</li>
+</ul>
+<h3>Backend</h3>
+<p>None needed. The save endpoint already takes any set of teeth in one request (an empty value clears a tooth), checks every tooth and condition, applies it under a lock and records the history. "Clear all" is up to 32 teeth in one request. I will add server tests that prove a whole-chart apply and a whole-chart clear work in one request, and that one bad tooth refuses the whole request.</p>
+
+<h2>8. Functional testing plan</h2>
+<div class="scroll"><table>
+<tr><th>Layer</th><th>What is proved</th></tr>
+<tr><td><b>Server tests</b></td><td>
+<ul><li>32 teeth set in one request; 32 cleared in one request; the result equals what was sent.</li>
+<li>One invalid tooth or unknown condition refuses the whole request and changes nothing.</li>
+<li>Two clinicians changing different teeth at the same moment both keep their changes; for the same tooth the later wins and both are in the history.</li>
+<li>A user without edit rights is refused; another clinic's patient is not reachable.</li></ul></td></tr>
+<tr><td><b>Screen tests</b></td><td>
+<ul><li>Pick a condition, then tap teeth: each tooth gets it, as one save.</li>
+<li>Drag across a row: every tooth under the pointer is marked once.</li>
+<li>Select mode: each quick select picks exactly the right teeth; applying changes only those; the selection is not saved.</li>
+<li>Clear a tooth, clear a selection, clear the whole chart (asks first, shows the count, Cancel does nothing).</li>
+<li>Undo and redo for single and group changes; a failed save reverts the chart.</li>
+<li>Tapping with nothing chosen opens the menu; the menu applies and closes.</li>
+<li>Read-only users: no bar, no menu, teeth cannot be changed. Conditions loading or failed: read-only with Retry.</li>
+<li>Keyboard use, letters on teeth, labels present; phone layout at 320, 375 and 414 px with no sideways scroll.</li>
+<li>The existing nine chart tests are migrated to the new behaviour, none dropped without a replacement.</li></ul></td></tr>
+<tr><td><b>Browser journeys</b></td><td>A new patient: mark the unmarked Healthy, then two decayed, one filled; reload and see the same chart. Then clear the whole chart and undo it. The same at phone width.</td></tr>
+</table></div>
+
+<h2>9. Phases</h2>
+<div class="scroll"><table>
+<tr><th>Phase</th><th>What you get</th><th>Effort</th></tr>
+<tr><td><b>1. Mark and clear</b></td><td>Condition bar, active condition, tooth menu, Clear, Clear all with confirmation, Undo and Redo in the bar, saved indicator, redrawn chart with labels, centre line and letters.</td><td><span class="tag m">Medium</span> ~2 days</td></tr>
+<tr><td><b>2. Select several</b></td><td>Select mode, quick selects, apply to a group, clear a group, summary line.</td><td><span class="tag m">Medium</span> ~1.5 days</td></tr>
+<tr><td><b>3. Fast and phone</b></td><td>Drag to mark, keyboard, phone bottom bar, a final phone and tablet review.</td><td><span class="tag m">Medium</span> ~1 day</td></tr>
+<tr><td><b>4. Later, if you want</b></td><td>Chart history view; children's teeth.</td><td><span class="tag s">Small to medium</span></td></tr>
+</table></div>
+<p>About <b>4 to 5 working days</b> for phases 1 to 3. Each phase can be deployed and checked by you before the next. Phase 1 alone already removes the cycling and gives you Clear.</p>
+
+<h2>10. Risks, and how each is handled</h2>
+<ul>
+<li><b>A slip changes many teeth at once.</b> Group actions show the count, clearing the whole chart asks first, and every group change is one Undo that stays in the bar.</li>
+<li><b>Dragging on a phone can fight with scrolling the page.</b> Drag is active only inside the chart while a condition is chosen, vertical scrolling still works, and Select mode is the fallback.</li>
+<li><b>Dentists used to tap-to-cycle.</b> Tapping a tooth with nothing chosen still does something obvious (a small menu), so nobody is stuck, and the bar explains itself ("Pick a condition, then tap teeth").</li>
+<li><b>The chart is a clinical record.</b> The save path that protects it is kept, and the new group paths go through the same code with their own tests.</li>
+</ul>
+
+<h2>11. Decisions for you</h2>
+<p>My recommendation is first in each line.</p>
+<ol>
+<li><b>Remove tap-to-cycle completely?</b> <i>Recommend: yes.</i> Tapping a tooth with nothing chosen opens the small menu instead.</li>
+<li><b>Tapping a tooth that already has the active condition:</b> <i>Recommend: leave it as it is</i> (use Clear to remove). The alternative clears the mark, which is quicker but easier to do by accident.</li>
+<li><b>Who can clear the whole chart?</b> <i>Recommend: anyone who can edit the chart,</i> with the confirmation and Undo. The alternative is dentists and managers only.</li>
+<li><b>Keep "Healthy" separate from "not marked"?</b> <i>Recommend: yes,</i> with a one-tap "mark the unmarked Healthy".</li>
+<li><b>Letters on teeth (D, F, ✕, C, B)?</b> <i>Recommend: yes.</i> Clinics still choose their own colours.</li>
+<li><b>Children's (milk) teeth now or later?</b> <i>Recommend: later,</i> in phase 4. It needs new tooth codes and server checks.</li>
+<li><b>Chart history view now or later?</b> <i>Recommend: later.</i> The data is already being recorded.</li>
+<li><b>Start with phase 1, check it, then phases 2 and 3?</b> <i>Recommend: yes.</i></li>
+</ol>
+
+<footer>Based on: ToothChart.tsx, the dental workspace's chart saving, the visit tooth picker, the chart save endpoint and its audit trail, and your message of 10 October 2026. Nothing in the system was changed to produce this document.</footer>
+</div></body></html>
