@@ -35,6 +35,10 @@
    {
     "date": "2026-10-10",
     "note": "Deployed to app.clinicos.cc (commit 03bee73, pre-deploy backup taken, API ready, no errors in the log). No migration. Ordinary payments are unaffected: the rule applies only to a reference the bank confirmed with an amount."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Deployed with issues 7 and 8 (commit efb4618)."
    }
   ],
   "order": 5
@@ -547,6 +551,10 @@
    {
     "date": "2026-10-10",
     "note": "Full run green: server 702/0, screens 1,644, journeys 10/10, routes 267/267, all coverage minimums (run together with the other of issues 7 and 8). Committed; not yet deployed. Waiting for the owner to verify."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Deployed to app.clinicos.cc (commit efb4618, pre-deploy backup taken, API ready, no errors in the log). No migration. Waiting for the owner to verify."
    }
   ],
   "order": 6
@@ -579,6 +587,10 @@
    {
     "date": "2026-10-10",
     "note": "Full run green: server 702/0, screens 1,644, journeys 10/10, routes 267/267, all coverage minimums (run together with the other of issues 7 and 8). Committed; not yet deployed. Waiting for the owner to verify."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Deployed to app.clinicos.cc (commit efb4618, pre-deploy backup taken, API ready, no errors in the log). No migration. Waiting for the owner to verify."
    }
   ],
   "order": 7
