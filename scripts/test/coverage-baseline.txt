@@ -29,7 +29,7 @@ internal/kernel/id 100.0
 internal/kernel/limits 94.5
 internal/kernel/logging 100.0
 internal/kernel/notify 100.0
-internal/kernel/payments 97.7
+internal/kernel/payments 98.4
 internal/kernel/phone 93.9
 internal/kernel/ratelimit 100.0
 internal/kernel/sms 99.3

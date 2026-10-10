@@ -91,72 +91,89 @@ func ClaimReference(ctx context.Context, tx pgx.Tx, tid uuid.UUID, railID *uuid.
 	if railID == nil || ref == "" {
 		return nil
 	}
-	// A row may already exist because the desk checked this reference before taking
-	// the money. That is the same payment arriving, not a second use — claim it.
-	// Only a row that already carries a receipt is a real double-spend.
-	var existing *int64
-	var checked bool
+	// One claim of a given reference at a time, whatever method it arrives under.
+	// Two desks entering the same transfer at the same instant under two different
+	// methods would otherwise each find "not used yet" and each succeed: the table's
+	// own uniqueness is per method, so it cannot tell them apart. Held to the end of
+	// the settlement's transaction.
+	if _, e := tx.Exec(ctx,
+		`SELECT pg_advisory_xact_lock(hashtextextended($1::text || '/' || upper(btrim($2)), 0))`,
+		tid, ref); e != nil {
+		return e
+	}
+	// A reference that already paid a receipt is used — under this method, or under
+	// another method of the same source (NEW-KERNEL-PAY-2). A clinic may have two
+	// Telebirr numbers, or a generic "Bank transfer" beside a named "CBE" account;
+	// picking the other one in the picker must not make one receipt pay twice. Two
+	// named providers (CBE and Zemen, Telebirr and M-Pesa) are different sources: their
+	// reference formats differ, and refusing a real payment because another bank once
+	// issued the same text is worse than the risk. A generic method could be any
+	// provider of its kind, so it is the same source as every one of them. A row with
+	// no receipt was only CHECKED with the bank; checking is not paying.
+	var usedReceipt *int64
+	var otherMethod bool
+	switch e := tx.QueryRow(ctx,
+		`SELECT p.receipt_no, p.payment_rail_id <> mine.id
+		   FROM payment_references p
+		   JOIN payment_rails other ON other.id = p.payment_rail_id AND other.tenant_id = p.tenant_id
+		   JOIN payment_rails mine  ON mine.id = $2 AND mine.tenant_id = $1
+		  WHERE p.tenant_id = $1 AND p.reference_norm = upper(btrim($3)) AND p.receipt_no IS NOT NULL
+		    AND (p.payment_rail_id = mine.id
+		         OR (other.kind = mine.kind
+		             AND (other.bank_key IS NULL OR mine.bank_key IS NULL OR other.bank_key = mine.bank_key)))
+		  ORDER BY p.settled_at LIMIT 1`,
+		tid, *railID, ref).Scan(&usedReceipt, &otherMethod); {
+	case e == pgx.ErrNoRows:
+	case e != nil:
+		return e
+	default:
+		// Name the receipt it paid, because the answer at the desk is almost always
+		// "that is the one we did five minutes ago", not "this patient is committing
+		// fraud".
+		where := ""
+		if otherMethod {
+			where = " under another payment method"
+		}
+		return apperr.Conflict("REFERENCE_USED",
+			"that reference has already been used"+where+" — it paid receipt #"+itoa(*usedReceipt))
+	}
 	// The bank's own answer, when the desk asked it (FIN-5): a payment the bank
 	// confirmed for 300 must not be marked as having paid 1,500.
 	var exceeds bool
 	var confirmed *string
 	switch e := tx.QueryRow(ctx,
-		`SELECT receipt_no, true,
-		        coalesce(verify_state = 'verified' AND verified_amount IS NOT NULL
+		`SELECT coalesce(verify_state = 'verified' AND verified_amount IS NOT NULL
 		                 AND $4::numeric > verified_amount + 0.005, false),
 		        verified_amount::text
 		   FROM payment_references
 		  WHERE tenant_id=$1 AND payment_rail_id=$2 AND reference_norm=upper(btrim($3))`,
-		tid, *railID, ref, amount).Scan(&existing, &checked, &exceeds, &confirmed); {
+		tid, *railID, ref, amount).Scan(&exceeds, &confirmed); {
 	case e == pgx.ErrNoRows:
 	case e != nil:
 		return e
-	case existing == nil && exceeds:
+	case exceeds:
 		// Refused whole: this runs in the settlement's transaction, so nothing is
 		// marked paid. The words are for the desk, who can still do the right thing:
 		// collect the part the transfer covers and take the rest another way.
 		return apperr.Conflict("AMOUNT_EXCEEDS_VERIFIED",
 			"the bank confirmed "+*confirmed+" for this reference, but this would mark "+amount+
 				" as paid. Collect only up to "+*confirmed+" with this transfer, and take the rest another way.")
-	case existing == nil:
-		_, e = tx.Exec(ctx,
-			`UPDATE payment_references
-			    SET receipt_no=$4, patient_id=coalesce($5, patient_id), amount=$6, settled_by=$7, settled_at=now()
-			  WHERE tenant_id=$1 AND payment_rail_id=$2 AND reference_norm=upper(btrim($3))`,
-			tid, *railID, ref, receiptNo, patientID, amount, actor)
-		return e
-	default:
-		return apperr.Conflict("REFERENCE_USED",
-			"that reference has already been used — it paid receipt #"+itoa(*existing))
 	}
-	var existingReceipt *int64
-	e := tx.QueryRow(ctx,
+	// One statement claims it whether or not a row exists yet: a row the desk only
+	// checked (no receipt) is taken over, a missing one is created. The lock above
+	// means nobody else is claiming this reference, so a conflict here can only be
+	// that checked-but-unclaimed row. (There used to be a second branch that looked up
+	// who had won an insert race; the lock removed the race and with it that branch.)
+	_, e := tx.Exec(ctx,
 		`INSERT INTO payment_references
 		   (tenant_id, payment_rail_id, reference, reference_norm, receipt_no, patient_id, amount, settled_by)
 		 VALUES ($1,$2,$3,upper(btrim($3)),$4,$5,$6,$7)
-		 ON CONFLICT (tenant_id, payment_rail_id, reference_norm) DO NOTHING
-		 RETURNING receipt_no`, tid, *railID, ref, receiptNo, patientID, amount, actor).Scan(&existingReceipt)
-	if e == nil {
-		return nil
-	}
-	if e != pgx.ErrNoRows {
-		return e
-	}
-	// Nothing inserted: somebody already used this reference. Name the receipt it
-	// paid, because the answer at the desk is almost always "that is the one we did
-	// five minutes ago", not "this patient is committing fraud".
-	var prior *int64
-	if e := tx.QueryRow(ctx,
-		`SELECT receipt_no FROM payment_references
-		  WHERE tenant_id=$1 AND payment_rail_id=$2 AND reference_norm=upper(btrim($3))`,
-		tid, *railID, ref).Scan(&prior); e != nil && e != pgx.ErrNoRows {
-		return e
-	}
-	if prior != nil {
-		return apperr.Conflict("REFERENCE_USED",
-			"that reference has already been used — it paid receipt #"+itoa(*prior))
-	}
-	return apperr.Conflict("REFERENCE_USED", "that reference has already been used")
+		 ON CONFLICT (tenant_id, payment_rail_id, reference_norm) DO UPDATE
+		   SET receipt_no = EXCLUDED.receipt_no,
+		       patient_id = coalesce(EXCLUDED.patient_id, payment_references.patient_id),
+		       amount = EXCLUDED.amount, settled_by = EXCLUDED.settled_by, settled_at = now()`,
+		tid, *railID, ref, receiptNo, patientID, amount, actor)
+	return e
 }
 
 // StampCharges records the evidence on the charge rows themselves, so a receipt

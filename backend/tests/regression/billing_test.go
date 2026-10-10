@@ -1002,6 +1002,56 @@ func TestREG_BILL_031_ASettlementNeverExceedsWhatTheBankConfirmed(t *testing.T) 
 	}
 }
 
+// TestREG_BILL_032_OneTransferCannotPayTwiceThroughTwoMethods (NEW-KERNEL-PAY-2): Given a
+// clinic with two Telebirr numbers (and a generic bank method beside a named CBE account),
+// When the cashier enters the same transfer reference against two different bills under the
+// two methods, Then the second is refused naming the receipt the first paid, the second bill
+// stays unpaid and its reference is free; a different bank's account is not confused with it.
+func TestREG_BILL_032_OneTransferCannotPayTwiceThroughTwoMethods(t *testing.T) {
+	clinic := payClinic(t)
+	cashier, recp := srv.As(t, clinic, "cashier"), srv.As(t, clinic, "receptionist")
+	newRail := func(kind, bank string) string {
+		var rid uuid.UUID
+		key := kind + "-" + uniq("")
+		if err := super.Pool.QueryRow(t.Context(),
+			`INSERT INTO payment_rails (tenant_id, key, label, kind, bank_key, needs_reference, active)
+			 VALUES ($1, $2, $2, $3, nullif($4,''), true, true) RETURNING id`, clinic.TenantID, key, kind, bank).Scan(&rid); err != nil {
+			t.Fatal(err)
+		}
+		return id.Encode(id.PrefixPaymentRail, rid)
+	}
+	tele1, tele2 := newRail("wallet", "telebirr"), newRail("wallet", "telebirr")
+	genericBank, cbe, zemen := newRail("bank", ""), newRail("bank", "cbe"), newRail("bank", "zemen")
+	pay := func(rail, ref string, amount float64) (string, testkit.Resp) {
+		chg := payRaise(t, cashier, clinic, createPatient(t, recp, uniq("Twice"), "Pay").ID, amount)
+		return chg, cashier.Do("POST", "/billing/charges/"+chg+"/settle", map[string]any{"rail_id": rail, "reference": ref})
+	}
+	ref := "DAB" + strings.ToUpper(uniq(""))
+
+	first, r := pay(tele1, ref, 500)
+	r.Expect(t, 204, "the transfer pays a bill")
+	second, r := pay(tele2, ref, 500)
+	blExpect(t, r, 409, "REFERENCE_USED", "the same Telebirr transfer under the other number")
+	if !strings.Contains(r.Message, "receipt #") {
+		t.Fatalf("the refusal does not name the receipt it paid: %q", r.Message)
+	}
+	if blStatus(t, first) != "paid" || blStatus(t, second) != "pending" {
+		t.Fatalf("first=%s second=%s, want paid and pending", blStatus(t, first), blStatus(t, second))
+	}
+	// The refused bill can still be paid with a real, different reference on that number.
+	cashier.Do("POST", "/billing/charges/"+second+"/settle", map[string]any{"rail_id": tele2, "reference": ref + "-B"}).
+		Expect(t, 204, "the second bill with its own transfer")
+
+	// A generic bank method is the same source as a named bank; two named banks are not.
+	bankRef := "FT" + strings.ToUpper(uniq(""))
+	_, r = pay(cbe, bankRef, 300)
+	r.Expect(t, 204, "a CBE transfer")
+	_, r = pay(genericBank, bankRef, 300)
+	blExpect(t, r, 409, "REFERENCE_USED", "the same CBE transfer under the generic bank method")
+	_, r = pay(zemen, bankRef, 300)
+	r.Expect(t, 204, "the same text from a different bank is a different payment")
+}
+
 // ---- defer, waive, void, refund ----
 
 // TestREG_BILL_040_DeferLetsThePatientInStillOwing: Given a registered, unpaid visit,

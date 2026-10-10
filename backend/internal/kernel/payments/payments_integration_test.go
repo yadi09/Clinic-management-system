@@ -465,11 +465,11 @@ func errText(err error) string {
 }
 
 // Given two rails of the same clinic pointing at the same provider (telebirr), When one Telebirr
-// transaction reference is claimed on each, Then the second must conflict — it is one bank receipt.
+// transaction reference is claimed on each, Then the second must conflict — it is one bank receipt —
+// naming the receipt it paid, and nothing is recorded for the second method.
 //
-// NEW-KERNEL-PAY-2: uniqueness is (tenant_id, payment_rail_id, reference_norm)
-// (db/migrations/00063_payment_rails.sql UNIQUE; payments.go:96-99,118-125 key on rail), so the
-// same transfer settles twice by picking a different method in the picker.
+// NEW-KERNEL-PAY-2, fixed 2026-10-10: uniqueness used to be (tenant, rail, reference), so the same
+// transfer settled twice by picking a different method in the picker.
 func TestREG_KERNEL_PAY_014_SameReceiptOnTwoRailsOfOneProvider(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()
@@ -483,12 +483,140 @@ func TestREG_KERNEL_PAY_014_SameReceiptOnTwoRailsOfOneProvider(t *testing.T) {
 	err := e.in(t, e.tid(), func(tx pgx.Tx) error {
 		return payments.ClaimReference(ctx, tx, e.tid(), &b, "TB-5551", i64(2), nil, "500.00", nil)
 	})
-	if code(err) != "REFERENCE_USED" {
-		testkit.KnownBug(t, "NEW-KERNEL-PAY-2", true,
-			"one Telebirr reference paid receipt #1 on rail A and receipt #2 on rail B of the same clinic ("+errText(err)+")")
-		return
+	if code(err) != "REFERENCE_USED" || !strings.Contains(errText(err), "receipt #1") {
+		t.Fatalf("the same Telebirr reference on a second number: %s, want REFERENCE_USED naming receipt #1", errText(err))
 	}
-	testkit.KnownBug(t, "NEW-KERNEL-PAY-2", false, "references are now unique per provider")
+	if r := e.refRow(t, e.tid(), b, "TB-5551"); r.Count != 0 {
+		t.Fatalf("a refused claim left %d row(s) under the second method", r.Count)
+	}
+}
+
+// Given methods of different kinds and providers, When the same reference text is claimed under
+// each pair, Then it conflicts exactly when they are the same SOURCE of money: two accounts of one
+// provider, or a generic method (could be any provider of its kind) beside a named one; named
+// providers that differ, or a wallet beside a bank, are different sources and both stand.
+func TestREG_KERNEL_PAY_016_SameSourceOfMoneyIsOneSource(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	for i, c := range []struct {
+		kindA, keyA, kindB, keyB string
+		conflict                 bool
+	}{
+		{"wallet", "telebirr", "wallet", "telebirr", true},
+		{"bank", "", "bank", "cbe", true},
+		{"bank", "cbe", "bank", "", true},
+		{"wallet", "", "wallet", "telebirr", true},
+		{"bank", "", "bank", "", true},
+		{"bank", "cbe", "bank", "zemen", false},
+		{"wallet", "telebirr", "wallet", "mpesa", false},
+		{"wallet", "telebirr", "bank", "cbe", false},
+		{"bank", "", "wallet", "", false},
+	} {
+		a := e.rail(t, e.tid(), c.kindA, c.keyA, "acct-a", true, true)
+		b := e.rail(t, e.tid(), c.kindB, c.keyB, "acct-b", true, true)
+		ref := "SRC-" + uuid.NewString()[:10]
+		if err := e.in(t, e.tid(), func(tx pgx.Tx) error {
+			return payments.ClaimReference(ctx, tx, e.tid(), &a, ref, i64(int64(100+i)), nil, "10.00", nil)
+		}); err != nil {
+			t.Fatalf("case %d: first claim: %v", i, err)
+		}
+		err := e.in(t, e.tid(), func(tx pgx.Tx) error {
+			return payments.ClaimReference(ctx, tx, e.tid(), &b, ref, i64(int64(200+i)), nil, "10.00", nil)
+		})
+		got := code(err) == "REFERENCE_USED"
+		if got != c.conflict || (!c.conflict && err != nil) {
+			t.Errorf("case %d (%s/%s then %s/%s): %s; want conflict=%v", i, c.kindA, c.keyA, c.kindB, c.keyB, errText(err), c.conflict)
+		}
+	}
+}
+
+// Given a reference the desk only CHECKED with the bank under one method (no receipt), When it is
+// claimed under another method of the same source, Then it stands: checking is not paying.
+func TestREG_KERNEL_PAY_017_AReferenceOnlyCheckedIsNotUsed(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	a := e.rail(t, e.tid(), "wallet", "telebirr", "0911000051", true, true)
+	b := e.rail(t, e.tid(), "wallet", "telebirr", "0911000052", true, true)
+	if _, err := e.super.Pool.Exec(ctx,
+		`INSERT INTO payment_references (tenant_id, payment_rail_id, reference, reference_norm, verify_state, verified_amount)
+		 VALUES ($1, $2, 'CHK-1', 'CHK-1', 'verified', 200)`, e.tid(), a); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.in(t, e.tid(), func(tx pgx.Tx) error {
+		return payments.ClaimReference(ctx, tx, e.tid(), &b, "CHK-1", i64(7), nil, "200.00", nil)
+	}); err != nil {
+		t.Fatalf("a reference that was only checked was refused: %v", err)
+	}
+}
+
+// Given an amount that is not a number or a context that has gone away, When a reference is
+// claimed, Then the database's complaint is returned untouched and nothing is recorded: the
+// claim fails whole instead of marking something paid on a half-understood amount.
+func TestREG_KERNEL_PAY_019_ABrokenClaimRecordsNothing(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	r := e.rail(t, e.tid(), "wallet", "telebirr", "0911000061", true, true)
+	err := e.in(t, e.tid(), func(tx pgx.Tx) error {
+		return payments.ClaimReference(ctx, tx, e.tid(), &r, "BROKEN-1", i64(1), nil, "not-a-number", nil)
+	})
+	if err == nil || code(err) != "" {
+		t.Fatalf("an unreadable amount: %s, want the raw database error", errText(err))
+	}
+	if row := e.refRow(t, e.tid(), r, "BROKEN-1"); row.Count != 0 {
+		t.Fatalf("a failed claim left %d row(s)", row.Count)
+	}
+	gone, cancel := context.WithCancel(ctx)
+	cancel()
+	err = e.in(t, e.tid(), func(tx pgx.Tx) error {
+		return payments.ClaimReference(gone, tx, e.tid(), &r, "BROKEN-2", i64(2), nil, "10.00", nil)
+	})
+	if err == nil {
+		t.Fatalf("a claim with a cancelled context succeeded")
+	}
+}
+
+// Given the same transfer entered by four desks at the same instant, each under a different
+// method of one provider, When they all claim it, Then exactly one wins and the rest are told it
+// is used: the methods are different rows, so only the lock on the reference can tell them apart.
+func TestREG_KERNEL_PAY_018_SimultaneousClaimsOnDifferentMethodsTakeOnce(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	for round := 0; round < 5; round++ {
+		rails := make([]uuid.UUID, 4)
+		for i := range rails {
+			rails[i] = e.rail(t, e.tid(), "wallet", "telebirr", "acct", true, true)
+		}
+		ref := "RACE-" + uuid.NewString()[:10]
+		results := make([]error, len(rails))
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		for i := range rails {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				<-start
+				results[i] = e.in(t, e.tid(), func(tx pgx.Tx) error {
+					return payments.ClaimReference(ctx, tx, e.tid(), &rails[i], ref, i64(int64(900+i)), nil, "50.00", nil)
+				})
+			}(i)
+		}
+		close(start)
+		wg.Wait()
+		won, used := 0, 0
+		for _, err := range results {
+			switch {
+			case err == nil:
+				won++
+			case code(err) == "REFERENCE_USED":
+				used++
+			default:
+				t.Fatalf("round %d: unexpected error %v", round, err)
+			}
+		}
+		if won != 1 || used != len(rails)-1 {
+			t.Fatalf("round %d: %d claims succeeded and %d were refused; want 1 and %d", round, won, used, len(rails)-1)
+		}
+	}
 }
 
 // Given clinic A used a reference, When clinic B claims the same reference, Then B's claim stands
