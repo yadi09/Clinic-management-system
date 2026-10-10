@@ -373,7 +373,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="status">Explained</span>
     </summary>
     <div class="body">
-      <div class="decision"><b>Your decision first:</b> Approve the plan, its order, and the six decisions in section 4 of the document.</div>
+      <div class="decision"><b>Your decision first:</b> Approve docs/reception-redesign-plan.html: the patient card, the cashier-then-dentist handoff, the five phases, and the seven decisions in its section 9.</div>
       <dl>
         <dt>What happens</dt><dd>The reception page shows a patient owes money but only as one total with a link to the cashier. The desk cannot see which visits it is for, cannot tell the patient what it covers, and cannot add old bills to today&#x27;s payment. Search puts the right person anywhere in the list, and every walk-in needs the same two choices made again.</dd>
         <dt>In the clinic</dt><dd class="example">Abebe owes 2,000 birr from two visits. The desk sees &#x27;Owes 2,000 · 38d&#x27;, cannot say what for, and sends him to the cashier to find him again.</dd>
@@ -384,10 +384,10 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <div class="tech">
         <details><summary>For the developer: tests and code</summary>
           <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li>No automated test yet: an operational item</li></ul>
-          <p>Where in the code:</p><ul><li><code>frontend/src/features/scheduling/pages/ReceptionPage.tsx</code></li><li><code>frontend/src/features/scheduling/reception/ArrivalList.tsx</code></li><li><code>backend/internal/scheduling/service/reception.go</code></li></ul>
+          <p>Where in the code:</p><ul><li><code>backend/internal/scheduling/service/reception.go</code></li><li><code>docs/reception-redesign-plan.html</code></li><li><code>frontend/src/features/scheduling/pages/ReceptionPage.tsx</code></li><li><code>frontend/src/features/scheduling/reception/ArrivalList.tsx</code></li></ul>
         </details>
       </div>
-      <div class="log"><b>History</b><ul><li><time>2026-10-10</time> Owner asked for an analysis of the reception page and an example: show a patient&#x27;s earlier unpaid bills and let the desk add them to today&#x27;s payment. Analysis written: docs/reception-improvement-plan.html. Waiting for approval of the plan and decisions.</li><li><time>2026-10-10</time> Scope change from the owner: &quot;Add a service&quot; removed from reception; the plan&#x27;s money panel no longer needs the all-or-nothing extras action. Old bills with tick boxes remain the first step.</li></ul></div>
+      <div class="log"><b>History</b><ul><li><time>2026-10-10</time> Owner asked for an analysis of the reception page and an example: show a patient&#x27;s earlier unpaid bills and let the desk add them to today&#x27;s payment. Analysis written: docs/reception-improvement-plan.html. Waiting for approval of the plan and decisions.</li><li><time>2026-10-10</time> Scope change from the owner: &quot;Add a service&quot; removed from reception; the plan&#x27;s money panel no longer needs the all-or-nothing extras action. Old bills with tick boxes remain the first step.</li><li><time>2026-10-10</time> Owner asked for a redesign of the reception page like the dashboard, with a patient card (missed visits, next visit, today&#x27;s booking and treatment session, itemised unpaid bills the patient can choose to pay), sending to the cashier and then automatically to the chosen doctor. Implementation plan written: docs/reception-redesign-plan.html (look, UX, functions, backend, test plan, phases, decisions). Waiting for approval; nothing built. &quot;Add a service&quot; was removed from reception earlier the same day (APT-3 closed).</li></ul></div>
     </div>
   </details>
 </article>
@@ -5757,7 +5757,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   </details>
 </article>
 
-<footer>Built 10 October 2026, 08:34 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
+<footer>Built 10 October 2026, 08:58 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
 </div>
 <script>
 (function () {

@@ -4899,12 +4899,13 @@
   "why": "Old debt goes uncollected when the patient is in front of the desk and willing to pay.",
   "fix": "Itemised old bills with tick boxes and one receipt, best-match-first search with richer rows, one-tap check-in defaults, an emergency switch, receipt at the desk. Full plan: docs/reception-improvement-plan.html.",
   "effort": "L",
-  "decision": "Approve the plan, its order, and the six decisions in section 4 of the document.",
+  "decision": "Approve docs/reception-redesign-plan.html: the patient card, the cashier-then-dentist handoff, the five phases, and the seven decisions in its section 9.",
   "tests": [],
   "files": [
+   "backend/internal/scheduling/service/reception.go",
+   "docs/reception-redesign-plan.html",
    "frontend/src/features/scheduling/pages/ReceptionPage.tsx",
-   "frontend/src/features/scheduling/reception/ArrivalList.tsx",
-   "backend/internal/scheduling/service/reception.go"
+   "frontend/src/features/scheduling/reception/ArrivalList.tsx"
   ],
   "tested": false,
   "status": "explained",
@@ -4917,6 +4918,10 @@
    {
     "date": "2026-10-10",
     "note": "Scope change from the owner: \"Add a service\" removed from reception; the plan's money panel no longer needs the all-or-nothing extras action. Old bills with tick boxes remain the first step."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Owner asked for a redesign of the reception page like the dashboard, with a patient card (missed visits, next visit, today's booking and treatment session, itemised unpaid bills the patient can choose to pay), sending to the cashier and then automatically to the chosen doctor. Implementation plan written: docs/reception-redesign-plan.html (look, UX, functions, backend, test plan, phases, decisions). Waiting for approval; nothing built. \"Add a service\" was removed from reception earlier the same day (APT-3 closed)."
    }
   ]
  }

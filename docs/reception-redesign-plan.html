@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reception redesign: implementation plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#fbfaf7;--card:#fff;--ink:#1f2a33;--soft:#5d6b76;--line:#e3e0d8;--teal:#0f6e6a;--warn:#b45309;--warn-bg:#fdf1e3;--bad:#b42318;--bad-bg:#fdecea;--ok:#1d7a46;--ok-bg:#e5f4ea;--sky:#1d4e89;--sky-bg:#e8f0fa}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--paper:#14181c;--card:#1b2026;--ink:#e7e9ea;--soft:#9aa6b0;--line:#2c333a;--teal:#4fb3ad;--warn:#f0a85a;--warn-bg:#3a2a18;--bad:#f2867c;--bad-bg:#3a1f1d;--ok:#6cc792;--ok-bg:#1a3325;--sky:#86b3e0;--sky-bg:#1c2a38}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.6 "Atkinson Hyperlegible",system-ui,sans-serif}
+.wrap{max-width:960px;margin:0 auto;padding:32px 16px 90px}
+h1{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:2.1rem;line-height:1.15;margin:0 0 8px}
+h2{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:1.5rem;margin:46px 0 10px}
+h3{font-size:1.05rem;margin:24px 0 6px}
+.lede{color:var(--soft);max-width:68ch}
+.box{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:14px 0}
+.key{border-left:6px solid var(--teal)}.warn{border-left:6px solid var(--warn)}
+table{border-collapse:collapse;width:100%;font-size:.94rem;margin:10px 0;background:var(--card)}
+th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--paper)}
+.scroll{overflow-x:auto}
+.tag{display:inline-block;font-size:.76rem;font-weight:700;padding:1px 9px;border-radius:20px;margin-right:4px}
+.s{background:var(--ok-bg);color:var(--ok)}.m{background:var(--warn-bg);color:var(--warn)}.l{background:var(--bad-bg);color:var(--bad)}
+.scene{background:var(--paper);border-radius:8px;padding:10px 14px;font-style:italic;margin:8px 0}
+ul,ol{padding-left:22px}li{margin:3px 0}
+footer{color:var(--soft);font-size:.85rem;margin-top:44px}
+code{font-size:.88em;background:var(--paper);padding:1px 5px;border-radius:4px}
+
+/* ---- the mock: drawn in the app's own colours ---- */
+.device{background:#e9eef5;border:1px solid var(--line);border-radius:14px;padding:14px;margin:16px 0;font-family:Inter,system-ui,sans-serif;color:#1c2733;font-size:13px;line-height:1.45;overflow-x:auto}
+.cap{font:600 11px Inter;letter-spacing:.04em;color:#5a6b7d;margin:0 0 8px;text-transform:uppercase}
+.grid{display:grid;grid-template-columns:minmax(300px,1fr) minmax(330px,1.15fr);gap:12px;min-width:680px}
+.pane{background:#fff;border:1px solid #d8e0ea;border-radius:12px;padding:12px}
+.stats{display:flex;gap:6px;margin-bottom:10px}
+.stat{flex:1;border:1px solid #d8e0ea;border-radius:10px;padding:6px 8px;background:#f6f9fc}
+.stat b{display:block;font-size:18px}.stat span{color:#5a6b7d;font-size:11px}
+.stat.on{background:#e6f3ef;border-color:#1a9a7c}
+.search{display:flex;gap:6px;margin-bottom:10px}
+.search div{flex:1;border:1px solid #c9d4e0;border-radius:8px;padding:7px 10px;color:#7a8a9a;background:#f6f9fc}
+.btn{border:1px solid #c9d4e0;border-radius:8px;padding:7px 10px;background:#fff;font-weight:600}
+.btn.p{background:#1a9a7c;border-color:#1a9a7c;color:#fff}
+.btn.w{width:100%;text-align:center;padding:10px}
+.row{border:1px solid #d8e0ea;border-radius:10px;padding:8px 10px;margin-bottom:6px}
+.row.sel{border-color:#1a9a7c;background:#f1faf7}
+.row .t{font-weight:700;margin-right:6px}.row small{color:#5a6b7d}
+.chip{display:inline-block;font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;margin:3px 4px 0 0}
+.c-red{background:#fde8e6;color:#b42318}.c-amb{background:#fdf1e3;color:#9a5b0c}.c-grn{background:#e3f4ea;color:#17703f}.c-blu{background:#e6effa;color:#1d4e89}.c-gry{background:#eef1f5;color:#4a5a6a}
+.h{font-weight:700;font-size:15px}
+.sec{border-top:1px solid #e6ecf3;margin-top:9px;padding-top:8px}
+.sec>.k{font:600 11px Inter;letter-spacing:.04em;color:#5a6b7d;text-transform:uppercase;margin-bottom:4px}
+.line{display:flex;justify-content:space-between;gap:8px;padding:2px 0}
+.line.chk{align-items:center}
+.box2{border:1px solid #f0c9c4;background:#fff8f7;border-radius:10px;padding:8px 10px;margin-top:4px}
+.bar{display:flex;justify-content:space-between;align-items:center;border-top:1px solid #e6ecf3;margin-top:10px;padding-top:10px;font-weight:700}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sel2{border:1px solid #c9d4e0;border-radius:8px;padding:6px 9px;background:#f6f9fc}
+.phone{max-width:330px;margin:0 auto}
+.steps{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:10px 0}
+.step{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 11px;font-size:.93rem}
+.arrow{color:var(--soft)}
+</style></head>
+<body><div class="wrap">
+
+<h1>Reception, redesigned: implementation plan</h1>
+<p class="lede">A plan to rebuild the front-desk page so a receptionist can see everything that matters about the patient in front of them, take the right decision in one place, and hand the patient on to the cashier and then the doctor without anything falling through. Written from the current code, the live clinics' data and your requests. Nothing here is built yet: this is for your approval.</p>
+
+<div class="box key"><b>In one paragraph.</b> Today the page tells the desk that a patient "owes 2,000" and sends them elsewhere to find out why. The redesign turns the right-hand side into a <b>patient card</b> that answers, on one screen: who is this, are they expected today, did they miss visits, when is their next visit, is a treatment session planned for today, and what unpaid bills do they have (itemised, tickable). The receptionist chooses the department and dentist once, then presses <b>one button</b>: check in and send to the cashier (or collect at the desk if allowed). The patient waits at the cashier until the ticked bills are paid, then <b>goes to the dentist the receptionist chose, automatically</b>. No new libraries are needed; everything is built on what the dashboard already uses.</div>
+
+<h2>1. What you asked for, and where it stands today</h2>
+<div class="scroll"><table>
+<tr><th>You asked for</th><th>Today</th><th>In the redesign</th></tr>
+<tr><td>Visits he missed</td><td>Not shown on this page. A "Missed" list exists on the Appointments page.</td><td>Missed visits (last 90 days) on the patient card, with the date and the dentist.</td></tr>
+<tr><td>Next visit he has</td><td>Not shown.</td><td>"Next: Thu 15 Oct, 10:00 · Dr Sara · Root canal visit 3".</td></tr>
+<tr><td>A booking today</td><td>Shown only if the patient is on the Expected list.</td><td>Always shown on the card, even when found by search.</td></tr>
+<tr><td>A treatment session today</td><td>Not on the Expected list (known problem APT-1).</td><td>"Treatment today: Root canal, visit 2 of 3", on the list and on the card.</td></tr>
+<tr><td>Unpaid bills</td><td>One total plus a link to the Cashier page. Cannot see what it is for.</td><td>Each bill itemised: date, what it was for, amount, whether it was agreed to be paid later.</td></tr>
+<tr><td>Select bills the patient will pay today</td><td>Not possible.</td><td>Tick boxes. Nothing ticked by default.</td></tr>
+<tr><td>Send to the cashier, then on to the doctor</td><td>"Send to cashier" exists for today's fee only. Old bills are not part of it.</td><td>One action covers today's fee and the ticked bills. The cashier sees them highlighted; once all are cleared the patient is queued for the chosen dentist.</td></tr>
+</table></div>
+
+<h2>2. How it will look</h2>
+<p>The same two-pane idea as today (the day on the left, one person on the right), because it already works. What changes is what is in each pane. The pictures below are drawn in the app's own colours.</p>
+
+<div class="device">
+<p class="cap">Desktop · a patient with old bills (both ticked by the receptionist), a treatment session today, and a missed visit</p>
+<div class="grid">
+  <div class="pane">
+    <div class="stats">
+      <div class="stat on"><b>9</b><span>Expected</span></div>
+      <div class="stat"><b>3</b><span>Waiting</span></div>
+      <div class="stat"><b>14</b><span>Seen</span></div>
+      <div class="stat"><b>2</b><span>To settle</span></div>
+    </div>
+    <div class="search"><div>🔍 Search by name, card number or phone…  <small>press /</small></div><span class="btn">+ New</span></div>
+    <div class="row"><span class="t">09:00</span><b>Meron Haile</b> <small>P000281</small><br><small>31y F · Dr Sara · Cleaning</small></div>
+    <div class="row sel"><span class="t">09:30</span><b>Abebe Kebede</b> <small>P000033</small><br><small>29y M · Dr Yonas · 12 min late</small><br>
+      <span class="chip c-blu">Treatment today · root canal 2 of 3</span><span class="chip c-red">Owes 2,000</span><span class="chip c-amb">Missed 1</span></div>
+    <div class="row"><span class="t">10:00</span><b>Selam Tesfaye</b> <small>P000412</small><br><small>24y F · Dr Sara</small><br><span class="chip c-grn">Free follow-up until 28 Oct</span></div>
+    <div class="row"><span class="t">10:20</span><b>Dawit Alemu</b> <small>P000590</small><br><small>41y M · Dr Yonas</small><br><span class="chip c-gry">Not yet billed 1,500</span></div>
+  </div>
+
+  <div class="pane">
+    <div class="h">Abebe Kebede <small style="font-weight:400;color:#5a6b7d">P000033 · 29y · male · 0916 55 21 08</small></div>
+    <div><span class="chip c-red">Owes 2,000</span><span class="chip c-amb">Missed 1</span><span class="chip c-blu">Treatment today</span><span class="chip c-grn">Registered</span></div>
+
+    <div class="sec"><div class="k">Today</div>
+      <div class="line"><span>Booked 09:30 with Dr Yonas · Root canal</span><b>12 min late</b></div>
+      <div class="line"><span>Treatment: <b>Root canal, visit 2 of 3</b></span><small>planned today</small></div>
+      <div class="line"><span>Registration</span><small style="color:#17703f">No charge. Registered 26 Aug 2026. One time only.</small></div>
+    </div>
+
+    <div class="sec"><div class="k">Earlier unpaid bills · 2 · 2,000.00 · oldest 38 days</div>
+      <div class="box2">
+        <div class="line chk"><span>☑ <b>3 Sep</b> · Root canal, visit 1 · at the cashier</span><b>1,200.00</b></div>
+        <div class="line chk"><span>☑ <b>12 Sep</b> · Extraction UR8 · agreed to pay later</span><b>800.00</b></div>
+        <div class="line"><small>Tell the patient: "You have two unpaid bills, 2,000 birr."</small><span class="btn" style="padding:2px 8px">Select all</span></div>
+      </div>
+    </div>
+
+    <div class="sec"><div class="k">Visits</div>
+      <div class="line"><span>Missed: <b>Mon 5 Oct</b> · Dr Sara · Check-up</span><small>call 0916…</small></div>
+      <div class="line"><span>Next: <b>Thu 15 Oct, 10:00</b> · Root canal visit 3</span><small>Dr Yonas</small></div>
+    </div>
+
+    <div class="sec"><div class="k">Send to</div>
+      <div class="two"><div class="sel2">Department · <b>Dental</b></div><div class="sel2">Dentist · <b>Dr Yonas</b> <small>(usual)</small></div></div>
+    </div>
+
+    <div class="bar"><span>To pay now: today 0.00 + bills <span style="color:#1a9a7c">2,000.00</span></span><span style="font-size:16px">2,000.00</span></div>
+    <div style="margin-top:8px" class="btn p w">Send to cashier · then to Dr Yonas</div>
+    <div class="two" style="margin-top:6px"><span class="btn w">Collect here</span><span class="btn w">Check in without paying…</span></div>
+  </div>
+</div>
+</div>
+
+<div class="device">
+<p class="cap">Phone · the same card as a bottom sheet (existing mobile conventions)</p>
+<div class="phone pane">
+  <div class="h">Abebe Kebede <small style="font-weight:400;color:#5a6b7d">P000033</small></div>
+  <div><span class="chip c-red">Owes 2,000</span><span class="chip c-amb">Missed 1</span><span class="chip c-blu">Treatment today</span></div>
+  <div class="sec"><div class="k">Earlier unpaid · 2,000.00</div>
+    <div class="line chk"><span>☐ 3 Sep · Root canal v1</span><b>1,200</b></div>
+    <div class="line chk"><span>☐ 12 Sep · Extraction UR8</span><b>800</b></div></div>
+  <div class="sec"><div class="k">Today</div><div class="line"><span>Root canal, visit 2 of 3</span><small>Dr Yonas</small></div></div>
+  <div class="bar"><span>To pay now</span><span>0.00</span></div>
+  <div style="margin-top:8px" class="btn p w">Send to cashier</div>
+</div>
+</div>
+
+<h3>The patient card, section by section</h3>
+<ol>
+<li><b>Header and alert chips.</b> Name, card number, age, sex, tap-to-call phone. Chips for what needs the receptionist's attention: owes money, missed visits, free follow-up, unbilled treatment, here already, no phone on file.</li>
+<li><b>Today.</b> The booking (time, dentist, reason, how late), the treatment session planned for today ("Root canal, visit 2 of 3"), and why the registration fee is or is not charged.</li>
+<li><b>Earlier unpaid bills.</b> Itemised, tickable, with a total. This is the heart of your request.</li>
+<li><b>Visits.</b> Missed visits in the last 90 days, and the next planned visit or treatment session. A missed visit offers "call" and "rebook" (rebook opens the existing booking dialog).</li>
+<li><b>Send to.</b> Department and dentist, already chosen where possible (the booking's, or the patient's usual dentist). Emergency switch and an optional "reason for visit".</li>
+<li><b>Action bar.</b> The total to pay now and one primary button. The label says what will happen: <i>"Send to cashier · then to Dr Yonas"</i>.</li>
+</ol>
+
+<h2>3. The cashier and doctor handoff, as you described it</h2>
+<div class="steps">
+<span class="step">Receptionist ticks the bills the patient agrees to pay</span><span class="arrow">→</span>
+<span class="step">Chooses department and dentist</span><span class="arrow">→</span>
+<span class="step"><b>Send to cashier</b></span><span class="arrow">→</span>
+<span class="step">Cashier sees the patient with those bills highlighted and collects</span><span class="arrow">→</span>
+<span class="step">Patient joins <b>that dentist's</b> queue automatically</span>
+</div>
+<ul>
+<li><b>The patient does not reach the dentist before paying.</b> This is how today's registration fee already works (the patient is queued only once the fee is settled). The redesign extends the same gate to the bills the patient agreed to pay.</li>
+<li><b>The cashier sees why.</b> The worklist shows the bills as <i>"Patient agreed to pay today (selected at reception by Hana)"</i>, pre-ticked, and says which dentist the patient goes to afterwards.</li>
+<li><b>If the patient pays only some,</b> or cannot pay today, the cashier can use the existing <b>Pay later</b> (with a reason). That lets the patient through while the debt stays on record.</li>
+<li><b>If the patient changes their mind</b> at the desk before pressing Send, they simply untick. After sending, only the cashier can release them.</li>
+<li><b>A desk that is allowed to collect</b> (receptionist who is also cashier) gets a second button, <b>Collect here</b>, which takes the payment and queues the patient in the same step.</li>
+</ul>
+
+<h2>4. New things for the receptionist</h2>
+<div class="scroll"><table>
+<tr><th>Feature</th><th>What the receptionist gets</th><th>Priority</th></tr>
+<tr><td>Itemised unpaid bills with tick boxes</td><td>Tell the patient exactly what they owe; take it now or not.</td><td><span class="tag l">Must</span></td></tr>
+<tr><td>Missed visits and next visit on the card</td><td>"You missed Monday; your next visit is Thursday." Book or call without leaving.</td><td><span class="tag l">Must</span></td></tr>
+<tr><td>Today's treatment session on the list and card</td><td>Dental patients due for a treatment visit appear on Expected (fixes APT-1).</td><td><span class="tag l">Must</span></td></tr>
+<tr><td>Search that ranks the best match first</td><td>The person typed is first, not sixth. Rows show age, last visit, balance, and whether they are here today.</td><td><span class="tag l">Must</span></td></tr>
+<tr><td>Register &amp; receive in one step</td><td>A short form (name, phone, sex, age) inside the panel, then straight into the fee and check-in. Fixes UX-6.</td><td><span class="tag l">Must</span></td></tr>
+<tr><td>Usual dentist and single department pre-selected</td><td>One tap to check a patient in; change only when needed.</td><td><span class="tag m">Should</span></td></tr>
+<tr><td>Emergency switch</td><td>Puts the patient first in the dentist's queue and marks it.</td><td><span class="tag m">Should</span></td></tr>
+<tr><td>Reason for visit</td><td>"Toothache, upper right" travels to the dentist's screen.</td><td><span class="tag m">Should</span></td></tr>
+<tr><td>Receipt at the desk</td><td>Receipt number after collection, print now, SMS on request.</td><td><span class="tag m">Should</span></td></tr>
+<tr><td>Late patients: call, rebook, no-show</td><td>Act on a late row without opening it.</td><td><span class="tag m">Should</span></td></tr>
+<tr><td>Keyboard-first desk</td><td><code>/</code> to search, arrows and Enter to pick, Esc to clear, Ctrl+Enter to confirm.</td><td><span class="tag m">Should</span></td></tr>
+<tr><td>"Owes from before" list</td><td>Patients with old bills who are not here today, oldest first, with call actions.</td><td><span class="tag s">Could</span></td></tr>
+<tr><td>Confirm phone number prompt</td><td>One tap to confirm or fix the number reminders go to.</td><td><span class="tag s">Could</span></td></tr>
+<tr><td>Live updates</td><td>A patient finished by the dentist appears at once instead of up to 30 seconds later.</td><td><span class="tag s">Could</span></td></tr>
+</table></div>
+<p><b>Kept exactly as it is:</b> Expected / Waiting / Seen / To settle lists, the registration fee rule and its explanation, covered follow-ups, Pay later, Waive, bank-transfer checks, and every permission rule.</p>
+
+<h2>5. How it is built</h2>
+
+<h3>Frontend</h3>
+<ul>
+<li><b>No new libraries.</b> What is already installed is enough: Radix (tabs, dialog, popover, scroll area, tooltip), <code>cmdk</code> for the keyboard-driven search, React Query for data and prefetching (hovering a row warms its card), <code>@number-flow/react</code> for the animated total (as on the dashboard), lucide icons, sonner toasts, react-hook-form + zod for Register &amp; receive, Tailwind.</li>
+<li><b>Components</b> (the page is now one 700-line file; it becomes small pieces, each tested alone): <code>DayStats</code>, <code>PatientSearch</code>, <code>ArrivalList</code>, <code>PatientCard</code> with <code>CardHeader</code>, <code>TodaySection</code>, <code>UnpaidBills</code>, <code>VisitsSection</code>, <code>RouteSection</code>, <code>ActionBar</code>, and <code>RegisterAndReceive</code>.</li>
+<li><b>Mobile:</b> follows the shipped conventions: the card is a bottom sheet below 640 px (<code>fullOnMobile</code>), the list is the page, the action bar is sticky in the sheet, inputs are 16 px.</li>
+<li><b>Dates:</b> every date shows the Gregorian date with the Ethiopian date beside it (the existing helper), on the clinic's Addis day.</li>
+<li><b>Accessibility:</b> everything reachable by keyboard; state is never colour alone (chips carry words); focus returns to the search after a patient is received.</li>
+</ul>
+
+<h3>Backend</h3>
+<div class="scroll"><table>
+<tr><th>Change</th><th>Why</th></tr>
+<tr><td><code>GET /reception/patients/:id/card</code>: one request returning identity, today's booking and session, missed visits, next visit, itemised unpaid bills, unbilled treatment, registration status, last and usual dentist, phone and flags</td><td>The card loads in one round trip instead of assembling six; the server decides, so the screen cannot disagree with it.</td></tr>
+<tr><td><code>POST /reception/receive</code>: check in or walk-in, route, mark the ticked bills as selected, and (if permitted) collect, as one all-or-nothing step; safe to press twice</td><td>Nothing half-done if a step fails; the bank-amount rule from issue 6 applies to the whole total.</td></tr>
+<tr><td>Marking selected old bills: a small migration adds <code>desk_selected_at / desk_selected_by</code> to charges, and the selected bills take the visit's routing so the patient is queued only when they are cleared</td><td>This is the "patient waits at the cashier, then goes to the dentist" gate.</td></tr>
+<tr><td>Cashier worklist: shows the selection, who made it, and the dentist the patient goes to</td><td>The cashier sees the receptionist's intent instead of guessing.</td></tr>
+<tr><td>Today's treatment sessions added to the Expected list (APT-1); the day is the Addis day throughout</td><td>Dental patients are the live users.</td></tr>
+<tr><td>Queue entry gets an optional <code>reason</code>; the emergency priority is set from the desk</td><td>Reason for visit, emergency switch.</td></tr>
+<tr><td>Search ranking: exact name, card number or phone first</td><td>The right person first.</td></tr>
+</table></div>
+<p><b>Tracker items closed along the way:</b> APT-1, NEW-RECEP-1 ("Pay later" also defers old debt), NEW-RECEP-2 (a "To settle" patient is offered a new visit fee instead of their debt), NEW-RECEP-3 (a desk without collect rights is shown Collect), UX-6 (New opens the list), and the reception search and polling items.</p>
+
+<h2>6. Functional testing plan</h2>
+<p>Every phase ships with its tests, and the full run (server tests, screen tests with coverage minimums, browser journeys) must be green before it is deployed, as with every fix so far.</p>
+<div class="scroll"><table>
+<tr><th>Layer</th><th>What is proved</th></tr>
+<tr><td><b>Server (API) tests</b></td><td>
+<ul>
+<li>The card: each section returned correctly for a patient with every combination (booked, treatment today, missed, next visit, unpaid, none).</li>
+<li>Missed visits: only the last 90 days, only no-shows and missed sessions, never another patient's or clinic's.</li>
+<li>Itemised bills match Finance's "owed" total exactly; deferred bills flagged; unbilled treatment kept apart.</li>
+<li>Receive: one result whether pressed once or twice; nothing recorded if any step fails.</li>
+<li>Ticked bills gate the patient: not queued until all are settled or deferred; then queued to the chosen dentist, once.</li>
+<li>Bank transfers: a total above the confirmed amount refused, nothing marked paid.</li>
+<li>Permissions: with and without collect rights; another clinic's patient and bills refused.</li>
+<li>The Addis day around midnight for "today", "missed", "next".</li>
+</ul></td></tr>
+<tr><td><b>Screen tests</b></td><td>
+<ul>
+<li>Card sections render for each case, and empty states read well (no missed visits, nothing owed).</li>
+<li>Tick boxes: none ticked by default, Select all, the total and the button label update, deselect works.</li>
+<li>Both exits (send to cashier, collect here), the refused-payment path, and the desk without collect rights.</li>
+<li>Search: best match first, keyboard use, no match leads to Register &amp; receive.</li>
+<li>Defaults: single department and usual dentist pre-selected, and changeable.</li>
+<li>Phone layout: sheet opens, sticky action bar, nothing clipped.</li>
+</ul></td></tr>
+<tr><td><b>Browser journeys</b> (real browser, real server)</td><td>
+<ol>
+<li>A booked patient with an old bill: tick it, send to the cashier, the cashier collects, the patient appears in the chosen dentist's queue.</li>
+<li>A walk-in found by search, registration paid, one tap to check in.</li>
+<li>A new patient: Register &amp; receive.</li>
+<li>A patient whose old bills are declined: unticked, checked in without them.</li>
+<li>The same journeys at phone width.</li>
+</ol></td></tr>
+<tr><td><b>Safety checks</b></td><td>Repeat presses, a connection dropped mid-action, two desks on one patient, a clinic's data never visible to another, and the page staying fast with a full day's list.</td></tr>
+</table></div>
+
+<h2>7. Phases</h2>
+<p>Each phase can be deployed and checked by you on its own.</p>
+<div class="scroll"><table>
+<tr><th>Phase</th><th>What you get</th><th>Effort</th></tr>
+<tr><td><b>1. The patient card</b></td><td>The card endpoint and the new right-hand panel: today, missed visits, next visit, itemised unpaid bills (read-only). Existing buttons unchanged.</td><td><span class="tag m">Medium</span> ~1.5 days</td></tr>
+<tr><td><b>2. Pay old bills at the desk</b></td><td>Tick boxes, the receive endpoint, the cashier highlight, the gate to the dentist. Closes NEW-RECEP-1, 2, 3.</td><td><span class="tag m">Medium</span> ~2 days</td></tr>
+<tr><td><b>3. Find and register</b></td><td>Better search, richer result rows, Register &amp; receive, treatment sessions on the Expected list.</td><td><span class="tag m">Medium</span> ~1.5 days</td></tr>
+<tr><td><b>4. Fast desk</b></td><td>Usual dentist and department pre-selected, emergency, reason for visit, receipt at the desk, late-patient actions, keyboard shortcuts.</td><td><span class="tag m">Medium</span> ~1.5 days</td></tr>
+<tr><td><b>5. Polish</b></td><td>"Owes from before" list, phone confirmation, live updates, performance pass, phone-layout review.</td><td><span class="tag s">Small</span> ~1 day</td></tr>
+</table></div>
+<p>About <b>7 to 8 working days</b> in total. I would start with phase 1 and phase 2 together, because the card's unpaid bills and the tick boxes are one thing to you.</p>
+
+<h2>8. Risks, and how each is handled</h2>
+<ul>
+<li><b>Queue gating is money-sensitive.</b> Changing which bills hold a patient at the cashier must never let someone skip payment, nor leave a paid patient stuck. It is covered by server tests for both directions before anything is shown on screen, and phase 2 is deployed and checked on a test clinic first.</li>
+<li><b>Performance.</b> The day lists already recompute a heavy amount every 30 seconds. The card is a single patient's data, so it is light; the list query is measured and slimmed in phase 5, and in phase 1 the card is not part of the polling.</li>
+<li><b>Behaviour the desk relies on.</b> Nothing the desk does today is removed. The old page's tests are migrated, not deleted.</li>
+</ul>
+
+<h2>9. Decisions for you</h2>
+<p>My recommendation is first in each line.</p>
+<ol>
+<li><b>Patient not reaching the dentist until the ticked bills are paid.</b> <i>Recommend: hold until paid, or until the cashier uses Pay later.</i> The alternative lets the patient through and leaves the bills on the cashier's list.</li>
+<li><b>Only old bills ticked, today's fee already free</b> (one-time registration paid). <i>Recommend: still hold at the cashier, because the patient said they will pay.</i> If they would rather not, the receptionist unticks and checks in.</li>
+<li><b>Receptionists with collect rights:</b> <i>Recommend: offer both "Send to cashier" and "Collect here".</i></li>
+<li><b>How far back is a missed visit?</b> <i>Recommend: 90 days, the three most recent, with the date and dentist.</i></li>
+<li><b>Medical alerts on the reception card</b> (allergies and similar). <i>Recommend: not shown; the desk does not need clinical information and the dentist sees it at the chair.</i></li>
+<li><b>Replace the page in place, in phases</b> (same address, no switch to flip), or build it beside the old one and swap at the end? <i>Recommend: in place, one phase at a time, each checked by you before the next.</i></li>
+<li><b>Order:</b> start with phases 1 and 2 together? <i>Recommend: yes.</i></li>
+</ol>
+
+<footer>Based on: ReceptionPage.tsx and the arrival list; the reception, queue, billing and appointment services; the shipped mobile conventions; the live clinics' counts (read only); and your messages of 10 October 2026. Nothing in the system was changed to produce this document.</footer>
+</div></body></html>
