@@ -4964,20 +4964,33 @@
   "why": "Slow at the chair, easy to mis-mark, and a clinical record that is hard to correct.",
   "fix": "Condition bar above the chart (pick a condition, then tap or drag teeth), select mode with quick selects, Clear for a tooth, a group or the whole chart, persistent Undo and Redo, clearer chart layout. Plan: docs/tooth-chart-plan.html.",
   "effort": "L",
-  "decision": "Review docs/tooth-chart-plan.html and answer the eight decisions in its section 11.",
-  "tests": [],
+  "decision": null,
+  "tests": [
+   "REG-FE-CHART-005",
+   "REG-FE-CHART-010",
+   "REG-FE-CHART-015",
+   "REG-FE-CHART-018",
+   "REG-FE-CHART-030",
+   "REG-FE-CHART-031",
+   "REG-E2E-021",
+   "REG-E2E-022"
+  ],
   "files": [
    "frontend/src/features/dental/ToothChart.tsx",
    "frontend/src/features/dental/DentalWorkspace.tsx",
    "frontend/src/features/dental/toothStatus.ts",
    "docs/tooth-chart-plan.html"
   ],
-  "tested": false,
-  "status": "explained",
+  "tested": true,
+  "status": "fixed",
   "log": [
    {
     "date": "2026-10-10",
     "note": "Plan written and sent for review; nothing built."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Approved with the recommendations. Built phases 1 to 3: condition bar (pick a condition, then tap or drag teeth), tooth menu when nothing is chosen, Clear brush, Clear all with count and confirmation, Select mode with shortcuts (All, Upper, Lower, quadrants, Not marked, All <condition>, Invert), one change and one Undo per group, Undo and Redo in the bar (20 steps, Ctrl+Z), Saving/Saved/Not saved in the bar, right/left labels, centre line, letters on teeth, summary line, keyboard (arrows, 1-9, 0, A, Esc), phone bar pinned above the tab bar. Tap-to-cycle removed. No server change. Not built (as decided): children's teeth and chart history view. Full run green: 1,691 screen tests, 13 browser journeys."
    }
   ],
   "order": 30
