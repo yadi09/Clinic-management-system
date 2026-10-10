@@ -105,10 +105,17 @@ func sessionDTO(se dental.Session, clinical bool) gin.H {
 	// cashier is entitled to see what the patient is being asked to pay for.
 	extras := make([]gin.H, 0, len(se.Extras))
 	for _, ex := range se.Extras {
-		extras = append(extras, gin.H{
+		dto := gin.H{
 			"id": id.Encode(id.PrefixTreatmentSession, ex.ID), "amount_due": ex.AmountDue,
 			"payment": ex.Payment, "service_name": ex.ServiceName, "status": ex.Status,
-		})
+			// Treated now, owed later, and the reason: the chair shows it on the row.
+			"pay_later": ex.PayLater, "pay_later_note": ex.PayLaterNote,
+		}
+		// The bill, once there is one, so it can be taken in place at the chair.
+		if ex.ChargeID != nil {
+			dto["charge_id"] = id.Encode(id.PrefixCharge, *ex.ChargeID)
+		}
+		extras = append(extras, dto)
 	}
 	out := gin.H{
 		"id": id.Encode(id.PrefixTreatmentSession, se.ID), "seq": se.Seq, "scheduled_date": se.ScheduledDate,
@@ -384,6 +391,16 @@ func (h *Handlers) AddExtra(c *gin.Context) {
 		return
 	}
 	httpx.NoContent(c)
+}
+
+// PopularExtras handles GET /dental/extras/popular — the clinic's most-added extras.
+func (h *Handlers) PopularExtras(c *gin.Context) {
+	items := h.svc.PopularExtras(c.Request.Context())
+	out := make([]gin.H, 0, len(items))
+	for _, p := range items {
+		out = append(out, gin.H{"service_id": id.Encode(id.PrefixServiceItem, p.ServiceID), "name": p.Name, "price": p.Price, "uses": p.Uses})
+	}
+	httpx.OK(c, out)
 }
 
 func (h *Handlers) RemoveExtra(c *gin.Context) {

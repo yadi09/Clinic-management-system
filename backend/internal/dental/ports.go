@@ -115,6 +115,19 @@ type Session struct {
 	// count them as the procedures they are, and so one of them can be free (0)
 	// without making the visit itself look free.
 	Extras []Session `json:"extras,omitempty"`
+	// ChargeID is the bill raised for this row, once it has one. Not part of the
+	// session's own JSON: the handler exposes it on an extra, where the chair needs it
+	// to take the payment in place.
+	ChargeID *uuid.UUID `json:"-"`
+}
+
+// PopularExtra is a procedure this clinic often adds at the chair, with the price
+// the clinic's list quotes today. Uses counts how many times it has been added.
+type PopularExtra struct {
+	ServiceID uuid.UUID `json:"-"`
+	Name      string    `json:"name"`
+	Price     string    `json:"price"`
+	Uses      int       `json:"uses"`
 }
 
 // ExtraInput adds one unplanned procedure to a visit.
@@ -395,6 +408,10 @@ type Service interface {
 	// AddExtra records a procedure done at a visit that the course did not plan for.
 	// RemoveExtra takes one back off, while it is still unbilled.
 	AddExtra(ctx context.Context, patientID, sessionID uuid.UUID, in ExtraInput) error
+	// PopularExtras are the clinic's most-added extras, for one-tap adding. A
+	// convenience, not a record: if it cannot be read the answer is "none", never an
+	// error that gets in the way of adding an extra by hand.
+	PopularExtras(ctx context.Context) []PopularExtra
 	RemoveExtra(ctx context.Context, patientID, extraID uuid.UUID) error
 	FinishCourse(ctx context.Context, patientID, planID uuid.UUID) (int, error)
 	UpdateSession(ctx context.Context, patientID, sessionID uuid.UUID, in SessionUpdate) error

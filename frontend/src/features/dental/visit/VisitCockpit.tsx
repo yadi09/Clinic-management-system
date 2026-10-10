@@ -271,6 +271,7 @@ export function VisitCockpit({
                 recordDate={recordDate}
                 teeth={teeth}
                 imageLimit={imageLimit}
+                canCollect={canCollect}
                 onSaved={() => { setRecording(false); onChanged(); }}
                 onChanged={onChanged}
                 onCancel={() => setRecording(false)}

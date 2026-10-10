@@ -22,11 +22,12 @@ import { S } from "./fixtures";
 
 const T = "2026-08-12";
 
-function form(session: Session, recordDate?: string) {
+function form(session: Session, recordDate?: string, canCollect = true) {
   const onSaved = vi.fn(), onCancel = vi.fn(), onChanged = vi.fn();
   const r = renderUI(
     <RecordVisitForm patientId="pat_1" session={session} planTitle="Root canal" visitLabel="visit 2"
-      recordDate={recordDate} teeth={{}} imageLimit={-1} onSaved={onSaved} onChanged={onChanged} onCancel={onCancel} />,
+      recordDate={recordDate} teeth={{}} imageLimit={-1} canCollect={canCollect}
+      onSaved={onSaved} onChanged={onChanged} onCancel={onCancel} />,
   );
   return { ...r, onSaved, onCancel };
 }
@@ -180,5 +181,45 @@ describe("REG-FE-RECORD recording a visit", () => {
   test("REG-FE-RECORD-016 the header names the visit the way the card does", () => {
     form(S("s2", T, 2, "planned", { pay_later: true }), T);
     expect(screen.getByText(/Recording visit 2 · Root canal/)).toBeInTheDocument();
+  });
+
+  // --- an extra added at the chair that nobody has paid for -------------------------
+
+  const withExtras = (extras: unknown[]) =>
+    S("s2", T, 2, "planned", { pay_later: true, extras } as Partial<Session>);
+  const xray = { id: "ex1", amount_due: "2000", payment: "unpaid", status: "done", service_name: "X-ray" };
+
+  test("REG-FE-RECORD-040 finishing with an unpaid extra stops once and asks; Finish anyway then saves", async () => {
+    const { user, onSaved } = form(withExtras([xray]), T);
+    await user.type(notes(), "Canal shaped");
+    await user.click(saveBtn());
+    const dlg = await screen.findByRole("dialog");
+    expect(dlg).toHaveTextContent("1 extra has not been paid");
+    expect(api.updateSession).not.toHaveBeenCalled();
+    await user.click(within(dlg).getByRole("button", { name: /Finish anyway/ }));
+    await waitFor(() => expect(api.updateSession).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+  });
+
+  test("REG-FE-RECORD-041 an extra already paid, on a promise, or free does not stop the save", async () => {
+    const paid = { ...xray, id: "p", payment: "paid" };
+    const promised = { ...xray, id: "q", pay_later: true };
+    const free = { ...xray, id: "r", amount_due: "0" };
+    const { user } = form(withExtras([paid, promised, free]), T);
+    await user.type(notes(), "x");
+    await user.click(saveBtn());
+    await waitFor(() => expect(api.updateSession).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  test("REG-FE-RECORD-042 closing the stop saves nothing and leaves the form as it was", async () => {
+    const { user } = form(withExtras([xray]), T);
+    await user.type(notes(), "Canal shaped");
+    await user.click(saveBtn());
+    await screen.findByRole("dialog");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(api.updateSession).not.toHaveBeenCalled();
+    expect(notes()).toHaveValue("Canal shaped");
   });
 });

@@ -231,3 +231,40 @@ test("REG-E2E-022 on a phone the condition bar is at the bottom and a tap on a t
   await page.getByRole("menuitem", { name: "Filled" }).click();
   await expect(tooth(page, "LR3")).toHaveAccessibleName("LR3 — Filled");
 });
+
+test("REG-E2E-023 an extra added at the chair is sent to the cashier, paid there, and the chair turns green by itself", async ({ page }) => {
+  const p = await newPatient(uniq("Hana"));
+  const { plan, doctor } = await newPlan(p.id, "Filling", [0, 14], "1000");
+  const v1 = plan.sessions[0].id;
+  const svc = await doctor<{ id: string }>("POST", "/billing/services", {
+    code: uniq("XR"), name: uniq("Periapical X-ray "), category: "dental", price: 2000, assignable_by: "either",
+  });
+  await doctor("POST", `/dental/patients/${p.id}/sessions/${v1}/extras`, { service_id: svc.id });
+
+  await login(page, "doctor");
+  await page.goto(`/patients/${p.id}`);
+  await page.getByRole("button", { name: "Start visit 1" }).click();
+  // The visit's own fee on a promise, so the record form opens.
+  await page.getByRole("button", { name: "Treat now, pay later" }).click();
+  const ask = page.getByRole("dialog", { name: "Treat now, pay later?" });
+  await ask.getByPlaceholder(/Next visit/).fill("Next visit");
+  await ask.getByRole("button", { name: "Treat now, pay later" }).click();
+  await expect(ask).toBeHidden();
+
+  // The extra is there, not billed, with the button that was missing.
+  await expect(page.getByText("Also done at this visit")).toBeVisible();
+  await expect(page.getByText("Not billed", { exact: true })).toBeVisible();
+  await page.getByRole("list", { name: "Payment progress" }).locator("xpath=ancestor::div[contains(@class,'rounded-lg')][1]")
+    .getByRole("button", { name: /Send to cashier/ }).click();
+  await expect(page.getByText(/Waiting for the patient to pay at the cashier/)).toBeVisible();
+
+  // The cashier takes the money (through the API, as another person would at the desk).
+  const cashier = await apiAs("cashier");
+  const pending = await cashier<{ id: string; patient_id: string }[]>("GET", "/billing/charges/pending");
+  const mine = pending.filter((c) => c.patient_id === p.id).map((c) => c.id);
+  expect(mine.length).toBeGreaterThan(0);
+  await cashier("POST", "/billing/checkout", { patient_id: p.id, method: "cash", charge_ids: mine });
+
+  // No reload: the chair finds out within a few seconds.
+  await expect(page.getByText("✓ Paid — go ahead")).toBeVisible({ timeout: 20_000 });
+});

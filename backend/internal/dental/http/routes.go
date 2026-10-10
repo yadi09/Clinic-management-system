@@ -124,6 +124,7 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	// because deciding the patient needs it is a clinical act — the price attached
 	// to it comes from the clinic's list, not from whoever is typing.
 	g.POST("/patients/:id/sessions/:sid/extras", h.AddExtra)
+	g.GET("/extras/popular", h.PopularExtras)
 	g.DELETE("/patients/:id/extras/:exid", h.RemoveExtra)
 
 	// Prescriptions (printable) attached to a session.

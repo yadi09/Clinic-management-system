@@ -75,7 +75,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 </style></head>
 <body><div class="wrap">
 <h1>ClinicOS bug tracker</h1>
-<p class="lede">Every known problem in the system, in plain words, most urgent first. 144 of the 197 are already caught by an automated test, so when one is fixed its test proves it, and keeps proving it after every future change. The other 53, marked <i>No test yet</i>, came from the audit (mostly server and operations work); each gets a test or a written check when it is fixed.</p>
+<p class="lede">Every known problem in the system, in plain words, most urgent first. 145 of the 197 are already caught by an automated test, so when one is fixed its test proves it, and keeps proving it after every future change. The other 52, marked <i>No test yet</i>, came from the audit (mostly server and operations work); each gets a test or a written check when it is fixed.</p>
 
 <div class="progress"><div class="bar"><i></i></div><b>12 of 197 closed</b></div>
 
@@ -86,7 +86,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 <li><b>Fix:</b> I change the code; its test turns from "known bug" to a normal passing test, and the whole suite must still pass.</li>
 <li><b>Verify:</b> you check it and accept it. Then the next one.</li>
 </ol>
-<p style="margin:8px 0 0;color:var(--soft)">Right now: 175 open · 1 explained or confirmed · 9 fixed, waiting for your check · 12 verified.</p>
+<p style="margin:8px 0 0;color:var(--soft)">Right now: 175 open · 0 explained or confirmed · 10 fixed, waiting for your check · 12 verified.</p>
 </div>
 
 <a class="next" href="#FIN-15" data-open="FIN-15"><span>Next up</span><b>A listed service can be billed at any price</b><em>High · FIN-15 · Open</em></a>
@@ -95,7 +95,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 
 <div class="filters">
   <input id="q" type="search" placeholder="Search: cashier, follow-up, refund…" aria-label="Search issues">
-  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (175)</option><option value="explained">Explained (1)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (9)</option><option value="verified">Verified (12)</option><option value="wontfix">Won't fix (0)</option></select>
+  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (175)</option><option value="explained">Explained (0)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (10)</option><option value="verified">Verified (12)</option><option value="wontfix">Won't fix (0)</option></select>
   <select id="ar" aria-label="Area"><option value="">Every area</option><option value="Appointments &amp; front desk">Appointments &amp; front desk</option><option value="Dental">Dental</option><option value="Money">Money</option><option value="Patient records">Patient records</option><option value="Reliability">Reliability</option><option value="Safety &amp; access">Safety &amp; access</option><option value="Screens &amp; usability">Screens &amp; usability</option></select>
 </div>
 <p class="count" id="count"></p>
@@ -1145,18 +1145,18 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
     </div>
   </details>
 </article>
-<article class="issue sev-high st-explained" id="FEAT-EXTRA-1" data-sev="high" data-status="explained"
+<article class="issue sev-high st-fixed" id="FEAT-EXTRA-1" data-sev="high" data-status="fixed"
   data-area="Dental" data-q="feat-extra-1 extras at the chair: no send to cashier on the record form; no pay-before-continue an extra added during a visit (x-ray, filling) shows &#x27;owed now&#x27; but on the record form there is no way to send it to the cashier, and nothing shows whether the patient has paid before the dentist carries on. dr yonas adds an x-ray, 2,000 etb, on the record form. it reads &#x27;owed now&#x27; with no button; the patient is not sent to pay and the doctor cannot tell later whether they did. dentist, cashier, patient dental">
   <details>
     <summary>
       <span class="num">37</span>
       <span class="sev">High</span>
       <span class="ttl">Extras at the chair: no Send to cashier on the record form; no pay-before-continue</span>
-      <span class="meta"><span class="id">FEAT-EXTRA-1</span> · Dental · effort M · <i class="notest">No test yet</i></span>
-      <span class="status">Explained</span>
+      <span class="meta"><span class="id">FEAT-EXTRA-1</span> · Dental · effort M</span>
+      <span class="status">Fixed</span>
     </summary>
     <div class="body">
-      <div class="decision"><b>Your decision first:</b> Review docs/extras-at-the-chair-plan.html and answer the six decisions in its section 8.</div>
+      
       <dl>
         <dt>What happens</dt><dd>An extra added during a visit (X-ray, filling) shows &#x27;Owed now&#x27; but on the record form there is no way to send it to the cashier, and nothing shows whether the patient has paid before the dentist carries on.</dd>
         <dt>In the clinic</dt><dd class="example">Dr Yonas adds an X-ray, 2,000 ETB, on the record form. It reads &#x27;Owed now&#x27; with no button; the patient is not sent to pay and the doctor cannot tell later whether they did.</dd>
@@ -1166,11 +1166,11 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       </dl>
       <div class="tech">
         <details><summary>For the developer: tests and code</summary>
-          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li>No automated test yet: an operational item</li></ul>
+          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li><code>REG-FE-SHARED-048</code></li><li><code>REG-FE-SHARED-062</code></li><li><code>REG-FE-SHARED-065</code></li><li><code>REG-FE-SHARED-071</code></li><li><code>REG-FE-RECORD-040</code></li><li><code>REG-DENTAL-280</code></li><li><code>REG-DENTAL-281</code></li><li><code>REG-E2E-023</code></li></ul>
           <p>Where in the code:</p><ul><li><code>frontend/src/features/dental/shared/Extras.tsx</code></li><li><code>frontend/src/features/dental/visit/RecordVisitForm.tsx</code></li><li><code>frontend/src/features/dental/visit/VisitCockpit.tsx</code></li><li><code>docs/extras-at-the-chair-plan.html</code></li></ul>
         </details>
       </div>
-      <div class="log"><b>History</b><ul><li><time>2026-10-10</time> Plan written and sent for review; nothing built. The button exists in the code but RecordVisitForm never passes canCollect to ExtrasSection.</li></ul></div>
+      <div class="log"><b>History</b><ul><li><time>2026-10-10</time> Plan written and sent for review; nothing built. The button exists in the code but RecordVisitForm never passes canCollect to ExtrasSection.</li><li><time>2026-10-10</time> Approved with the recommendations; built phases 1 to 3. Send to cashier now shows on the record form (it was never given the permission) and on the visit screen; each extra shows Not billed / At cashier / Paid, or Pay later with its reason; the chair re-reads every 6 seconds while something is at the cashier, so the row turns green by itself; Treat now, pay later needs a reason; Take back from the cashier; Collect here for people with payment.collect (method, reference, bank check); a gentle stop when saving a visit with an unpaid extra (send and finish / pay later / finish anyway); one-tap chips for the clinic&#x27;s five most-added extras (new GET /dental/extras/popular); totals line and Send all. Not changed: the cashier line text, which already names the extra (&#x27;&lt;course&gt; - &lt;service&gt; at visit N&#x27;). Full run green: 1,718 screen tests, 14 browser journeys.</li></ul></div>
     </div>
   </details>
 </article>
@@ -5815,7 +5815,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   </details>
 </article>
 
-<footer>Built 10 October 2026, 13:38 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
+<footer>Built 10 October 2026, 14:59 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
 </div>
 <script>
 (function () {

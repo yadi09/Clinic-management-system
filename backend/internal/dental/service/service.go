@@ -521,7 +521,7 @@ func (s *Service) loadPlansTx(ctx context.Context, tx pgx.Tx, tid, patientID uui
 		       sm.session_status, sm.procedure, sm.tooth,
 		       coalesce(se.notes,''), coalesce(se.rx,''),
 		       sm.pay_later, sm.pay_later_note, sm.pay_state, se.kind,
-		       se.parent_session_id, coalesce(si.name, '')
+		       se.parent_session_id, coalesce(si.name, ''), se.charge_id
 		FROM session_money sm
 		JOIN treatment_sessions se ON se.id = sm.session_id
 		LEFT JOIN service_items si ON si.id = se.service_item_id AND si.tenant_id = se.tenant_id
@@ -544,7 +544,7 @@ func (s *Service) loadPlansTx(ctx context.Context, tx pgx.Tx, tid, patientID uui
 		var sd time.Time
 		var kind string
 		var parent *uuid.UUID
-		if e := srows.Scan(&id, &planID, &se.Seq, &sd, &se.AmountDue, &se.Status, &se.Procedure, &se.Tooth, &se.Notes, &se.Rx, &se.PayLater, &se.PayLaterNote, &se.Payment, &kind, &parent, &se.ServiceName); e != nil {
+		if e := srows.Scan(&id, &planID, &se.Seq, &sd, &se.AmountDue, &se.Status, &se.Procedure, &se.Tooth, &se.Notes, &se.Rx, &se.PayLater, &se.PayLaterNote, &se.Payment, &kind, &parent, &se.ServiceName, &se.ChargeID); e != nil {
 			return nil, e
 		}
 		se.ID = id
@@ -983,6 +983,39 @@ func (s *Service) AddExtra(ctx context.Context, patientID, sessionID uuid.UUID, 
 
 // RemoveExtra takes an extra back off a visit. Only while it is unbilled: once the
 // cashier has it, the way back is a void or a refund, which leaves a trail.
+// PopularExtras are the five procedures the clinic adds most often at the chair, from
+// what has actually been added, priced from the clinic's list today. A service the
+// clinic has since retired is not offered; nothing is offered until something has been
+// added, so a new clinic sees no chips rather than invented ones.
+func (s *Service) PopularExtras(ctx context.Context) []dental.PopularExtra {
+	tid, _ := actorOf(ctx)
+	out := []dental.PopularExtra{}
+	_ = s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		// The query's own failure is reported through CollectRows, and swallowed here on
+		// purpose: these are shortcuts, and a shortcut that cannot be read is no shortcut.
+		rows, _ := tx.Query(ctx, `
+			SELECT si.id, si.name, si.price::text, count(*)::int AS uses
+			  FROM treatment_sessions se
+			  JOIN service_items si ON si.id = se.service_item_id AND si.tenant_id = se.tenant_id
+			 WHERE se.tenant_id = $1 AND se.kind = 'extra' AND se.status <> 'cancelled'
+			   AND si.deleted_at IS NULL AND si.is_active
+			 GROUP BY si.id, si.name, si.price
+			 ORDER BY uses DESC, si.name
+			 LIMIT 5`, tid)
+		got, e := pgx.CollectRows(rows, func(row pgx.CollectableRow) (dental.PopularExtra, error) {
+			var p dental.PopularExtra
+			err := row.Scan(&p.ServiceID, &p.Name, &p.Price, &p.Uses)
+			p.Price = fmtMoney(money(p.Price))
+			return p, err
+		})
+		if e == nil {
+			out = got
+		}
+		return nil
+	})
+	return out
+}
+
 func (s *Service) RemoveExtra(ctx context.Context, patientID, extraID uuid.UUID) error {
 	tid, _ := actorOf(ctx)
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {

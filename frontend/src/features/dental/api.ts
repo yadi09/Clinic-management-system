@@ -102,6 +102,22 @@ export interface Extra {
   payment: PaymentState;
   status: SessionStatus;
   service_name?: string;
+  /** Treated now on a promise to pay, and the reason recorded with it. */
+  pay_later?: boolean;
+  pay_later_note?: string;
+  /** The bill, once one has been raised — what the chair needs to take the money. */
+  charge_id?: string;
+}
+
+/** A procedure the clinic often adds at the chair, for one-tap adding. */
+export interface PopularExtra {
+  service_id: string;
+  name: string;
+  price: string;
+  uses: number;
+}
+export function popularExtras() {
+  return apiFetch<PopularExtra[]>("/dental/extras/popular");
 }
 
 /** One plan's money, computed server-side from the charge ledger. `collected` is

@@ -1445,3 +1445,116 @@ func TestREG_DENTAL_279_EveryClinicStartsWithTheStandardAllergens(t *testing.T) 
 		t.Fatalf("%d 'penicillins' entries, want 1", n)
 	}
 }
+
+// ---- extras at the chair: payment status and one-tap adding ----------------------------
+
+type dn3Extra struct {
+	ID           string `json:"id"`
+	Payment      string `json:"payment"`
+	PayLater     bool   `json:"pay_later"`
+	PayLaterNote string `json:"pay_later_note"`
+	ChargeID     string `json:"charge_id"`
+}
+
+func dn3Extras(t *testing.T, k dn2Course) []dn3Extra {
+	t.Helper()
+	var s struct {
+		Plans []struct {
+			Sessions []struct {
+				ID     string     `json:"id"`
+				Extras []dn3Extra `json:"extras"`
+			} `json:"sessions"`
+		} `json:"plans"`
+	}
+	k.doc.Do("GET", k.path("/summary"), nil).Expect(t, 200, "summary").Decode(t, &s)
+	for _, p := range s.Plans {
+		for _, se := range p.Sessions {
+			if se.ID == k.sid(0) {
+				return se.Extras
+			}
+		}
+	}
+	t.Fatal("the visit is not on the summary")
+	return nil
+}
+
+// TestREG_DENTAL_280_ExtraCarriesItsBillAndItsPromise: Given an extra added at a
+// visit, When it is unbilled, Then it has no bill; When it is sent to the cashier,
+// Then it carries the bill's id (so it can be taken at the chair) and reads billed;
+// and an extra treated on a promise carries the promise and its reason.
+func TestREG_DENTAL_280_ExtraCarriesItsBillAndItsPromise(t *testing.T) {
+	k := dn2NewCourse(t, 1, "")
+	billed := denDentalService(t, k.doc, 2000)
+	later := denDentalService(t, k.doc, 800)
+	k.doc.Do("POST", k.path("/sessions/"+k.sid(0)+"/extras"), map[string]any{"service_id": billed}).Expect(t, 204, "add x-ray")
+	k.doc.Do("POST", k.path("/sessions/"+k.sid(0)+"/extras"), map[string]any{"service_id": later}).Expect(t, 204, "add scaling")
+	ex := dn3Extras(t, k)
+	if len(ex) != 2 {
+		t.Fatalf("extras = %+v, want 2", ex)
+	}
+	for _, e := range ex {
+		if e.ChargeID != "" || e.PayLater {
+			t.Fatalf("an unbilled extra already has a bill or a promise: %+v", e)
+		}
+	}
+
+	billedID, laterID := ex[0].ID, ex[1].ID
+	k.doc.Do("POST", k.path("/sessions/"+billedID+"/collect"), nil).Expect(t, 204, "send to cashier")
+	k.doc.Do("POST", k.path("/sessions/"+laterID+"/pay-later"), map[string]any{"on": true, "note": "Emergency: pain, treat first"}).Expect(t, 204, "pay later")
+	got := map[string]dn3Extra{}
+	for _, e := range dn3Extras(t, k) {
+		got[e.ID] = e
+	}
+	if b := got[billedID]; b.Payment != "billed" || !strings.HasPrefix(b.ChargeID, "chg_") {
+		t.Fatalf("billed extra = %+v, want billed with a charge id", b)
+	}
+	if p := got[laterID]; !p.PayLater || p.PayLaterNote != "Emergency: pain, treat first" || p.ChargeID != "" {
+		t.Fatalf("promised extra = %+v, want the promise and its reason, no bill", p)
+	}
+	// The bill on the cashier's list is the one the row names.
+	pend := payPendingFor(t, srv.As(t, k.c, "cashier"), k.p.ID)
+	if len(pend) != 1 || pend[0].ID != got[billedID].ChargeID {
+		t.Fatalf("cashier sees %+v, want the one extra bill %s", pend, got[billedID].ChargeID)
+	}
+}
+
+// TestREG_DENTAL_281_PopularExtrasAreWhatTheClinicActuallyAdds: Given a new clinic,
+// Then nothing is offered; Given X-ray added three times, Scaling twice, Filling
+// once, and a retired service that was added a lot, Then the list is X-ray, Scaling,
+// Filling in that order with today's list price, and the retired one is not offered;
+// and the front desk may not read it.
+func TestREG_DENTAL_281_PopularExtrasAreWhatTheClinicActuallyAdds(t *testing.T) {
+	k := dn2NewCourse(t, 6, "")
+	type pop struct {
+		ServiceID string `json:"service_id"`
+		Name      string `json:"name"`
+		Price     string `json:"price"`
+		Uses      int    `json:"uses"`
+	}
+	read := func() []pop {
+		var out []pop
+		k.doc.Do("GET", "/dental/extras/popular", nil).Expect(t, 200, "popular extras").Decode(t, &out)
+		return out
+	}
+	if got := read(); len(got) != 0 {
+		t.Fatalf("a clinic with no extras is offered %+v", got)
+	}
+	xray, scaling, filling, retired := denDentalService(t, k.doc, 2000), denDentalService(t, k.doc, 800), denDentalService(t, k.doc, 1500), denDentalService(t, k.doc, 99)
+	add := func(svc string, n int) {
+		for i := 0; i < n; i++ {
+			k.doc.Do("POST", k.path("/sessions/"+k.sid(i)+"/extras"), map[string]any{"service_id": svc}).Expect(t, 204, "add extra")
+		}
+	}
+	add(xray, 3)
+	add(scaling, 2)
+	add(filling, 1)
+	add(retired, 4)
+	blExec(t, `UPDATE service_items SET is_active = false WHERE id = $1`, denUUID(t, id.PrefixServiceItem, retired))
+
+	got := read()
+	if len(got) != 3 || got[0].ServiceID != xray || got[0].Uses != 3 || got[0].Price != "2000.00" ||
+		got[1].ServiceID != scaling || got[2].ServiceID != filling {
+		t.Fatalf("popular extras = %+v, want x-ray(3), scaling(2), filling(1)", got)
+	}
+	srv.As(t, k.c, "receptionist").Do("GET", "/dental/extras/popular", nil).Expect(t, 403, "front desk reads popular extras")
+}

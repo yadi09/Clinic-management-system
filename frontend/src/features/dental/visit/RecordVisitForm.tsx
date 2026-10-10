@@ -32,7 +32,7 @@ import { updateSession, type Session } from "@/features/dental/api";
 import { birr } from "@/features/dental/money";
 import { feeStage } from "@/features/dental/visit/VisitPaymentStep";
 import { FLAT_TEETH, parseCsv, ProcedureMultiSelect, ToothMultiSelect, ToothPalmerPicker } from "@/features/dental/shared/pickers";
-import { ExtrasSection, extrasTotal } from "@/features/dental/shared/Extras";
+import { ExtrasSection, extrasTotal, UnpaidExtrasStop, unsettledExtras } from "@/features/dental/shared/Extras";
 import { RecordSection } from "@/features/dental/shared/RecordSection";
 import { PrescriptionSection, SessionImages } from "@/features/dental/shared/visitRecord";
 
@@ -44,7 +44,7 @@ const todayISO = () => {
 interface Draft { procedure: string[]; tooth: string[]; notes: string }
 
 export function RecordVisitForm({
-  patientId, session, planTitle, visitLabel, recordDate, teeth, imageLimit, onSaved, onChanged, onCancel,
+  patientId, session, planTitle, visitLabel, recordDate, teeth, imageLimit, canCollect, onSaved, onChanged, onCancel,
 }: {
   patientId: string;
   session: Session;
@@ -61,6 +61,8 @@ export function RecordVisitForm({
   teeth: Record<string, string>;
   /** Per-patient image cap from the plan; -1 = unlimited. */
   imageLimit: number;
+  /** May this person raise a bill (send an extra to the cashier)? */
+  canCollect?: boolean;
   /** The visit was recorded and marked done. The parent closes the form. */
   onSaved: () => void;
   /**
@@ -148,6 +150,8 @@ export function RecordVisitForm({
   });
 
   const empty = procedure.length === 0 && tooth.length === 0 && !notes.trim();
+  const unpaid = unsettledExtras(session);
+  const [stopping, setStopping] = useState(false);
   const notToday = savedAs !== todayISO();
   // "5 days ago" is the part that makes the warning land; a date alone has to be
   // subtracted from today in the reader's head while a patient waits.
@@ -166,6 +170,9 @@ export function RecordVisitForm({
     // more card in a column of cards.
     <div className="overflow-hidden rounded-xl border-2 border-brand/30 bg-muted/40 shadow-modal">
       {dialog}
+      <UnpaidExtrasStop open={stopping} patientId={patientId} extras={unpaid} canCollect={canCollect}
+        onClose={() => setStopping(false)}
+        onProceed={() => { setStopping(false); save.mutate(); }} />
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand/20 bg-brand/[0.07] px-4 py-2.5">
         <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-brand">
           <span className="flex h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />
@@ -252,14 +259,17 @@ export function RecordVisitForm({
             note but not print the script or keep the X-ray. */}
         {/* Placed before the prescription, because it is still about what was done
             rather than what the patient takes home. */}
-        <ExtrasSection patientId={patientId} session={session} editable />
+        <ExtrasSection patientId={patientId} session={session} editable canCollect={canCollect} />
         <PrescriptionSection patientId={patientId} session={session} editable onChanged={onChanged} />
         <SessionImages patientId={patientId} session={session} editable imageLimit={imageLimit} onChanged={onChanged} />
 
         {/* The finish line, held apart from the sections above it so it reads as the
             end of the task rather than another field. */}
         <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card px-4 py-3 shadow-sm">
-          <Button size="lg" disabled={empty} loading={save.isPending} onClick={() => save.mutate()}>
+          <Button size="lg" disabled={empty} loading={save.isPending}
+            // Finishing with something added at the chair still unpaid is asked about,
+            // once, rather than discovered later on the debt report.
+            onClick={() => (unpaid.length > 0 ? setStopping(true) : save.mutate())}>
             <Save className="h-4 w-4" /> Save &amp; mark done
           </Button>
           <span className="text-xs text-muted-foreground">
