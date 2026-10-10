@@ -59,6 +59,7 @@ describe("REG-FE-CASHIER known defects", () => {
     await user.click(within(row).getByRole("button", { expanded: false }));
     await within(row).findByText(/cash \(2\)/);
     await user.click(within(row).getByRole("button", { name: /Print Z-report/ }));
+    await waitFor(() => expect(docs).toHaveLength(1));
     expect(docs[0]).toContain("Meron Closer");
   });
 

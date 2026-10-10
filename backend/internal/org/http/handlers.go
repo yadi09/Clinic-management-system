@@ -436,3 +436,61 @@ func rawFromAny(v any) json.RawMessage {
 	}
 	return b
 }
+
+// GetPrintSettings handles GET /org/print-settings. Any signed-in staff may read it:
+// every person who prints needs the clinic's letterhead.
+func (h *Handlers) GetPrintSettings(c *gin.Context) {
+	out, err := h.svc.GetPrintSettings(c.Request.Context())
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// SavePrintSettings handles PUT /org/print-settings (clinic.manage).
+func (h *Handlers) SavePrintSettings(c *gin.Context) {
+	var req struct {
+		Settings json.RawMessage `json:"settings"`
+		// Logo: absent keeps it, "" removes it, a data URL replaces it.
+		Logo *string `json:"logo"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("the print settings are not valid"))
+		return
+	}
+	out, err := h.svc.SavePrintSettings(c.Request.Context(), org.PrintSettingsInput{Settings: req.Settings, Logo: req.Logo})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// LogPrint handles POST /org/print-log: a paper is being printed; how many times so far?
+func (h *Handlers) LogPrint(c *gin.Context) {
+	var req struct {
+		Kind string `json:"kind"`
+		Ref  string `json:"ref"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("a document kind and reference are required"))
+		return
+	}
+	out, err := h.svc.LogPrint(c.Request.Context(), req.Kind, req.Ref)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// PeekPrint handles GET /org/print-log?kind=&ref= — the count so far, not counting this look.
+func (h *Handlers) PeekPrint(c *gin.Context) {
+	out, err := h.svc.PeekPrint(c.Request.Context(), c.Query("kind"), c.Query("ref"))
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}

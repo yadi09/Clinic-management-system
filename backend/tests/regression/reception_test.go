@@ -123,7 +123,9 @@ func TestREG_RECEP_001_CardShowsTodayMissedNextAndBills(t *testing.T) {
 	e := &apptEnv{c: k.c, desk: k.recp, doc: k.doc, branch: payBranch(t, k.c), dept: blDept(k.c), docID: k.docID}
 	p := e.patient(t)
 
-	today := e.book(t, p.ID, time.Now().Add(2*time.Hour), 30)
+	// A minute ago, so it is today on the clinic's clock at any hour (two hours from
+	// now is tomorrow for part of every evening).
+	today := e.book(t, p.ID, time.Now().Add(-time.Minute), 30)
 	missed := e.book(t, p.ID, apptTomorrowAt(9, 0), 30)
 	blExec(t, `UPDATE appointments SET starts_at = now() - interval '6 days', ends_at = now() - interval '6 days' + interval '30 minutes',
 	           status = 'no_show' WHERE id = $1`, apptUUID(t, missed.ID))
@@ -396,7 +398,7 @@ func TestREG_RECEP_010_AppointmentCheckInTakesTickedBills(t *testing.T) {
 	k := rcvNewKit(t)
 	e := &apptEnv{c: k.c, desk: k.recp, doc: k.doc, branch: payBranch(t, k.c), dept: blDept(k.c), docID: k.docID}
 	p := e.patient(t)
-	appt := e.book(t, p.ID, time.Now().Add(time.Hour), 30)
+	appt := e.book(t, p.ID, time.Now().Add(-time.Minute), 30)
 	bill := k.oldBill(t, p, 450, 21)
 
 	var res rcvArrival

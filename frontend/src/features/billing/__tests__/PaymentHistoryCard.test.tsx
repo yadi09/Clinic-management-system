@@ -12,7 +12,7 @@ vi.mock("@/app/auth-context", () => ({
 }));
 const api = vi.hoisted(() => ({ patientCharges: vi.fn() }));
 vi.mock("@/features/billing/api", async (orig) => ({ ...(await orig<object>()), ...api }));
-const admin = vi.hoisted(() => ({ getClinic: vi.fn(), listBranches: vi.fn() }));
+const admin = vi.hoisted(() => ({ getClinic: vi.fn(), listBranches: vi.fn(), listPaymentRails: vi.fn() }));
 vi.mock("@/features/admin/api", async (orig) => ({ ...(await orig<object>()), ...admin }));
 const patients = vi.hoisted(() => ({ getPatient: vi.fn() }));
 vi.mock("@/features/patients/api", async (orig) => ({ ...(await orig<object>()), ...patients }));
@@ -42,6 +42,7 @@ describe("REG-FE-PAYHIST a patient's payment history", () => {
     Object.values(print).forEach((f) => f.mockReset());
     admin.getClinic.mockResolvedValue({ name: "Cure Dental" });
     admin.listBranches.mockResolvedValue([{ id: "br_1", name: "Bole", address: "Bole Rd", phone: "0911" }]);
+    admin.listPaymentRails.mockResolvedValue([]);
     patients.getPatient.mockResolvedValue({ id: "pat_1", mrn: "MRN-7", first_name: "Sara", middle_name: "T", last_name: "Bekele", phone: "0922" });
   });
   afterEach(() => vi.useRealTimers());
@@ -139,11 +140,20 @@ describe("REG-FE-PAYHIST a patient's payment history", () => {
       row("A first", { created_at: "2026-10-01T09:00:00+03:00", status: "pending", amount: "300" }),
       row("Void", { status: "void", created_at: "2026-10-01T10:00:00+03:00" }),
     ], { charged: "500", paid: "200", refunded: "0", awaiting: "300", truncated: true, total_count: 80 }));
+    // Cash has no account to send money to; a bank and a wallet do, and the patient
+    // is told where to pay (the account holder's name beside the bank).
+    admin.listPaymentRails.mockResolvedValue([
+      { id: "r1", key: "cash", label: "Cash", kind: "cash", needs_reference: false, active: true, sort_order: 1 },
+      { id: "r2", key: "cbe", label: "CBE", kind: "bank", account_name: "Cure Dental", account_number: "1000123", needs_reference: true, active: true, sort_order: 2 },
+      { id: "r3", key: "telebirr", label: "Telebirr", kind: "wallet", account_number: "0911", needs_reference: true, active: true, sort_order: 3 },
+    ]);
     const { user } = renderUI(<PaymentHistoryCard patientId="pat_1" treatment={{ unbilled: "1500", upcoming: "4000" }} />);
     await screen.findByText("A first");
     await waitFor(async () => {
       await user.click(screen.getByRole("button", { name: /Print statement/ }));
-      expect(print.printStatement).toHaveBeenLastCalledWith(expect.objectContaining({ clinicContact: "Bole Rd · 0911", mrn: "MRN-7" }));
+      expect(print.printStatement).toHaveBeenLastCalledWith(expect.objectContaining({
+        clinicContact: "Bole Rd · 0911", mrn: "MRN-7", payTo: expect.arrayContaining([expect.anything()]),
+      }));
     });
     expect(print.printStatement).toHaveBeenLastCalledWith({
       clinic: "Cure Dental", clinicContact: "Bole Rd · 0911", patient: "Sara T Bekele", mrn: "MRN-7", phone: "0922", currency: "ETB",
@@ -153,6 +163,7 @@ describe("REG-FE-PAYHIST a patient's payment history", () => {
       ],
       charged: "500", paid: "200", refunded: "0", outstanding: "300", unbilled: "1500", upcoming: "4000",
       issuedBy: "Hanna Desta",
+      payTo: [{ label: "CBE (Cure Dental)", account: "1000123" }, { label: "Telebirr", account: "0911" }],
       note: "Showing the 3 most recent entries of 80. The totals above cover the full account.",
     });
   });

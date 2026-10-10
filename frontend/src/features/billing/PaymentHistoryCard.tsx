@@ -16,7 +16,7 @@ import { PanelBody, PanelCard, PanelHeader } from "@/features/dental/shelf/Recor
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/app/auth-context";
-import { getClinic, listBranches } from "@/features/admin/api";
+import { getClinic, listBranches, listPaymentRails } from "@/features/admin/api";
 import { getPatient } from "@/features/patients/api";
 import { patientCharges, type ChargeRow } from "@/features/billing/api";
 import { printReceipt, printStatement } from "@/features/billing/print";
@@ -62,6 +62,8 @@ export function PaymentHistoryCard({ patientId, bare, treatment }: {
   const patient = useQuery({ queryKey: ["patient", patientId], queryFn: () => getPatient(patientId) });
   const clinic = useQuery({ queryKey: ["clinic"], queryFn: getClinic, retry: false });
   const branches = useQuery({ queryKey: ["branches"], queryFn: listBranches });
+  // Where the patient can send the money: the clinic's own bank and wallet accounts.
+  const rails = useQuery({ queryKey: ["payment-rails"], queryFn: () => listPaymentRails(), retry: false });
   const [showCancelled, setShowCancelled] = useState(false);
 
   const all = q.data?.rows ?? [];
@@ -122,6 +124,9 @@ export function PaymentHistoryCard({ patientId, bare, treatment }: {
       refunded: String(totals.refunded), outstanding: String(totals.awaiting),
       unbilled: treatment?.unbilled, upcoming: treatment?.upcoming,
       issuedBy: user?.full_name,
+      payTo: (rails.data ?? [])
+        .filter((r) => r.account_number)
+        .map((r) => ({ label: r.account_name ? `${r.label} (${r.account_name})` : r.label, account: r.account_number as string })),
       // The totals cover the whole account; the lines are the newest page. Saying so
       // on the document is the difference between an abridged statement and a wrong one.
       note: led?.truncated

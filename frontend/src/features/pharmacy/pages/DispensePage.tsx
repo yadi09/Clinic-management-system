@@ -9,7 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
+import { useAuth } from "@/app/auth-context";
 import { completeDispense, dispenseDetail, prepareDispense, type Batch } from "@/features/pharmacy/api";
+import { requestPrint } from "@/features/printing/request";
 
 function availableBatches(bs: Batch[]) {
   return bs.filter((b) => b.qty_on_hand > 0 && !b.quarantined && b.status !== "expired");
@@ -63,6 +65,30 @@ function DispenseInner({ d, sel, setSel, notes, setNotes, blocked, lines, rxId, 
   });
 
   const selecting = !d.dispensed && !d.prepared;
+  const { user } = useAuth();
+
+  // The paper says what the page knows. Quantity and batch are the pharmacist's own
+  // choices while they are selecting; once sent to the cashier the page no longer
+  // holds them, and a guessed batch number on a record is worse than none.
+  const printSlip = () => {
+    void requestPrint({
+      doc: "dispense",
+      data: {
+        rxRef: `R-${d.rx_no}`, patient: d.patient_name, mrn: d.mrn, prescriber: d.prescriber,
+        when: new Date().toISOString(), allergies: d.allergies, counselling: notes,
+        dispensedBy: user?.full_name, pending: !d.dispensed,
+        items: d.items.map((it: any) => {
+          const choice = selecting ? sel[it.id] : undefined;
+          const batch = choice ? (it.batches as Batch[]).find((b) => b.id === choice.batchId) : undefined;
+          return {
+            drug: it.drug_name, sig: it.sig, blocked: it.allergy_conflict || undefined,
+            qty: choice && !it.allergy_conflict && batch ? choice.qty : undefined,
+            batch: batch?.batch_no, expiry: batch?.expiry_date?.slice(0, 7),
+          };
+        }),
+      },
+    });
+  };
 
   return (
     <div className="space-y-4">
@@ -162,7 +188,7 @@ function DispenseInner({ d, sel, setSel, notes, setNotes, blocked, lines, rxId, 
           Step 1 — send to the cashier to bill the patient. Step 2 — once paid, hand over (this decrements FEFO stock).
         </p>
         <div className="mt-3 flex items-center justify-end gap-2">
-          <Button variant="outline" onClick={() => window.print()}>
+          <Button variant="outline" onClick={printSlip}>
             <Printer className="h-4 w-4" /> Print
           </Button>
           {selecting && (

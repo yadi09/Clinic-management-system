@@ -291,7 +291,9 @@ describe("REG-FE-RX prescriptions on a dental visit", () => {
       note: "n",
       allergies: ["Penicillin"],
       when: "2026-08-10T09:00:00Z",
-      diagnoses: [{ description: "Root canal (36)" }],
+      // What was done is the treatment, not a diagnosis.
+      diagnoses: [],
+      context: "Root canal (36)",
       meds: [{ drug_name: "Amoxicillin" }],
     });
     expect(doc.qrData).toBe("DRX:rx_abcdef123456\nSmile Dental\nAbebe K Bekele MRN-77\n2026-08-10");
@@ -323,7 +325,8 @@ describe("REG-FE-RX prescriptions on a dental visit", () => {
     expect(doc.age).toBeUndefined();
     expect(doc.clinicContact).toBeUndefined();
     expect(doc.allergies).toEqual([]);
-    expect(doc.diagnoses).toEqual([{ description: "Scaling" }]);
+    expect(doc.diagnoses).toEqual([]);
+    expect(doc.context).toBe("Scaling");
   });
 
   test("REG-FE-RX-015 withdrawing needs a reason, then sends it and refreshes", async () => {

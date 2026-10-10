@@ -84,20 +84,27 @@ type AnalyteResult struct {
 
 // OrderItemDetail is the accession / result-entry view for one sample.
 type OrderItemDetail struct {
-	ID             uuid.UUID       `json:"-"`
-	SampleNo       int64           `json:"sample_no"`
-	Status         string          `json:"status"`
-	Specimen       string          `json:"specimen,omitempty"`
-	TestName       string          `json:"test_name"`
-	PatientName    string          `json:"patient_name"`
-	MRN            string          `json:"mrn"`
-	Priority       string          `json:"priority"`
-	ClinicalNote   string          `json:"clinical_note,omitempty"`
-	OrderedBy      string          `json:"ordered_by,omitempty"`
-	Critical       bool            `json:"critical"`
-	NotifiedAt     *time.Time      `json:"notified_at,omitempty"`
-	NotifiedByName string          `json:"notified_by,omitempty"`
-	Analytes       []AnalyteResult `json:"analytes"`
+	ID             uuid.UUID  `json:"-"`
+	SampleNo       int64      `json:"sample_no"`
+	Status         string     `json:"status"`
+	Specimen       string     `json:"specimen,omitempty"`
+	TestName       string     `json:"test_name"`
+	PatientName    string     `json:"patient_name"`
+	MRN            string     `json:"mrn"`
+	Priority       string     `json:"priority"`
+	ClinicalNote   string     `json:"clinical_note,omitempty"`
+	OrderedBy      string     `json:"ordered_by,omitempty"`
+	Critical       bool       `json:"critical"`
+	NotifiedAt     *time.Time `json:"notified_at,omitempty"`
+	NotifiedByName string     `json:"notified_by,omitempty"`
+	// Who drew the sample and when it was reported and signed off: what a printed
+	// laboratory report has to say.
+	CollectedBy string          `json:"collected_by,omitempty"`
+	CollectedAt *time.Time      `json:"collected_at,omitempty"`
+	ResultedAt  *time.Time      `json:"resulted_at,omitempty"`
+	ValidatedAt *time.Time      `json:"validated_at,omitempty"`
+	ValidatedBy string          `json:"validated_by,omitempty"`
+	Analytes    []AnalyteResult `json:"analytes"`
 }
 
 // InboxItem is one returned result on the ordering doctor's results inbox.

@@ -63,6 +63,13 @@ code{font-size:.88em;background:var(--paper);padding:1px 5px;border-radius:4px}
 <body><div class="wrap">
 
 <h1>Printed documents: what exists, and how to make each one the clinic's own</h1>
+<div class="box key"><b>Built (2026-10-10).</b> The decisions in section 6 were answered with "make it as customizable as possible",
+so the whole set was built in one pass instead of one choice at a time. Every printed paper now goes through one engine; in
+<b>Settings &rsaquo; Printing</b> a clinic sets its logo and names once, then for each paper chooses the layout, the paper size, which
+parts print, its own wording, and sees its own paper as a live preview. A reprint is marked DUPLICATE. Still to come: new papers
+(patient card, treatment estimate, referral letter, queue slip, labels), the clinician licence number on staff profiles, and a public
+page behind the QR that confirms a paper is genuine.</div>
+
 <p class="lede">An inventory of everything the system prints, taken from the code, with what each paper is for, what is wrong or missing on it today, and what a good, clinic-branded version would look like. Nothing is built or changed: this is the map we discuss from.</p>
 
 <div class="box key"><b>In one paragraph.</b> The system prints <b>11 things</b>: three kinds of receipt, the end-of-day cash report, the patient statement, two kinds of prescription, two lab papers, the medical certificate and the dental examination record. (One of the eleven, the pharmacy "Print", is not really a document: it prints the whole web page.) Every one carries only the <b>clinic's name</b> and, on some, the branch address. There is <b>no logo</b> (the database has a column for one that nothing uses), <b>no choice of layout or paper</b>, no tax number, and no way to say "we print on our own letterhead". Each document has its own copy of the styling, so the clinic's identity is not one thing set once. The aim is: set the clinic's identity once, pick a template per document, tweak a few things, and see it before printing.</div>

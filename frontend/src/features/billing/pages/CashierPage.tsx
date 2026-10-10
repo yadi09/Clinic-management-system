@@ -163,6 +163,8 @@ function PaidList({ payments, loading, canRefund, clinicName, cashierName, onRef
       lines: v.lines, total: v.total, currency: v.currency,
       method: v.method_label || v.method, reference: v.reference, cashier: v.settled_by || cashierName,
       when: v.settled_at || new Date().toISOString(),
+      // A refunded receipt must not reprint as an ordinary payment.
+      refunded: v.refunded,
     });
   if (loading) return <Card className="p-8 text-center text-sm text-muted-foreground">Loading…</Card>;
   if (payments.length === 0) return <Card className="p-12 text-center text-sm text-muted-foreground">No payments in this range.</Card>;

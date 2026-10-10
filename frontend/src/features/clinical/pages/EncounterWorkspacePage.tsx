@@ -1290,6 +1290,7 @@ function PrescriptionPanel({ ws, locked, onChanged }: { ws: Workspace; locked: b
   const { user } = useAuth();
   const clinic = useQuery({ queryKey: ["clinic"], queryFn: getClinic, retry: false });
   const branches = useQuery({ queryKey: ["branches"], queryFn: listBranches });
+  const providers = useQuery({ queryKey: ["providers"], queryFn: listProviders });
   const [open, setOpen] = useState(false);
 
   const printScript = () => {
@@ -1307,8 +1308,10 @@ function PrescriptionPanel({ ws, locked, onChanged }: { ws: Workspace; locked: b
       age: ws.patient.age,
       gender: ws.patient.gender,
       weightKg: ws.vitals[0]?.weight_kg,
-      prescriber: user?.full_name,
-      when: new Date().toISOString(),
+      // The clinician who saw this patient, not whoever happens to press Print — and the
+      // day of the visit, so a reprint a month later does not carry today's date.
+      prescriber: (providers.data ?? []).find((p) => p.id === ws.provider_id)?.full_name || user?.full_name,
+      when: ws.started_at || new Date().toISOString(),
       diagnoses: ws.diagnoses.map((d) => ({ code: d.code, description: d.description })),
       meds: ws.prescription,
     });

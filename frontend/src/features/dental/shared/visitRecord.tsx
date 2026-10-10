@@ -77,7 +77,10 @@ export function PrescriptionSection({ patientId, session, editable, onChanged }:
       note: rx.note,
       allergies: (p?.allergies ?? []).map((a) => a.substance),
       when: rx.created_at,
-      diagnoses: session.procedure ? [{ description: session.procedure + (session.tooth ? ` (${session.tooth})` : "") }] : [],
+      // What was done at the visit is the TREATMENT, not a diagnosis — it used to be
+      // printed under the heading "Diagnosis".
+      diagnoses: [],
+      context: session.procedure ? session.procedure + (session.tooth ? ` (${session.tooth})` : "") : undefined,
       meds: rx.items,
     });
   };

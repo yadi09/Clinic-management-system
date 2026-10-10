@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/sonner";
 import { AppError } from "@/lib/api-client";
 import { useAuth } from "@/app/auth-context";
+import { requestPrint } from "@/features/printing/request";
 import { accession, getItem, markNotified, saveResults, submitResults, validateItem, type AnalyteResult, type OrderItemDetail } from "@/features/lab/api";
 
 function when(iso?: string) {
@@ -17,42 +18,22 @@ function when(iso?: string) {
   return new Date(iso).toLocaleString([], { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-function esc(s: string) {
-  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
-}
-
-// printReport opens a clean, print-styled window for a resulted/validated sample.
+// The laboratory report is drawn by the shared print engine (features/printing), so
+// it carries the clinic's own identity and a DUPLICATE mark on a reprint.
 function printReport(d: OrderItemDetail) {
-  const w = window.open("", "_blank", "width=820,height=900");
-  if (!w) return;
-  const rows = d.analytes
-    .map((a) => {
-      const ref = [a.ref_low, a.ref_high].some(Boolean) ? `${a.ref_low ?? ""}–${a.ref_high ?? ""}${a.unit ? ` ${a.unit}` : ""}` : "—";
-      const flag = (a.flag || "normal").toUpperCase();
-      const cls = a.flag === "critical" ? "crit" : a.flag === "high" || a.flag === "low" ? "abn" : "";
-      return `<tr class="${cls}"><td>${esc(a.name)}</td><td>${esc(a.value || "—")}${a.value && a.unit ? " " + esc(a.unit) : ""}</td><td>${ref}</td><td>${flag}</td></tr>`;
-    })
-    .join("");
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Lab report S-${d.sample_no}</title>
-    <style>
-      body{font:13px/1.45 system-ui,Segoe UI,Roboto,sans-serif;color:#0f172a;margin:32px}
-      h1{font-size:18px;margin:0 0 2px} .muted{color:#64748b}
-      .head{display:flex;justify-content:space-between;border-bottom:2px solid #0f172a;padding-bottom:8px;margin-bottom:14px}
-      table{width:100%;border-collapse:collapse;margin-top:10px} th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #e2e8f0}
-      th{font-size:11px;text-transform:uppercase;color:#64748b}
-      tr.abn td{background:#fffbeb} tr.crit td{background:#fef2f2;font-weight:600;color:#b91c1c}
-      .foot{margin-top:24px;font-size:11px;color:#64748b}
-    </style></head><body>
-    <div class="head"><div><h1>Laboratory Report</h1><div class="muted">${esc(d.test_name)} · Sample S-${d.sample_no}</div></div>
-    <div style="text-align:right"><div><strong>${esc(d.patient_name)}</strong></div><div class="muted">MRN ${esc(d.mrn)}</div></div></div>
-    <div class="muted">Priority ${esc(d.priority)}${d.ordered_by ? " · Ordered by " + esc(d.ordered_by) : ""} · Status ${esc(d.status)}</div>
-    <table><thead><tr><th>Analyte</th><th>Result</th><th>Reference</th><th>Flag</th></tr></thead><tbody>${rows}</tbody></table>
-    ${d.critical ? `<p style="color:#b91c1c;font-weight:600;margin-top:12px">Critical value${d.notified_at ? " — notified " + esc(when(d.notified_at)) + (d.notified_by ? " by " + esc(d.notified_by) : "") : " — NOT YET COMMUNICATED"}</p>` : ""}
-    <div class="foot">Generated ${esc(new Date().toLocaleString())} · This report is for the named patient only.</div>
-    </body></html>`);
-  w.document.close();
-  w.focus();
-  w.print();
+  void requestPrint({
+    doc: "labreport",
+    data: {
+      sampleNo: d.sample_no, testName: d.test_name, patient: d.patient_name, mrn: d.mrn,
+      priority: d.priority, status: d.status, orderedBy: d.ordered_by, specimen: d.specimen,
+      collectedBy: d.collected_by, collectedAt: d.collected_at, reportedAt: d.resulted_at,
+      validatedAt: d.validated_at, validatedBy: d.validated_by, clinicalNote: d.clinical_note,
+      analytes: d.analytes.map((a) => ({
+        name: a.name, value: a.value, unit: a.unit, refLow: a.ref_low, refHigh: a.ref_high, flag: a.flag,
+      })),
+      critical: d.critical, notifiedAt: d.notified_at, notifiedBy: d.notified_by,
+    },
+  });
 }
 
 const FLAG: Record<string, { label: string; cls: string }> = {

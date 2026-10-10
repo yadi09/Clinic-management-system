@@ -342,7 +342,8 @@ describe("REG-FE-CASHIER the cashier page", () => {
     await user.click(tab(/^Paid/));
     await screen.findByText("Paid 12");
     await user.click(screen.getAllByRole("button", { name: /Print/ })[0]);
-    expect(docs).toHaveLength(1);
+    // The paper is drawn by the print engine, which first asks whether it has been printed.
+    await waitFor(() => expect(docs).toHaveLength(1));
     expect(docs[0]).toContain("RCP-000012");
     expect(docs[0]).toContain("Abebe Cashier");
     expect(docs[0]).not.toContain("Selam Desk");
@@ -350,7 +351,7 @@ describe("REG-FE-CASHIER the cashier page", () => {
     expect(docs[0]).toContain("X-ray");
     // A transfer prints its reference, so a disputed payment can be found.
     await user.click(screen.getAllByRole("button", { name: /Print/ })[1]);
-    expect(docs).toHaveLength(2);
+    await waitFor(() => expect(docs).toHaveLength(2));
     expect(docs[1]).toContain("RCP-000013");
     expect(docs[1]).toContain("Reference");
     expect(docs[1]).toContain("FT123");
@@ -364,6 +365,7 @@ describe("REG-FE-CASHIER the cashier page", () => {
     await screen.findByText("Paid 5");
     expect(screen.getByText(/Consultation · X-ray · —/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Print/ }));
+    await waitFor(() => expect(docs).toHaveLength(1));
     expect(docs[0]).toContain("Selam Desk");
   });
 
@@ -530,7 +532,8 @@ describe("REG-FE-CASHIER day close", () => {
     expect(within(row).getByText("ETB 750.00")).toBeInTheDocument();
     expect(within(row).getByText("ETB -50.00")).toHaveClass("text-rose-600");
     await user.click(within(row).getByRole("button", { name: /Print Z-report/ }));
-    expect(docs[0]).toContain("END-OF-DAY Z-REPORT");
+    await waitFor(() => expect(docs).toHaveLength(1));
+    expect(docs[0]).toContain("End-of-day Z-report");
     expect(docs[0]).toContain("Variance (SHORT)");
     expect(docs[0]).toContain("ETB 800.00");
     expect(docs[0]).toContain("telebirr (1) — not in drawer");
@@ -573,6 +576,7 @@ describe("REG-FE-CASHIER day close", () => {
     await user.click(go);
     await waitFor(() => expect(fake.lastBody("POST", "/billing/day-close")).toEqual({ business_date: T, counted: 790, note: "" }));
     expect(toasts("success")).toContain("Day closed — variance ETB -10.00");
+    await waitFor(() => expect(docs).toHaveLength(1));
     expect(docs[0]).toContain("Variance (SHORT)");
     expect(docs[0]).toContain("Selam Desk");
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());

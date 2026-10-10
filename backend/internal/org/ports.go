@@ -70,6 +70,30 @@ type SettingsInput struct {
 
 type ClinicInput struct{ Name, Timezone, Locale string }
 
+// PrintSettings is how this clinic's printed papers look. Settings is opaque to the
+// server on purpose: the front end owns its shape and versions it.
+type PrintSettings struct {
+	Settings json.RawMessage `json:"settings"`
+	// Logo is a small image as a data URL, or empty.
+	Logo string `json:"logo"`
+}
+
+// PrintSettingsInput replaces the settings; Logo is changed only when it is set:
+// nil keeps the stored logo, a pointer to "" removes it.
+type PrintSettingsInput struct {
+	Settings json.RawMessage
+	Logo     *string
+}
+
+// PrintMark says how many times a paper has been printed, and by whom first and last.
+type PrintMark struct {
+	Count   int    `json:"count"`
+	FirstAt string `json:"first_at"`
+	FirstBy string `json:"first_by,omitempty"`
+	LastAt  string `json:"last_at"`
+	LastBy  string `json:"last_by,omitempty"`
+}
+
 type BranchInput struct {
 	ClinicID     *uuid.UUID
 	Name         string
@@ -129,11 +153,11 @@ type PlanUsage struct {
 
 // PlanFeature is one paid feature from the clinic's point of view.
 type PlanFeature struct {
-	Code     string   `json:"code"`
-	Name     string   `json:"name"`
-	Detail   string   `json:"detail,omitempty"`
-	Category string   `json:"category"`
-	Included bool     `json:"included"`
+	Code     string `json:"code"`
+	Name     string `json:"name"`
+	Detail   string `json:"detail,omitempty"`
+	Category string `json:"category"`
+	Included bool   `json:"included"`
 	// OnPlans names the active plans of this clinic's type that include it —
 	// empty when the clinic already has it.
 	OnPlans []string `json:"on_plans,omitempty"`
@@ -149,6 +173,16 @@ type Service interface {
 
 	GetSettings(ctx context.Context) (*Settings, error)
 	SaveSettings(ctx context.Context, in SettingsInput) (*Settings, error)
+
+	// GetPrintSettings / SavePrintSettings: how the clinic's papers look.
+	GetPrintSettings(ctx context.Context) (*PrintSettings, error)
+	SavePrintSettings(ctx context.Context, in PrintSettingsInput) (*PrintSettings, error)
+	// LogPrint records that a paper (kind, ref) is being printed now and returns how
+	// many times it has been, so a reprint can say so.
+	LogPrint(ctx context.Context, kind, ref string) (*PrintMark, error)
+	// PeekPrint says how many times it has been printed so far, without counting
+	// this look: the preview needs to know whether it will be a duplicate.
+	PeekPrint(ctx context.Context, kind, ref string) (*PrintMark, error)
 
 	ListBranches(ctx context.Context) ([]Branch, error)
 	CreateBranch(ctx context.Context, in BranchInput) (*Branch, error)

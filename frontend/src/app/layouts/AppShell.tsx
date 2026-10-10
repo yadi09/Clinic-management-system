@@ -8,6 +8,7 @@ import { inboxCount } from "@/features/lab/api";
 import { PageHelp } from "@/features/help/PageHelp";
 import { NotificationBell } from "@/features/notifications/NotificationBell";
 import { SignInNotifications } from "@/features/notifications/SignInNotifications";
+import { PrintProvider } from "@/features/printing/PrintProvider";
 import { LiveAlerts } from "@/features/notifications/LiveAlerts";
 import { CommandPalette } from "@/app/command-palette";
 import { MobileNav } from "@/app/layouts/MobileNav";
@@ -218,6 +219,8 @@ export function AppShell() {
       <CommandPalette />
       <SignInNotifications />
       <LiveAlerts />
+      {/* The clinic's printing look, and the preview every printed paper goes through. */}
+      <PrintProvider />
     </div>
   );
 }

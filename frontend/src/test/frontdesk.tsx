@@ -15,6 +15,7 @@ import type { ReactNode } from "react";
 import { vi } from "vitest";
 
 import { quietApiFetch } from "@/test/render";
+import { transport } from "@/features/printing/engine";
 
 export interface Req {
   method: string;
@@ -180,14 +181,29 @@ export const toasts = (kind: "success" | "error" | "info" | "warning" | "message
 
 // ---- print ----
 
-/** Captures what window.open + document.write would have printed. */
+/**
+ * Captures every page sent to the printer, as HTML. Papers go through the print
+ * engine's transport (a hidden frame in the browser); the two money papers that have
+ * not moved onto it yet still open a window, so both are captured here.
+ */
 export function capturePrints() {
   const docs: string[] = [];
+  vi.spyOn(transport, "send").mockImplementation((html: string) => { docs.push(html); });
   vi.spyOn(window, "open").mockImplementation(() => {
     let html = "";
     return { document: { write: (s: string) => { html += s; }, close: () => { docs.push(html); } } } as unknown as Window;
   });
   return docs;
+}
+
+/** The visible text of a printed page, tags and styles stripped, whitespace collapsed. */
+export function printedText(html: string): string {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  doc.querySelectorAll("script,style").forEach((n) => n.remove());
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  const parts: string[] = [];
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) parts.push(n.textContent ?? "");
+  return parts.join(" ").replace(/\s+/g, " ").trim();
 }
 
 /** Today as YYYY-MM-DD in the local zone (what freezeToday set). */

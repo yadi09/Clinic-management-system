@@ -124,6 +124,12 @@ export interface OrderItemDetail {
   critical: boolean;
   notified_at?: string;
   notified_by?: string;
+  /** Who drew the sample and when it was reported and signed off. */
+  collected_by?: string;
+  collected_at?: string;
+  resulted_at?: string;
+  validated_at?: string;
+  validated_by?: string;
   analytes: AnalyteResult[];
 }
 

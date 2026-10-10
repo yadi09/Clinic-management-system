@@ -21,6 +21,13 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	g.GET("/settings", h.GetSettings)
 	g.PUT("/settings", manage, h.SaveSettings)
 
+	// How the clinic's printed papers look. Everyone who prints reads it; only
+	// clinic.manage changes it. The print log is written by whoever prints.
+	g.GET("/print-settings", h.GetPrintSettings)
+	g.PUT("/print-settings", manage, h.SavePrintSettings)
+	g.POST("/print-log", h.LogPrint)
+	g.GET("/print-log", h.PeekPrint)
+
 	g.GET("/branch-usage", h.BranchUsage)
 	g.GET("/plan-usage", h.PlanUsage)
 	g.GET("/branches", h.ListBranches)

@@ -453,6 +453,18 @@ func (s *Service) OrderItem(ctx context.Context, itemID uuid.UUID) (*lab.OrderIt
 			OrderedBy: deref(it.OrderedBy), Critical: it.CriticalFlag, NotifiedAt: it.NotifiedAt, NotifiedByName: deref(it.NotifiedByName),
 			Analytes: []lab.AnalyteResult{},
 		}
+		// The sign-off trail, for the printed report. Raw SQL beside the generated query
+		// because sqlc cannot be regenerated here.
+		var by string
+		if e := tx.QueryRow(ctx, `
+			SELECT coalesce(i.collected_by, ''), i.collected_at, i.resulted_at, i.validated_at, coalesce(u.full_name, '')
+			  FROM lab_order_items i
+			  LEFT JOIN users u ON u.id = i.validated_by AND u.tenant_id = i.tenant_id
+			 WHERE i.tenant_id = $1 AND i.id = $2`, tenantID, itemID).
+			Scan(&d.CollectedBy, &d.CollectedAt, &d.ResultedAt, &d.ValidatedAt, &by); e != nil {
+			return e
+		}
+		d.ValidatedBy = by
 		analytes, e := q.ListAnalytesByTest(ctx, labdb.ListAnalytesByTestParams{TenantID: tenantID, TestID: it.TestID})
 		if e != nil {
 			return e

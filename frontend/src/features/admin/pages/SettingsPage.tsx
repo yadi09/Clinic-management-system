@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, ShieldCheck, Building2, MapPin, Workflow, Wallet, Stethoscope, ClipboardList, Pill, type LucideIcon } from "lucide-react";
+import { Plus, Pencil, Trash2, ShieldCheck, Building2, MapPin, Workflow, Wallet, Stethoscope, ClipboardList, Pill, Printer, type LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,10 +68,11 @@ import { NewAllergenForm, severityClass } from "@/features/clinical/AllergenFiel
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { RegistrationFeeCard } from "@/features/billing/RegistrationFeeCard";
+import { PrintingSettings } from "@/features/printing/PrintingSettings";
 import { AppError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
-type SectionKey = "account" | "profile" | "locations" | "flow" | "payments" | "vitals" | "diagnoses" | "drugs" | "procedures" | "toothconditions";
+type SectionKey = "account" | "profile" | "printing" | "locations" | "flow" | "payments" | "vitals" | "diagnoses" | "drugs" | "procedures" | "toothconditions";
 // flag: shown only with it. hideWhen: hidden with it — a dental clinic has no
 // triage (so no vitals form) and its examination's diagnosis is free text, not the
 // general clinic's catalogue.
@@ -81,6 +82,7 @@ const SECTIONS: { group: string; items: { key: SectionKey; label: string; icon: 
     items: [
       { key: "account", label: "Account & security", icon: ShieldCheck },
       { key: "profile", label: "Clinic profile", icon: Building2 },
+      { key: "printing", label: "Printing", icon: Printer },
       { key: "locations", label: "Branches & departments", icon: MapPin },
     ],
   },
@@ -162,6 +164,7 @@ export function SettingsPage() {
             </div>
           )}
           {active === "payments" && <PaymentRailsCard manage={manage} />}
+          {active === "printing" && <PrintingSettings />}
           {active === "vitals" && <VitalsFormCard manage={manage} />}
           {active === "diagnoses" && <DiagnosisCatalogCard manage={manage} />}
           {active === "drugs" && <DrugLibraryCard manage={manage} />}

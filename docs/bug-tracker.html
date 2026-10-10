@@ -75,7 +75,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 </style></head>
 <body><div class="wrap">
 <h1>ClinicOS bug tracker</h1>
-<p class="lede">Every known problem in the system, in plain words, most urgent first. 145 of the 198 are already caught by an automated test, so when one is fixed its test proves it, and keeps proving it after every future change. The other 53, marked <i>No test yet</i>, came from the audit (mostly server and operations work); each gets a test or a written check when it is fixed.</p>
+<p class="lede">Every known problem in the system, in plain words, most urgent first. 146 of the 198 are already caught by an automated test, so when one is fixed its test proves it, and keeps proving it after every future change. The other 52, marked <i>No test yet</i>, came from the audit (mostly server and operations work); each gets a test or a written check when it is fixed.</p>
 
 <div class="progress"><div class="bar"><i></i></div><b>12 of 198 closed</b></div>
 
@@ -86,7 +86,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 <li><b>Fix:</b> I change the code; its test turns from "known bug" to a normal passing test, and the whole suite must still pass.</li>
 <li><b>Verify:</b> you check it and accept it. Then the next one.</li>
 </ol>
-<p style="margin:8px 0 0;color:var(--soft)">Right now: 175 open · 1 explained or confirmed · 10 fixed, waiting for your check · 12 verified.</p>
+<p style="margin:8px 0 0;color:var(--soft)">Right now: 175 open · 0 explained or confirmed · 11 fixed, waiting for your check · 12 verified.</p>
 </div>
 
 <a class="next" href="#FIN-15" data-open="FIN-15"><span>Next up</span><b>A listed service can be billed at any price</b><em>High · FIN-15 · Open</em></a>
@@ -95,7 +95,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 
 <div class="filters">
   <input id="q" type="search" placeholder="Search: cashier, follow-up, refund…" aria-label="Search issues">
-  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (175)</option><option value="explained">Explained (1)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (10)</option><option value="verified">Verified (12)</option><option value="wontfix">Won't fix (0)</option></select>
+  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (175)</option><option value="explained">Explained (0)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (11)</option><option value="verified">Verified (12)</option><option value="wontfix">Won't fix (0)</option></select>
   <select id="ar" aria-label="Area"><option value="">Every area</option><option value="Appointments &amp; front desk">Appointments &amp; front desk</option><option value="Dental">Dental</option><option value="Money">Money</option><option value="Patient records">Patient records</option><option value="Printing">Printing</option><option value="Reliability">Reliability</option><option value="Safety &amp; access">Safety &amp; access</option><option value="Screens &amp; usability">Screens &amp; usability</option></select>
 </div>
 <p class="count" id="count"></p>
@@ -1203,32 +1203,32 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
     </div>
   </details>
 </article>
-<article class="issue sev-high st-explained" id="FEAT-PRINT-1" data-sev="high" data-status="explained"
-  data-area="Printing" data-q="feat-print-1 printed documents: no clinic identity, logo, layout choice or preview twelve things are printed (three receipts, z-report, statement, two prescriptions, two lab papers, certificate, dental examination, pharmacy print). each carries only the clinic name, has no logo, tax number or layout choice, and the pharmacy print prints the whole web page. the lab report has no clinic identity at all. a clinic with a printed letterhead and a tin prints a receipt: it shows &#x27;abeba dental clinic&#x27; in monospace, no logo, no tin, no duplicate marking on a reprint, and a refunded visit receipt reprints as a normal payment receipt. owner, admin, cashier, dentist, doctor printing">
+<article class="issue sev-high st-fixed" id="FEAT-PRINT-1" data-sev="high" data-status="fixed"
+  data-area="Printing" data-q="feat-print-1 printed documents: no clinic identity, logo, layout choice or preview twelve things were printed (three receipts, z-report, statement, two prescriptions, two lab papers, certificate, dental examination, pharmacy print), each with only the clinic name, no logo, tax number or layout choice; the pharmacy print printed the whole web page and the lab report had no clinic identity. a clinic with a printed letterhead and a tin prints a receipt: it shows &#x27;abeba dental clinic&#x27; in monospace, no logo, no tin, no duplicate marking on a reprint, and a refunded visit receipt reprints as a normal payment receipt. owner, admin, cashier, dentist, doctor printing">
   <details>
     <summary>
       <span class="num">39</span>
       <span class="sev">High</span>
       <span class="ttl">Printed documents: no clinic identity, logo, layout choice or preview</span>
-      <span class="meta"><span class="id">FEAT-PRINT-1</span> · Printing · effort L · <i class="notest">No test yet</i></span>
-      <span class="status">Explained</span>
+      <span class="meta"><span class="id">FEAT-PRINT-1</span> · Printing · effort L</span>
+      <span class="status">Fixed</span>
     </summary>
     <div class="body">
-      <div class="decision"><b>Your decision first:</b> Discuss each document and answer the ten questions in section 6 of docs/printing-templates-analysis.html.</div>
+      
       <dl>
-        <dt>What happens</dt><dd>Twelve things are printed (three receipts, Z-report, statement, two prescriptions, two lab papers, certificate, dental examination, pharmacy print). Each carries only the clinic name, has no logo, tax number or layout choice, and the pharmacy Print prints the whole web page. The lab report has no clinic identity at all.</dd>
+        <dt>What happens</dt><dd>Twelve things were printed (three receipts, Z-report, statement, two prescriptions, two lab papers, certificate, dental examination, pharmacy print), each with only the clinic name, no logo, tax number or layout choice; the pharmacy Print printed the whole web page and the lab report had no clinic identity.</dd>
         <dt>In the clinic</dt><dd class="example">A clinic with a printed letterhead and a TIN prints a receipt: it shows &#x27;Abeba Dental Clinic&#x27; in monospace, no logo, no TIN, no duplicate marking on a reprint, and a refunded visit receipt reprints as a normal payment receipt.</dd>
         <dt>Why it matters</dt><dd>Documents handed to patients, pharmacies, employers and tax officers look unofficial and cannot be checked; reprints cannot be told from originals.</dd>
-        <dt>The fix</dt><dd>Set the clinic identity once (logo, EN/AM name, address, phones, TIN, licence, footer), choose a template and paper per document family with live preview, a few content toggles, duplicate marking, and fix the accuracy gaps. Analysis: docs/printing-templates-analysis.html.</dd>
+        <dt>The fix</dt><dd>One print engine for every paper. Settings &gt; Printing: logo (shape, size, position), English and Amharic names, address, phones, email, website, TIN, VAT, licence, three extra lines, a footer; header style (full, compact, name only, blank for your own letterhead), accent colour, typeface, text size; language and Ethiopian dates; per document: layout, paper (58 mm, 80 mm, A5, A4), which parts print, the clinic&#x27;s own wording, and reworded labels. A live preview shows the clinic&#x27;s own paper, and every print shows a preview first. A reprint of a receipt, prescription, lab request, lab report, certificate, Z-report or dispensing slip is marked DUPLICATE with who printed it first. Fixed on the way: a refunded visit receipt reprints as REFUNDED; the lab report carries the clinic identity and who collected and validated it; the pharmacy Print is a real dispensing slip; the statement lists where to pay.</dd>
         <dt>Who notices</dt><dd>Owner, Admin, Cashier, Dentist, Doctor</dd>
       </dl>
       <div class="tech">
         <details><summary>For the developer: tests and code</summary>
-          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li>No automated test yet: an operational item</li></ul>
-          <p>Where in the code:</p><ul><li><code>frontend/src/features/billing/print.ts</code></li><li><code>frontend/src/features/clinical/print.ts</code></li><li><code>frontend/src/features/clinical/printCertificate.ts</code></li><li><code>frontend/src/features/dental/printExam.ts</code></li><li><code>frontend/src/features/lab/pages/LabOrderItemPage.tsx</code></li><li><code>frontend/src/features/pharmacy/pages/DispensePage.tsx</code></li><li><code>docs/printing-templates-analysis.html</code></li></ul>
+          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li><code>REG-FE-CERTPRINT-018</code></li><li><code>REG-FE-DISPPRINT-001</code></li><li><code>REG-FE-EXAM-016</code></li><li><code>REG-FE-LABPRINT-001</code></li><li><code>REG-FE-PRINT-010</code></li><li><code>REG-FE-PRSET-008</code></li><li><code>REG-FE-PRTPL-040</code></li><li><code>REG-FE-PRTPL-055</code></li><li><code>REG-LABREPORT-001</code></li><li><code>REG-PRINT-001</code></li><li><code>REG-PRINT-002</code></li><li><code>REG-PRINT-003</code></li><li><code>REG-PRINT-004</code></li><li><code>REG-PRINT-005</code></li><li><code>REG-PRINT-006</code></li><li><code>REG-PRINT-007</code></li><li><code>REG-PRINT-008</code></li></ul>
+          <p>Where in the code:</p><ul><li><code>backend/db/migrations/00093_print_settings.sql</code></li><li><code>backend/internal/org/service/service.go</code></li><li><code>docs/printing-templates-analysis.html</code></li><li><code>frontend/src/features/admin/pages/SettingsPage.tsx</code></li><li><code>frontend/src/features/billing/print.ts</code></li><li><code>frontend/src/features/clinical/print.ts</code></li><li><code>frontend/src/features/clinical/printCertificate.ts</code></li><li><code>frontend/src/features/dental/printExam.ts</code></li><li><code>frontend/src/features/lab/pages/LabOrderItemPage.tsx</code></li><li><code>frontend/src/features/pharmacy/pages/DispensePage.tsx</code></li><li><code>frontend/src/features/printing/</code></li></ul>
         </details>
       </div>
-      <div class="log"><b>History</b><ul><li><time>2026-10-10</time> Inventory and analysis written; nothing built.</li></ul></div>
+      <div class="log"><b>History</b><ul><li><time>2026-10-10</time> Inventory and analysis written; nothing built.</li><li><time>2026-10-10</time> Approved with &#x27;make it as customizable as possible&#x27;. Built the engine (settings, catalogue-driven Settings screen, preview, reprint counter) and moved all twelve print points onto it. Nothing is deferred except new documents (patient card, estimate, referral letter, queue slip, labels), the clinician licence number on staff profiles, a public verification page behind the QR, and the pharmacy batch on a slip printed after it was sent to the cashier (the page no longer holds it). Full run: 1,824 frontend tests with every coverage threshold, 14 end-to-end journeys and the whole backend suite pass; the Go coverage gate is green (273 of 273 routes, no package below its baseline). Overnight it dipped on dashboard and finance only because of the hour: the long-wait test cannot make a 150-minute wait in the first hours after Addis midnight, and the open-drawers query (NEW-PAY-2) compares UTC dates. Nothing was lowered.</li></ul></div>
     </div>
   </details>
 </article>
@@ -5844,7 +5844,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   </details>
 </article>
 
-<footer>Built 10 October 2026, 15:20 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
+<footer>Built 11 October 2026, 01:40 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
 </div>
 <script>
 (function () {

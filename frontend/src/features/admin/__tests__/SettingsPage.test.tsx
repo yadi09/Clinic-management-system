@@ -104,14 +104,14 @@ describe("REG-FE-SETTINGS sections", () => {
   test("REG-FE-SETTINGS-001 a dental clinic's rail: its procedures and tooth conditions; no vitals, no diagnosis catalog, no branches", () => {
     open();
     const items = within(rail()).getAllByRole("button").map((b) => b.textContent);
-    expect(items).toEqual(["Account & security", "Clinic profile", "Visit flow", "Payment methods", "Drugs & allergens", "Dental procedures", "Tooth conditions"]);
+    expect(items).toEqual(["Account & security", "Clinic profile", "Printing", "Visit flow", "Payment methods", "Drugs & allergens", "Dental procedures", "Tooth conditions"]);
   });
 
   test("REG-FE-SETTINGS-002 a general clinic's rail has vitals and diagnoses, not dental", () => {
     setAuth({ flags: [] });
     open();
     const items = within(rail()).getAllByRole("button").map((b) => b.textContent);
-    expect(items).toEqual(["Account & security", "Clinic profile", "Visit flow", "Payment methods", "Vitals form", "Diagnosis catalog", "Drugs & allergens"]);
+    expect(items).toEqual(["Account & security", "Clinic profile", "Printing", "Visit flow", "Payment methods", "Vitals form", "Diagnosis catalog", "Drugs & allergens"]);
   });
 
   test("REG-FE-SETTINGS-003 a section is in the URL so a prompt elsewhere can link straight to it", async () => {

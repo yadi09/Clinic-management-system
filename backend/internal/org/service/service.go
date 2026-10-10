@@ -4,10 +4,12 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -693,4 +695,163 @@ func mapWriteErr(err error, conflictCode, conflictMsg string) error {
 		return apperr.Conflict(conflictCode, conflictMsg)
 	}
 	return apperr.Internal(err)
+}
+
+// maxPrintSettings bounds the settings document. Real ones are a few KB; the cap is
+// there so the column cannot be used as a place to keep arbitrary data.
+const maxPrintSettings = 64 * 1024
+
+// maxLogoBytes bounds the decoded logo image.
+const maxLogoBytes = 400 * 1024
+
+// logoMagic checks that bytes really are the image type the data URL claims, so the
+// column cannot hold a script or an arbitrary file under an image label.
+func logoMagic(mime string, b []byte) bool {
+	switch mime {
+	case "image/png":
+		return len(b) > 8 && string(b[:8]) == "\x89PNG\r\n\x1a\n"
+	case "image/jpeg":
+		return len(b) > 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF
+	case "image/webp":
+		return len(b) > 12 && string(b[:4]) == "RIFF" && string(b[8:12]) == "WEBP"
+	}
+	return false
+}
+
+// checkLogo validates a logo data URL: an image type we draw, within the size cap,
+// whose bytes match its type.
+func checkLogo(dataURL string) error {
+	const marker = ";base64,"
+	i := strings.Index(dataURL, marker)
+	if !strings.HasPrefix(dataURL, "data:image/") || i < 0 {
+		return apperr.Validation("the logo must be a PNG, JPEG or WebP image")
+	}
+	mime := strings.TrimPrefix(dataURL[:i], "data:")
+	raw, e := base64.StdEncoding.DecodeString(dataURL[i+len(marker):])
+	if e != nil || !logoMagic(mime, raw) {
+		return apperr.Validation("the logo must be a PNG, JPEG or WebP image")
+	}
+	if len(raw) > maxLogoBytes {
+		return apperr.Validation("the logo is too large — use an image under 400 KB")
+	}
+	return nil
+}
+
+func (s *Service) GetPrintSettings(ctx context.Context) (*org.PrintSettings, error) {
+	tenantID, _ := actor(ctx)
+	out := &org.PrintSettings{Settings: json.RawMessage(`{}`)}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		var raw []byte
+		var logo *string
+		e := tx.QueryRow(ctx, `SELECT settings, logo FROM print_settings WHERE tenant_id = $1`, tenantID).Scan(&raw, &logo)
+		if errors.Is(e, pgx.ErrNoRows) {
+			return nil // never customised: the defaults apply
+		}
+		if e != nil {
+			return e
+		}
+		out.Settings = json.RawMessage(raw)
+		if logo != nil {
+			out.Logo = *logo
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+func (s *Service) SavePrintSettings(ctx context.Context, in org.PrintSettingsInput) (*org.PrintSettings, error) {
+	tenantID, user := actor(ctx)
+	var obj map[string]any
+	if len(in.Settings) == 0 || len(in.Settings) > maxPrintSettings || json.Unmarshal(in.Settings, &obj) != nil || obj == nil {
+		return nil, apperr.Validation("the print settings are not valid")
+	}
+	if in.Logo != nil && *in.Logo != "" {
+		if e := checkLogo(*in.Logo); e != nil {
+			return nil, e
+		}
+	}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		// The logo is replaced only when the caller said so; the settings always are.
+		_, e := tx.Exec(ctx, `
+			INSERT INTO print_settings (tenant_id, settings, logo, updated_by)
+			VALUES ($1, $2, CASE WHEN $4 THEN NULLIF($3, '') END, $5)
+			ON CONFLICT (tenant_id) DO UPDATE
+			   SET settings = EXCLUDED.settings,
+			       logo = CASE WHEN $4 THEN NULLIF($3, '') ELSE print_settings.logo END,
+			       updated_at = now(), updated_by = EXCLUDED.updated_by`,
+			tenantID, []byte(in.Settings), deref(in.Logo), in.Logo != nil, user)
+		return e
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return s.GetPrintSettings(ctx)
+}
+
+func (s *Service) LogPrint(ctx context.Context, kind, ref string) (*org.PrintMark, error) {
+	tenantID, user := actor(ctx)
+	kind, ref = strings.TrimSpace(kind), strings.TrimSpace(ref)
+	if kind == "" || len(kind) > 32 || ref == "" || len(ref) > 64 {
+		return nil, apperr.Validation("a document kind and reference are required")
+	}
+	var m org.PrintMark
+	var firstAt, lastAt time.Time
+	var firstBy, lastBy *string
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `
+			WITH up AS (
+			  INSERT INTO print_log (tenant_id, kind, ref, first_by, last_by)
+			  VALUES ($1, $2, $3, $4, $4)
+			  ON CONFLICT (tenant_id, kind, ref) DO UPDATE
+			     SET count = print_log.count + 1, last_at = now(), last_by = EXCLUDED.last_by
+			  RETURNING count, first_at, first_by, last_at, last_by)
+			SELECT up.count, up.first_at, coalesce(f.full_name, ''), up.last_at, coalesce(l.full_name, '')
+			  FROM up
+			  LEFT JOIN users f ON f.id = up.first_by AND f.tenant_id = $1
+			  LEFT JOIN users l ON l.id = up.last_by AND l.tenant_id = $1`,
+			tenantID, kind, ref, user).Scan(&m.Count, &firstAt, &firstBy, &lastAt, &lastBy)
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	m.FirstAt, m.LastAt = firstAt.Format(time.RFC3339), lastAt.Format(time.RFC3339)
+	if firstBy != nil {
+		m.FirstBy = *firstBy
+	}
+	if lastBy != nil {
+		m.LastBy = *lastBy
+	}
+	return &m, nil
+}
+
+func (s *Service) PeekPrint(ctx context.Context, kind, ref string) (*org.PrintMark, error) {
+	tenantID, _ := actor(ctx)
+	kind, ref = strings.TrimSpace(kind), strings.TrimSpace(ref)
+	if kind == "" || len(kind) > 32 || ref == "" || len(ref) > 64 {
+		return nil, apperr.Validation("a document kind and reference are required")
+	}
+	m := &org.PrintMark{}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		var firstAt, lastAt time.Time
+		var firstBy, lastBy string
+		e := tx.QueryRow(ctx, `
+			SELECT p.count, p.first_at, coalesce(f.full_name, ''), p.last_at, coalesce(l.full_name, '')
+			  FROM print_log p
+			  LEFT JOIN users f ON f.id = p.first_by AND f.tenant_id = p.tenant_id
+			  LEFT JOIN users l ON l.id = p.last_by AND l.tenant_id = p.tenant_id
+			 WHERE p.tenant_id = $1 AND p.kind = $2 AND p.ref = $3`, tenantID, kind, ref).
+			Scan(&m.Count, &firstAt, &firstBy, &lastAt, &lastBy)
+		if errors.Is(e, pgx.ErrNoRows) {
+			return nil // never printed: count 0
+		}
+		m.FirstAt, m.FirstBy, m.LastAt, m.LastBy = firstAt.Format(time.RFC3339), firstBy, lastAt.Format(time.RFC3339), lastBy
+		return e
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return m, nil
 }
