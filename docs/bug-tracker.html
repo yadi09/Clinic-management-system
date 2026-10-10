@@ -21,7 +21,7 @@ h1 { font-family:Fraunces,Georgia,serif; font-weight:600; font-size:2.1rem; line
 .lede { color:var(--soft); max-width:62ch; margin:0 0 24px }
 .progress { display:flex; align-items:center; gap:14px; margin:0 0 22px }
 .bar { flex:1; height:12px; border-radius:6px; background:var(--line); overflow:hidden }
-.bar i { display:block; height:100%; background:var(--ok); width:2% }
+.bar i { display:block; height:100%; background:var(--ok); width:6% }
 .progress b { white-space:nowrap }
 .how { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 20px; margin:0 0 22px }
 .how ol { margin:6px 0 0; padding-left:22px } .how li { margin:2px 0 }
@@ -77,7 +77,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 <h1>ClinicOS bug tracker</h1>
 <p class="lede">Every known problem in the system, in plain words, most urgent first. 143 of the 194 are already caught by an automated test, so when one is fixed its test proves it, and keeps proving it after every future change. The other 51, marked <i>No test yet</i>, came from the audit (mostly server and operations work); each gets a test or a written check when it is fixed.</p>
 
-<div class="progress"><div class="bar"><i></i></div><b>3 of 194 closed</b></div>
+<div class="progress"><div class="bar"><i></i></div><b>11 of 194 closed</b></div>
 
 <div class="how"><b>How we work through this list</b>
 <ol>
@@ -86,7 +86,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 <li><b>Fix:</b> I change the code; its test turns from "known bug" to a normal passing test, and the whole suite must still pass.</li>
 <li><b>Verify:</b> you check it and accept it. Then the next one.</li>
 </ol>
-<p style="margin:8px 0 0;color:var(--soft)">Right now: 183 open · 0 explained or confirmed · 8 fixed, waiting for your check · 3 verified.</p>
+<p style="margin:8px 0 0;color:var(--soft)">Right now: 183 open · 0 explained or confirmed · 0 fixed, waiting for your check · 11 verified.</p>
 </div>
 
 <a class="next" href="#FIN-5" data-open="FIN-5"><span>Next up</span><b>Collecting debt can mark more paid than bank confirmed</b><em>Critical · FIN-5 · Open</em></a>
@@ -95,7 +95,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 
 <div class="filters">
   <input id="q" type="search" placeholder="Search: cashier, follow-up, refund…" aria-label="Search issues">
-  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (183)</option><option value="explained">Explained (0)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (8)</option><option value="verified">Verified (3)</option><option value="wontfix">Won't fix (0)</option></select>
+  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (183)</option><option value="explained">Explained (0)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (0)</option><option value="verified">Verified (11)</option><option value="wontfix">Won't fix (0)</option></select>
   <select id="ar" aria-label="Area"><option value="">Every area</option><option value="Appointments &amp; front desk">Appointments &amp; front desk</option><option value="Dental">Dental</option><option value="Money">Money</option><option value="Patient records">Patient records</option><option value="Reliability">Reliability</option><option value="Safety &amp; access">Safety &amp; access</option><option value="Screens &amp; usability">Screens &amp; usability</option></select>
 </div>
 <p class="count" id="count"></p>
@@ -188,7 +188,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
     </div>
   </details>
 </article>
-<article class="issue sev-critical st-fixed" id="SEC-1" data-sev="critical" data-status="fixed"
+<article class="issue sev-critical st-verified" id="SEC-1" data-sev="critical" data-status="verified"
   data-area="Safety &amp; access" data-q="sec-1 a file record can point at another clinic&#x27;s stored file after a file is uploaded, the app tells the server where the file is stored, and the server believes it. it does not check that the location belongs to this clinic and this patient, or that the chosen visit belongs to this patient. opening the record then gives a link to that file, and deleting it deletes that file. a staff member at clinic a who somehow learns the storage location of an x-ray at clinic b records it on one of her own patients. she can now view clinic b&#x27;s x-ray, and pressing delete erases it from clinic b too. in the same way an x-ray can be filed on a different patient&#x27;s visit or on the down payment. every clinic&#x27;s x-rays and attachments safety &amp; access">
   <details>
     <summary>
@@ -196,7 +196,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">Critical</span>
       <span class="ttl">A file record can point at another clinic&#x27;s stored file</span>
       <span class="meta"><span class="id">SEC-1</span> · Safety &amp; access · effort S</span>
-      <span class="status">Fixed</span>
+      <span class="status">Verified</span>
     </summary>
     <div class="body">
       
@@ -213,11 +213,11 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>backend/internal/dental/service/service.go:2856</code></li><li><code>backend/internal/kernel/storage/storage.go</code></li><li><code>backend/internal/patient/service/service.go:416</code></li></ul>
         </details>
       </div>
-      <div class="log"><b>History</b><ul><li><time>2026-10-03</time> Explained; owner confirmed it is critical and to fix it.</li><li><time>2026-10-04</time> Fix written: recording a patient file or a dental image accepts only a storage location inside this clinic&#x27;s folder for this patient (no climbing out with ../), the size lookup happens only after that check, and an image may only be filed on one of this patient&#x27;s treatment visits (never another patient&#x27;s, never the down payment). All 6 files on the live system already follow the rule. Known-bug tests now plain; ~10 tests that invented locations corrected. Full run scheduled after 03:00 Addis.</li><li><time>2026-10-04</time> Full run attempt 1 failed, none of it from the SEC-1 fix: (1) my night-hours change to a test helper commented out the plan interval, making test plans monthly (4 dental tests); (2) one exam screen test still carried its own 20 s limit; (3) skipping the waiting-alert test at night dropped dashboard coverage. Fixed all three; the waiting-alert test now runs at any hour with waits that fit inside the clinic day. The whole API suite passed at 01:15 Addis. Attempt 2 running.</li><li><time>2026-10-04</time> Attempt 2: all 667 server tests passed. Remaining failures were outside SEC-1: a draft race in the visit form (fixed, NEW-DRAFT-1), and the browser journeys running on the host clock (New York) instead of the clinic clock (now Addis, 10/10 pass at 02:00 Addis). Coverage dips are the night-time known-bug checks for NEW-DAY-2 / NEW-DAY-3 stopping tests early; SEC-1 code itself is fully reached except one database-failure branch.</li><li><time>2026-10-04</time> Full run passed at night (03:00 Addis): server 672 pass / 0 fail, screens 1,626, browser journeys 10/10, 264/264 routes; coverage gate re-run green after two older tests were given real file keys. Committed; not yet deployed. Waiting for the owner to verify.</li><li><time>2026-10-04</time> Deployed to app.clinicos.cc (commit fd3805c, pre-deploy backup taken, API ready).</li></ul></div>
+      <div class="log"><b>History</b><ul><li><time>2026-10-03</time> Explained; owner confirmed it is critical and to fix it.</li><li><time>2026-10-04</time> Fix written: recording a patient file or a dental image accepts only a storage location inside this clinic&#x27;s folder for this patient (no climbing out with ../), the size lookup happens only after that check, and an image may only be filed on one of this patient&#x27;s treatment visits (never another patient&#x27;s, never the down payment). All 6 files on the live system already follow the rule. Known-bug tests now plain; ~10 tests that invented locations corrected. Full run scheduled after 03:00 Addis.</li><li><time>2026-10-04</time> Full run attempt 1 failed, none of it from the SEC-1 fix: (1) my night-hours change to a test helper commented out the plan interval, making test plans monthly (4 dental tests); (2) one exam screen test still carried its own 20 s limit; (3) skipping the waiting-alert test at night dropped dashboard coverage. Fixed all three; the waiting-alert test now runs at any hour with waits that fit inside the clinic day. The whole API suite passed at 01:15 Addis. Attempt 2 running.</li><li><time>2026-10-04</time> Attempt 2: all 667 server tests passed. Remaining failures were outside SEC-1: a draft race in the visit form (fixed, NEW-DRAFT-1), and the browser journeys running on the host clock (New York) instead of the clinic clock (now Addis, 10/10 pass at 02:00 Addis). Coverage dips are the night-time known-bug checks for NEW-DAY-2 / NEW-DAY-3 stopping tests early; SEC-1 code itself is fully reached except one database-failure branch.</li><li><time>2026-10-04</time> Full run passed at night (03:00 Addis): server 672 pass / 0 fail, screens 1,626, browser journeys 10/10, 264/264 routes; coverage gate re-run green after two older tests were given real file keys. Committed; not yet deployed. Waiting for the owner to verify.</li><li><time>2026-10-04</time> Deployed to app.clinicos.cc (commit fd3805c, pre-deploy backup taken, API ready).</li><li><time>2026-10-10</time> Owner verified on the live system.</li></ul></div>
     </div>
   </details>
 </article>
-<article class="issue sev-critical st-fixed" id="NEW-KERNEL-ALLERGY-1" data-sev="critical" data-status="fixed"
+<article class="issue sev-critical st-verified" id="NEW-KERNEL-ALLERGY-1" data-sev="critical" data-status="verified"
   data-area="Safety &amp; access" data-q="new-kernel-allergy-1 allergy written as a plural does not warn on prescriptions when a prescription is written, the system compares the drug name with the patient&#x27;s recorded allergies. it only warns if the allergy word appears whole inside the drug name. so an allergy recorded as &quot;penicillins&quot; (plural) does not warn for &quot;penicillin v&quot;, because &quot;penicillins&quot; is not inside &quot;penicillin v&quot;. the same happens for other longer spellings, and the check also does not know drug families (a &quot;penicillin&quot; allergy only catches amoxicillin if the clinic&#x27;s drug list has tagged amoxicillin as a penicillin). reception records almaz&#x27;s allergy as &quot;penicillins – severe&quot;. two weeks later dr selam prescribes penicillin v 250 mg for an abscess. no warning appears, the prescription prints, and the only protection left is whether dr selam happens to look at the allergy line on the card. dentist, doctor, patient safety &amp; access">
   <details>
     <summary>
@@ -225,7 +225,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">Critical</span>
       <span class="ttl">Allergy written as a plural does not warn on prescriptions</span>
       <span class="meta"><span class="id">NEW-KERNEL-ALLERGY-1</span> · Safety &amp; access · effort S</span>
-      <span class="status">Fixed</span>
+      <span class="status">Verified</span>
     </summary>
     <div class="body">
       
@@ -242,7 +242,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>backend/db/migrations/00091_standard_allergens.sql</code></li><li><code>backend/internal/clinical/service/service.go:763</code></li><li><code>backend/internal/dental/service/service.go:2103</code></li><li><code>backend/internal/kernel/allergy/allergy.go</code></li><li><code>backend/internal/kernel/allergy/allergy.go:25-36</code></li><li><code>backend/internal/kernel/allergy/allergy.go:46-66</code></li><li><code>backend/internal/platform/provision/provision.go</code></li></ul>
         </details>
       </div>
-      <div class="log"><b>History</b><ul><li><time>2026-10-04</time> Owner confirmed and chose option A: warn on plurals and spelling variants plus a fixed list of common drug families (penicillins, sulfonamides, NSAIDs and others); keep free typing of the allergy name but suggest the standard names while typing.</li><li><time>2026-10-10</time> Built (option A). Plurals and spellings are the same substance; drug families (penicillins, cephalosporins, carbapenems, sulfonamides, NSAIDs incl. aspirin/ASA, macrolides, tetracyclines, quinolones, nitroimidazoles, local anaesthetics, opioids) warn on every member; short names ASA and PCN count; &quot;sulfa&quot; no longer fires on iron (ferrous sulfate); filler words (&quot;severe&quot;, &quot;drugs&quot;) are ignored. Every clinic, existing and new, starts with 26 standard allergy names (suggested as staff type). Four older test rows changed on purpose: aspirin now warns on ibuprofen and penicillin on amoxicillin. Full run in progress.</li><li><time>2026-10-10</time> Full run green: server 692/0, screens 1,644, journeys 10/10, routes 267/267; coverage gate green after adding a test for the failure path of seeding (provisioning leaves no half-made clinic). The allergy matcher is 100% tested. Committed; not yet deployed. Waiting for the owner to verify.</li><li><time>2026-10-10</time> Deployed to app.clinicos.cc (commit 8a487ac, pre-deploy backup taken, API ready). Live: migration 91 applied; all 11 clinics have the standard allergy names (26 to 31 entries, their own entries kept), no duplicates, no errors in the API log.</li></ul></div>
+      <div class="log"><b>History</b><ul><li><time>2026-10-04</time> Owner confirmed and chose option A: warn on plurals and spelling variants plus a fixed list of common drug families (penicillins, sulfonamides, NSAIDs and others); keep free typing of the allergy name but suggest the standard names while typing.</li><li><time>2026-10-10</time> Built (option A). Plurals and spellings are the same substance; drug families (penicillins, cephalosporins, carbapenems, sulfonamides, NSAIDs incl. aspirin/ASA, macrolides, tetracyclines, quinolones, nitroimidazoles, local anaesthetics, opioids) warn on every member; short names ASA and PCN count; &quot;sulfa&quot; no longer fires on iron (ferrous sulfate); filler words (&quot;severe&quot;, &quot;drugs&quot;) are ignored. Every clinic, existing and new, starts with 26 standard allergy names (suggested as staff type). Four older test rows changed on purpose: aspirin now warns on ibuprofen and penicillin on amoxicillin. Full run in progress.</li><li><time>2026-10-10</time> Full run green: server 692/0, screens 1,644, journeys 10/10, routes 267/267; coverage gate green after adding a test for the failure path of seeding (provisioning leaves no half-made clinic). The allergy matcher is 100% tested. Committed; not yet deployed. Waiting for the owner to verify.</li><li><time>2026-10-10</time> Deployed to app.clinicos.cc (commit 8a487ac, pre-deploy backup taken, API ready). Live: migration 91 applied; all 11 clinics have the standard allergy names (26 to 31 entries, their own entries kept), no duplicates, no errors in the API log.</li><li><time>2026-10-10</time> Owner verified on the live system.</li></ul></div>
     </div>
   </details>
 </article>
@@ -362,7 +362,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
     </div>
   </details>
 </article>
-<article class="issue sev-high st-fixed" id="FEAT-REG-1" data-sev="high" data-status="fixed"
+<article class="issue sev-high st-verified" id="FEAT-REG-1" data-sev="high" data-status="verified"
   data-area="Money" data-q="feat-reg-1 registration fee charged on every visit, not once the system charges every &#x27;default&#x27; service on every day a patient arrives. a clinic whose rule is &#x27;registration is paid once&#x27; is charging returning patients again, and patients brought over from the paper register pay as if new. there is no setting to choose once / every visit / again after n days. at joy speciality, returning patients paid the 50-birr registration again 241 times (12,050 birr), mostly 8-30 days after their last visit. at cure dental, 13 of the 21 people who paid registration were already registered on paper. reception, cashier, patients money">
   <details>
     <summary>
@@ -370,7 +370,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">High</span>
       <span class="ttl">Registration fee charged on every visit, not once</span>
       <span class="meta"><span class="id">FEAT-REG-1</span> · Money · effort M</span>
-      <span class="status">Fixed</span>
+      <span class="status">Verified</span>
     </summary>
     <div class="body">
       
@@ -387,11 +387,11 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>backend/db/migrations/00090_registration_fee_policy.sql</code></li><li><code>backend/internal/billing/service/registration.go</code></li><li><code>backend/internal/billing/service/service.go</code></li><li><code>frontend/src/features/billing/RegistrationFeeCard.tsx</code></li><li><code>frontend/src/features/billing/registration.ts</code></li><li><code>frontend/src/features/scheduling/pages/ReceptionPage.tsx</code></li></ul>
         </details>
       </div>
-      <div class="log"><b>History</b><ul><li><time>2026-10-04</time> Owner asked for a configurable registration-fee rule (one clinic: registration is paid once).</li><li><time>2026-10-06</time> Deep analysis written from code and live counts: docs/registration-fee-analysis.html. Waiting for the owner&#x27;s approval of the design and decisions.</li><li><time>2026-10-09</time> Owner confirmed the direction: a clinic-wide setting, one time only or again after a chosen period (days, weeks or months), applied to every patient. Built with the recommended defaults (waived counts as registered, paper-register patients count as registered with a switch, per clinic, free follow-up stays free). Settings → Visit flow → Registration fee; reception explains each patient&#x27;s fee; the arrival decision locks the patient row. Full run in progress.</li><li><time>2026-10-10</time> Full run green (server 684/0, screens 1,644, journeys 10/10, routes 267/267, coverage). Committed; not yet deployed. Waiting for the owner to verify.</li><li><time>2026-10-10</time> Deployed to app.clinicos.cc (commit a0eed5c, pre-deploy backup taken, API ready). Live: migration 90 applied, no clinic has a rule yet (all still &quot;every visit&quot;), no errors in the API log.</li></ul></div>
+      <div class="log"><b>History</b><ul><li><time>2026-10-04</time> Owner asked for a configurable registration-fee rule (one clinic: registration is paid once).</li><li><time>2026-10-06</time> Deep analysis written from code and live counts: docs/registration-fee-analysis.html. Waiting for the owner&#x27;s approval of the design and decisions.</li><li><time>2026-10-09</time> Owner confirmed the direction: a clinic-wide setting, one time only or again after a chosen period (days, weeks or months), applied to every patient. Built with the recommended defaults (waived counts as registered, paper-register patients count as registered with a switch, per clinic, free follow-up stays free). Settings → Visit flow → Registration fee; reception explains each patient&#x27;s fee; the arrival decision locks the patient row. Full run in progress.</li><li><time>2026-10-10</time> Full run green (server 684/0, screens 1,644, journeys 10/10, routes 267/267, coverage). Committed; not yet deployed. Waiting for the owner to verify.</li><li><time>2026-10-10</time> Deployed to app.clinicos.cc (commit a0eed5c, pre-deploy backup taken, API ready). Live: migration 90 applied, no clinic has a rule yet (all still &quot;every visit&quot;), no errors in the API log.</li><li><time>2026-10-10</time> Owner verified on the live system.</li></ul></div>
     </div>
   </details>
 </article>
-<article class="issue sev-high st-fixed" id="FIN-6" data-sev="high" data-status="fixed"
+<article class="issue sev-high st-verified" id="FIN-6" data-sev="high" data-status="verified"
   data-area="Money" data-q="fin-6 two desks pressing at once charge the registration fee twice when a patient arrives, the system checks whether today&#x27;s registration fee already exists and then adds it. if two staff press at the same moment, both see &quot;none yet&quot; and both add one. hana and the manager both receive almaz at the same moment. almaz now has two 200 birr registration fees waiting at the cashier, and she cannot be queued until both are cleared. receptionist, patient, cashier money">
   <details>
     <summary>
@@ -399,7 +399,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">High</span>
       <span class="ttl">Two desks pressing at once charge the registration fee twice</span>
       <span class="meta"><span class="id">FIN-6</span> · Money · effort S</span>
-      <span class="status">Fixed</span>
+      <span class="status">Verified</span>
     </summary>
     <div class="body">
       
@@ -416,11 +416,11 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>backend/internal/billing/service/service.go:446</code></li></ul>
         </details>
       </div>
-      <div class="log"><b>History</b><ul><li><time>2026-10-09</time> Fixed as part of FEAT-REG-1: the arrival decision holds the patient&#x27;s row, so simultaneous arrivals raise one fee. The known-bug test is now a plain test (passed 3 runs in a row).</li><li><time>2026-10-10</time> Full run green (server 684/0, screens 1,644, journeys 10/10, routes 267/267, coverage). Committed; not yet deployed. Waiting for the owner to verify.</li><li><time>2026-10-10</time> Deployed to app.clinicos.cc (commit a0eed5c, pre-deploy backup taken, API ready). Live: migration 90 applied, no clinic has a rule yet (all still &quot;every visit&quot;), no errors in the API log.</li></ul></div>
+      <div class="log"><b>History</b><ul><li><time>2026-10-09</time> Fixed as part of FEAT-REG-1: the arrival decision holds the patient&#x27;s row, so simultaneous arrivals raise one fee. The known-bug test is now a plain test (passed 3 runs in a row).</li><li><time>2026-10-10</time> Full run green (server 684/0, screens 1,644, journeys 10/10, routes 267/267, coverage). Committed; not yet deployed. Waiting for the owner to verify.</li><li><time>2026-10-10</time> Deployed to app.clinicos.cc (commit a0eed5c, pre-deploy backup taken, API ready). Live: migration 90 applied, no clinic has a rule yet (all still &quot;every visit&quot;), no errors in the API log.</li><li><time>2026-10-10</time> Owner verified on the live system.</li></ul></div>
     </div>
   </details>
 </article>
-<article class="issue sev-high st-fixed" id="NEW-DAY-2" data-sev="high" data-status="fixed"
+<article class="issue sev-high st-verified" id="NEW-DAY-2" data-sev="high" data-status="verified"
   data-area="Money" data-q="new-day-2 early-morning arrivals can get a second registration fee to avoid charging the registration fee twice in one day, the system looks for a fee raised &quot;today&quot;. because of a time-zone slip, &quot;today&quot; starts at 6 a.m. addis, so a fee raised before 6 a.m. is not found. almaz is received at 05:30 and a 200 birr fee is raised. at 05:45 the desk presses receive again; a second 200 birr fee is added. receptionist, patient money">
   <details>
     <summary>
@@ -428,7 +428,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">High</span>
       <span class="ttl">Early-morning arrivals can get a second registration fee</span>
       <span class="meta"><span class="id">NEW-DAY-2</span> · Money · effort S</span>
-      <span class="status">Fixed</span>
+      <span class="status">Verified</span>
     </summary>
     <div class="body">
       
@@ -445,7 +445,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>backend/internal/billing/service/service.go:504</code></li></ul>
         </details>
       </div>
-      <div class="log"><b>History</b><ul><li><time>2026-10-04</time> Confirmed live in the night window: the &#x27;today&#x27; cut-off is 06:00 Addis, so every check-in from 00:00 to 06:00 can raise the fee again (TestREG_BILL_080 now reports it as this bug in that window).</li><li><time>2026-10-04</time> Raised from medium to high: from 00:00 to 06:00 Addis every check-in can charge the registration fee again.</li><li><time>2026-10-04</time> Owner confirmed. Fixed: today&#x27;s registration fee is looked up from Addis midnight (the date read as Addis time, not the session zone). Known-bug tests now plain; the night-window guards removed. Passed at 02:59 Addis.</li><li><time>2026-10-04</time> Full run passed at night (03:00 Addis): server 672 pass / 0 fail, screens 1,626, browser journeys 10/10, 264/264 routes; coverage gate re-run green after two older tests were given real file keys. Committed; not yet deployed. Waiting for the owner to verify.</li><li><time>2026-10-04</time> Deployed to app.clinicos.cc (commit fd3805c, pre-deploy backup taken, API ready). Live check at 04:10 Addis: the fee day now starts 21:00 UTC (Addis midnight); the old expression started it at 06:00 Addis, still in the future at that moment.</li></ul></div>
+      <div class="log"><b>History</b><ul><li><time>2026-10-04</time> Confirmed live in the night window: the &#x27;today&#x27; cut-off is 06:00 Addis, so every check-in from 00:00 to 06:00 can raise the fee again (TestREG_BILL_080 now reports it as this bug in that window).</li><li><time>2026-10-04</time> Raised from medium to high: from 00:00 to 06:00 Addis every check-in can charge the registration fee again.</li><li><time>2026-10-04</time> Owner confirmed. Fixed: today&#x27;s registration fee is looked up from Addis midnight (the date read as Addis time, not the session zone). Known-bug tests now plain; the night-window guards removed. Passed at 02:59 Addis.</li><li><time>2026-10-04</time> Full run passed at night (03:00 Addis): server 672 pass / 0 fail, screens 1,626, browser journeys 10/10, 264/264 routes; coverage gate re-run green after two older tests were given real file keys. Committed; not yet deployed. Waiting for the owner to verify.</li><li><time>2026-10-04</time> Deployed to app.clinicos.cc (commit fd3805c, pre-deploy backup taken, API ready). Live check at 04:10 Addis: the fee day now starts 21:00 UTC (Addis midnight); the old expression started it at 06:00 Addis, still in the future at that moment.</li><li><time>2026-10-10</time> Owner verified on the live system.</li></ul></div>
     </div>
   </details>
 </article>
@@ -507,7 +507,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
     </div>
   </details>
 </article>
-<article class="issue sev-high st-fixed" id="NEW-DAY-3" data-sev="high" data-status="fixed"
+<article class="issue sev-high st-verified" id="NEW-DAY-3" data-sev="high" data-status="verified"
   data-area="Money" data-q="new-day-3 unbilled list dates night visits to the day before the unbilled treatment report works out each visit&#x27;s date in world time (utc), not addis time. a visit given between midnight and 03:00 is dated the day before, counted as a day older, and left out when you filter for today. dr selam finishes an emergency extraction at 00:40 on sunday. on sunday&#x27;s unbilled list it shows as treated saturday, 1 day unbilled, and the &#x27;today&#x27; filter does not show it at all, so the cashier misses it at closing. dentist, cashier, owner money">
   <details>
     <summary>
@@ -515,7 +515,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">High</span>
       <span class="ttl">Unbilled list dates night visits to the day before</span>
       <span class="meta"><span class="id">NEW-DAY-3</span> · Money · effort S</span>
-      <span class="status">Fixed</span>
+      <span class="status">Verified</span>
     </summary>
     <div class="body">
       
@@ -532,7 +532,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>backend/internal/dental/service/service.go:2678</code></li><li><code>backend/internal/dental/service/service.go:2691</code></li><li><code>backend/internal/dental/service/service.go:2710</code></li></ul>
         </details>
       </div>
-      <div class="log"><b>History</b><ul><li><time>2026-10-04</time> Found by a regression run at 00:10 Addis; held at every hour by TestREG_DENTAL_276 (a visit stamped 00:30 Addis).</li><li><time>2026-10-04</time> Owner confirmed. Fixed: the unbilled report dates every visit by the clinic&#x27;s Addis day (6 places). Known-bug tests now plain; the night-window guards removed. Passed at 02:59 Addis.</li><li><time>2026-10-04</time> Full run passed at night (03:00 Addis): server 672 pass / 0 fail, screens 1,626, browser journeys 10/10, 264/264 routes; coverage gate re-run green after two older tests were given real file keys. Committed; not yet deployed. Waiting for the owner to verify.</li><li><time>2026-10-04</time> Deployed to app.clinicos.cc (commit fd3805c, pre-deploy backup taken, API ready).</li></ul></div>
+      <div class="log"><b>History</b><ul><li><time>2026-10-04</time> Found by a regression run at 00:10 Addis; held at every hour by TestREG_DENTAL_276 (a visit stamped 00:30 Addis).</li><li><time>2026-10-04</time> Owner confirmed. Fixed: the unbilled report dates every visit by the clinic&#x27;s Addis day (6 places). Known-bug tests now plain; the night-window guards removed. Passed at 02:59 Addis.</li><li><time>2026-10-04</time> Full run passed at night (03:00 Addis): server 672 pass / 0 fail, screens 1,626, browser journeys 10/10, 264/264 routes; coverage gate re-run green after two older tests were given real file keys. Committed; not yet deployed. Waiting for the owner to verify.</li><li><time>2026-10-04</time> Deployed to app.clinicos.cc (commit fd3805c, pre-deploy backup taken, API ready).</li><li><time>2026-10-10</time> Owner verified on the live system.</li></ul></div>
     </div>
   </details>
 </article>
@@ -3784,7 +3784,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
     </div>
   </details>
 </article>
-<article class="issue sev-low st-fixed" id="NEW-DRAFT-1" data-sev="low" data-status="fixed"
+<article class="issue sev-low st-verified" id="NEW-DRAFT-1" data-sev="low" data-status="verified"
   data-area="Dental" data-q="new-draft-1 an old visit draft can come back after recording while a dentist types a visit record, the form saves a draft 0.8 seconds after typing. if the visit was saved before that timer fired, the save cleared the draft and then the timer wrote it back, so an old &#x27;draft restored&#x27; note could reappear later on a visit already recorded. dr selam opens visit 2, the earlier draft is restored, and she presses save straight away. next week, reopening that visit shows &#x27;draft restored&#x27; with last week&#x27;s text. dentist dental">
   <details>
     <summary>
@@ -3792,7 +3792,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">Low</span>
       <span class="ttl">An old visit draft can come back after recording</span>
       <span class="meta"><span class="id">NEW-DRAFT-1</span> · Dental · effort S</span>
-      <span class="status">Fixed</span>
+      <span class="status">Verified</span>
     </summary>
     <div class="body">
       
@@ -3809,11 +3809,11 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>frontend/src/features/dental/visit/RecordVisitForm.tsx</code></li></ul>
         </details>
       </div>
-      <div class="log"><b>History</b><ul><li><time>2026-10-04</time> Found by a screen test that failed only under load during the SEC-1 full run. Two-line fix made at once (it blocked a reliable green run); the new test fails without it and passes with it. Committed with SEC-1; waiting for the owner to verify.</li><li><time>2026-10-04</time> Deployed to app.clinicos.cc (commit fd3805c, pre-deploy backup taken, API ready).</li></ul></div>
+      <div class="log"><b>History</b><ul><li><time>2026-10-04</time> Found by a screen test that failed only under load during the SEC-1 full run. Two-line fix made at once (it blocked a reliable green run); the new test fails without it and passes with it. Committed with SEC-1; waiting for the owner to verify.</li><li><time>2026-10-04</time> Deployed to app.clinicos.cc (commit fd3805c, pre-deploy backup taken, API ready).</li><li><time>2026-10-10</time> Owner verified on the live system.</li></ul></div>
     </div>
   </details>
 </article>
-<article class="issue sev-low st-fixed" id="NEW-FIN-ORDER-1" data-sev="low" data-status="fixed"
+<article class="issue sev-low st-verified" id="NEW-FIN-ORDER-1" data-sev="low" data-status="verified"
   data-area="Money" data-q="new-fin-order-1 debts owed for the same days reshuffled on every load the finance debts list sorted oldest first, but patients owing for the same number of days came out in a random order each time the page loaded. two patients each owing for 10 days swap places every time the cashier refreshes, so the one she was about to call moves. owner, cashier money">
   <details>
     <summary>
@@ -3821,7 +3821,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">Low</span>
       <span class="ttl">Debts owed for the same days reshuffled on every load</span>
       <span class="meta"><span class="id">NEW-FIN-ORDER-1</span> · Money · effort S</span>
-      <span class="status">Fixed</span>
+      <span class="status">Verified</span>
     </summary>
     <div class="body">
       
@@ -3838,7 +3838,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>backend/internal/finance/service/service.go</code></li></ul>
         </details>
       </div>
-      <div class="log"><b>History</b><ul><li><time>2026-10-10</time> Found while chasing a coverage number that changed between identical runs; fixed and pinned by a test that loads the list five times.</li><li><time>2026-10-10</time> Deployed to app.clinicos.cc (commit a0eed5c, pre-deploy backup taken, API ready). Live: migration 90 applied, no clinic has a rule yet (all still &quot;every visit&quot;), no errors in the API log.</li></ul></div>
+      <div class="log"><b>History</b><ul><li><time>2026-10-10</time> Found while chasing a coverage number that changed between identical runs; fixed and pinned by a test that loads the list five times.</li><li><time>2026-10-10</time> Deployed to app.clinicos.cc (commit a0eed5c, pre-deploy backup taken, API ready). Live: migration 90 applied, no clinic has a rule yet (all still &quot;every visit&quot;), no errors in the API log.</li><li><time>2026-10-10</time> Owner verified on the live system.</li></ul></div>
     </div>
   </details>
 </article>
@@ -5728,7 +5728,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   </details>
 </article>
 
-<footer>Built 10 October 2026, 01:56 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
+<footer>Built 10 October 2026, 01:57 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
 </div>
 <script>
 (function () {

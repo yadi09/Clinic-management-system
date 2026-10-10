@@ -117,7 +117,7 @@
    "backend/internal/billing/service/service.go:446"
   ],
   "tested": true,
-  "status": "fixed",
+  "status": "verified",
   "log": [
    {
     "date": "2026-10-09",
@@ -130,6 +130,10 @@
    {
     "date": "2026-10-10",
     "note": "Deployed to app.clinicos.cc (commit a0eed5c, pre-deploy backup taken, API ready). Live: migration 90 applied, no clinic has a rule yet (all still \"every visit\"), no errors in the API log."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Owner verified on the live system."
    }
   ],
   "order": 9
@@ -325,7 +329,7 @@
    "backend/internal/billing/service/service.go:504"
   ],
   "tested": true,
-  "status": "fixed",
+  "status": "verified",
   "log": [
    {
     "date": "2026-10-04",
@@ -346,6 +350,10 @@
    {
     "date": "2026-10-04",
     "note": "Deployed to app.clinicos.cc (commit fd3805c, pre-deploy backup taken, API ready). Live check at 04:10 Addis: the fee day now starts 21:00 UTC (Addis midnight); the old expression started it at 06:00 Addis, still in the future at that moment."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Owner verified on the live system."
    }
   ],
   "order": 9
@@ -1302,7 +1310,7 @@
    "backend/internal/patient/service/service.go:416"
   ],
   "tested": true,
-  "status": "fixed",
+  "status": "verified",
   "log": [
    {
     "date": "2026-10-03",
@@ -1327,6 +1335,10 @@
    {
     "date": "2026-10-04",
     "note": "Deployed to app.clinicos.cc (commit fd3805c, pre-deploy backup taken, API ready)."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Owner verified on the live system."
    }
   ],
   "order": 3
@@ -2785,7 +2797,7 @@
    "backend/internal/platform/provision/provision.go"
   ],
   "tested": true,
-  "status": "fixed",
+  "status": "verified",
   "log": [
    {
     "date": "2026-10-04",
@@ -2802,6 +2814,10 @@
    {
     "date": "2026-10-10",
     "note": "Deployed to app.clinicos.cc (commit 8a487ac, pre-deploy backup taken, API ready). Live: migration 91 applied; all 11 clinics have the standard allergy names (26 to 31 entries, their own entries kept), no duplicates, no errors in the API log."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Owner verified on the live system."
    }
   ],
   "order": 4
@@ -4654,7 +4670,7 @@
    "backend/internal/dental/service/service.go:2710"
   ],
   "tested": true,
-  "status": "fixed",
+  "status": "verified",
   "order": 11,
   "log": [
    {
@@ -4672,6 +4688,10 @@
    {
     "date": "2026-10-04",
     "note": "Deployed to app.clinicos.cc (commit fd3805c, pre-deploy backup taken, API ready)."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Owner verified on the live system."
    }
   ]
  },
@@ -4694,7 +4714,7 @@
    "frontend/src/features/dental/visit/RecordVisitForm.tsx"
   ],
   "tested": true,
-  "status": "fixed",
+  "status": "verified",
   "order": 3,
   "log": [
    {
@@ -4704,6 +4724,10 @@
    {
     "date": "2026-10-04",
     "note": "Deployed to app.clinicos.cc (commit fd3805c, pre-deploy backup taken, API ready)."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Owner verified on the live system."
    }
   ]
  },
@@ -4742,7 +4766,7 @@
    "frontend/src/features/scheduling/pages/ReceptionPage.tsx"
   ],
   "tested": true,
-  "status": "fixed",
+  "status": "verified",
   "order": 9,
   "log": [
    {
@@ -4764,6 +4788,10 @@
    {
     "date": "2026-10-10",
     "note": "Deployed to app.clinicos.cc (commit a0eed5c, pre-deploy backup taken, API ready). Live: migration 90 applied, no clinic has a rule yet (all still \"every visit\"), no errors in the API log."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Owner verified on the live system."
    }
   ]
  },
@@ -4786,7 +4814,7 @@
    "backend/internal/finance/service/service.go"
   ],
   "tested": true,
-  "status": "fixed",
+  "status": "verified",
   "order": 9,
   "log": [
    {
@@ -4796,6 +4824,10 @@
    {
     "date": "2026-10-10",
     "note": "Deployed to app.clinicos.cc (commit a0eed5c, pre-deploy backup taken, API ready). Live: migration 90 applied, no clinic has a rule yet (all still \"every visit\"), no errors in the API log."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Owner verified on the live system."
    }
   ]
  }
