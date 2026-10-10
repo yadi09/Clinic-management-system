@@ -581,6 +581,61 @@ func (s *Service) RaiseIntakeChargeIDsTx(ctx context.Context, tx pgx.Tx, in bill
 	return out, nil
 }
 
+// SelectChargesTx is the desk saying "the patient agreed to pay these now".
+//
+// The bills are not rewritten: a charge's department and provider belong to the visit
+// it was raised for and revenue reports read them. They are marked instead, and one
+// row per patient per day says where the patient goes once every holding bill is
+// cleared (advanceIfPaid reads it). Ticking a bill the clinic had agreed to wait for is
+// the patient changing their mind, so it holds the patient again until paid or until
+// the cashier defers it afresh.
+//
+// Refuses the whole selection when any bill is no longer pending — somebody else paid
+// it, or it was voided — because sending a patient to the cashier for a bill that is
+// gone is the exact confusion this feature exists to remove.
+func (s *Service) SelectChargesTx(ctx context.Context, tx pgx.Tx, in billing.IntakeInput, chargeIDs []uuid.UUID) ([]uuid.UUID, error) {
+	tenantID, actor := actorOf(ctx)
+	seen := map[uuid.UUID]bool{}
+	want := make([]uuid.UUID, 0, len(chargeIDs))
+	for _, c := range chargeIDs {
+		if !seen[c] {
+			seen[c] = true
+			want = append(want, c)
+		}
+	}
+	if len(want) == 0 {
+		return nil, nil
+	}
+	// Mark the bills and write the route in one statement: either every ticked bill is
+	// still pending and the desk's choice is recorded, or the count differs and the
+	// caller's transaction is rolled back with nothing left behind.
+	var marked int
+	e := tx.QueryRow(ctx, `
+		WITH upd AS (
+		  UPDATE charges SET desk_selected_at = now(), desk_selected_by = $3, updated_at = now()
+		   WHERE tenant_id = $1 AND patient_id = $2 AND status = 'pending' AND deleted_at IS NULL
+		     AND id = ANY($4::uuid[])
+		  RETURNING id
+		), route AS (
+		  INSERT INTO reception_routes (tenant_id, patient_id, route_date, branch_id, department_id, provider_id, to_triage, created_by)
+		  SELECT $1, $2, (now() AT TIME ZONE 'Africa/Addis_Ababa')::date, $5, $6, $7, $8, $3
+		   WHERE EXISTS (SELECT 1 FROM upd)
+		  ON CONFLICT (tenant_id, patient_id, route_date) DO UPDATE
+		    SET branch_id = EXCLUDED.branch_id, department_id = EXCLUDED.department_id,
+		        provider_id = EXCLUDED.provider_id, to_triage = EXCLUDED.to_triage,
+		        created_by = EXCLUDED.created_by, created_at = now()
+		)
+		SELECT count(*)::int FROM upd`,
+		tenantID, in.PatientID, actor, want, in.BranchID, in.DepartmentID, in.ProviderID, in.ToTriage).Scan(&marked)
+	if e == nil && marked != len(want) {
+		e = apperr.Conflict("BILLS_CHANGED", "one of the ticked bills is no longer unpaid — refresh the patient and tick again")
+	}
+	if e != nil {
+		return nil, e
+	}
+	return want, nil
+}
+
 // ChargeStatusTx reports a charge's status for a pre-pay gate.
 func (s *Service) ChargeStatusTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (string, error) {
 	tenantID, _ := actorOf(ctx)
@@ -598,17 +653,36 @@ func (s *Service) PendingCharges(ctx context.Context) ([]billing.PendingCharge, 
 	tenantID, _ := actorOf(ctx)
 	out := []billing.PendingCharge{}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		rows, e := billingdb.New(tx).ListPendingCharges(ctx, tenantID)
-		if e != nil {
-			return e
-		}
-		for _, r := range rows {
-			out = append(out, billing.PendingCharge{
-				ID: r.ID, Source: r.Source, Description: r.Description, Amount: r.Amount, Currency: r.Currency, CreatedAt: r.CreatedAt,
-				PatientID: r.PatientID, PatientName: r.FirstName + " " + r.LastName, MRN: r.Mrn,
-			})
-		}
-		return nil
+		// One query, with what the receptionist ticked and who the patient goes to next
+		// beside each bill, so the cashier is never guessing why a patient is here. Raw
+		// SQL because sqlc cannot be regenerated here.
+		// The error, if any, is reported by CollectRows through the rows it is handed.
+		rows, _ := tx.Query(ctx, `
+			SELECT c.id, c.source, c.description, c.amount::text, c.currency, c.created_at,
+			       c.patient_id, p.first_name, coalesce(p.last_name, ''), coalesce(p.mrn, ''),
+			       c.desk_selected_at IS NOT NULL, coalesce(sb.full_name, ''),
+			       CASE WHEN c.desk_selected_at IS NULL THEN '' ELSE coalesce(
+			         (SELECT coalesce(u.full_name, d.name, '') FROM reception_routes r
+			            LEFT JOIN users u ON u.id = r.provider_id AND u.tenant_id = r.tenant_id
+			            LEFT JOIN departments d ON d.id = r.department_id AND d.tenant_id = r.tenant_id
+			           WHERE r.tenant_id = c.tenant_id AND r.patient_id = c.patient_id
+			             AND r.route_date = (now() AT TIME ZONE 'Africa/Addis_Ababa')::date), '') END
+			  FROM charges c
+			  JOIN patients p ON p.id = c.patient_id AND p.tenant_id = c.tenant_id
+			  LEFT JOIN users sb ON sb.id = c.desk_selected_by AND sb.tenant_id = c.tenant_id
+			 WHERE c.tenant_id = $1 AND c.status = 'pending' AND c.deleted_at IS NULL
+			 ORDER BY c.created_at
+			 LIMIT 200`, tenantID)
+		var e error
+		out, e = pgx.CollectRows(rows, func(row pgx.CollectableRow) (billing.PendingCharge, error) {
+			var pc billing.PendingCharge
+			var first, last string
+			err := row.Scan(&pc.ID, &pc.Source, &pc.Description, &pc.Amount, &pc.Currency, &pc.CreatedAt,
+				&pc.PatientID, &first, &last, &pc.MRN, &pc.DeskSelected, &pc.DeskSelectedBy, &pc.GoesTo)
+			pc.PatientName = first + " " + last
+			return pc, err
+		})
+		return e
 	})
 	if err != nil {
 		return nil, apperr.Internal(err)
@@ -762,10 +836,14 @@ func (s *Service) SettleVisit(ctx context.Context, patientID uuid.UUID, in billi
 				routed = &rows[i]
 			}
 		}
+		// Even when none of the settled bills is routed: the ticked earlier bills have no
+		// routing of their own, the desk's chosen dentist is read inside advanceIfPaid.
 		if routed != nil {
 			if e := advanceIfPaid(ctx, tx, q, tenantID, actor, routed.BranchID, routed.DepartmentID, routed.ToTriage, routed.ProviderID, patientID); e != nil {
 				return e
 			}
+		} else if e := advanceIfPaid(ctx, tx, q, tenantID, actor, nil, nil, false, nil, patientID); e != nil {
+			return e
 		}
 		if e := payments.StampCharges(ctx, tx, tenantID, ids, railID, ref); e != nil {
 			return e
@@ -834,9 +912,10 @@ func (s *Service) DeferVisit(ctx context.Context, patientID uuid.UUID, reason st
 		q := billingdb.New(tx)
 		// Either the charges the desk named, or everything still pending for the patient.
 		rows, e := tx.Query(ctx,
-			`UPDATE charges SET deferred_at = now(), deferred_by = $3, defer_reason = $4, updated_at = now()
+			`UPDATE charges SET deferred_at = now(), deferred_by = $3, defer_reason = $4,
+			        desk_selected_at = NULL, desk_selected_by = NULL, updated_at = now()
 			  WHERE tenant_id = $1 AND patient_id = $2 AND status = 'pending' AND deleted_at IS NULL
-			    AND deferred_at IS NULL
+			    AND (deferred_at IS NULL OR desk_selected_at IS NOT NULL)
 			    AND ($5::uuid[] IS NULL OR id = ANY($5))
 			  RETURNING id, branch_id, department_id, to_triage, provider_id`,
 			tenantID, patientID, actor, strings.TrimSpace(reason), nullUUIDs(chargeIDs))
@@ -1501,9 +1580,6 @@ func activeVisitToday(ctx context.Context, tx pgx.Tx, tenantID, patientID uuid.U
 // last payment. Routing is only set on reception's visit charges, so non-visit
 // charges (a standalone procedure with no routing) never enqueue.
 func advanceIfPaid(ctx context.Context, tx pgx.Tx, q *billingdb.Queries, tenantID uuid.UUID, actor *uuid.UUID, branchID, departmentID *uuid.UUID, toTriage bool, providerID *uuid.UUID, patientID uuid.UUID) error {
-	if branchID == nil || departmentID == nil {
-		return nil // not a routed visit charge
-	}
 	// The gate is about THIS VISIT's fee, not about everything the patient has ever
 	// owed. Counting every pending charge meant an unrelated debt — a dental
 	// instalment from last month, say — kept a patient who had just paid today's
@@ -1512,18 +1588,36 @@ func advanceIfPaid(ctx context.Context, tx pgx.Tx, q *billingdb.Queries, tenantI
 	// not a side effect of a COUNT.
 	//
 	// Routed charges (department set) are the ones raised to let a patient in; those
-	// are what must be clear. Raw pgx because sqlc cannot be regenerated here.
-	// A deferred charge is money the clinic has agreed to be owed, so it does not hold
-	// the patient at the door — that is the whole point of agreeing to it. It stays
-	// pending and stays owed; it simply stops being a gate.
+	// are what must be clear. So are earlier bills the desk ticked ("the patient agreed
+	// to pay these now"), which carry no routing of their own. A deferred charge is
+	// money the clinic has agreed to be owed, so it does not hold the patient at the
+	// door — unless the desk ticked it again, which is the patient choosing to pay it.
+	//
+	// The same statement reads where the desk said this patient goes today. It wins
+	// over the routing of whichever charge happened to be settled last: an earlier bill
+	// carries the routing of the visit it was raised for, not of this one, and the
+	// receptionist's choice of dentist must not depend on payment order. Raw pgx
+	// because sqlc cannot be regenerated here.
 	var pending int
-	if e := tx.QueryRow(ctx,
-		`SELECT count(*)::int FROM charges
-		  WHERE tenant_id = $1 AND patient_id = $2 AND status = 'pending'
-		    AND deleted_at IS NULL AND department_id IS NOT NULL
-		    AND deferred_at IS NULL`,
-		tenantID, patientID).Scan(&pending); e != nil {
+	var rb, rd, rp *uuid.UUID
+	var rt, routeKnown bool
+	if e := tx.QueryRow(ctx, `
+		SELECT (SELECT count(*)::int FROM charges
+		         WHERE tenant_id = $1 AND patient_id = $2 AND status = 'pending' AND deleted_at IS NULL
+		           AND (department_id IS NOT NULL OR desk_selected_at IS NOT NULL)
+		           AND (deferred_at IS NULL OR desk_selected_at IS NOT NULL)),
+		       r.branch_id, r.department_id, r.provider_id, coalesce(r.to_triage, false), r.patient_id IS NOT NULL
+		  FROM (SELECT 1) one
+		  LEFT JOIN reception_routes r ON r.tenant_id = $1 AND r.patient_id = $2
+		   AND r.route_date = (now() AT TIME ZONE 'Africa/Addis_Ababa')::date`,
+		tenantID, patientID).Scan(&pending, &rb, &rd, &rp, &rt, &routeKnown); e != nil {
 		return e
+	}
+	if routeKnown {
+		branchID, departmentID, providerID, toTriage = rb, rd, rp, rt
+	}
+	if branchID == nil || departmentID == nil {
+		return nil // not a routed visit charge
 	}
 	if pending > 0 {
 		return nil // this visit is not paid for yet
@@ -1545,9 +1639,20 @@ func advanceIfPaid(ctx context.Context, tx pgx.Tx, q *billingdb.Queries, tenantI
 		stage = "triage"
 		providerID = nil
 	}
-	return q.EnqueueFromCharge(ctx, billingdb.EnqueueFromChargeParams{
+	if e := q.EnqueueFromCharge(ctx, billingdb.EnqueueFromChargeParams{
 		TenantID: tenantID, BranchID: *branchID, DepartmentID: *departmentID, PatientID: patientID, Stage: stage, AssignedProviderID: providerID, CreatedBy: actor,
-	})
+	}); e != nil {
+		return e
+	}
+	if routeKnown {
+		// Used: the patient is in the dentist's queue. A later arrival today routes by
+		// its own charges, not by this morning's decision.
+		_, e := tx.Exec(ctx, `DELETE FROM reception_routes
+			WHERE tenant_id = $1 AND patient_id = $2
+			  AND route_date = (now() AT TIME ZONE 'Africa/Addis_Ababa')::date`, tenantID, patientID)
+		return e
+	}
+	return nil
 }
 
 func catOrDefault(c string) string {

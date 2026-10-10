@@ -902,8 +902,13 @@
    "frontend/src/features/scheduling/pages/ReceptionPage.tsx:638"
   ],
   "tested": true,
-  "status": "open",
-  "log": [],
+  "status": "fixed",
+  "log": [
+   {
+    "date": "2026-10-10",
+    "note": "Fixed with the reception redesign (phase 2). Pay later now checks the patient in first and defers ONLY the charges that arrival raised; older debts are not quietly agreed to be waited for. Test REG-FE-RECEP-038 flipped from known-bug to a plain test; REG-FE-RECEP-054 covers the free-visit case. Full run green."
+   }
+  ],
   "order": 23
  },
  {
@@ -926,8 +931,13 @@
    "frontend/src/features/scheduling/pages/ReceptionPage.tsx:402-410"
   ],
   "tested": true,
-  "status": "open",
-  "log": [],
+  "status": "fixed",
+  "log": [
+   {
+    "date": "2026-10-10",
+    "note": "Fixed with the reception redesign (phase 2). A patient seen today who still owes now opens on a Collect button for what they owe, with 'Or start a new visit' beneath; the old 'nothing more to collect' line is gone. REG-FE-RECEP-039 flipped to a plain test. Full run green."
+   }
+  ],
   "order": 24
  },
  {
@@ -950,8 +960,13 @@
    "frontend/src/features/scheduling/pages/ReceptionPage.tsx:553"
   ],
   "tested": true,
-  "status": "open",
-  "log": [],
+  "status": "fixed",
+  "log": [
+   {
+    "date": "2026-10-10",
+    "note": "Fixed with the reception redesign (phase 2). A desk without payment.collect is offered 'Send to cashier' (with the total) as its only exit, never 'Collect'. REG-FE-RECEP-040 flipped to a plain test; REG-FE-RECEP-051 added. Full run green."
+   }
+  ],
   "order": 500
  },
  {
@@ -4899,7 +4914,7 @@
   "why": "Old debt goes uncollected when the patient is in front of the desk and willing to pay.",
   "fix": "Itemised old bills with tick boxes and one receipt, best-match-first search with richer rows, one-tap check-in defaults, an emergency switch, receipt at the desk. Full plan: docs/reception-improvement-plan.html.",
   "effort": "L",
-  "decision": "Approve docs/reception-redesign-plan.html (now with the phone and tablet design, the payment-method step, a parity checklist and the failure states): the patient card, the cashier-then-dentist handoff, the five phases, and the ten decisions in its section 12.",
+  "decision": null,
   "tests": [],
   "files": [
    "backend/internal/scheduling/service/reception.go",
@@ -4908,7 +4923,7 @@
    "frontend/src/features/scheduling/reception/ArrivalList.tsx"
   ],
   "tested": false,
-  "status": "explained",
+  "status": "fixed",
   "order": 9,
   "log": [
    {
@@ -4922,6 +4937,10 @@
    {
     "date": "2026-10-10",
     "note": "Owner asked for a redesign of the reception page like the dashboard, with a patient card (missed visits, next visit, today's booking and treatment session, itemised unpaid bills the patient can choose to pay), sending to the cashier and then automatically to the chosen doctor. Implementation plan written: docs/reception-redesign-plan.html (look, UX, functions, backend, test plan, phases, decisions). Waiting for approval; nothing built. \"Add a service\" was removed from reception earlier the same day (APT-3 closed)."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Plan approved. Phases 1 and 2 built: GET /reception/patients/:id/card (today's booking and session, missed visits in the last 90 days, next visit, itemised unpaid bills, usual dentist); tick boxes on earlier bills (none ticked by default); ticked bills hold the patient at the cashier and then send them to the dentist the receptionist chose, whatever order things are paid in (migration 00092: charges.desk_selected_*, reception_routes); cashier worklist marks the ticked bills with who ticked them and who the patient goes to; Pay later and Waive never sweep ticked bills. Built on the existing check-in and walk-in calls (select_charge_ids), so no separate receive endpoint. Tests: server REG_RECEP_001-011, screens RECEP-046-056 and CASHIER-043/044, browser journey REG-E2E-020. Phases 3-5 (search ranking, register-and-receive, treatment sessions on Expected, emergency, receipt at desk, cash change, correct payment details) remain."
    }
   ]
  }

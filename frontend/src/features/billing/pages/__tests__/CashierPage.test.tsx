@@ -646,4 +646,24 @@ describe("REG-FE-CASHIER day close", () => {
     const badge = await screen.findByText("today");
     expect(badge.closest(".overflow-hidden")).toHaveTextContent(longDay("2026-08-13"));
   });
+
+  test("REG-FE-CASHIER-043 bills the receptionist ticked are marked, with who ticked them and who the patient goes to", async () => {
+    fake.on("GET", "/billing/charges/pending", [
+      C("ch1", "a", "1200.00", { desk_selected: true, desk_selected_by: "Hana Desk", goes_to: "Dr Yonas" }),
+      C("ch2", "a", "100.00"),
+      C("ch3", "b", "50.00"),
+    ]);
+    page();
+    const a = await screen.findByText("Patient a").then(() => cardOf("Patient a"));
+    expect(within(a).getByText(/Agreed at reception \(Hana Desk\)/)).toHaveTextContent("goes to Dr Yonas once these are paid");
+    expect(within(a).getAllByText("Picked at reception")).toHaveLength(1);
+    expect(cardOf("Patient b")).not.toHaveTextContent(/Agreed at reception/);
+  });
+
+  test("REG-FE-CASHIER-044 a ticked bill with no recorded dentist says it is to be paid before the visit", async () => {
+    fake.on("GET", "/billing/charges/pending", [C("ch1", "a", "500.00", { desk_selected: true })]);
+    page();
+    const a = await screen.findByText("Patient a").then(() => cardOf("Patient a"));
+    expect(within(a).getByText(/Agreed at reception — to be paid before the visit/)).toBeInTheDocument();
+  });
 });

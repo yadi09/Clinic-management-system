@@ -551,7 +551,11 @@ func TestD5_AuditEntryNamesTheActor(t *testing.T) {
 	reg := events.NewRegistry()
 	reg.OnAny(audit.NewWriter(f.db).EventHandler())
 	relay := events.NewRelay(f.db, reg, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	for i := 0; i < 50; i++ { // drain everything pending, other tests' events included
+	// Drain everything pending, other tests' events included. The shared test database
+	// keeps every earlier run's backlog, so this is bounded by emptiness, not by a
+	// guess at how many batches that is: a fixed 50 batches stopped being enough once
+	// the backlog passed 5,000 events and the test failed for no reason of its own.
+	for i := 0; i < 5000; i++ {
 		n, err := relay.RunOnce(context.Background())
 		must(t, err)
 		if n == 0 {

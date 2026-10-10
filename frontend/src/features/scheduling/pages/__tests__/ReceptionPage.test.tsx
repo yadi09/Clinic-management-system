@@ -27,7 +27,7 @@ vi.mock("@/app/auth-context", () => ({
 const media = vi.hoisted(() => ({ wide: true }));
 vi.mock("@/hooks/useMediaQuery", async (orig) => ({ ...(await orig<object>()), useIsLargeScreen: () => media.wide }));
 
-const sched = vi.hoisted(() => ({ receptionToday: vi.fn(), checkInAppointment: vi.fn(), walkIn: vi.fn() }));
+const sched = vi.hoisted(() => ({ receptionToday: vi.fn(), checkInAppointment: vi.fn(), walkIn: vi.fn(), getReceptionCard: vi.fn() }));
 vi.mock("@/features/scheduling/api", async (orig) => ({ ...(await orig<object>()), ...sched }));
 const pats = vi.hoisted(() => ({ searchPatients: vi.fn() }));
 vi.mock("@/features/patients/api", async (orig) => ({ ...(await orig<object>()), ...pats }));
@@ -48,7 +48,7 @@ const tst = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("sonner", async (orig) => ({ ...(await orig<object>()), toast: tst }));
 
 import { ReceptionPage } from "@/features/scheduling/pages/ReceptionPage";
-import type { ReceptionPatient, ReceptionToday } from "@/features/scheduling/api";
+import type { ReceptionCard, ReceptionPatient, ReceptionToday } from "@/features/scheduling/api";
 import type { PatientSummary } from "@/features/patients/api";
 import type { ServiceItem } from "@/features/billing/api";
 import type { PaymentRail } from "@/features/admin/api";
@@ -83,6 +83,9 @@ const chaltu = () => P({
 const dawit = () => P({ patient_id: "pat_d", name: "Dawit Alemu", mrn: "MRN-D", waiting_since: at(-3 * 60 * MIN), finished: true, owed: "800" });
 const eden = () => P({ patient_id: "pat_e", name: "Eden Girma", mrn: "MRN-E", waiting_since: at(-2 * 60 * MIN), finished: true, owed: "0", unbilled: "1500" });
 const fikir = () => P({ patient_id: "pat_f", name: "Fikir Lemma", mrn: "MRN-F", waiting_since: at(-90 * MIN), finished: true, owed: "0" });
+const emptyCard = (over: Partial<ReceptionCard> = {}): ReceptionCard => ({
+  missed: [], bills: [], owed_total: "0", unbilled_total: "0", in_queue: false, ...over,
+});
 const day0 = (): ReceptionToday => ({ expected: [almaz(), bekele()], waiting: [chaltu()], seen: [dawit(), eden(), fikir()] });
 
 const SVC = (id: string, name: string, price: string, isDefault: boolean): ServiceItem => ({
@@ -137,6 +140,7 @@ describe("REG-FE-RECEP reception desk", () => {
     bill.raiseCharge.mockResolvedValue({ id: "chg_extra" });
     bill.settleVisit.mockResolvedValue({ receipt_no: 7, total: "100", count: 1 });
     pats.searchPatients.mockResolvedValue({ items: [], meta: {} });
+    sched.getReceptionCard.mockResolvedValue(emptyCard());
     bill.getRegistrationStatus.mockResolvedValue({ service_id: null, rule: "every_visit", due: true, reason: "no_policy" });
   });
 
@@ -695,7 +699,7 @@ describe("REG-FE-RECEP reception desk", () => {
     expect(Array.isArray(body.charge_ids) && body.charge_ids.length > 0).toBe(true);
   });
 
-  test.fails("REG-FE-RECEP-038 KNOWN BUG NEW-RECEP-1 Pay later checks the patient in and defers only this visit's charges", async () => {
+  test("REG-FE-RECEP-038 Pay later checks the patient in and defers only this visit's charges", async () => {
     bill.deferVisit.mockResolvedValue({ deferred: 1 });
     const { user } = page();
     await pick(user, /Almaz Haile/);
@@ -710,7 +714,7 @@ describe("REG-FE-RECEP reception desk", () => {
     expect(bill.deferVisit).toHaveBeenCalledWith("pat_a", expect.objectContaining({ charge_ids: ["chg_visit"] }));
   });
 
-  test.fails("REG-FE-RECEP-039 KNOWN BUG NEW-RECEP-2 a patient on 'To settle' can be settled from the panel, not offered a new visit fee", async () => {
+  test("REG-FE-RECEP-039 a patient on 'To settle' can be settled from the panel, not offered a new visit fee", async () => {
     const { user } = page();
     await user.click(await screen.findByRole("tab", { name: /To settle/ }));
     await pick(user, /Dawit Alemu/);
@@ -721,7 +725,7 @@ describe("REG-FE-RECEP reception desk", () => {
     expect(await screen.findByRole("button", { name: "Collect ETB 800.00" })).toBeInTheDocument();
   });
 
-  test.fails("REG-FE-RECEP-040 KNOWN BUG NEW-RECEP-3 a desk without payment.collect is not offered 'Collect', and never settles", async () => {
+  test("REG-FE-RECEP-040 a desk without payment.collect is not offered 'Collect', and never settles", async () => {
     as(["patient.read", "payment.charge"]);
     const { user } = page();
     await pick(user, /Almaz Haile/);
@@ -731,5 +735,163 @@ describe("REG-FE-RECEP reception desk", () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(primary).toBeNull();
     expect(bill.settleVisit).not.toHaveBeenCalled();
+  });
+
+  // --- the patient card: today, missed, next, itemised bills (FEAT-RECEP-1) -------------------
+
+  const bill1 = { id: "chg_1", description: "Root canal, visit 1", amount: "1200.00", source: "dental", created_at: at(-38 * DAY), age_days: 38, at_cashier: true, agreed: false, desk_picked: false };
+  const bill2 = { id: "chg_2", description: "Extraction UR8", amount: "800.00", source: "dental", created_at: at(-9 * DAY), age_days: 9, at_cashier: false, agreed: true, agreed_why: "Cannot pay today", desk_picked: false };
+
+  test("REG-FE-RECEP-046 the card shows today's session, a missed visit with a call link, and the next visit", async () => {
+    sched.getReceptionCard.mockResolvedValue(emptyCard({
+      appointment: { kind: "appointment", when: at(-20 * MIN), title: "Cleaning", provider_name: "Dr Sara", status: "booked" },
+      session: { kind: "session", when: "2026-10-10", title: "Root canal, visit 2 of 3" },
+      missed: [{ kind: "appointment", when: at(-5 * DAY), title: "Check-up", provider_name: "Dr Sara", status: "missed" }],
+      next: { kind: "appointment", when: at(5 * DAY), title: "Root canal visit 3", provider_name: "Dr Yonas" },
+    }));
+    const { user } = page();
+    await pick(user, /Almaz Haile/);
+    expect(await screen.findByText("Root canal, visit 2 of 3")).toBeInTheDocument();
+    expect(screen.getByText(/Treatment planned today/)).toBeInTheDocument();
+    expect(screen.getByText(/Missed/)).toHaveTextContent("Check-up");
+    expect(screen.getByRole("link", { name: "Call" })).toHaveAttribute("href", "tel:0911000000");
+    expect(screen.getByText(/Next:/)).toHaveTextContent("Root canal visit 3");
+  });
+
+  test("REG-FE-RECEP-047 an empty card says so in words: no missed visits, no next visit, a walk-in", async () => {
+    const { user } = page();
+    await pick(user, /Almaz Haile/);
+    expect(await screen.findByText("No missed visits in the last 90 days.")).toBeInTheDocument();
+    expect(screen.getByText("No next visit booked.")).toBeInTheDocument();
+    expect(screen.getByText(/No booking or treatment visit today/)).toBeInTheDocument();
+  });
+
+  test("REG-FE-RECEP-048 earlier bills are itemised, none ticked; ticking adds to the total and is sent with the arrival", async () => {
+    sched.getReceptionCard.mockResolvedValue(emptyCard({ bills: [bill1, bill2], owed_total: "2000.00" }));
+    const { user } = page();
+    await pick(user, /Almaz Haile/);
+    const first = await screen.findByRole("checkbox", { name: /Root canal, visit 1/ });
+    expect(first).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Extraction UR8/ })).not.toBeChecked();
+    expect(screen.getByText(/Earlier unpaid bills · 2 · ETB 2000\.00 · oldest 38 days/)).toBeInTheDocument();
+    expect(screen.getByText(/agreed to pay later \(Cannot pay today\)/)).toBeInTheDocument();
+    // Nothing ticked: the button is today's fee only.
+    expect(btn(/Collect ETB 100\.00/)).toBeInTheDocument();
+    await user.click(first);
+    expect(await screen.findByRole("button", { name: /Collect ETB 1300\.00/ })).toBeInTheDocument();
+    expect(screen.getByText(/Today ETB 100\.00 \+ 1 earlier bill ETB 1200\.00/)).toBeInTheDocument();
+
+    sched.checkInAppointment.mockResolvedValue({ gated: true, charge_ids: ["chg_visit", "chg_1"] });
+    await user.click(btn("Send to cashier"));
+    await waitFor(() => expect(sched.checkInAppointment).toHaveBeenCalled());
+    expect(sched.checkInAppointment).toHaveBeenCalledWith("apt_a", expect.objectContaining({ select_charge_ids: ["chg_1"] }));
+    expect(bill.settleVisit).not.toHaveBeenCalled();
+  });
+
+  test("REG-FE-RECEP-049 Select all, Clear, and Collect settles the fee and every ticked bill together", async () => {
+    sched.getReceptionCard.mockResolvedValue(emptyCard({ bills: [bill1, bill2] }));
+    sched.checkInAppointment.mockResolvedValue({ gated: true, charge_ids: ["chg_visit", "chg_1", "chg_2"] });
+    const { user } = page();
+    await pick(user, /Almaz Haile/);
+    await user.click(await screen.findByRole("button", { name: "Select all" }));
+    expect(screen.getByRole("checkbox", { name: /Extraction UR8/ })).toBeChecked();
+    expect(await screen.findByRole("button", { name: /Collect ETB 2100\.00/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.getByRole("checkbox", { name: /Root canal, visit 1/ })).not.toBeChecked();
+    await user.click(screen.getByRole("button", { name: "Select all" }));
+    await user.click(await screen.findByRole("button", { name: /Collect ETB 2100\.00/ }));
+    await waitFor(() => expect(bill.settleVisit).toHaveBeenCalled());
+    expect(sched.checkInAppointment).toHaveBeenCalledWith("apt_a", expect.objectContaining({ select_charge_ids: ["chg_1", "chg_2"] }));
+    expect(bill.settleVisit).toHaveBeenCalledWith("pat_a", expect.objectContaining({ charge_ids: ["chg_visit", "chg_1", "chg_2"] }));
+  });
+
+  test("REG-FE-RECEP-050 a ticked bill is never swept into a waiver of today's fee", async () => {
+    sched.getReceptionCard.mockResolvedValue(emptyCard({ bills: [bill1] }));
+    sched.checkInAppointment.mockResolvedValue({ gated: true, charge_ids: ["chg_visit"] });
+    const { user } = page();
+    await pick(user, /Almaz Haile/);
+    await user.click(await screen.findByRole("checkbox", { name: /Root canal, visit 1/ }));
+    await user.click(btn(/Waive/));
+    await choose(user, await screen.findByRole("combobox", { name: /Reason/ }), "Staff");
+    await user.click(screen.getByRole("button", { name: "Waive the fee" }));
+    await waitFor(() => expect(bill.waiveCharge).toHaveBeenCalled());
+    expect(sched.checkInAppointment).toHaveBeenCalledWith("apt_a", expect.not.objectContaining({ select_charge_ids: expect.anything() }));
+    expect(bill.waiveCharge).toHaveBeenCalledTimes(1);
+    expect(bill.waiveCharge).toHaveBeenCalledWith("chg_visit", "Staff");
+  });
+
+  test("REG-FE-RECEP-051 without payment.collect the ticked total goes to the cashier and nothing is settled", async () => {
+    as(["patient.read", "payment.charge"]);
+    sched.getReceptionCard.mockResolvedValue(emptyCard({ bills: [bill1] }));
+    sched.checkInAppointment.mockResolvedValue({ gated: true, charge_ids: ["chg_1"] });
+    const { user } = page();
+    await pick(user, /Almaz Haile/);
+    await user.click(await screen.findByRole("checkbox", { name: /Root canal, visit 1/ }));
+    await user.click(await screen.findByRole("button", { name: /Send to cashier · ETB 1300\.00/ }));
+    await waitFor(() => expect(sched.checkInAppointment).toHaveBeenCalled());
+    expect(bill.settleVisit).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /Collect ETB/ })).toBeNull();
+  });
+
+  test("REG-FE-RECEP-052 a card that fails to load still lets the desk receive, and offers a retry", async () => {
+    sched.getReceptionCard.mockRejectedValue(new Error("down"));
+    const { user } = page();
+    await pick(user, /Almaz Haile/);
+    expect(await screen.findByText(/Could not load this patient's history/)).toBeInTheDocument();
+    // The list row still says they owe, so the single-line summary stays.
+    expect(screen.getByText(/from earlier visits/)).toHaveTextContent("Owes ETB 300.00");
+    expect(btn(/Collect ETB 100\.00/)).toBeEnabled();
+    sched.getReceptionCard.mockResolvedValue(emptyCard({ bills: [bill1] }));
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByRole("checkbox", { name: /Root canal, visit 1/ })).toBeInTheDocument();
+  });
+
+  test("REG-FE-RECEP-053 a ticked bill that was paid meanwhile is refused with the reason and the card reloads", async () => {
+    sched.getReceptionCard.mockResolvedValue(emptyCard({ bills: [bill1] }));
+    sched.checkInAppointment.mockRejectedValue(new AppError(409, "BILLS_CHANGED", "one of the ticked bills is no longer unpaid — refresh the patient and tick again"));
+    const { user } = page();
+    await pick(user, /Almaz Haile/);
+    await user.click(await screen.findByRole("checkbox", { name: /Root canal, visit 1/ }));
+    sched.getReceptionCard.mockClear();
+    sched.getReceptionCard.mockResolvedValue(emptyCard());
+    await user.click(btn("Send to cashier"));
+    await waitFor(() => expect(tst.error).toHaveBeenCalledWith(expect.stringMatching(/no longer unpaid/)));
+    await waitFor(() => expect(sched.getReceptionCard).toHaveBeenCalled());
+  });
+
+  test("REG-FE-RECEP-054 Pay later when the arrival raised nothing to defer just checks the patient in", async () => {
+    sched.checkInAppointment.mockResolvedValue({ gated: false, charge_ids: [] });
+    const { user } = page();
+    await pick(user, /Almaz Haile/);
+    await user.click(await screen.findByRole("button", { name: "Pay later…" }));
+    const dlg = await screen.findByRole("dialog");
+    await choose(user, within(dlg).getByRole("combobox"), "Staff or dependent");
+    await user.click(within(dlg).getByRole("button", { name: "Send through, bill later" }));
+    await waitFor(() => expect(tst.success).toHaveBeenCalledWith("Almaz Haile checked in"));
+    expect(bill.deferVisit).not.toHaveBeenCalled();
+  });
+
+  test("REG-FE-RECEP-055 a received booking, a session next visit, a missed session and an agreed bill with no reason all read plainly", async () => {
+    sched.getReceptionCard.mockResolvedValue(emptyCard({
+      appointment: { kind: "appointment", when: at(-20 * MIN), title: "", status: "checked_in" },
+      missed: [{ kind: "session", when: "2026-09-30", title: "Filling, visit 1 of 2", status: "missed" }],
+      next: { kind: "session", when: "2026-10-20", title: "Filling, visit 2 of 2" },
+      bills: [{ ...bill2, agreed_why: undefined, age_days: 0 }],
+    }));
+    const { user } = page();
+    await pick(user, /Almaz Haile/);
+    expect(await screen.findByText(/already received/)).toBeInTheDocument();
+    expect(screen.getByText(/Missed/)).toHaveTextContent("Filling, visit 1 of 2");
+    expect(screen.getByText(/Next:/)).toHaveTextContent("Filling, visit 2 of 2");
+    expect(screen.getByText(/Earlier unpaid bills · 1 · ETB 800\.00$/)).toBeInTheDocument();
+    expect(screen.getByText(/agreed to pay later$/)).toBeInTheDocument();
+  });
+
+  test("REG-FE-RECEP-056 a card that arrives without some sections still renders and never hides the debt", async () => {
+    sched.getReceptionCard.mockResolvedValue({} as ReceptionCard);
+    const { user } = page();
+    await pick(user, /Almaz Haile/);
+    expect(await screen.findByText("No missed visits in the last 90 days.")).toBeInTheDocument();
+    expect(screen.getByText(/from earlier visits/)).toHaveTextContent("Owes ETB 300.00");
   });
 });

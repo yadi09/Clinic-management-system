@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -185,4 +187,242 @@ func branchArg(b *uuid.UUID) any {
 		return nil
 	}
 	return *b
+}
+
+// cardTx runs the card's queries one after another and remembers the first failure, so
+// the assembly below reads as the list of questions it is, not as error handling.
+type cardTx struct {
+	ctx context.Context
+	tx  pgx.Tx
+	err error
+}
+
+// one reads a single row. False means there was none (or an earlier query failed).
+func (c *cardTx) one(sql string, args []any, dest ...any) bool {
+	if c.err != nil {
+		return false
+	}
+	e := c.tx.QueryRow(c.ctx, sql, args...).Scan(dest...)
+	if errors.Is(e, pgx.ErrNoRows) {
+		return false
+	}
+	c.err = e
+	return e == nil
+}
+
+// each reads every row through scan.
+func (c *cardTx) each(sql string, args []any, scan func(pgx.Rows) error) {
+	if c.err != nil {
+		return
+	}
+	rows, e := c.tx.Query(c.ctx, sql, args...)
+	if e != nil {
+		c.err = e
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		if e := scan(rows); e != nil {
+			c.err = e
+			return
+		}
+	}
+	c.err = rows.Err()
+}
+
+// ReceptionCard assembles one patient's card in a single transaction, so the sections
+// cannot disagree with each other or with the Finance page (the bills use the same
+// "pending" definition as Owed to you).
+func (s *Service) ReceptionCard(ctx context.Context, patientID uuid.UUID) (*scheduling.ReceptionCard, error) {
+	tenantID, _ := actorOf(ctx)
+	branch := branchArg(activeBranchOf(ctx))
+	out := &scheduling.ReceptionCard{Missed: []scheduling.CardVisit{}, Bills: []scheduling.CardBill{}, OwedTotal: "0", UnbilledTotal: "0"}
+	const today = `(now() AT TIME ZONE $2)::date`
+	eat := time.FixedZone("EAT", 3*3600)
+	// Args shared by every query below: tenant, clinic timezone, patient (and branch).
+	args := []any{tenantID, addisTZ, patientID}
+
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		c := &cardTx{ctx: ctx, tx: tx}
+		var exists bool
+		if !c.one(`SELECT true FROM patients WHERE tenant_id = $1 AND $2::text IS NOT NULL AND id = $3 AND deleted_at IS NULL`,
+			args, &exists) && c.err == nil {
+			return pgx.ErrNoRows
+		}
+
+		// --- today's booking: the first one not cancelled or missed -------------
+		var apptID uuid.UUID
+		var startsAt time.Time
+		var title, prov, dept, status string
+		var follow bool
+		if c.one(`
+			SELECT a.id, a.starts_at, coalesce(a.reason,''), coalesce(u.full_name,''), coalesce(d.name,''), a.status, a.is_followup
+			  FROM appointments a
+			  LEFT JOIN users u ON u.id = a.provider_id AND u.tenant_id = a.tenant_id
+			  LEFT JOIN departments d ON d.id = a.department_id AND d.tenant_id = a.tenant_id
+			 WHERE a.tenant_id = $1 AND a.patient_id = $3
+			   AND a.status IN ('booked','confirmed','checked_in')
+			   AND (a.starts_at AT TIME ZONE $2)::date = `+today+`
+			   AND ($4::uuid IS NULL OR a.branch_id = $4)
+			 ORDER BY a.starts_at LIMIT 1`, append(args, branch),
+			&apptID, &startsAt, &title, &prov, &dept, &status, &follow) {
+			out.Appointment = &scheduling.CardVisit{
+				Kind: "appointment", AppointmentID: id.Encode(id.PrefixAppointment, apptID),
+				When: startsAt.Format(time.RFC3339), Title: title, ProviderName: prov, DepartmentName: dept,
+				Status: status, IsFollowup: follow,
+			}
+		}
+
+		// --- today's treatment session, "Root canal, visit 2 of 3" --------------
+		var when time.Time
+		var seq, count int
+		if c.one(`
+			SELECT ts.scheduled_date::timestamp, pl.title, ts.seq, pl.session_count
+			  FROM treatment_sessions ts
+			  JOIN treatment_plans pl ON pl.id = ts.plan_id AND pl.tenant_id = ts.tenant_id
+			 WHERE ts.tenant_id = $1 AND ts.patient_id = $3 AND ts.status = 'planned'
+			   AND pl.status <> 'cancelled' AND ts.scheduled_date = `+today+`
+			 ORDER BY ts.seq LIMIT 1`, args, &when, &title, &seq, &count) {
+			out.Session = &scheduling.CardVisit{
+				Kind: "session", When: when.Format("2006-01-02"),
+				Title: fmt.Sprintf("%s, visit %d of %d", title, seq, count),
+			}
+		}
+
+		// --- missed in the last 90 days (3 newest) ------------------------------
+		c.each(`
+			SELECT * FROM (
+			  SELECT 'appointment', (a.starts_at AT TIME ZONE $2)::date AS d,
+			         coalesce(a.reason,''), coalesce(u.full_name,''), a.id
+			    FROM appointments a
+			    LEFT JOIN users u ON u.id = a.provider_id AND u.tenant_id = a.tenant_id
+			   WHERE a.tenant_id = $1 AND a.patient_id = $3 AND a.status = 'no_show'
+			     AND (a.starts_at AT TIME ZONE $2)::date >= `+today+` - 90
+			     AND (a.starts_at AT TIME ZONE $2)::date < `+today+`
+			  UNION ALL
+			  SELECT 'session', ts.scheduled_date AS d,
+			         pl.title || ', visit ' || ts.seq || ' of ' || pl.session_count, '', NULL::uuid
+			    FROM treatment_sessions ts
+			    JOIN treatment_plans pl ON pl.id = ts.plan_id AND pl.tenant_id = ts.tenant_id
+			   WHERE ts.tenant_id = $1 AND ts.patient_id = $3 AND ts.status = 'planned'
+			     AND pl.status <> 'cancelled'
+			     AND ts.scheduled_date >= `+today+` - 90 AND ts.scheduled_date < `+today+`
+			) m ORDER BY d DESC LIMIT 3`, args, func(r pgx.Rows) error {
+			var v scheduling.CardVisit
+			var d time.Time
+			var aid *uuid.UUID
+			if e := r.Scan(&v.Kind, &d, &v.Title, &v.ProviderName, &aid); e != nil {
+				return e
+			}
+			v.When, v.Status = d.Format("2006-01-02"), "missed"
+			if aid != nil {
+				v.AppointmentID = id.Encode(id.PrefixAppointment, *aid)
+			}
+			out.Missed = append(out.Missed, v)
+			return nil
+		})
+
+		// --- next visit after today: the earlier of a booking and a session -----
+		var next scheduling.CardVisit
+		var nextAt time.Time
+		var nextAID *uuid.UUID
+		if c.one(`
+			SELECT kind, d, title, prov, dept, aid FROM (
+			  SELECT 'appointment' AS kind, a.starts_at AS d, coalesce(a.reason,'') AS title,
+			         coalesce(u.full_name,'') AS prov, coalesce(dp.name,'') AS dept, a.id AS aid
+			    FROM appointments a
+			    LEFT JOIN users u ON u.id = a.provider_id AND u.tenant_id = a.tenant_id
+			    LEFT JOIN departments dp ON dp.id = a.department_id AND dp.tenant_id = a.tenant_id
+			   WHERE a.tenant_id = $1 AND a.patient_id = $3 AND a.status IN ('booked','confirmed')
+			     AND (a.starts_at AT TIME ZONE $2)::date > `+today+`
+			  UNION ALL
+			  SELECT 'session', ts.scheduled_date::timestamp AT TIME ZONE $2,
+			         pl.title || ', visit ' || ts.seq || ' of ' || pl.session_count, '', '', NULL::uuid
+			    FROM treatment_sessions ts
+			    JOIN treatment_plans pl ON pl.id = ts.plan_id AND pl.tenant_id = ts.tenant_id
+			   WHERE ts.tenant_id = $1 AND ts.patient_id = $3 AND ts.status = 'planned'
+			     AND pl.status <> 'cancelled' AND ts.scheduled_date > `+today+`
+			) n ORDER BY d LIMIT 1`, args,
+			&next.Kind, &nextAt, &next.Title, &next.ProviderName, &next.DepartmentName, &nextAID) {
+			next.When = nextAt.Format(time.RFC3339)
+			if next.Kind == "session" {
+				next.When = nextAt.In(eat).Format("2006-01-02")
+			}
+			if nextAID != nil {
+				next.AppointmentID = id.Encode(id.PrefixAppointment, *nextAID)
+			}
+			out.Next = &next
+		}
+
+		// --- itemised unpaid bills, oldest first --------------------------------
+		//
+		// Today's own routed intake charge is the fee block's business, not an
+		// "earlier bill": listing it twice would let the desk tick the same fee in two
+		// places.
+		c.each(`
+			SELECT c.id, c.description, c.amount::text, c.source, c.created_at,
+			       ((now() AT TIME ZONE $2)::date - (c.created_at AT TIME ZONE $2)::date)::int,
+			       c.department_id IS NOT NULL, c.deferred_at IS NOT NULL, coalesce(c.defer_reason,''),
+			       c.desk_selected_at IS NOT NULL
+			  FROM charges c
+			 WHERE c.tenant_id = $1 AND c.patient_id = $3 AND c.status = 'pending' AND c.deleted_at IS NULL
+			   AND c.source <> 'refund'
+			   AND NOT (c.department_id IS NOT NULL AND c.deferred_at IS NULL
+			            AND (c.created_at AT TIME ZONE $2)::date = `+today+`)
+			 ORDER BY c.created_at`, args, func(r pgx.Rows) error {
+			var cid uuid.UUID
+			var b scheduling.CardBill
+			var created time.Time
+			if e := r.Scan(&cid, &b.Description, &b.Amount, &b.Source, &created, &b.AgeDays,
+				&b.AtCashier, &b.Agreed, &b.AgreedWhy, &b.DeskPicked); e != nil {
+				return e
+			}
+			b.ID, b.CreatedAt = id.Encode(id.PrefixCharge, cid), created.Format(time.RFC3339)
+			out.Bills = append(out.Bills, b)
+			return nil
+		})
+
+		// --- totals on the same definition the list rows use --------------------
+		c.one(owedCTE+`
+			SELECT coalesce(owed.amt,0)::text, coalesce(unbilled.amt,0)::text
+			  FROM patients p
+			  LEFT JOIN owed ON owed.patient_id = p.id
+			  LEFT JOIN unbilled ON unbilled.patient_id = p.id
+			 WHERE p.tenant_id = $1 AND p.id = $3`, args, &out.OwedTotal, &out.UnbilledTotal)
+
+		// --- usual clinician and last visit ---------------------------------------
+		var usual *uuid.UUID
+		var usualName string
+		var last time.Time
+		if c.one(`
+			SELECT q.assigned_provider_id, coalesce(u.full_name,''), q.enqueued_at
+			  FROM queue_entries q
+			  LEFT JOIN users u ON u.id = q.assigned_provider_id AND u.tenant_id = q.tenant_id
+			 WHERE q.tenant_id = $1 AND $2::text IS NOT NULL AND q.patient_id = $3 AND q.deleted_at IS NULL
+			   AND q.assigned_provider_id IS NOT NULL
+			 ORDER BY q.enqueued_at DESC LIMIT 1`, args, &usual, &usualName, &last) {
+			out.UsualProviderID = id.Encode(id.PrefixUser, *usual)
+			out.UsualProviderName, out.LastVisitAt = usualName, last.Format(time.RFC3339)
+		}
+
+		// --- already in today's queue ---------------------------------------------
+		var live int
+		c.one(`
+			SELECT count(*)::int FROM queue_entries
+			 WHERE tenant_id = $1 AND patient_id = $3 AND deleted_at IS NULL
+			   AND state NOT IN ('done','no_show')
+			   AND (enqueued_at AT TIME ZONE $2)::date = `+today, args, &live)
+		out.InQueue = live > 0
+		return c.err
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, apperr.NotFound("PATIENT_NOT_FOUND", "patient not found")
+	}
+	if ae, ok := apperr.As(err); ok {
+		return nil, ae
+	}
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
 }

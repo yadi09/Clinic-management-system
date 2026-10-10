@@ -110,6 +110,8 @@ export interface CheckInOpts {
   provider_id?: string;
   /** Only used when the appointment has no department of its own (legacy bookings). */
   department_id?: string;
+  /** Earlier unpaid bills the patient agreed to pay now: they hold the patient at the cashier. */
+  select_charge_ids?: string[];
 }
 export function checkInAppointment(id: string, opts: CheckInOpts = {}) {
   return apiFetch<{
@@ -160,6 +162,8 @@ export function walkIn(body: {
   priority?: number;
   to_triage?: boolean;
   provider_id?: string;
+  /** Earlier unpaid bills the patient agreed to pay now. */
+  select_charge_ids?: string[];
 }) {
   // charge_ids: what THIS arrival raised, so the desk can collect exactly it.
   return apiFetch<{ status: string; gated: boolean; charge_ids: string[] }>("/queue/walk-in", { method: "POST", body });
@@ -215,4 +219,54 @@ export interface ReceptionToday {
 
 export function receptionToday() {
   return apiFetch<ReceptionToday>("/reception/today");
+}
+
+// --- reception: one patient's card ---
+
+/** One booking or treatment session, in the words the desk repeats. */
+export interface CardVisit {
+  kind: "appointment" | "session";
+  appointment_id?: string;
+  /** RFC3339 for a booking, YYYY-MM-DD for a session. */
+  when: string;
+  title: string;
+  provider_name?: string;
+  department_name?: string;
+  status?: string;
+  is_followup?: boolean;
+}
+
+/** One earlier unpaid charge the patient could pay now. */
+export interface CardBill {
+  id: string;
+  description: string;
+  amount: string;
+  source: string;
+  created_at: string;
+  age_days: number;
+  /** Raised as a routed visit charge: already waiting at the cashier. */
+  at_cashier: boolean;
+  /** The clinic agreed to wait (treat now, pay later). */
+  agreed: boolean;
+  agreed_why?: string;
+  /** The desk already ticked it today. */
+  desk_picked: boolean;
+}
+
+export interface ReceptionCard {
+  appointment?: CardVisit;
+  session?: CardVisit;
+  missed: CardVisit[];
+  next?: CardVisit;
+  bills: CardBill[];
+  owed_total: string;
+  unbilled_total: string;
+  usual_provider_id?: string;
+  usual_provider_name?: string;
+  last_visit_at?: string;
+  in_queue: boolean;
+}
+
+export function getReceptionCard(patientId: string) {
+  return apiFetch<ReceptionCard>(`/reception/patients/${patientId}/card`);
 }

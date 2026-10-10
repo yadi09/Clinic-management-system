@@ -45,9 +45,12 @@ import {
   usePaymentRails, type PaymentChoice,
 } from "@/features/billing/PaymentRail";
 import {
-  checkInAppointment, receptionToday, walkIn, type ReceptionPatient,
+  checkInAppointment, getReceptionCard, receptionToday, walkIn, type ReceptionPatient,
 } from "@/features/scheduling/api";
 import { ArrivalRow, clock, coveredNow, day } from "@/features/scheduling/reception/ArrivalList";
+import {
+  CardSkeleton, TodaySection, UnpaidBills, VisitsSection,
+} from "@/features/scheduling/reception/PatientCard";
 
 type Lens = "expected" | "waiting" | "seen" | "settle";
 const etb = (n: number | string) => `ETB ${Number(n || 0).toFixed(2)}`;
@@ -269,6 +272,26 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
   });
   const reasons = useQuery({ queryKey: ["waiver-reasons"], queryFn: waiverReasons, enabled: canCollect });
   const rails = usePaymentRails();
+  // One request for everything about this patient: today, missed, next, itemised bills.
+  const card = useQuery({
+    queryKey: ["reception-card", p.patient_id],
+    queryFn: () => getReceptionCard(p.patient_id),
+    retry: false,
+  });
+  // The earlier bills the patient agreed to pay now. Empty by default: ticking is the
+  // patient's decision, never the desk's.
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  const bills = useMemo(() => card.data?.bills ?? [], [card.data]);
+  const toggleBill = (id: string) => setPicked((cur) => {
+    const next = new Set(cur);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const pickAll = (all: boolean) => setPicked(all ? new Set(bills.map((b) => b.id)) : new Set());
+  // A bill that was paid or voided while the panel was open must not stay ticked.
+  const live = useMemo(() => bills.filter((b) => picked.has(b.id)), [bills, picked]);
+  const selectedIds = live.map((b) => b.id);
+  const billsTotal = live.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
 
   const triageRequired = !!settings.data?.triage_required;
   const [dept, setDept] = useState(p.department_id ?? "");
@@ -299,9 +322,11 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
   // Only the clinic's arrival fee is raised at reception. Choosing extra services
   // here was removed (2026-10-10): no clinic uses it, and raising them was a separate
   // request that a failed payment left behind to be raised again (APT-3).
-  const total = feeDue;
+  const total = feeDue + billsTotal;
   const routeReady = !!dept && (triageRequired || !!provider || booked);
   const mustPay = total > 0.005;
+  // A desk that may not collect cannot be offered "Collect": it sends to the cashier.
+  const cashierOnly = mustPay && !canCollect;
   const blocked = mustPay && canCollect && paymentIncomplete(rails.data, pay);
   // The bank contradicts this transfer — most often because it reached somebody
   // else's account. The desk must not be able to press on: the server refuses it, and
@@ -329,7 +354,7 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
   // Shared by Collect and Waive, so both act on exactly what THIS visit raised —
   // waiving used to sweep every pending charge the patient had, a deposit at the
   // cashier included, and never checked them in (audit D6).
-  const arrive = async (): Promise<string[]> => {
+  const arrive = async (withBills = true): Promise<string[]> => {
     const routing = {
       to_triage: triageRequired,
       provider_id: !triageRequired && provider ? provider : undefined,
@@ -337,6 +362,11 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
       // server uses it only when the appointment has none, so it can never
       // reroute a patient away from where they were actually booked.
       department_id: dept || undefined,
+      // Earlier bills the patient agreed to pay (never on Waive: waiving is about
+      // today's fee, and sweeping the ticked bills into it would write them off):
+      // they hold the patient at the cashier
+      // and the patient goes to the chosen clinician once they are cleared.
+      select_charge_ids: withBills && selectedIds.length > 0 ? selectedIds : undefined,
     };
     // Only what THIS arrival raised gets collected. A patient who also owes 1,200
     // from last month must not have it swept into a receipt for a 300 ETB visit.
@@ -375,10 +405,42 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
       qc.invalidateQueries({ queryKey: ["pending-charges"] });
       qc.invalidateQueries({ queryKey: ["queue"] });
       qc.invalidateQueries({ queryKey: ["registration-status", p.patient_id] });
+      qc.invalidateQueries({ queryKey: ["reception-card", p.patient_id] });
       onDone();
     },
-    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not receive this patient"),
+    onError: (e) => {
+      // A ticked bill that was paid in the meantime is the one failure with a fix the
+      // desk can see: reload the card so it disappears from the list.
+      qc.invalidateQueries({ queryKey: ["reception-card", p.patient_id] });
+      toast.error(e instanceof AppError ? e.message : "Could not receive this patient");
+    },
   });
+
+  // Taking what they still owe on the way out (seen and gone, or waiting and owing).
+  const settleBlock = outstanding > 0.005 && canCollect && (
+    <div className="space-y-2 rounded-lg border border-l-4 border-l-destructive bg-destructive/5 p-3">
+      <p className="text-sm font-semibold text-destructive">
+        {etb(outstanding)} still to pay
+      </p>
+      <p className="text-xs text-muted-foreground">
+        {p.owed_agreed
+          ? "Agreed to be billed later — take it now if they can settle before leaving."
+          : "Not yet collected. Take it before they leave."}
+      </p>
+      <PaymentRailPicker rails={rails.data} value={pay} onChange={setPay}
+        expected={outstanding.toFixed(2)} patientId={p.patient_id} compact />
+      {paymentBlocked(pay) ? (
+        <PaymentRefused canOverride={canOverride} pending={settleOwed.isPending}
+          onForce={() => settleOwed.mutate(true)} />
+      ) : (
+        <Button className="w-full" loading={settleOwed.isPending}
+          disabled={paymentIncomplete(rails.data, pay)}
+          onClick={() => settleOwed.mutate(false)}>
+          <HandCoins className="h-4 w-4" /> Collect {etb(outstanding)}
+        </Button>
+      )}
+    </div>
+  );
 
   const body = (
     <div className="space-y-4">
@@ -401,13 +463,30 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
         )}
       </div>
 
+      {/* The card: today, missed, next. Skeleton while it loads, nothing if it fails —
+          the desk can always still receive the patient from what the list knew. */}
+      {card.isLoading && <CardSkeleton />}
+      {card.data && (
+        <>
+          <TodaySection card={card.data} />
+          <VisitsSection card={card.data} phone={p.phone} />
+        </>
+      )}
+      {card.isError && (
+        <p className="text-xs text-muted-foreground">
+          Could not load this patient's history. You can still receive them.{" "}
+          <button type="button" className="underline" onClick={() => card.refetch()}>Try again</button>
+        </p>
+      )}
+
       {seenToday && (
         <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
           {/* waiting_since is when they came in, which is the only time the desk
               has here — saying "closed at" would be inventing a fact. */}
-          Seen today — came in at {clock(p.waiting_since!)} and the visit is closed.
-          Sending them through again starts a new visit; today's fee is already paid,
-          so there is nothing more to collect for it.
+          Seen today — came in at {clock(p.waiting_since!)} and the visit is closed.{" "}
+          {outstanding > 0.005
+            ? <>They still owe <b>{etb(outstanding)}</b>: take it below, or start a new visit.</>
+            : "Sending them through again starts a new visit."}
         </div>
       )}
 
@@ -434,33 +513,16 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
               this panel used to end at the green box — the desk could see they owed
               money and had no way to take it without going to the cashier page and
               finding them again. */}
-          {outstanding > 0.005 && canCollect && (
-            <div className="space-y-2 rounded-lg border border-l-4 border-l-destructive bg-destructive/5 p-3">
-              <p className="text-sm font-semibold text-destructive">
-                {etb(outstanding)} still to pay
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {p.owed_agreed
-                  ? "Agreed to be billed later — take it now if they can settle before leaving."
-                  : "Not yet collected. Take it before they leave."}
-              </p>
-              <PaymentRailPicker rails={rails.data} value={pay} onChange={setPay}
-                expected={outstanding.toFixed(2)} patientId={p.patient_id} compact />
-              {paymentBlocked(pay) ? (
-                <PaymentRefused canOverride={canOverride} pending={settleOwed.isPending}
-                  onForce={() => settleOwed.mutate(true)} />
-              ) : (
-                <Button className="w-full" loading={settleOwed.isPending}
-                  disabled={paymentIncomplete(rails.data, pay)}
-                  onClick={() => settleOwed.mutate(false)}>
-                  <HandCoins className="h-4 w-4" /> Collect {etb(outstanding)}
-                </Button>
-              )}
-            </div>
-          )}
+          {settleBlock}
         </div>
       ) : (
         <>
+          {/* A treated patient who still owes is a settlement first, not a new visit. */}
+          {seenToday && settleBlock}
+          {seenToday && outstanding > 0.005 && (
+            <p className="border-t pt-3 text-xs font-semibold text-muted-foreground">Or start a new visit</p>
+          )}
+
           {/* what it costs */}
           {covered ? (
             <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2.5">
@@ -472,13 +534,20 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
               </p>
             </div>
           ) : canCollect ? (
-            <FeeBlock defaults={defaults} total={total} registration={covered ? undefined : reg} />
+            <FeeBlock defaults={defaults} total={feeDue} registration={reg} />
           ) : null}
+
+          {/* Earlier unpaid bills, itemised and tickable. Until the card arrives (or if it
+              cannot, or lists nothing the row says is owed) the single-line summary below
+              still tells the desk they owe: a debt must never disappear from the screen. */}
+          {card.data && bills.length > 0 && (
+            <UnpaidBills bills={bills} selected={picked} onToggle={toggleBill} onAll={pickAll} />
+          )}
 
           {/* Old debt: surfaced, never folded into today's payment. Money the clinic
               AGREED to be owed is not the same fact as a charge nobody collected —
               one is a plan, the other is a surprise — so they do not look alike. */}
-          {Number(p.owed || 0) > 0 && (
+          {!(card.data && bills.length > 0) && Number(p.owed || 0) > 0 && (
             <div className={cn("flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm",
               p.owed_agreed ? "border-sky-200 bg-sky-50 text-sky-900" : "border-amber-200 bg-amber-50 text-amber-900")}>
               <span className="min-w-0 flex-1">
@@ -517,6 +586,16 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
             <p className="text-xs text-muted-foreground">This clinic sends every patient through triage first.</p>
           )}
 
+          {/* What will be taken, in one line, when earlier bills are ticked. */}
+          {live.length > 0 && (
+            <div className="flex items-baseline justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+              <span className="text-muted-foreground">
+                Today {etb(feeDue)} + {live.length} earlier bill{live.length === 1 ? "" : "s"} {etb(billsTotal)}
+              </span>
+              <span className="font-mono font-semibold">{etb(total)}</span>
+            </div>
+          )}
+
           {/* how they pay */}
           {mustPay && canCollect && (
             <div className="space-y-1.5">
@@ -531,6 +610,12 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
             {refused ? (
               <PaymentRefused canOverride={canOverride} pending={receive.isPending}
                 onForce={() => receive.mutate({ mode: "collect", force: true })} />
+            ) : cashierOnly ? (
+              // No collect permission: the one honest exit is the cashier.
+              <Button className="w-full" disabled={!routeReady} loading={receive.isPending}
+                onClick={() => receive.mutate({ mode: "cashier" })}>
+                Send to cashier{live.length > 0 ? ` · ${etb(total)}` : ""}
+              </Button>
             ) : (
               <Button className="w-full" disabled={!routeReady || blocked} loading={receive.isPending}
                 onClick={() => receive.mutate({ mode: "collect" })}>
@@ -538,7 +623,7 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
                   : <><CheckCircle2 className="h-4 w-4" /> Check in</>}
               </Button>
             )}
-            {mustPay && (
+            {mustPay && !cashierOnly && (
               <div className="flex gap-2">
                 {/* Always available: a contradicted transfer is a reason to send the
                     patient to the cashier with the charge standing, not to turn them
@@ -560,10 +645,10 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
         </>
       )}
 
-      <DeferDialog open={deferOpen} onClose={() => setDeferOpen(false)} patient={p} total={total}
+      <DeferDialog open={deferOpen} onClose={() => setDeferOpen(false)} patient={p} total={feeDue} arrive={() => arrive(false)}
         onDone={() => { setDeferOpen(false); onDone(); }} />
       <WaiveDialog open={waiveOpen} onClose={() => setWaiveOpen(false)} reasons={reasons.data ?? []}
-        value={waiveReason} onChange={setWaiveReason} patient={p} onDone={onDone} arrive={arrive} />
+        value={waiveReason} onChange={setWaiveReason} patient={p} onDone={onDone} arrive={() => arrive(false)} />
     </div>
   );
 
@@ -616,16 +701,26 @@ function FeeBlock({ defaults, total, registration }: {
  *  patient still owes it. A clinic treating a staff member's child or someone brought
  *  in bleeding was previously forced to choose between writing the money off and
  *  turning them away. */
-function DeferDialog({ open, onClose, patient, total, onDone }: {
+function DeferDialog({ open, onClose, patient, total, onDone, arrive }: {
   open: boolean; onClose: () => void; patient: ReceptionPatient; total: number; onDone: () => void;
+  arrive: () => Promise<string[]>;
 }) {
   const [reason, setReason] = useState("");
   const REASONS = ["Emergency — treat first", "Staff or dependent", "Known patient — settles monthly",
     "Insurance / company account", "Cannot pay today", "Other"];
   const defer = useMutation({
-    mutationFn: () => deferVisit(patient.patient_id, { reason }),
+    // The arrival comes first, so the booking is marked arrived and today's fee is
+    // raised; then ONLY what that arrival raised is deferred. Deferring "everything
+    // pending" also agreed to wait for older debts nobody had discussed.
+    mutationFn: async () => {
+      const mine = await arrive();
+      if (mine.length === 0) return { deferred: 0 };
+      return deferVisit(patient.patient_id, { reason, charge_ids: mine });
+    },
     onSuccess: (r) => {
-      toast.success(`${patient.name} can be seen now — ${r.deferred} charge${r.deferred === 1 ? "" : "s"} still owed`);
+      toast.success(r.deferred === 0
+        ? `${patient.name} checked in`
+        : `${patient.name} can be seen now — ${r.deferred} charge${r.deferred === 1 ? "" : "s"} still owed`);
       onDone();
     },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not defer this visit"),

@@ -62,6 +62,11 @@ export interface PendingCharge {
   created_at: string;
   patient_name: string;
   mrn: string;
+  /** The receptionist ticked this bill: the patient agreed to pay it now. */
+  desk_selected?: boolean;
+  desk_selected_by?: string;
+  /** Who the patient goes to once the ticked bills are paid. */
+  goes_to?: string;
 }
 export interface ChargeRow {
   id: string;

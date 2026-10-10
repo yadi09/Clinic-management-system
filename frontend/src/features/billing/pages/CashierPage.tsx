@@ -279,6 +279,19 @@ function PatientCheckout({ group, onWaive, onVoid, onPaid }: {
         <span className="whitespace-nowrap text-base font-semibold tabular-nums">{group.currency} {group.total.toFixed(2)}</span>
       </div>
 
+      {/* Why this patient is here: the receptionist ticked bills the patient agreed to
+          pay, and chose who they see afterwards. Said once, above the lines, so the
+          cashier is never guessing. */}
+      {group.items.some((c) => c.desk_selected) && (
+        <div className="border-b bg-sky-50 px-4 py-2 text-xs text-sky-900">
+          Agreed at reception{group.items.find((c) => c.desk_selected)?.desk_selected_by
+            ? ` (${group.items.find((c) => c.desk_selected)!.desk_selected_by})` : ""}
+          {group.items.find((c) => c.desk_selected)?.goes_to
+            ? <> — goes to <b>{group.items.find((c) => c.desk_selected)!.goes_to}</b> once these are paid.</>
+            : " — to be paid before the visit."}
+        </div>
+      )}
+
       <div className="flex-1 divide-y">
         {group.items.map((c) => (
           <div key={c.id} className="group flex items-center justify-between gap-2 px-4 py-2.5 text-sm">
@@ -291,6 +304,7 @@ function PatientCheckout({ group, onWaive, onVoid, onPaid }: {
               <span className="max-md:line-clamp-2 md:block md:truncate">
                 {c.description}
                 <Badge variant="outline" className="ml-2 align-middle text-[10px] capitalize max-md:hidden">{c.source}</Badge>
+                {c.desk_selected && <Badge className="ml-1 align-middle text-[10px]">Picked at reception</Badge>}
               </span>
               <Badge variant="outline" className="mt-0.5 text-[10px] capitalize md:hidden">{c.source}</Badge>
             </div>

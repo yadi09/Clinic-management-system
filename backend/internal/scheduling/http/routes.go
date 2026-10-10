@@ -35,4 +35,5 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	// The front desk. Reads appointments and the queue together, which is how the
 	// desk sees them.
 	rg.GET("/reception/today", httpx.RequirePermission("queue.manage"), h.ReceptionToday)
+	rg.GET("/reception/patients/:id/card", httpx.RequirePermission("queue.manage"), h.ReceptionCard)
 }

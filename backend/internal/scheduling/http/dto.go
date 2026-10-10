@@ -44,6 +44,8 @@ type checkInRequest struct {
 	// Rescues an appointment booked before a department was required. Ignored when
 	// the appointment already has one.
 	DepartmentID string `json:"department_id"`
+	// Earlier unpaid bills the patient agreed to pay now.
+	SelectChargeIDs []string `json:"select_charge_ids"`
 }
 
 type walkInRequest struct {
@@ -56,6 +58,8 @@ type walkInRequest struct {
 	Priority     int    `json:"priority"`
 	ToTriage     bool   `json:"to_triage"`
 	ProviderID   string `json:"provider_id"`
+	// Earlier unpaid bills the patient agreed to pay now.
+	SelectChargeIDs []string `json:"select_charge_ids"`
 }
 
 type transitionRequest struct {

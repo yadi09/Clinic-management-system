@@ -86,16 +86,16 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 <li><b>Fix:</b> I change the code; its test turns from "known bug" to a normal passing test, and the whole suite must still pass.</li>
 <li><b>Verify:</b> you check it and accept it. Then the next one.</li>
 </ol>
-<p style="margin:8px 0 0;color:var(--soft)">Right now: 179 open · 1 explained or confirmed · 4 fixed, waiting for your check · 11 verified.</p>
+<p style="margin:8px 0 0;color:var(--soft)">Right now: 176 open · 0 explained or confirmed · 8 fixed, waiting for your check · 11 verified.</p>
 </div>
 
-<a class="next" href="#FEAT-RECEP-1" data-open="FEAT-RECEP-1"><span>Next up</span><b>Reception page: itemised old bills and faster desk work</b><em>High · FEAT-RECEP-1 · Explained</em></a>
+<a class="next" href="#FIN-15" data-open="FIN-15"><span>Next up</span><b>A listed service can be billed at any price</b><em>High · FIN-15 · Open</em></a>
 
 <div class="tallies"><button class="tally sev-critical" data-filter-sev="critical"><b>9</b><span>Critical</span><small>Money lost or created wrongly, a patient-safety risk, or someone reaching data they must not.</small></button><button class="tally sev-high" data-filter-sev="high"><b>46</b><span>High</span><small>Wrong figures, changes nobody can trace, or permission holes inside a clinic.</small></button><button class="tally sev-medium" data-filter-sev="medium"><b>73</b><span>Medium</span><small>Wrong but recoverable, or a screen that misleads about what is real.</small></button><button class="tally sev-low" data-filter-sev="low"><b>67</b><span>Low</span><small>Cosmetic, a wrong error message, or a rare edge.</small></button></div>
 
 <div class="filters">
   <input id="q" type="search" placeholder="Search: cashier, follow-up, refund…" aria-label="Search issues">
-  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (179)</option><option value="explained">Explained (1)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (4)</option><option value="verified">Verified (11)</option><option value="wontfix">Won't fix (0)</option></select>
+  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (176)</option><option value="explained">Explained (0)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (8)</option><option value="verified">Verified (11)</option><option value="wontfix">Won't fix (0)</option></select>
   <select id="ar" aria-label="Area"><option value="">Every area</option><option value="Appointments &amp; front desk">Appointments &amp; front desk</option><option value="Dental">Dental</option><option value="Money">Money</option><option value="Patient records">Patient records</option><option value="Reliability">Reliability</option><option value="Safety &amp; access">Safety &amp; access</option><option value="Screens &amp; usability">Screens &amp; usability</option></select>
 </div>
 <p class="count" id="count"></p>
@@ -362,7 +362,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
     </div>
   </details>
 </article>
-<article class="issue sev-high st-explained" id="FEAT-RECEP-1" data-sev="high" data-status="explained"
+<article class="issue sev-high st-fixed" id="FEAT-RECEP-1" data-sev="high" data-status="fixed"
   data-area="Appointments &amp; front desk" data-q="feat-recep-1 reception page: itemised old bills and faster desk work the reception page shows a patient owes money but only as one total with a link to the cashier. the desk cannot see which visits it is for, cannot tell the patient what it covers, and cannot add old bills to today&#x27;s payment. search puts the right person anywhere in the list, and every walk-in needs the same two choices made again. abebe owes 2,000 birr from two visits. the desk sees &#x27;owes 2,000 · 38d&#x27;, cannot say what for, and sends him to the cashier to find him again. receptionist, cashier, patients appointments &amp; front desk">
   <details>
     <summary>
@@ -370,10 +370,10 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">High</span>
       <span class="ttl">Reception page: itemised old bills and faster desk work</span>
       <span class="meta"><span class="id">FEAT-RECEP-1</span> · Appointments &amp; front desk · effort L · <i class="notest">No test yet</i></span>
-      <span class="status">Explained</span>
+      <span class="status">Fixed</span>
     </summary>
     <div class="body">
-      <div class="decision"><b>Your decision first:</b> Approve docs/reception-redesign-plan.html (now with the phone and tablet design, the payment-method step, a parity checklist and the failure states): the patient card, the cashier-then-dentist handoff, the five phases, and the ten decisions in its section 12.</div>
+      
       <dl>
         <dt>What happens</dt><dd>The reception page shows a patient owes money but only as one total with a link to the cashier. The desk cannot see which visits it is for, cannot tell the patient what it covers, and cannot add old bills to today&#x27;s payment. Search puts the right person anywhere in the list, and every walk-in needs the same two choices made again.</dd>
         <dt>In the clinic</dt><dd class="example">Abebe owes 2,000 birr from two visits. The desk sees &#x27;Owes 2,000 · 38d&#x27;, cannot say what for, and sends him to the cashier to find him again.</dd>
@@ -387,7 +387,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>backend/internal/scheduling/service/reception.go</code></li><li><code>docs/reception-redesign-plan.html</code></li><li><code>frontend/src/features/scheduling/pages/ReceptionPage.tsx</code></li><li><code>frontend/src/features/scheduling/reception/ArrivalList.tsx</code></li></ul>
         </details>
       </div>
-      <div class="log"><b>History</b><ul><li><time>2026-10-10</time> Owner asked for an analysis of the reception page and an example: show a patient&#x27;s earlier unpaid bills and let the desk add them to today&#x27;s payment. Analysis written: docs/reception-improvement-plan.html. Waiting for approval of the plan and decisions.</li><li><time>2026-10-10</time> Scope change from the owner: &quot;Add a service&quot; removed from reception; the plan&#x27;s money panel no longer needs the all-or-nothing extras action. Old bills with tick boxes remain the first step.</li><li><time>2026-10-10</time> Owner asked for a redesign of the reception page like the dashboard, with a patient card (missed visits, next visit, today&#x27;s booking and treatment session, itemised unpaid bills the patient can choose to pay), sending to the cashier and then automatically to the chosen doctor. Implementation plan written: docs/reception-redesign-plan.html (look, UX, functions, backend, test plan, phases, decisions). Waiting for approval; nothing built. &quot;Add a service&quot; was removed from reception earlier the same day (APT-3 closed).</li></ul></div>
+      <div class="log"><b>History</b><ul><li><time>2026-10-10</time> Owner asked for an analysis of the reception page and an example: show a patient&#x27;s earlier unpaid bills and let the desk add them to today&#x27;s payment. Analysis written: docs/reception-improvement-plan.html. Waiting for approval of the plan and decisions.</li><li><time>2026-10-10</time> Scope change from the owner: &quot;Add a service&quot; removed from reception; the plan&#x27;s money panel no longer needs the all-or-nothing extras action. Old bills with tick boxes remain the first step.</li><li><time>2026-10-10</time> Owner asked for a redesign of the reception page like the dashboard, with a patient card (missed visits, next visit, today&#x27;s booking and treatment session, itemised unpaid bills the patient can choose to pay), sending to the cashier and then automatically to the chosen doctor. Implementation plan written: docs/reception-redesign-plan.html (look, UX, functions, backend, test plan, phases, decisions). Waiting for approval; nothing built. &quot;Add a service&quot; was removed from reception earlier the same day (APT-3 closed).</li><li><time>2026-10-10</time> Plan approved. Phases 1 and 2 built: GET /reception/patients/:id/card (today&#x27;s booking and session, missed visits in the last 90 days, next visit, itemised unpaid bills, usual dentist); tick boxes on earlier bills (none ticked by default); ticked bills hold the patient at the cashier and then send them to the dentist the receptionist chose, whatever order things are paid in (migration 00092: charges.desk_selected_*, reception_routes); cashier worklist marks the ticked bills with who ticked them and who the patient goes to; Pay later and Waive never sweep ticked bills. Built on the existing check-in and walk-in calls (select_charge_ids), so no separate receive endpoint. Tests: server REG_RECEP_001-011, screens RECEP-046-056 and CASHIER-043/044, browser journey REG-E2E-020. Phases 3-5 (search ranking, register-and-receive, treatment sessions on Expected, emergency, receipt at desk, cash change, correct payment details) remain.</li></ul></div>
     </div>
   </details>
 </article>
@@ -884,7 +884,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
     </div>
   </details>
 </article>
-<article class="issue sev-high st-open" id="NEW-RECEP-1" data-sev="high" data-status="open"
+<article class="issue sev-high st-fixed" id="NEW-RECEP-1" data-sev="high" data-status="fixed"
   data-area="Appointments &amp; front desk" data-q="new-recep-1 &quot;pay later&quot; at reception defers old debt, skips check-in at reception, &quot;pay later&quot; should check the patient in and postpone only today&#x27;s fee. instead it does not check them in or raise today&#x27;s fee, and it postpones every unpaid bill the patient has, including old ones and deposits. almaz owes 300 birr from last month and arrives for a visit with a 200 birr fee. the manager presses pay later. her old 300 birr is marked as agreed to pay later, today&#x27;s 200 birr fee is never raised, and her booking is not marked arrived. receptionist, owner appointments &amp; front desk">
   <details>
     <summary>
@@ -892,7 +892,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">High</span>
       <span class="ttl">&quot;Pay later&quot; at reception defers old debt, skips check-in</span>
       <span class="meta"><span class="id">NEW-RECEP-1</span> · Appointments &amp; front desk · effort M</span>
-      <span class="status">Open</span>
+      <span class="status">Fixed</span>
     </summary>
     <div class="body">
       <div class="decision"><b>Your decision first:</b> When a patient is let through on &#x27;pay later&#x27;, should only today&#x27;s charges be deferred (recommended), or may the desk also defer older debts in the same step?</div>
@@ -909,11 +909,11 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>backend/internal/billing/service/service.go:801</code></li><li><code>backend/internal/billing/service/service.go:801-860</code></li><li><code>frontend/src/features/scheduling/pages/ReceptionPage.tsx:631-645</code></li><li><code>frontend/src/features/scheduling/pages/ReceptionPage.tsx:638</code></li></ul>
         </details>
       </div>
-      
+      <div class="log"><b>History</b><ul><li><time>2026-10-10</time> Fixed with the reception redesign (phase 2). Pay later now checks the patient in first and defers ONLY the charges that arrival raised; older debts are not quietly agreed to be waited for. Test REG-FE-RECEP-038 flipped from known-bug to a plain test; REG-FE-RECEP-054 covers the free-visit case. Full run green.</li></ul></div>
     </div>
   </details>
 </article>
-<article class="issue sev-high st-open" id="NEW-RECEP-2" data-sev="high" data-status="open"
+<article class="issue sev-high st-fixed" id="NEW-RECEP-2" data-sev="high" data-status="fixed"
   data-area="Appointments &amp; front desk" data-q="new-recep-2 &quot;to settle&quot; patient offered a new visit, not their debt on reception&#x27;s &quot;to settle&quot; list, opening a patient who owes money after their visit shows &quot;nothing more to collect&quot; and offers to start a new visit with a new fee, instead of letting the desk take what they owe. dawit&#x27;s visit is finished and he owes 800 birr. hana opens him from &quot;to settle&quot;; the panel offers a fresh 100 birr visit and no button to collect the 800. receptionist appointments &amp; front desk">
   <details>
     <summary>
@@ -921,7 +921,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">High</span>
       <span class="ttl">&quot;To settle&quot; patient offered a new visit, not their debt</span>
       <span class="meta"><span class="id">NEW-RECEP-2</span> · Appointments &amp; front desk · effort S</span>
-      <span class="status">Open</span>
+      <span class="status">Fixed</span>
     </summary>
     <div class="body">
       
@@ -938,7 +938,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>frontend/src/features/scheduling/pages/ReceptionPage.tsx:402</code></li><li><code>frontend/src/features/scheduling/pages/ReceptionPage.tsx:402-410</code></li></ul>
         </details>
       </div>
-      
+      <div class="log"><b>History</b><ul><li><time>2026-10-10</time> Fixed with the reception redesign (phase 2). A patient seen today who still owes now opens on a Collect button for what they owe, with &#x27;Or start a new visit&#x27; beneath; the old &#x27;nothing more to collect&#x27; line is gone. REG-FE-RECEP-039 flipped to a plain test. Full run green.</li></ul></div>
     </div>
   </details>
 </article>
@@ -3349,7 +3349,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
     </div>
   </details>
 </article>
-<article class="issue sev-medium st-open" id="NEW-RECEP-3" data-sev="medium" data-status="open"
+<article class="issue sev-medium st-fixed" id="NEW-RECEP-3" data-sev="medium" data-status="fixed"
   data-area="Appointments &amp; front desk" data-q="new-recep-3 desk without collect permission still sees &quot;collect&quot; button a receptionist who is not allowed to take money still sees &quot;collect ... &amp; send through&quot;. pressing it checks the patient in and raises the fee, then the payment step is refused and an error shows. hana may raise bills but not take money. she presses &quot;collect 200 birr &amp; send through&quot; for almaz; almaz is checked in with a bill, but the screen shows an error. receptionist appointments &amp; front desk">
   <details>
     <summary>
@@ -3357,7 +3357,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">Medium</span>
       <span class="ttl">Desk without collect permission still sees &quot;Collect&quot; button</span>
       <span class="meta"><span class="id">NEW-RECEP-3</span> · Appointments &amp; front desk · effort S</span>
-      <span class="status">Open</span>
+      <span class="status">Fixed</span>
     </summary>
     <div class="body">
       
@@ -3374,7 +3374,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>frontend/src/features/scheduling/pages/ReceptionPage.tsx:545-556</code></li><li><code>frontend/src/features/scheduling/pages/ReceptionPage.tsx:553</code></li></ul>
         </details>
       </div>
-      
+      <div class="log"><b>History</b><ul><li><time>2026-10-10</time> Fixed with the reception redesign (phase 2). A desk without payment.collect is offered &#x27;Send to cashier&#x27; (with the total) as its only exit, never &#x27;Collect&#x27;. REG-FE-RECEP-040 flipped to a plain test; REG-FE-RECEP-051 added. Full run green.</li></ul></div>
     </div>
   </details>
 </article>
@@ -5757,7 +5757,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   </details>
 </article>
 
-<footer>Built 10 October 2026, 09:12 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
+<footer>Built 10 October 2026, 10:59 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
 </div>
 <script>
 (function () {

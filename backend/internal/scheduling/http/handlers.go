@@ -203,6 +203,9 @@ func (h *Handlers) CheckIn(c *gin.Context) {
 		}
 		in.DepartmentID = d
 	}
+	if in.SelectChargeIDs, ok = decodeChargeIDs(c, req.SelectChargeIDs); !ok {
+		return
+	}
 	res, err := h.svc.CheckIn(c.Request.Context(), aid, in)
 	if err != nil {
 		httpx.Fail(c, err)
@@ -320,6 +323,9 @@ func (h *Handlers) WalkIn(c *gin.Context) {
 		if in.ProviderID, ok = decodeOpt(c, id.PrefixUser, req.ProviderID); !ok {
 			return
 		}
+	}
+	if in.SelectChargeIDs, ok = decodeChargeIDs(c, req.SelectChargeIDs); !ok {
+		return
 	}
 	res, err := h.svc.EnqueueWalkIn(c.Request.Context(), in)
 	if err != nil {
@@ -610,6 +616,37 @@ func dayRange(fromStr, toStr string) (time.Time, time.Time) {
 // inside it.
 func (h *Handlers) ReceptionToday(c *gin.Context) {
 	out, err := h.svc.ReceptionToday(c.Request.Context())
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// decodeChargeIDs reads the bills the desk ticked. An id that is not a charge id is a
+// 400 rather than silently dropped: a dropped tick would send the patient through
+// without the bill they were told they were paying.
+func decodeChargeIDs(c *gin.Context, raw []string) ([]uuid.UUID, bool) {
+	out := make([]uuid.UUID, 0, len(raw))
+	for _, r := range raw {
+		cid, err := id.Decode(id.PrefixCharge, r)
+		if err != nil {
+			httpx.Fail(c, apperr.Validation("select_charge_ids has an invalid bill id"))
+			return nil, false
+		}
+		out = append(out, cid)
+	}
+	return out, true
+}
+
+// ReceptionCard handles GET /reception/patients/:id/card — one patient, everything the
+// desk needs before deciding, in one round trip.
+func (h *Handlers) ReceptionCard(c *gin.Context) {
+	pid, ok := decodeID(c, id.PrefixPatient, c.Param("id"))
+	if !ok {
+		return
+	}
+	out, err := h.svc.ReceptionCard(c.Request.Context(), pid)
 	if err != nil {
 		httpx.Fail(c, err)
 		return

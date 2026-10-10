@@ -106,6 +106,10 @@ type WalkInInput struct {
 	Priority     int
 	ToTriage     bool
 	ProviderID   *uuid.UUID
+	// SelectChargeIDs are earlier unpaid bills the patient agreed to pay now. They hold
+	// the patient at the cashier, like the intake fee, and the patient goes to ProviderID
+	// once they are cleared.
+	SelectChargeIDs []uuid.UUID
 }
 
 // ArrivalResult says what receiving a patient did, at either door: an appointment
@@ -132,6 +136,8 @@ type CheckInInput struct {
 	// Used ONLY when the appointment has none — it can never reroute a patient away
 	// from the department they were actually booked into.
 	DepartmentID *uuid.UUID
+	// SelectChargeIDs: see WalkInInput.
+	SelectChargeIDs []uuid.UUID
 }
 
 // Service is the scheduling module API.
@@ -166,6 +172,10 @@ type Service interface {
 
 	// ReceptionToday is the front desk's whole screen in one request.
 	ReceptionToday(ctx context.Context) (*ReceptionToday, error)
+	// ReceptionCard is everything the desk needs to know about one patient standing in
+	// front of it: today's booking and session, missed visits, the next visit and the
+	// itemised unpaid bills.
+	ReceptionCard(ctx context.Context, patientID uuid.UUID) (*ReceptionCard, error)
 }
 
 // --- reception: the clinic's front door ---------------------------------------
@@ -232,4 +242,54 @@ type ReceptionToday struct {
 	Waiting []ReceptionPatient `json:"waiting"`
 	// Seen: finished today.
 	Seen []ReceptionPatient `json:"seen"`
+}
+
+// ReceptionCard answers, for one patient, what the receptionist needs before deciding.
+type ReceptionCard struct {
+	// Today's booking, if any, and today's planned treatment session, if any.
+	Appointment *CardVisit `json:"appointment,omitempty"`
+	Session     *CardVisit `json:"session,omitempty"`
+	// Missed: no-shows and missed treatment sessions in the last 90 days, newest first.
+	Missed []CardVisit `json:"missed"`
+	// Next: the next booking or planned session after today.
+	Next *CardVisit `json:"next,omitempty"`
+	// Bills are earlier unpaid charges, oldest first. Today's own intake fee is not
+	// listed: the fee block already handles it.
+	Bills         []CardBill `json:"bills"`
+	OwedTotal     string     `json:"owed_total"`
+	UnbilledTotal string     `json:"unbilled_total"`
+	// UsualProviderID/Name is who the patient last saw — the sensible default.
+	UsualProviderID   string `json:"usual_provider_id,omitempty"`
+	UsualProviderName string `json:"usual_provider_name,omitempty"`
+	LastVisitAt       string `json:"last_visit_at,omitempty"`
+	// InQueue is true when the patient is already received today and not finished.
+	InQueue bool `json:"in_queue"`
+}
+
+// CardVisit is one booking or treatment session, in the words the desk repeats.
+type CardVisit struct {
+	Kind           string `json:"kind"` // appointment | session
+	AppointmentID  string `json:"appointment_id,omitempty"`
+	When           string `json:"when"` // RFC3339 for a booking, YYYY-MM-DD for a session
+	Title          string `json:"title"`
+	ProviderName   string `json:"provider_name,omitempty"`
+	DepartmentName string `json:"department_name,omitempty"`
+	Status         string `json:"status,omitempty"`
+	IsFollowup     bool   `json:"is_followup,omitempty"`
+}
+
+// CardBill is one unpaid charge the patient could pay now.
+type CardBill struct {
+	ID          string `json:"id"`
+	Description string `json:"description"`
+	Amount      string `json:"amount"`
+	Source      string `json:"source"`
+	CreatedAt   string `json:"created_at"`
+	AgeDays     int    `json:"age_days"`
+	// AtCashier: raised as a routed visit charge, already waiting at the cashier.
+	AtCashier bool `json:"at_cashier"`
+	// Agreed: the clinic agreed to wait (treat now, pay later), with the reason.
+	Agreed     bool   `json:"agreed"`
+	AgreedWhy  string `json:"agreed_why,omitempty"`
+	DeskPicked bool   `json:"desk_picked"`
 }

@@ -383,6 +383,15 @@ func (s *Service) CheckIn(ctx context.Context, id uuid.UUID, in scheduling.Check
 		if e != nil {
 			return e
 		}
+		// Earlier bills the patient agreed to pay now join the gate, so the patient is
+		// not queued until they are cleared — even when today's visit itself is free.
+		picked, e := s.billing.SelectChargesTx(ctx, tx, billing.IntakeInput{
+			PatientID: appt.PatientID, BranchID: appt.BranchID, DepartmentID: *dept, ToTriage: in.ToTriage, ProviderID: prov,
+		}, in.SelectChargeIDs)
+		if e != nil {
+			return e
+		}
+		ids = append(ids, picked...)
 		// The desk needs to know WHICH charges this arrival created, so it can collect
 		// exactly this visit and not whatever else the patient owes.
 		out.ChargeIDs = ids
@@ -447,6 +456,13 @@ func (s *Service) EnqueueWalkIn(ctx context.Context, in scheduling.WalkInInput) 
 		if e != nil {
 			return e
 		}
+		picked, e := s.billing.SelectChargesTx(ctx, tx, billing.IntakeInput{
+			PatientID: in.PatientID, BranchID: in.BranchID, DepartmentID: in.DepartmentID, ToTriage: in.ToTriage, ProviderID: in.ProviderID,
+		}, in.SelectChargeIDs)
+		if e != nil {
+			return e
+		}
+		ids = append(ids, picked...)
 		out.ChargeIDs = ids
 		out.Gated = len(ids) > 0
 		if out.Gated {

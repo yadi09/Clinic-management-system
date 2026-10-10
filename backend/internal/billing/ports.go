@@ -115,6 +115,11 @@ type PendingCharge struct {
 	PatientID   uuid.UUID `json:"-"`
 	PatientName string    `json:"patient_name"`
 	MRN         string    `json:"mrn"`
+	// DeskSelected: the receptionist ticked this bill and the patient agreed to pay it
+	// now. The cashier should see why the patient is there and who it goes to next.
+	DeskSelected   bool   `json:"desk_selected"`
+	DeskSelectedBy string `json:"desk_selected_by,omitempty"`
+	GoesTo         string `json:"goes_to,omitempty"`
 }
 
 // ChargeRow is one charge on a patient's billing history.
@@ -405,6 +410,10 @@ type Charger interface {
 	// RaiseIntakeChargeIDsTx is the same act, reporting WHICH charges it raised, so a
 	// caller can collect exactly this visit and not everything the patient owes.
 	RaiseIntakeChargeIDsTx(ctx context.Context, tx pgx.Tx, in IntakeInput) ([]uuid.UUID, error)
+	// SelectChargesTx marks earlier unpaid bills the patient agreed, at the desk, to pay
+	// today, and records where the patient goes once they are cleared. They then hold
+	// the patient at the cashier exactly as the intake fee does. Returns the ids.
+	SelectChargesTx(ctx context.Context, tx pgx.Tx, in IntakeInput, chargeIDs []uuid.UUID) ([]uuid.UUID, error)
 }
 
 // IntakeInput routes the default intake charges so advanceIfPaid enqueues on payment.
