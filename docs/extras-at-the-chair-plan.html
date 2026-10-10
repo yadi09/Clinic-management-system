@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Extras at the chair: plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+
+:root{--paper:#fbfaf7;--card:#fff;--ink:#1f2a33;--soft:#5d6b76;--line:#e3e0d8;--teal:#0f6e6a;--warn:#b45309;--warn-bg:#fdf1e3;--bad:#b42318;--bad-bg:#fdecea;--ok:#1d7a46;--ok-bg:#e5f4ea;--sky:#1d4e89;--sky-bg:#e8f0fa}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--paper:#14181c;--card:#1b2026;--ink:#e7e9ea;--soft:#9aa6b0;--line:#2c333a;--teal:#4fb3ad;--warn:#f0a85a;--warn-bg:#3a2a18;--bad:#f2867c;--bad-bg:#3a1f1d;--ok:#6cc792;--ok-bg:#1a3325;--sky:#86b3e0;--sky-bg:#1c2a38}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.6 "Atkinson Hyperlegible",system-ui,sans-serif}
+.wrap{max-width:960px;margin:0 auto;padding:32px 16px 90px}
+h1{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:2.1rem;line-height:1.15;margin:0 0 8px}
+h2{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:1.5rem;margin:46px 0 10px}
+h3{font-size:1.05rem;margin:24px 0 6px}
+.lede{color:var(--soft);max-width:68ch}
+.box{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:14px 0}
+.key{border-left:6px solid var(--teal)}.warn{border-left:6px solid var(--warn)}
+table{border-collapse:collapse;width:100%;font-size:.94rem;margin:10px 0;background:var(--card)}
+th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--paper)}
+.scroll{overflow-x:auto}
+.tag{display:inline-block;font-size:.76rem;font-weight:700;padding:1px 9px;border-radius:20px;margin-right:4px}
+.s{background:var(--ok-bg);color:var(--ok)}.m{background:var(--warn-bg);color:var(--warn)}.l{background:var(--bad-bg);color:var(--bad)}
+.scene{background:var(--paper);border-radius:8px;padding:10px 14px;font-style:italic;margin:8px 0}
+ul,ol{padding-left:22px}li{margin:3px 0}
+footer{color:var(--soft);font-size:.85rem;margin-top:44px}
+code{font-size:.88em;background:var(--paper);padding:1px 5px;border-radius:4px}
+
+
+.device{background:#e9eef5;border:1px solid var(--line);border-radius:14px;padding:14px;margin:16px 0;font-family:Inter,system-ui,sans-serif;color:#1c2733;font-size:13px;line-height:1.45;overflow-x:auto}
+.cap{font:600 12px Inter;color:#4a5b6d;margin:0 0 8px}
+.pane{background:#fff;border:1px solid #d8e0ea;border-radius:12px;padding:12px;max-width:760px;margin:0 auto}
+.sec{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+.sec b{font-size:14px}.mini{font-size:12px;color:#5a6b7d}
+.btn{display:inline-block;border:1px solid #c9d4e0;border-radius:8px;padding:6px 11px;background:#fff;font-weight:600;white-space:nowrap}
+.btn.p{background:#1a9a7c;border-color:#1a9a7c;color:#fff}
+.btn.sm{padding:4px 9px;font-size:12px}
+.x{border:1px solid #d8e0ea;border-radius:10px;padding:10px 12px;margin-bottom:8px;background:#fff}
+.x.warn{border-color:#f0dcb4;background:#fffaf0}.x.ok{border-color:#bfe3cd;background:#f3fbf6}.x.late{border-color:#c9dcf3;background:#f3f8fe}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.row .grow{flex:1;min-width:140px}
+.name{font-weight:700;font-size:14px}
+.price{font-weight:700;font-variant-numeric:tabular-nums}
+.pipe{display:flex;align-items:center;gap:0;margin:8px 0 2px;font-size:11px;color:#5a6b7d}
+.pipe span{display:flex;align-items:center;gap:5px}
+.pipe i{display:inline-flex;width:18px;height:18px;border-radius:50%;border:2px solid #c9d4e0;align-items:center;justify-content:center;font-style:normal;font-size:10px;font-weight:700;background:#fff}
+.pipe i.done{background:#1a9a7c;border-color:#1a9a7c;color:#fff}.pipe i.here{border-color:#d69a1a;color:#9a5b0c}
+.pipe em{flex:0 0 22px;height:2px;background:#c9d4e0;margin:0 4px}.pipe em.done{background:#1a9a7c}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}
+.chip{border:1.5px solid #c9d4e0;background:#fff;border-radius:999px;padding:6px 11px;font-weight:600}
+.chip small{color:#5a6b7d;font-weight:500;margin-left:4px}
+.tot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;border-top:1px solid #e6ecf3;padding-top:8px;margin-top:4px}
+.dlg{max-width:420px;margin:0 auto;background:#fff;border:1px solid #d8e0ea;border-radius:14px;padding:16px;box-shadow:0 10px 30px rgba(20,30,40,.18)}
+.phone{max-width:340px;margin:0 auto;background:#fff;border:1px solid #d8e0ea;border-radius:22px;padding:12px}
+.cmp td:nth-child(2){color:var(--bad)} .cmp td:nth-child(3){color:var(--ok);font-weight:700}
+</style></head>
+<body><div class="wrap">
+
+<h1>Extras at the chair: send to the cashier, pay, then continue</h1>
+<p class="lede">The "Also done at this visit" section: what it does today, why the Send to cashier button is missing in your screenshot, whether the patient should pay before the procedure continues, and a cleaner design for the whole section. Nothing is built yet: this is for your review.</p>
+
+<div class="box key"><b>My answer in short.</b> <b>Yes, the patient should normally pay before an extra procedure goes ahead, and the screen should make that the obvious path.</b> I would do it as a visible sequence (Not billed, At cashier, Paid) with "Treat now, pay later" always available for urgent cases, exactly as the visit fee works today, rather than a hard lock. The button you asked for already exists in the code; it is not showing on this form because that form never passes it the permission. That part is a small fix.</div>
+
+<h2>1. What happens today</h2>
+<ul>
+<li><b>An extra is a small visit of its own.</b> Adding "X-ray, 2,000 ETB" creates a row attached to the visit. It is owed from that moment ("Owed now" in your screenshot).</li>
+<li><b>A "Send to cashier" button exists</b> (it raises the bill on the cashier's list under the name "Root canal, x-ray at visit 3"). It shows on the visit screen, but <b>not on the form in your screenshot</b>, because that form does not tell the section the user may bill. So you see the price and "Owed now" with no way to act. That is the gap you noticed.</li>
+<li><b>Nothing stops or warns</b> the dentist from carrying on or finishing the visit while the extra is unpaid, and the dentist cannot see when the patient has paid without leaving and returning.</li>
+<li><b>Zero price</b> already means "included in the course", and an unbilled extra can be removed with a confirmation. Both stay.</li>
+</ul>
+
+<h2>2. Should the patient pay before the procedure continues?</h2>
+<p>I think yes, as the normal path, for three reasons: it is how the clinic already treats the visit fee and the lab and pharmacy (pay, then it opens); it avoids the awkward "you owe 2,000 for the X-ray we just took" after the fact; and extras are exactly the things patients are surprised by.</p>
+<p>But I would not make it a hard lock, for the same reason the visit fee is not one:</p>
+<div class="scroll"><table>
+<tr><th>Situation</th><th>What the screen does</th></tr>
+<tr><td>Normal: the dentist decides an X-ray is needed</td><td>Add it, press <b>Send to cashier</b>. The patient pays; the chair screen turns green by itself. The dentist continues.</td></tr>
+<tr><td>Pain, bleeding, an emergency, a known patient who settles monthly</td><td><b>Treat now, pay later</b> (with a reason). It stays owed and stays on the cashier's list; it is not written off.</td></tr>
+<tr><td>A small clinic where the dentist also takes the money</td><td><b>Collect here</b> opens the same payment step reception uses (method, reference, bank check) without leaving the chair.</td></tr>
+<tr><td>Patient says no to the X-ray</td><td>Remove it (confirmation), nothing is owed.</td></tr>
+<tr><td>The dentist tries to finish the visit with an extra unpaid</td><td>A gentle stop: "X-ray 2,000 ETB has not been paid." with Send to cashier / Treat now, pay later / Finish anyway.</td></tr>
+</table></div>
+<p class="mini">Why not a hard lock: the system cannot stop a hand in a mouth, and an extra is recorded as it happens. A lock that is easy to get round teaches staff to ignore it. A clear sequence, a visible "waiting for payment" and a recorded reason when it is skipped give the clinic the control it actually needs.</p>
+
+<h2>3. How it will look</h2>
+
+<div class="device"><p class="cap">The section, with extras at each stage (desktop). One primary action per row, and it changes with the stage.</p>
+<div class="pane">
+ <div class="sec"><div><b>Also done at this visit</b> <span class="mini">· 3 extras</span><div class="mini">Anything the treatment did not plan for.</div></div></div>
+ <div class="chips"><span class="chip">+ X-ray <small>2,000</small></span><span class="chip">+ Scaling <small>800</small></span><span class="chip">+ Filling <small>1,500</small></span><span class="chip">+ Other…</span></div>
+
+ <div class="x warn"><div class="row"><span class="name grow">X-ray</span><span class="price">2,000 ETB</span><span class="btn p">Send to cashier</span><span class="btn sm">⋯</span></div>
+  <div class="pipe"><span><i class="here">1</i> Not billed</span><em></em><span><i>2</i> At cashier</span><em></em><span><i>3</i> Paid</span></div></div>
+
+ <div class="x late"><div class="row"><span class="name grow">Scaling</span><span class="price">800 ETB</span><span class="mini">⏳ Waiting for the patient to pay…</span><span class="btn sm">Treat now, pay later…</span></div>
+  <div class="pipe"><span><i class="done">✓</i> Billed</span><em class="done"></em><span><i class="here">2</i> At cashier</span><em></em><span><i>3</i> Paid</span></div></div>
+
+ <div class="x ok"><div class="row"><span class="name grow">Filling UR6</span><span class="price">1,500 ETB</span><span style="color:#17703f;font-weight:700">✓ Paid · receipt RCP-004217 · go ahead</span></div>
+  <div class="pipe"><span><i class="done">✓</i> Billed</span><em class="done"></em><span><i class="done">✓</i> At cashier</span><em class="done"></em><span><i class="done">✓</i> Paid</span></div></div>
+
+ <div class="tot"><span><b>Extras today: 4,300 ETB</b> <span class="mini">· 1,500 paid · 800 at cashier · 2,000 not billed</span></span><span class="btn">Send all to cashier</span></div>
+</div></div>
+
+<div class="device"><p class="cap">Treat now, pay later: a reason is required and kept on the record. The money stays owed.</p>
+<div class="dlg">
+ <div style="font-weight:700;font-size:15px">Treat now, pay later?</div>
+ <p style="margin:8px 0">The <b>Scaling, 800 ETB</b> stays owed, stays on the cashier's list and shows in the debt report. It is not written off.</p>
+ <div class="x" style="margin:8px 0">Why? <span class="mini">(kept on the record)</span><br><b>Emergency: pain, treat first ▾</b></div>
+ <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px"><span class="btn">Cancel</span><span class="btn p">Treat now, bill later</span></div>
+</div></div>
+
+<div class="device"><p class="cap">Finishing the visit with something unpaid: a gentle stop, never a dead end.</p>
+<div class="dlg">
+ <div style="font-weight:700;font-size:15px">1 extra has not been paid</div>
+ <p style="margin:8px 0">X-ray, <b>2,000 ETB</b>, is not billed yet.</p>
+ <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">
+  <span class="btn p" style="text-align:center">Send to cashier and finish</span>
+  <span class="btn" style="text-align:center">Treat now, pay later…</span>
+  <span class="btn" style="text-align:center">Finish anyway (stays owed)</span>
+ </div>
+</div></div>
+
+<div class="device"><p class="cap">Phone: one extra per card, the action is a full-width button, and a chip row adds the usual ones in one tap.</p>
+<div class="phone">
+ <div class="sec"><b>Also done at this visit</b><span class="mini">3</span></div>
+ <div class="chips" style="flex-wrap:nowrap;overflow-x:auto"><span class="chip">+ X-ray</span><span class="chip">+ Scaling</span><span class="chip">+ Filling</span><span class="chip">+ Other…</span></div>
+ <div class="x warn"><div class="row"><span class="name grow">X-ray</span><span class="price">2,000 ETB</span></div>
+  <div class="mini" style="margin:4px 0 8px">Not billed</div><div class="btn p" style="display:block;text-align:center">Send to cashier</div></div>
+ <div class="x late"><div class="row"><span class="name grow">Scaling</span><span class="price">800 ETB</span></div>
+  <div class="mini" style="margin:4px 0 6px">⏳ At the cashier, waiting for payment</div></div>
+ <div class="tot"><b>4,300 ETB</b><span class="mini">1,500 paid</span></div>
+</div></div>
+
+<h3>What the cashier sees</h3>
+<p>The bill arrives on the cashier's list as <b>"Extra at the chair: X-ray (Dr Yonas), Abebe Kebede"</b> with the visit it belongs to, so it is never mistaken for the course fee. When it is paid, the dentist's screen updates within seconds without anyone pressing refresh.</p>
+
+<h2>4. Everything it will do</h2>
+<div class="scroll"><table>
+<tr><th>Function</th><th>How</th><th>Priority</th></tr>
+<tr><td>Send to cashier, on every screen the section appears</td><td>The missing button; fixes the form in your screenshot</td><td><span class="tag l">Must</span></td></tr>
+<tr><td>Three-stop status on each extra</td><td>Not billed, At cashier, Paid, plus Pay later</td><td><span class="tag l">Must</span></td></tr>
+<tr><td>Live payment status on the chair</td><td>The row turns green by itself when the cashier takes the money</td><td><span class="tag l">Must</span></td></tr>
+<tr><td>Treat now, pay later with a reason</td><td>Per extra; stays owed</td><td><span class="tag l">Must</span></td></tr>
+<tr><td>Gentle stop when finishing with an unpaid extra</td><td>Three choices, never a dead end</td><td><span class="tag l">Must</span></td></tr>
+<tr><td>Quick-add chips for the clinic's usual extras</td><td>The most used from the clinic's own list, priced; "Other…" opens the full picker</td><td><span class="tag m">Should</span></td></tr>
+<tr><td>Totals and "Send all to cashier"</td><td>One line under the list: total, paid, at cashier, not billed</td><td><span class="tag m">Should</span></td></tr>
+<tr><td>Collect here</td><td>Same payment step as reception, for clinics where the dentist takes payment (needs the collect permission)</td><td><span class="tag m">Should</span></td></tr>
+<tr><td>Clearer wording and phone layout</td><td>"Not billed" instead of "Owed now" for something nobody has billed; full-width button on a phone</td><td><span class="tag m">Should</span></td></tr>
+<tr><td>Undo a mistaken "sent to cashier"</td><td>Already possible by recalling it from the cashier; shown as "Take back" while unpaid</td><td><span class="tag s">Could</span></td></tr>
+</table></div>
+
+<h2>5. How it is built</h2>
+<ul>
+<li><b>Mostly the front end.</b> Billing an extra already goes through the same endpoint as a visit, pay later is already stored per row, and the cashier already lists it. The section is redrawn, the button gets its permission, and the page re-checks while something is at the cashier (every few seconds, only while an extra is waiting).</li>
+<li><b>One small server addition:</b> the cashier line text ("Extra at the chair: X-ray, visit 3") and a test that proves an extra added in the chair can be billed, paid and seen as paid on the visit.</li>
+<li><b>Permissions unchanged:</b> raising the bill is the existing "charge" permission (the dentist has it); taking the money stays with the cashier unless the clinic has given the dentist the collect permission.</li>
+<li><b>Everything stays on the clinic's money definition:</b> an extra counts in "owed", reports and the day close exactly as it does now.</li>
+</ul>
+
+<h2>6. Functional testing plan</h2>
+<div class="scroll"><table>
+<tr><th>Layer</th><th>What is proved</th></tr>
+<tr><td><b>Server tests</b></td><td>An extra added in the chair can be billed once (a second press does not bill twice), appears on the cashier list with the right description, becomes Paid when settled, can be pay-later'd with a reason, and cannot be removed once billed. Another clinic's patient is unreachable.</td></tr>
+<tr><td><b>Screen tests</b></td><td>The button shows on every screen the section appears on (and only for people allowed to bill); each stage shows the right words and the right single action; waiting turns to paid when the status changes; pay-later needs a reason; finishing with an unpaid extra shows the three choices; quick-add chips add at the list price; totals add up; phone layout.</td></tr>
+<tr><td><b>Browser journey</b></td><td>Doctor adds an X-ray in the chair, sends it to the cashier; the cashier pays; the doctor's screen shows Paid without a reload. Then the same with Treat now, pay later.</td></tr>
+</table></div>
+
+<h2>7. Phases</h2>
+<div class="scroll"><table>
+<tr><th>Phase</th><th>What you get</th><th>Effort</th></tr>
+<tr><td><b>1. The button and the stages</b></td><td>Send to cashier everywhere, three-stop status, live status, Pay later with a reason, wording fixes.</td><td><span class="tag m">Small to medium</span> ~1 day</td></tr>
+<tr><td><b>2. The gentle stop and totals</b></td><td>Finish-visit check, totals, Send all, cashier line text.</td><td><span class="tag m">Small to medium</span> ~1 day</td></tr>
+<tr><td><b>3. Faster adding</b></td><td>Quick-add chips, Collect here, phone polish.</td><td><span class="tag m">Small to medium</span> ~1 day</td></tr>
+</table></div>
+
+<h2>8. Decisions for you</h2>
+<p>My recommendation is first in each line.</p>
+<ol>
+<li><b>Pay before continuing: sequence with a visible stop, or a hard lock?</b> <i>Recommend: sequence</i> (a gentle stop on finishing; "Treat now, pay later" with a reason). A hard lock cannot be enforced at the chair and gets worked around.</li>
+<li><b>Send to cashier automatically when an extra is added?</b> <i>Recommend: no.</i> Adding and billing stay two deliberate steps, so a mistaken tap does not put a bill in front of the cashier. "Send all" makes it one press when you want it.</li>
+<li><b>Who may say "treat now, pay later" for an extra?</b> <i>Recommend: the treating dentist,</i> with the reason recorded (same as the visit fee today). The alternative is managers only.</li>
+<li><b>Which extras appear as quick-add chips?</b> <i>Recommend: the clinic's five most-used,</i> chosen automatically from what has actually been added.</li>
+<li><b>Should the dentist be able to collect money at the chair?</b> <i>Recommend: only where the clinic has given that person the collect permission;</i> the button is simply absent otherwise.</li>
+<li><b>Start with phase 1 (button and stages) now?</b> <i>Recommend: yes,</i> it fixes the gap you hit today.</li>
+</ol>
+
+<footer>Based on: Extras.tsx and where it is used (the visit screen and the record form), the extras and billing code in the dental service, the visit payment pipeline, and your message of 10 October 2026. Nothing in the system was changed to produce this document.</footer>
+</div></body></html>

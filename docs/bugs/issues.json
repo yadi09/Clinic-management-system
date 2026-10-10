@@ -4998,5 +4998,34 @@
    }
   ],
   "order": 30
+ },
+ {
+  "id": "FEAT-EXTRA-1",
+  "title": "Extras at the chair: no Send to cashier on the record form; no pay-before-continue",
+  "severity": "high",
+  "area": "Dental",
+  "who": "Dentist, Cashier, Patient",
+  "simple": "An extra added during a visit (X-ray, filling) shows 'Owed now' but on the record form there is no way to send it to the cashier, and nothing shows whether the patient has paid before the dentist carries on.",
+  "example": "Dr Yonas adds an X-ray, 2,000 ETB, on the record form. It reads 'Owed now' with no button; the patient is not sent to pay and the doctor cannot tell later whether they did.",
+  "why": "Unbilled extras are forgotten or billed after the patient has left.",
+  "fix": "Send to cashier on every screen that shows extras; Not billed / At cashier / Paid stages with live status; Treat now, pay later with a reason; a gentle stop when finishing with an unpaid extra; quick-add chips and totals. Plan: docs/extras-at-the-chair-plan.html.",
+  "effort": "M",
+  "decision": "Review docs/extras-at-the-chair-plan.html and answer the six decisions in its section 8.",
+  "tests": [],
+  "files": [
+   "frontend/src/features/dental/shared/Extras.tsx",
+   "frontend/src/features/dental/visit/RecordVisitForm.tsx",
+   "frontend/src/features/dental/visit/VisitCockpit.tsx",
+   "docs/extras-at-the-chair-plan.html"
+  ],
+  "tested": false,
+  "status": "explained",
+  "log": [
+   {
+    "date": "2026-10-10",
+    "note": "Plan written and sent for review; nothing built. The button exists in the code but RecordVisitForm never passes canCollect to ExtrasSection."
+   }
+  ],
+  "order": 31
  }
 ]
