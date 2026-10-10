@@ -2798,6 +2798,10 @@
    {
     "date": "2026-10-10",
     "note": "Full run green: server 692/0, screens 1,644, journeys 10/10, routes 267/267; coverage gate green after adding a test for the failure path of seeding (provisioning leaves no half-made clinic). The allergy matcher is 100% tested. Committed; not yet deployed. Waiting for the owner to verify."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Deployed to app.clinicos.cc (commit 8a487ac, pre-deploy backup taken, API ready). Live: migration 91 applied; all 11 clinics have the standard allergy names (26 to 31 entries, their own entries kept), no duplicates, no errors in the API log."
    }
   ],
   "order": 4
