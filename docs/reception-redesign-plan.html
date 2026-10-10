@@ -80,6 +80,15 @@ code{font-size:.88em;background:var(--paper);padding:1px 5px;border-radius:4px}
 .no2{border:1px solid #f0c9c4;background:#fff8f7;border-radius:10px;padding:8px 10px;margin-top:6px;color:#b42318}
 .am2{border:1px solid #f0dcb4;background:#fffaf0;border-radius:10px;padding:8px 10px;margin-top:6px;color:#9a5b0c}
 .mini{font-size:12px;color:#5a6b7d}
+
+.empty{text-align:center;padding:22px 14px;border:1.5px dashed #c9d4e0;border-radius:12px;background:#fbfdff}
+.empty .ic{width:46px;height:46px;border-radius:50%;background:#e6f3ef;color:#0f6e6a;display:flex;align-items:center;justify-content:center;font-size:22px;margin:0 auto 8px}
+.empty .ic.g{background:#e3f4ea;color:#17703f}.empty .ic.b{background:#e6effa;color:#1d4e89}
+.empty h4{margin:0 0 4px;font-size:15px}.empty p{margin:0 0 10px;color:#5a6b7d}
+.empty .search{max-width:380px;margin:0 auto 10px}
+.empty .acts{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+.recent{max-width:380px;margin:12px auto 0;text-align:left}
+.emptygrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px}
 </style></head>
 <body><div class="wrap">
 
@@ -399,12 +408,59 @@ code{font-size:.88em;background:var(--paper);padding:1px 5px;border-radius:4px}
 <tr><td>Link to register a new patient</td><td><span class="tag s">Replaced</span> by Register &amp; receive in the panel (the full form stays reachable)</td></tr>
 </table></div>
 
+
+<h3>Empty screens: say what it means and what to do next</h3>
+<p>An empty page is a moment to guide, not a blank. Today an empty "Expected" list is just a grey box. Every empty screen below says <b>what it means</b> in plain words, <b>why</b> it might be empty, and gives <b>one obvious next action</b>. The search box is already focused, so a receptionist on a day with no bookings starts typing straight away.</p>
+
+<div class="device">
+<p class="cap">Desktop · Expected, with no booking today (the case you described)</p>
+<div class="pane" style="max-width:640px;margin:0 auto">
+ <div class="stats"><div class="stat on"><b>0</b><span>Expected</span></div><div class="stat"><b>0</b><span>Waiting</span></div><div class="stat"><b>0</b><span>Seen</span></div><div class="stat"><b>0</b><span>To settle</span></div></div>
+ <div class="empty">
+  <div class="ic">📅</div>
+  <h4>No one is booked for today</h4>
+  <p>Patients who walk in show up here as soon as you receive them.<br>Start by searching for the patient in front of you.</p>
+  <div class="search"><div>🔍 Name, card number or phone…</div></div>
+  <div class="acts"><span class="btn p">+ Register a new patient</span><span class="btn">Book an appointment</span></div>
+  <div class="recent">
+   <div class="k" style="font:600 11px Inter;color:#5a6b7d;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Recently seen · tap to receive again</div>
+   <div class="row"><b>Meron Haile</b> <small>P000281 · seen yesterday</small></div>
+   <div class="row"><b>Dawit Alemu</b> <small>P000590 · seen Wed</small></div>
+  </div>
+  <p class="mini" style="margin-top:10px">Next booking: <b>tomorrow 08:30</b> · 4 booked</p>
+ </div>
+</div></div>
+
+<div class="device">
+<p class="cap">The other empty screens</p>
+<div class="emptygrid">
+ <div class="empty"><div class="ic b">⏳</div><h4>No one is waiting</h4><p>Everyone received has been sent on to a clinician or has finished.</p><span class="btn">See who was seen</span></div>
+ <div class="empty"><div class="ic">🩺</div><h4>No one has been seen yet</h4><p>Patients appear here once the clinician finishes with them.</p></div>
+ <div class="empty"><div class="ic g">✓</div><h4>Everything is settled</h4><p>Nobody has treatment today that is still unpaid. Nothing to chase.</p></div>
+ <div class="empty"><div class="ic">🔍</div><h4>No patient matches "abeb"</h4><p>Check the spelling, or try the phone or card number.</p><span class="btn p">Register "Abeb" as a new patient</span></div>
+ <div class="empty"><div class="ic">👥</div><h4>No patients yet</h4><p>This clinic has no patients registered. Add the first one, or bring old records in.</p><div class="acts"><span class="btn p">+ Register a patient</span><span class="btn">Import old records</span></div></div>
+ <div class="empty"><div class="ic">📵</div><h4>Could not load today's list</h4><p>This is a connection problem, not an empty day. Nothing is lost.</p><span class="btn p">Try again</span></div>
+</div></div>
+
+<div class="scroll"><table>
+<tr><th>Screen</th><th>Says</th><th>Next action offered</th></tr>
+<tr><td>Expected, none booked</td><td>No one is booked for today. Walk-ins appear when received.</td><td>Search (focused), Register, Book; recently seen patients; next booking day</td></tr>
+<tr><td>Waiting, none</td><td>No one is waiting.</td><td>See who was seen</td></tr>
+<tr><td>Seen, none</td><td>No one has been seen yet.</td><td>None needed; explains when it fills</td></tr>
+<tr><td>To settle, none</td><td>Everything is settled. A positive, not blank.</td><td>None</td></tr>
+<tr><td>Search, no match</td><td>No patient matches the typed text, with spelling and number hints.</td><td>Register the typed name as new, in one tap</td></tr>
+<tr><td>Brand-new clinic</td><td>No patients yet.</td><td>Register, or import old records</td></tr>
+<tr><td>Card: nothing owed / no missed / no next visit</td><td>"Nothing owed", "No missed visits", "No next visit booked"</td><td>"Book a visit" on the last one</td></tr>
+<tr><td>Failed to load</td><td>Said as a connection problem, never shown as an empty day</td><td>Try again; the last good list stays on screen</td></tr>
+</table></div>
+<p>Empty is never confused with loading (skeleton rows) or with failure (the red retry panel). Each is tested on its own.</p>
+
 <h3>What the screen shows while waiting, when empty, and when it fails</h3>
 <div class="scroll"><table>
 <tr><th>State</th><th>What the receptionist sees</th></tr>
 <tr><td>Loading the day</td><td>Skeleton rows and tiles in the final positions, so the page does not jump.</td></tr>
 <tr><td>Loading a card</td><td>The header shows at once from the row; sections fill in as they arrive.</td></tr>
-<tr><td>Nobody expected</td><td>"Nobody is booked for today. Search for a patient, or register a new one." with the search focused.</td></tr>
+<tr><td>Nobody expected</td><td>The guided empty screen above: a plain message, the search focused, Register and Book buttons, recent patients and the next booking day.</td></tr>
 <tr><td>Nothing owed, no missed visits</td><td>The section is not shown. A calm "Nothing owed" chip, not a blank hole.</td></tr>
 <tr><td>Patient has no phone</td><td>Amber chip "No phone on file" with "Add phone" so reminders can work.</td></tr>
 <tr><td>Day list failed</td><td>"Could not load today's list. Try again" with a button; the last good list stays visible.</td></tr>
@@ -464,6 +520,7 @@ code{font-size:.88em;background:var(--paper);padding:1px 5px;border-radius:4px}
 <li>Defaults: single department and usual dentist pre-selected, and changeable.</li>
 <li>Phone layout at 320, 375 and 414 px and tablet portrait and landscape: sheet opens, sticky action bar, nothing clipped, no sideways scroll, 44 px targets.</li>
 <li>Payment step: the five bank-check states render the right words and the right buttons; cash change due calculates; the unnamed-bank warning appears; keyboard type per field.</li>
+<li>Empty screens: each of the eight in the table renders its message and next action, search is focused, "Register &quot;Abeb&quot;" carries the typed name into the form, and empty is never shown during loading or after a failure.</li>
 <li>Failure states: each row of the states table in section 7 has a test.</li>
 <li>A parity test per row of the checklist in section 7, migrated from the current page's tests.</li>
 </ul></td></tr>
