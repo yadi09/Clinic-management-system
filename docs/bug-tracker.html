@@ -387,7 +387,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>backend/db/migrations/00090_registration_fee_policy.sql</code></li><li><code>backend/internal/billing/service/registration.go</code></li><li><code>backend/internal/billing/service/service.go</code></li><li><code>frontend/src/features/billing/RegistrationFeeCard.tsx</code></li><li><code>frontend/src/features/billing/registration.ts</code></li><li><code>frontend/src/features/scheduling/pages/ReceptionPage.tsx</code></li></ul>
         </details>
       </div>
-      <div class="log"><b>History</b><ul><li><time>2026-10-04</time> Owner asked for a configurable registration-fee rule (one clinic: registration is paid once).</li><li><time>2026-10-06</time> Deep analysis written from code and live counts: docs/registration-fee-analysis.html. Waiting for the owner&#x27;s approval of the design and decisions.</li><li><time>2026-10-09</time> Owner confirmed the direction: a clinic-wide setting, one time only or again after a chosen period (days, weeks or months), applied to every patient. Built with the recommended defaults (waived counts as registered, paper-register patients count as registered with a switch, per clinic, free follow-up stays free). Settings → Visit flow → Registration fee; reception explains each patient&#x27;s fee; the arrival decision locks the patient row. Full run in progress.</li><li><time>2026-10-10</time> Full run green (server 684/0, screens 1,644, journeys 10/10, routes 267/267, coverage). Committed; not yet deployed. Waiting for the owner to verify.</li></ul></div>
+      <div class="log"><b>History</b><ul><li><time>2026-10-04</time> Owner asked for a configurable registration-fee rule (one clinic: registration is paid once).</li><li><time>2026-10-06</time> Deep analysis written from code and live counts: docs/registration-fee-analysis.html. Waiting for the owner&#x27;s approval of the design and decisions.</li><li><time>2026-10-09</time> Owner confirmed the direction: a clinic-wide setting, one time only or again after a chosen period (days, weeks or months), applied to every patient. Built with the recommended defaults (waived counts as registered, paper-register patients count as registered with a switch, per clinic, free follow-up stays free). Settings → Visit flow → Registration fee; reception explains each patient&#x27;s fee; the arrival decision locks the patient row. Full run in progress.</li><li><time>2026-10-10</time> Full run green (server 684/0, screens 1,644, journeys 10/10, routes 267/267, coverage). Committed; not yet deployed. Waiting for the owner to verify.</li><li><time>2026-10-10</time> Deployed to app.clinicos.cc (commit a0eed5c, pre-deploy backup taken, API ready). Live: migration 90 applied, no clinic has a rule yet (all still &quot;every visit&quot;), no errors in the API log.</li></ul></div>
     </div>
   </details>
 </article>
@@ -416,7 +416,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>backend/internal/billing/service/service.go:446</code></li></ul>
         </details>
       </div>
-      <div class="log"><b>History</b><ul><li><time>2026-10-09</time> Fixed as part of FEAT-REG-1: the arrival decision holds the patient&#x27;s row, so simultaneous arrivals raise one fee. The known-bug test is now a plain test (passed 3 runs in a row).</li><li><time>2026-10-10</time> Full run green (server 684/0, screens 1,644, journeys 10/10, routes 267/267, coverage). Committed; not yet deployed. Waiting for the owner to verify.</li></ul></div>
+      <div class="log"><b>History</b><ul><li><time>2026-10-09</time> Fixed as part of FEAT-REG-1: the arrival decision holds the patient&#x27;s row, so simultaneous arrivals raise one fee. The known-bug test is now a plain test (passed 3 runs in a row).</li><li><time>2026-10-10</time> Full run green (server 684/0, screens 1,644, journeys 10/10, routes 267/267, coverage). Committed; not yet deployed. Waiting for the owner to verify.</li><li><time>2026-10-10</time> Deployed to app.clinicos.cc (commit a0eed5c, pre-deploy backup taken, API ready). Live: migration 90 applied, no clinic has a rule yet (all still &quot;every visit&quot;), no errors in the API log.</li></ul></div>
     </div>
   </details>
 </article>
@@ -3838,7 +3838,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>backend/internal/finance/service/service.go</code></li></ul>
         </details>
       </div>
-      <div class="log"><b>History</b><ul><li><time>2026-10-10</time> Found while chasing a coverage number that changed between identical runs; fixed and pinned by a test that loads the list five times.</li></ul></div>
+      <div class="log"><b>History</b><ul><li><time>2026-10-10</time> Found while chasing a coverage number that changed between identical runs; fixed and pinned by a test that loads the list five times.</li><li><time>2026-10-10</time> Deployed to app.clinicos.cc (commit a0eed5c, pre-deploy backup taken, API ready). Live: migration 90 applied, no clinic has a rule yet (all still &quot;every visit&quot;), no errors in the API log.</li></ul></div>
     </div>
   </details>
 </article>
@@ -5728,7 +5728,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   </details>
 </article>
 
-<footer>Built 10 October 2026, 00:39 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
+<footer>Built 10 October 2026, 00:55 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
 </div>
 <script>
 (function () {

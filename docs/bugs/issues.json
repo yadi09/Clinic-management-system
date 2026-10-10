@@ -126,6 +126,10 @@
    {
     "date": "2026-10-10",
     "note": "Full run green (server 684/0, screens 1,644, journeys 10/10, routes 267/267, coverage). Committed; not yet deployed. Waiting for the owner to verify."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Deployed to app.clinicos.cc (commit a0eed5c, pre-deploy backup taken, API ready). Live: migration 90 applied, no clinic has a rule yet (all still \"every visit\"), no errors in the API log."
    }
   ],
   "order": 9
@@ -4733,6 +4737,10 @@
    {
     "date": "2026-10-10",
     "note": "Full run green (server 684/0, screens 1,644, journeys 10/10, routes 267/267, coverage). Committed; not yet deployed. Waiting for the owner to verify."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Deployed to app.clinicos.cc (commit a0eed5c, pre-deploy backup taken, API ready). Live: migration 90 applied, no clinic has a rule yet (all still \"every visit\"), no errors in the API log."
    }
   ]
  },
@@ -4761,6 +4769,10 @@
    {
     "date": "2026-10-10",
     "note": "Found while chasing a coverage number that changed between identical runs; fixed and pinned by a test that loads the list five times."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Deployed to app.clinicos.cc (commit a0eed5c, pre-deploy backup taken, API ready). Live: migration 90 applied, no clinic has a rule yet (all still \"every visit\"), no errors in the API log."
    }
   ]
  }
