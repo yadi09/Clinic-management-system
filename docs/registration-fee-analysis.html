@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Registration fee analysis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Fraunces:opsz,wght@9..144,600&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#fbfaf7;--card:#fff;--ink:#1f2a33;--soft:#5d6b76;--line:#e3e0d8;--teal:#0f6e6a;--warn:#b45309;--warn-bg:#fdf1e3;--bad:#b42318;--bad-bg:#fdecea;--ok:#1d7a46;--ok-bg:#e5f4ea}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--paper:#14181c;--card:#1b2026;--ink:#e7e9ea;--soft:#9aa6b0;--line:#2c333a;--teal:#4fb3ad;--warn:#f0a85a;--warn-bg:#3a2a18;--bad:#f2867c;--bad-bg:#3a1f1d;--ok:#6cc792;--ok-bg:#1a3325}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.6 "Atkinson Hyperlegible",system-ui,sans-serif}
+.wrap{max-width:860px;margin:0 auto;padding:32px 16px 80px}
+h1{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:2.1rem;line-height:1.15;margin:0 0 8px}
+h2{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:1.45rem;margin:40px 0 10px}
+h3{font-size:1.05rem;margin:22px 0 6px}
+.lede{color:var(--soft);max-width:64ch}
+.box{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:14px 0}
+.key{border-left:6px solid var(--teal)}
+.warn{border-left:6px solid var(--warn)}
+.bad{border-left:6px solid var(--bad)}
+table{border-collapse:collapse;width:100%;font-size:.95rem;margin:10px 0;background:var(--card)}
+th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--paper)}
+td.n{text-align:right;font-variant-numeric:tabular-nums}
+.scene{background:var(--paper);border-radius:8px;padding:10px 14px;font-style:italic;margin:8px 0}
+.mock{font-family:ui-monospace,Menlo,monospace;font-size:.88rem;background:var(--card);border:1px dashed var(--line);border-radius:8px;padding:12px 14px;white-space:pre-wrap;line-height:1.5}
+.tag{display:inline-block;font-size:.8rem;font-weight:700;padding:1px 9px;border-radius:20px}
+.rec{background:var(--ok-bg);color:var(--ok)}
+ol li,ul li{margin:3px 0}
+.scroll{overflow-x:auto}
+footer{color:var(--soft);font-size:.85rem;margin-top:40px}
+</style></head>
+<body><div class="wrap">
+<h1>Registration fee: once, every visit, or renewed</h1>
+<p class="lede">What the system charges at arrival today, what the live clinics are actually paying, why one clinic's rule ("registration is paid one time") is not what happens, and a design that lets each clinic choose its own rule. Analysed on 6 October 2026 from the code and from counts on the live system (no patient details were read).</p>
+
+<div class="box key"><b>In one paragraph.</b> Today the system has no idea what "registration" is. It charges every service tagged <i>Default</i> on <b>every day a patient arrives</b>, unless the visit is a doctor-booked follow-up inside its free window. So a clinic whose rule is "register once" is charging its returning patients again on every visit, and patients brought over from the paper register pay as if they were new. The fix is a rule on each arrival service ("once per patient", "every visit", "again every N days"), shown plainly at reception, with today's behaviour as the default so nothing changes for a clinic until it chooses.</div>
+
+<h2>1. How it works today</h2>
+<p>When reception receives a patient (a walk-in, or checking in a booked appointment), one piece of code decides what to charge:</p>
+<ol>
+<li>If the visit is a <b>doctor-booked follow-up</b> attended within its free window (default 30 days), <b>nothing</b> is charged.</li>
+<li>If the patient was <b>already charged today</b> (the Addis day), the same charge is handed back instead of a new one.</li>
+<li>Otherwise <b>every service tagged "Default"</b> in the Service catalog is charged.</li>
+</ol>
+<p>So the real rule is <b>"every visit day"</b>. There is no "first visit", "once per patient" or "valid for a year". This matches the workflow approved in June (v4: <i>card = registration + consultation; a walk-in pays every time</i>), which treated registration and consultation as one fee. Your clinic is now telling us they are two different things.</p>
+
+<h2>2. What the live clinics show</h2>
+<div class="scroll"><table>
+<tr><th>Clinic</th><th>Charged at arrival ("Default")</th><th>First-visit fees</th><th>Fees on later visits</th><th>Later-visit money</th></tr>
+<tr><td><b>Cure Dental</b> (live)</td><td>Registration / visit fee, 200</td><td class="n">22</td><td class="n">8</td><td class="n">1,600 birr</td></tr>
+<tr><td>Joy Speciality</td><td>Registration fee, 50</td><td class="n">48</td><td class="n">241</td><td class="n">12,050 birr</td></tr>
+<tr><td></td><td>General consultation, 300</td><td class="n">48</td><td class="n">241</td><td class="n">72,300 birr</td></tr>
+<tr><td>Y Clinic (suspended)</td><td>Registration 50 + Consultation 250</td><td class="n">8</td><td class="n">0</td><td class="n">0</td></tr>
+<tr><td>Harar Clinic (suspended)</td><td>Registration fee <b>and 19 lab tests</b></td><td class="n" colspan="3">no charges yet</td></tr>
+</table></div>
+
+<h3>What this tells us</h3>
+<div class="box warn"><b>Returning patients pay registration again.</b> At Joy, every returning patient paid the 50-birr registration again on each visit: 241 times, almost all <b>8 to 30 days</b> after the last one (the typical "come back for a check" gap). If Joy's rule is "register once", that is 12,050 birr charged that should not have been.</div>
+<div class="box warn"><b>Patients from the paper register are treated as new.</b> Cure Dental imported 596 of its 610 patients from the old paper register. Of the 21 people who paid Cure's registration fee in the system, <b>13 were already registered on paper</b>. Under "register once" they should not have paid it.</div>
+<div class="box warn"><b>Patients in the middle of a treatment pay again.</b> Two of Cure's three repeat registration fees were patients who had already started a treatment plan and came back for a later visit.</div>
+<div class="box bad"><b>"Default" is misunderstood.</b> Harar tagged 19 lab tests as Default, which would charge every walk-in for a full blood panel. The word does not say "charged to every patient on arrival". The new setting must say exactly that.</div>
+<div class="box"><b>Free follow-ups are almost unused.</b> Only 9 doctor-booked follow-ups exist across all clinics, and 1 was attended. In practice almost every return visit is a paid walk-in, so the arrival rule decides what nearly every returning patient pays.</div>
+<div class="box"><b>The old "card fee" setting is dead.</b> It is switched on at all 9 clinics but at 0 birr, and it has taken 0 payments. Its money also never reached Finance (bug FIN-13). It can be removed.</div>
+
+<h2>3. The design</h2>
+<h3>The rule lives on each arrival service</h3>
+<p>One clinic-wide switch would not work: a clinic usually wants <b>registration once</b> but <b>consultation every visit</b>. So each service charged at arrival gets its own rule. In <i>Service catalog → edit service</i>:</p>
+<div class="mock">Charged when a patient arrives   [✓]
+   (Only for fees every patient pays at reception: registration, consultation.
+    Lab tests and medicines are charged when ordered, not here.)
+
+How often:
+   ( ) Every visit                         ← today's behaviour
+   ( ) Once per patient
+   ( ) Again every [ 365 ] days
+   Price when renewed: [ 50 ] birr  (leave empty for the same price)</div>
+<p>"Default" is renamed to <b>"Charged when a patient arrives"</b>, with the warning line underneath, so a lab test is not tagged by mistake again.</p>
+
+<h3>How it decides, for each arrival service</h3>
+<ol>
+<li><b>Free follow-up first:</b> a doctor-booked follow-up within its window pays nothing, as today.</li>
+<li><b>Already charged today:</b> hand back that charge, as today.</li>
+<li><b>Every visit:</b> charge it.</li>
+<li><b>Once per patient:</b> charge only if the patient has never had this fee "dealt with" (paid, waived, or put on pay-later), <i>and</i> is not counted as registered from the paper register.</li>
+<li><b>Again every N days:</b> charge if never dealt with, or if the last one was more than N Addis days ago; use the renewal price if one is set.</li>
+</ol>
+
+<h3>What reception sees, before pressing anything</h3>
+<div class="mock">Almaz Tesfaye · MRN 1042
+  Registration        Registered 12 Sep 2026 (መስከረም 2, 2019)     no charge
+  Consultation        Every visit                                  300 birr
+                                                                 ──────────
+  To pay now                                                       300 birr</div>
+<div class="mock">Bekele Alemu · MRN 0377 (from the paper register)
+  Registration        On the paper register before ClinicOS        no charge</div>
+<div class="mock">Hanna Girma · MRN 0915
+  Registration        Expired 3 Oct 2026, renew yearly                50 birr
+  Consultation        Free follow-up booked by Dr Selam              no charge</div>
+<p>The desk always sees <b>why</b> a fee is or is not charged, so it can answer the patient without guessing.</p>
+
+<h3>Scenarios, start to finish</h3>
+<div class="scene">Cure Dental sets its 200-birr fee to <b>Once per patient</b>. Selam comes for a check-up, pays 200, starts a root canal. She comes back for visit 2 and visit 3: reception shows "Registered 4 Oct", no fee; her treatment is billed on its own, as today.</div>
+<div class="scene">Joy sets Registration to <b>Again every 365 days, renewal 30 birr</b>, and Consultation to <b>Every visit</b>. Dawit comes in October (pays 50 + 300), returns in November (pays 300), returns next October (pays 30 renewal + 300).</div>
+<div class="scene">A cashier refunds Dawit's registration because he was registered twice by mistake. The refunded fee no longer counts, so if the duplicate was the one kept, his next visit charges registration again. A <b>voided</b> fee counts as never charged; a <b>waived</b> fee counts as registered (the clinic chose to waive it).</div>
+<div class="scene">Two receptionists press "Receive" for the same brand-new patient at the same second. The patient's record is locked while the fee is decided, so only one registration fee is raised. (This also closes part of bug #10, FIN-6.)</div>
+
+<h2>4. Decisions for you</h2>
+<div class="scroll"><table>
+<tr><th>Question</th><th>Recommendation</th><th>Why</th></tr>
+<tr><td>Does a <b>waived</b> registration count as registered?</td><td><span class="tag rec">Yes</span></td><td>Waiving is the clinic's decision to let this patient in without paying; asking again next visit would undo it.</td></tr>
+<tr><td>Do patients <b>imported from the paper register</b> count as registered?</td><td><span class="tag rec">Yes, with a clinic switch</span></td><td>They registered on paper. At Cure, 13 of 21 fee payers were such patients. A switch lets a clinic that wants a one-time "move to the new system" fee turn it off.</td></tr>
+<tr><td>Is registration <b>per clinic or per branch</b>?</td><td><span class="tag rec">Per clinic</span></td><td>One patient record, one registration; a patient seen at the second branch is the same patient.</td></tr>
+<tr><td>Does a <b>free follow-up</b> stay free if the registration has expired?</td><td><span class="tag rec">Yes</span></td><td>The doctor promised a free return; charging at the door breaks that promise in front of the patient.</td></tr>
+<tr><td>A <b>renewal price</b> different from the first registration?</td><td><span class="tag rec">Yes, optional</span></td><td>Common in Ethiopian clinics ("card renewal" cheaper than a new card); empty means same price.</td></tr>
+<tr><td>Remove the dead <b>card fee</b> setting?</td><td><span class="tag rec">Yes</span></td><td>0 birr everywhere, never used, and its money bypassed Finance (FIN-13).</td></tr>
+</table></div>
+<p><b>One question only the clinics can answer:</b> what is Cure Dental's 200-birr "Registration / visit fee"? If it is registration, they set it to <b>Once per patient</b>. If it is really a visit fee, it stays <b>Every visit</b>. If it is both, they split it into two services. We should ask them before switching anything.</p>
+
+<h2>5. How it ships safely</h2>
+<ol>
+<li><b>No change on day one.</b> Every existing arrival service starts as <i>Every visit</i>, exactly today's behaviour. Nothing is charged differently until a clinic changes a setting.</li>
+<li><b>Past fees count.</b> When a clinic switches Registration to <i>Once</i>, every patient who has ever paid it is already registered; nobody pays twice because of the switch.</li>
+<li><b>Tests first</b> (each one a regression test kept forever):
+  <ul>
+  <li>Every visit: behaves exactly as today (the existing fee tests must pass unchanged).</li>
+  <li>Once: second visit charges no registration but still charges consultation.</li>
+  <li>Again every N days: day N−1 free, day N+1 charged at the renewal price; days counted on the Addis calendar, including a fee paid at 00:30 Addis.</li>
+  <li>Refunded fee charged again; voided fee charged again; waived fee not charged.</li>
+  <li>Paper-register patient: not charged with the switch on, charged with it off.</li>
+  <li>Free follow-up with an expired registration: free.</li>
+  <li>Two desks at once on a new patient: one fee.</li>
+  <li>The reception preview shows the same answer the charge step will give.</li>
+  <li>Screen tests: the service editor, the preview lines, the warning under "Charged when a patient arrives".</li>
+  </ul></li>
+<li><b>Then the clinics choose</b>: you (or they) set each clinic's rule in the Service catalog after asking them.</li>
+</ol>
+
+<h2>6. Effort and order</h2>
+<p>About one focused day of building plus its tests and a full run: a small database change (the rule columns), the decision logic in one place, the reception preview, the service editor, and removing the card fee. It fits after issue #5 (allergy warnings, a patient-safety risk). If clinics are complaining about repeat charges now, it can go first; the allergy fix is not started in code yet.</p>
+
+<footer>Sources: billing/service/service.go (RaiseIntakeChargeIDsTx), scheduling check-in and walk-in, the Service catalog, docs/patient-workflow.md (v4), and read-only counts from app.clinicos.cc on 6 October 2026.</footer>
+</div></body></html>

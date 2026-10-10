@@ -30,6 +30,12 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	b.DELETE("/services/:id", mgr, h.DeleteService)
 	b.GET("/providers", httpx.RequirePermission("payment.charge"), h.ProvidersForServices) // reception's filtered list
 
+	// The clinic's registration-fee rule (FEAT-REG-1): read by any staff, set by
+	// billing managers; the desk's per-patient preview needs payment.charge.
+	b.GET("/registration-policy", h.GetRegistrationPolicy)
+	b.PUT("/registration-policy", mgr, h.SaveRegistrationPolicy)
+	b.GET("/registration-status", httpx.RequireAnyPermission("payment.charge", "payment.collect", "billing.manage"), h.RegistrationStatus)
+
 	// Payment is split by capability: payment.charge raises a charge (reception),
 	// payment.collect settles it (cashier). A user with both collects inline.
 	charge := httpx.RequirePermission("payment.charge")

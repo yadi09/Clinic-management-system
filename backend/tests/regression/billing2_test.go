@@ -1424,3 +1424,39 @@ func TestREG_FIN_018_DentalMoneyFailureIsReported(t *testing.T) {
 	blExpect(t, r, 500, "INTERNAL_ERROR", "receivables with dental money unreadable")
 	testkit.KnownBug(t, "FIN-12", false, "a failed dental money query is reported as an error")
 }
+
+// TestREG_FIN_022_ReceivablesOldestFirstThenByName: Given three patients who owe,
+// two of them for the same number of days, When the owner opens the debts list,
+// Then the oldest debt comes first and the two equal ones are in name order, the
+// same on every load (rows were gathered from a map, whose order Go randomises).
+func TestREG_FIN_022_ReceivablesOldestFirstThenByName(t *testing.T) {
+	clinic := payClinic(t)
+	recp, cashier, owner := srv.As(t, clinic, "receptionist"), srv.As(t, clinic, "cashier"), srv.As(t, clinic, "owner")
+	tag := uniq("Ord")
+	// Two patients called Abebe owe for the same 10 days: the record id settles it.
+	names := []string{"Zed", "Abebe", "Kebede", "Abebe"}
+	ages := []int{10, 10, 40, 10}
+	for i, first := range names {
+		p := createPatient(t, recp, first+tag, "Owes")
+		ch := payRaise(t, cashier, clinic, p.ID, 100)
+		blExec(t, `UPDATE charges SET created_at = now() - make_interval(days => $2) WHERE id = $1`, blUUID(t, id.PrefixCharge, ch), ages[i])
+	}
+	var want = []string{"Kebede" + tag, "Abebe" + tag, "Abebe" + tag, "Zed" + tag}
+	for load := 0; load < 5; load++ {
+		var r struct {
+			Rows []struct {
+				Name string `json:"name"`
+			} `json:"rows"`
+		}
+		owner.Do("GET", "/finance/receivables", nil).Expect(t, 200, "receivables").Decode(t, &r)
+		got := []string{}
+		for _, row := range r.Rows {
+			if strings.Contains(row.Name, tag) {
+				got = append(got, strings.TrimSuffix(row.Name, " Owes"))
+			}
+		}
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Fatalf("load %d: order %v, want %v", load, got, want)
+		}
+	}
+}

@@ -67,6 +67,7 @@ import {
 import { NewAllergenForm, severityClass } from "@/features/clinical/AllergenFields";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { RegistrationFeeCard } from "@/features/billing/RegistrationFeeCard";
 import { AppError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
@@ -153,7 +154,13 @@ export function SettingsPage() {
             </div>
           )}
           {active === "locations" && <LocationsCard manage={manage} />}
-          {active === "flow" && <FlowSettingsCard manage={manage} />}
+          {active === "flow" && (
+            <div className="space-y-6">
+              <FlowSettingsCard manage={manage} />
+              {/* Prices and the rule belong to billing: managers set them, everyone can read them. */}
+              <RegistrationFeeCard manage={can("billing.manage")} />
+            </div>
+          )}
           {active === "payments" && <PaymentRailsCard manage={manage} />}
           {active === "vitals" && <VitalsFormCard manage={manage} />}
           {active === "diagnoses" && <DiagnosisCatalogCard manage={manage} />}

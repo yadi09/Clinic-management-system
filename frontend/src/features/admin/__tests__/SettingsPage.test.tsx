@@ -286,7 +286,14 @@ describe("REG-FE-SETTINGS visit flow", () => {
   test("REG-FE-SETTINGS-032 loading, and the settings not existing yet", async () => {
     admin.getSettings.mockReturnValueOnce(new Promise(() => {}));
     const r = open("flow");
-    expect(screen.getByText("Loading…")).toBeInTheDocument();
+    // The flow pane now holds two cards (patient flow, registration fee); the
+    // patient-flow card is the one whose settings are still loading.
+    const cardOf = (el: HTMLElement) => {
+      let n: HTMLElement | null = el;
+      while (n && !n.textContent?.includes("Patient flow")) n = n.parentElement;
+      return n;
+    };
+    expect(screen.getAllByText("Loading…").some((el) => cardOf(el)?.textContent?.includes("Card fee, triage, and doctor assignment."))).toBe(true);
     r.unmount();
     admin.getSettings.mockRejectedValueOnce(new Error("404"));
     open("flow");

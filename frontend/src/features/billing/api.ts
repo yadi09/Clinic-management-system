@@ -388,3 +388,45 @@ export function verifyPayment(body: { rail_id: string; reference: string; expect
 export function verificationAvailable() {
   return apiFetch<{ available: boolean }>("/billing/verify-payment/status");
 }
+
+// ---- registration fee rule (FEAT-REG-1) ----
+//
+// Each clinic says how often a patient pays its registration fee: every visit (the
+// old behaviour), once in their life, or again after a number of days, weeks or
+// months. The rule names which arrival fee is the registration fee; the others (a
+// consultation) charge every visit.
+
+export type RegistrationRule = "every_visit" | "once" | "every";
+export type RegistrationUnit = "day" | "week" | "month";
+
+export interface RegistrationPolicy {
+  service_id: string | null;
+  rule: RegistrationRule;
+  every_count: number | null;
+  every_unit: RegistrationUnit | "";
+  paper_patients_registered: boolean;
+}
+
+export interface RegistrationStatus {
+  service_id: string | null;
+  rule: RegistrationRule;
+  /** Does this arrival charge the registration fee? */
+  due: boolean;
+  reason: "no_policy" | "every_visit" | "never_registered" | "registered" | "paper" | "expired" | "owed";
+  /** YYYY-MM-DD, the clinic's (Addis) day. */
+  registered_on?: string;
+  /** YYYY-MM-DD; only for "again after a period". */
+  valid_until?: string;
+}
+
+export function getRegistrationPolicy() {
+  return apiFetch<RegistrationPolicy>("/billing/registration-policy");
+}
+
+export function saveRegistrationPolicy(body: RegistrationPolicy) {
+  return apiFetch<RegistrationPolicy>("/billing/registration-policy", { method: "PUT", body });
+}
+
+export function getRegistrationStatus(patientId: string) {
+  return apiFetch<RegistrationStatus>(`/billing/registration-status?patient=${encodeURIComponent(patientId)}`);
+}

@@ -37,7 +37,7 @@ const admin = vi.hoisted(() => ({
 vi.mock("@/features/admin/api", async (orig) => ({ ...(await orig<object>()), ...admin }));
 const bill = vi.hoisted(() => ({
   listServices: vi.fn(), raiseCharge: vi.fn(), settleVisit: vi.fn(), waiveCharge: vi.fn(), waiverReasons: vi.fn(),
-  deferVisit: vi.fn(), verificationAvailable: vi.fn(), verifyPayment: vi.fn(),
+  deferVisit: vi.fn(), verificationAvailable: vi.fn(), verifyPayment: vi.fn(), getRegistrationStatus: vi.fn(),
 }));
 vi.mock("@/features/billing/api", async (orig) => ({ ...(await orig<object>()), ...bill }));
 vi.mock("@/lib/api-client", async (orig) => {
@@ -137,6 +137,7 @@ describe("REG-FE-RECEP reception desk", () => {
     bill.raiseCharge.mockResolvedValue({ id: "chg_extra" });
     bill.settleVisit.mockResolvedValue({ receipt_no: 7, total: "100", count: 1 });
     pats.searchPatients.mockResolvedValue({ items: [], meta: {} });
+    bill.getRegistrationStatus.mockResolvedValue({ service_id: null, rule: "every_visit", due: true, reason: "no_policy" });
   });
 
   // --- the day -------------------------------------------------------------------
@@ -186,6 +187,47 @@ describe("REG-FE-RECEP reception desk", () => {
   });
 
   // --- receiving a booked patient ---------------------------------------------------
+
+  // --- the clinic's registration rule (FEAT-REG-1) -------------------------------------
+
+  const almazPanel = async () => {
+    const t = day0();
+    const { user } = page(t);
+    await pick(user, /Almaz Haile/);
+    return screen.getByRole("heading", { name: "Almaz Haile" }).closest("div.space-y-4") as HTMLElement;
+  };
+
+  test("REG-FE-RECEP-042 registered once already: registration shows 'No charge' with the day, and is not in the total", async () => {
+    bill.getRegistrationStatus.mockResolvedValue({ service_id: "svc_reg", rule: "once", due: false, reason: "registered", registered_on: "2026-09-12" });
+    const panel = await almazPanel();
+    await waitFor(() => expect(panel).toHaveTextContent("No charge. Registered 12 Sep 2026 (Meskerem 2, 2019 EC)"));
+    expect(panel).toHaveTextContent("One time only.");
+    expect(panel).toHaveTextContent(/TotalETB 0\.00/);
+    expect(screen.queryByRole("button", { name: /Collect ETB 100\.00/ })).not.toBeInTheDocument();
+    expect(bill.getRegistrationStatus).toHaveBeenCalledWith(day0().expected[0].patient_id);
+  });
+
+  test("REG-FE-RECEP-043 registration ran out: it is charged, and the desk sees why", async () => {
+    bill.getRegistrationStatus.mockResolvedValue({ service_id: "svc_reg", rule: "every", due: true, reason: "expired", registered_on: "2026-09-02", valid_until: "2026-10-02" });
+    const panel = await almazPanel();
+    await waitFor(() => expect(panel).toHaveTextContent("Registration ran out on 2 Oct 2026"));
+    expect(panel).toHaveTextContent(/TotalETB 100\.00/);
+  });
+
+  test("REG-FE-RECEP-044 an unpaid registration from before: no new fee, and the desk is told to collect that one", async () => {
+    bill.getRegistrationStatus.mockResolvedValue({ service_id: "svc_reg", rule: "once", due: false, reason: "owed", registered_on: "2026-09-20" });
+    const panel = await almazPanel();
+    await waitFor(() => expect(panel).toHaveTextContent("Registration from 20 Sep 2026"));
+    expect(panel).toHaveTextContent("is still unpaid. Collect that one; no new fee.");
+    expect(panel).toHaveTextContent(/TotalETB 0\.00/);
+  });
+
+  test("REG-FE-RECEP-045 the rule cannot be read: the fee is shown as the clinic charges it, with no explanation", async () => {
+    bill.getRegistrationStatus.mockRejectedValue(new Error("down"));
+    const panel = await almazPanel();
+    await waitFor(() => expect(panel).toHaveTextContent(/TotalETB 100\.00/));
+    expect(panel).not.toHaveTextContent("No charge.");
+  });
 
   test("REG-FE-RECEP-005 a booked patient: details, old debt, fee; Collect checks in by the appointment and settles only this visit's charges", async () => {
     const t = day0();

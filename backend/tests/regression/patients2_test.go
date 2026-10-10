@@ -369,7 +369,7 @@ func TestREG_PATIENT_027_ChildRecordsOnAnotherClinicsPatientAreRefused(t *testin
 		// key check and reaches the cross-clinic patient question this test is about.
 		oa.Do("POST", "/patients/"+pb.ID+"/attachments", map[string]any{"type": "pdf",
 			"storage_key": fmt.Sprintf("%s/patients/%s/stray.pdf", a.TenantID, opUUID(t, id.PrefixPatient, pb.ID)),
-			"filename": "s.pdf", "mime_type": "application/pdf"}).Status,
+			"filename":    "s.pdf", "mime_type": "application/pdf"}).Status,
 		oa.Do("POST", "/patients/"+pb.ID+"/certificates", map[string]any{"kind": "attendance"}).Status,
 		oa.Do("POST", "/history-import", map[string]any{"patient_id": pb.ID, "date": "2020-01-01", "subjective": "stray"}).Status,
 	}

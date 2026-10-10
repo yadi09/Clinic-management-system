@@ -232,12 +232,11 @@ func TestREG_BILL_093_ConcurrentArrivalsRaiseOneIntakeFee(t *testing.T) {
 			worst = n
 		}
 	}
+	// (FIN-6, fixed 2026-10-09: the arrival decision holds the patient's row.)
 	if dupPatients > 0 {
-		testkit.KnownBug(t, "FIN-6", true, fmt.Sprintf(
-			"%d of %d patients received simultaneously were charged the registration fee more than once (worst: %d fees) — "+
-				"RaiseIntakeChargeIDsTx counts then inserts without a lock", dupPatients, rounds, worst))
+		t.Fatalf("%d of %d patients received simultaneously were charged the registration fee more than once (worst: %d fees)",
+			dupPatients, rounds, worst)
 	}
-	testkit.KnownBug(t, "FIN-6", false, "simultaneous arrivals raise one registration fee per patient")
 }
 
 // gmSequentialPressIsIdempotent receives a fresh walk-in twice in a row and reports

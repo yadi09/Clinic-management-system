@@ -101,7 +101,10 @@ if a.update_baseline:
     new = dict(baseline)
     for pkg in baseline:
         if pkg in pct and pct[pkg] > baseline[pkg]:
-            new[pkg] = round(pct[pkg] - 0.05, 1)
+            # A package with slack moves between identical runs; ratcheting it to a
+            # lucky high run would fail every ordinary run after it. Its floor rises
+            # only to (measured - slack).
+            new[pkg] = max(baseline[pkg], round(pct[pkg] - 0.05 - slack.get(pkg, 0), 1))
     with open(a.baseline, "w") as f:
         f.write("# Minimum statement coverage per package (scripts/test/coverage_gate.py).\n")
         f.write("# Raised by `scripts/test/coverage.sh --update-baseline`; never lowered by hand without a reason.\n")

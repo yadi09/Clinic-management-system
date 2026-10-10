@@ -110,14 +110,24 @@
   "effort": "S",
   "decision": null,
   "tests": [
-   "TestREG_BILL_093_ConcurrentArrivalsRaiseOneIntakeFee"
+   "TestREG_BILL_093_ConcurrentArrivalsRaiseOneIntakeFee",
+   "TestREG_REGFEE_009_TwoDesksOneFirstRegistration"
   ],
   "files": [
    "backend/internal/billing/service/service.go:446"
   ],
   "tested": true,
-  "status": "open",
-  "log": [],
+  "status": "fixed",
+  "log": [
+   {
+    "date": "2026-10-09",
+    "note": "Fixed as part of FEAT-REG-1: the arrival decision holds the patient's row, so simultaneous arrivals raise one fee. The known-bug test is now a plain test (passed 3 runs in a row)."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Full run green (server 684/0, screens 1,644, journeys 10/10, routes 267/267, coverage). Committed; not yet deployed. Waiting for the owner to verify."
+   }
+  ],
   "order": 9
  },
  {
@@ -4667,6 +4677,90 @@
    {
     "date": "2026-10-04",
     "note": "Deployed to app.clinicos.cc (commit fd3805c, pre-deploy backup taken, API ready)."
+   }
+  ]
+ },
+ {
+  "id": "FEAT-REG-1",
+  "title": "Registration fee charged on every visit, not once",
+  "severity": "high",
+  "area": "Money",
+  "who": "Reception, Cashier, Patients",
+  "simple": "The system charges every 'Default' service on every day a patient arrives. A clinic whose rule is 'registration is paid once' is charging returning patients again, and patients brought over from the paper register pay as if new. There is no setting to choose once / every visit / again after N days.",
+  "example": "At Joy Speciality, returning patients paid the 50-birr registration again 241 times (12,050 birr), mostly 8-30 days after their last visit. At Cure Dental, 13 of the 21 people who paid registration were already registered on paper.",
+  "why": "Patients are overcharged against the clinic's own rule, and staff cannot explain the charge.",
+  "fix": "A rule on each arrival service (every visit / once per patient / again every N days, optional renewal price), today's behaviour as the default, a reception preview that says why a fee is or is not charged, and the dead card-fee setting removed. Full design: docs/registration-fee-analysis.html.",
+  "effort": "M",
+  "decision": null,
+  "tests": [
+   "TestREG_REGFEE_001_NoRuleChargesEveryVisit",
+   "TestREG_REGFEE_002_OneTimeRegistration",
+   "TestREG_REGFEE_003_RenewAfterDays",
+   "TestREG_REGFEE_004_RenewAfterWeeksAndMonths",
+   "TestREG_REGFEE_005_WhatCountsAsRegistered",
+   "TestREG_REGFEE_006_PaperRegisterPatients",
+   "TestREG_REGFEE_007_DatesAreTheClinicDay",
+   "TestREG_REGFEE_008_SettingTheRule",
+   "TestREG_REGFEE_009_TwoDesksOneFirstRegistration",
+   "REG-FE-REGFEE-001..008",
+   "REG-FE-REGWORDS-001..004",
+   "REG-FE-RECEP-042..045"
+  ],
+  "files": [
+   "backend/db/migrations/00090_registration_fee_policy.sql",
+   "backend/internal/billing/service/registration.go",
+   "backend/internal/billing/service/service.go",
+   "frontend/src/features/billing/RegistrationFeeCard.tsx",
+   "frontend/src/features/billing/registration.ts",
+   "frontend/src/features/scheduling/pages/ReceptionPage.tsx"
+  ],
+  "tested": true,
+  "status": "fixed",
+  "order": 9,
+  "log": [
+   {
+    "date": "2026-10-04",
+    "note": "Owner asked for a configurable registration-fee rule (one clinic: registration is paid once)."
+   },
+   {
+    "date": "2026-10-06",
+    "note": "Deep analysis written from code and live counts: docs/registration-fee-analysis.html. Waiting for the owner's approval of the design and decisions."
+   },
+   {
+    "date": "2026-10-09",
+    "note": "Owner confirmed the direction: a clinic-wide setting, one time only or again after a chosen period (days, weeks or months), applied to every patient. Built with the recommended defaults (waived counts as registered, paper-register patients count as registered with a switch, per clinic, free follow-up stays free). Settings → Visit flow → Registration fee; reception explains each patient's fee; the arrival decision locks the patient row. Full run in progress."
+   },
+   {
+    "date": "2026-10-10",
+    "note": "Full run green (server 684/0, screens 1,644, journeys 10/10, routes 267/267, coverage). Committed; not yet deployed. Waiting for the owner to verify."
+   }
+  ]
+ },
+ {
+  "id": "NEW-FIN-ORDER-1",
+  "title": "Debts owed for the same days reshuffled on every load",
+  "severity": "low",
+  "area": "Money",
+  "who": "Owner, Cashier",
+  "simple": "The Finance debts list sorted oldest first, but patients owing for the same number of days came out in a random order each time the page loaded.",
+  "example": "Two patients each owing for 10 days swap places every time the cashier refreshes, so the one she was about to call moves.",
+  "why": "A list that reorders itself is confusing when working through it top to bottom.",
+  "fix": "Oldest first, then by name, then by record id: the same order every time.",
+  "effort": "S",
+  "decision": null,
+  "tests": [
+   "TestREG_FIN_022_ReceivablesOldestFirstThenByName"
+  ],
+  "files": [
+   "backend/internal/finance/service/service.go"
+  ],
+  "tested": true,
+  "status": "fixed",
+  "order": 9,
+  "log": [
+   {
+    "date": "2026-10-10",
+    "note": "Found while chasing a coverage number that changed between identical runs; fixed and pinned by a test that loads the list five times."
    }
   ]
  }

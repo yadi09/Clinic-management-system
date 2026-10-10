@@ -151,4 +151,14 @@ describe("REG-FE-BILLAPI billing API wrappers", () => {
     await b.verificationAvailable();
     expect(last()).toEqual(["/billing/verify-payment/status"]);
   });
+
+  test("REG-FE-BILLAPI-011 registration fee rule: read, save (PUT, whole rule) and a patient's status (id encoded)", async () => {
+    await b.getRegistrationPolicy();
+    expect(last()).toEqual(["/billing/registration-policy"]);
+    const rule = { service_id: "svc_reg", rule: "every" as const, every_count: 2, every_unit: "month" as const, paper_patients_registered: true };
+    await b.saveRegistrationPolicy(rule);
+    expect(last()).toEqual(["/billing/registration-policy", { method: "PUT", body: rule }]);
+    await b.getRegistrationStatus("pat_1 2");
+    expect(last()).toEqual(["/billing/registration-status?patient=pat_1%202"]);
+  });
 });

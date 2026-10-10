@@ -333,6 +333,12 @@ type Service interface {
 	UpdateService(ctx context.Context, id uuid.UUID, in ServiceItemInput) error
 	SetServiceActive(ctx context.Context, id uuid.UUID, active bool) error
 	SetServiceDefault(ctx context.Context, id uuid.UUID, isDefault bool) error
+
+	// Registration fee policy (FEAT-REG-1): how often a patient pays the clinic's
+	// registration fee, and whether this patient owes it at this arrival.
+	RegistrationPolicy(ctx context.Context) (*RegistrationPolicy, error)
+	SaveRegistrationPolicy(ctx context.Context, in RegistrationPolicy) (*RegistrationPolicy, error)
+	RegistrationStatus(ctx context.Context, patientID uuid.UUID) (*RegistrationStatus, error)
 	DeleteService(ctx context.Context, id uuid.UUID) error
 	// Service providers — which staff perform a service.
 	SetServiceProviders(ctx context.Context, serviceID uuid.UUID, userIDs []uuid.UUID) error
@@ -411,4 +417,32 @@ type IntakeInput struct {
 	ToTriage      bool
 	ProviderID    *uuid.UUID
 	AppointmentID *uuid.UUID
+}
+
+// RegistrationPolicy is a clinic's rule for its registration fee.
+//
+//	every_visit  charged on every visit day (the rule before this setting existed)
+//	once         charged once in a patient's life
+//	every        charged again EveryCount EveryUnit (day|week|month) after the last one
+//
+// ServiceID names the arrival ("default") service that IS the registration fee; the
+// clinic's other arrival services (a consultation, say) keep charging every visit.
+type RegistrationPolicy struct {
+	ServiceID               *uuid.UUID `json:"-"`
+	Rule                    string     `json:"rule"`
+	EveryCount              *int       `json:"every_count"`
+	EveryUnit               string     `json:"every_unit"`
+	PaperPatientsRegistered bool       `json:"paper_patients_registered"`
+}
+
+// RegistrationStatus says whether a patient owes the registration fee now, and why,
+// in words the desk can repeat to the patient.
+type RegistrationStatus struct {
+	ServiceID *uuid.UUID `json:"-"`
+	Rule      string     `json:"rule"`
+	Due       bool       `json:"due"`
+	// Reason: no_policy | every_visit | never_registered | registered | paper | expired | owed
+	Reason       string `json:"reason"`
+	RegisteredOn string `json:"registered_on,omitempty"` // YYYY-MM-DD, Addis day
+	ValidUntil   string `json:"valid_until,omitempty"`   // YYYY-MM-DD, rule 'every'
 }

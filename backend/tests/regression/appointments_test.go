@@ -274,7 +274,13 @@ func TestREG_APPT_006_RescheduleMovesTheAppointment(t *testing.T) {
 func TestREG_APPT_007_CheckInCreatesExactlyOneQueueEntry(t *testing.T) {
 	e := apptNewEnv(t)
 	p := e.patient(t)
-	a := e.book(t, p.ID, time.Now().Add(-time.Minute), 30)
+	// A minute ago, unless that is yesterday on the clinic's calendar (the first
+	// minute after Addis midnight): then a minute from now.
+	at := time.Now().Add(-time.Minute)
+	if at.Before(addisAt(0, 0, 0)) {
+		at = time.Now().Add(time.Minute)
+	}
+	a := e.book(t, p.ID, at, 30)
 	r := e.checkIn(t, a.ID).Expect(t, 200, "check in")
 	var res struct {
 		Gated bool `json:"gated"`

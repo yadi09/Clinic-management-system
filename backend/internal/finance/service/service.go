@@ -10,6 +10,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -343,8 +344,8 @@ func sourceLabel(k string) string {
 		return "Dental"
 	case "bed":
 		return "Inpatient"
-	case "refund":
-		return "Refunds"
+	// No "refund": a refund is a negative charge, and this list counts money taken
+	// (amount > 0), so it never appears here. Refunds have their own total.
 	default:
 		return "Other"
 	}
@@ -461,14 +462,20 @@ func (s *Service) Receivables(ctx context.Context, f finance.Filter) (*finance.R
 		unbilled += a.unbilled
 		out.Rows = append(out.Rows, a.row)
 	}
-	// Oldest first: the debt least likely to arrive is the one to chase today.
-	for i := 0; i < len(out.Rows); i++ {
-		for j := i + 1; j < len(out.Rows); j++ {
-			if out.Rows[j].OldestDays > out.Rows[i].OldestDays {
-				out.Rows[i], out.Rows[j] = out.Rows[j], out.Rows[i]
-			}
+	// Oldest first: the debt least likely to arrive is the one to chase today. Ties
+	// by name, then id: the rows are gathered from a map, whose order Go randomises,
+	// so without a full order two patients owing for the same number of days swapped
+	// places each time the page loaded.
+	sort.Slice(out.Rows, func(i, j int) bool {
+		a, b := out.Rows[i], out.Rows[j]
+		if a.OldestDays != b.OldestDays {
+			return a.OldestDays > b.OldestDays
 		}
-	}
+		if a.Name != b.Name {
+			return a.Name < b.Name
+		}
+		return a.ID < b.ID
+	})
 	for _, k := range []string{"0-30", "31-60", "61-90", "90+"} {
 		b := buckets[k]
 		if b.Amount == "" {

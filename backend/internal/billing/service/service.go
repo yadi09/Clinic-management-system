@@ -458,6 +458,15 @@ func (s *Service) RaiseIntakeChargeIDsTx(ctx context.Context, tx pgx.Tx, in bill
 			return nil, nil
 		}
 	}
+	// One arrival decision per patient at a time. Two desks receiving the same
+	// patient at the same moment each counted "no fee yet today" and each raised one
+	// (FIN-6); a first-ever registration had the same race. Holding the patient's
+	// row for the rest of this transaction makes the second desk wait, then see the
+	// first desk's fee.
+	if _, e := tx.Exec(ctx, `SELECT 1 FROM patients WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
+		tenantID, in.PatientID); e != nil {
+		return nil, e
+	}
 	out := []uuid.UUID{}
 	defaults, e := q.ListDefaultServices(ctx, tenantID)
 	if e != nil {
@@ -541,8 +550,22 @@ func (s *Service) RaiseIntakeChargeIDsTx(ctx context.Context, tx pgx.Tx, in bill
 			return nil, nil
 		}
 	}
+	// The clinic's registration rule (FEAT-REG-1): registration is one of the arrival
+	// services, charged only when this patient's registration is due. The others
+	// (a consultation, say) are charged every visit, as before.
+	pol, e := loadRegistrationPolicyTx(ctx, tx, tenantID)
+	if e != nil {
+		return nil, e
+	}
+	reg, e := registrationStatusTx(ctx, tx, tenantID, in.PatientID, pol, time.Now())
+	if e != nil {
+		return nil, e
+	}
 	branch, dept := in.BranchID, in.DepartmentID
 	for _, d := range defaults {
+		if pol.ServiceID != nil && d.ID == *pol.ServiceID && !reg.Due {
+			continue
+		}
 		r, e := q.CreateCharge(ctx, billingdb.CreateChargeParams{
 			TenantID: tenantID, PatientID: in.PatientID, Source: "consultation", Description: d.Name, Amount: priceOrZero(d.Price), Currency: "ETB",
 			ServiceItemID: &d.ID, BranchID: &branch, DepartmentID: &dept, ToTriage: in.ToTriage, ProviderID: in.ProviderID, CreatedBy: actor,

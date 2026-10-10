@@ -870,3 +870,83 @@ func decodeOpt(c *gin.Context, prefix, raw string, dst **uuid.UUID) bool {
 	*dst = &u
 	return true
 }
+
+// ---- registration fee policy (FEAT-REG-1) ----
+
+type registrationPolicyDTO struct {
+	billing.RegistrationPolicy
+	ServiceID *string `json:"service_id"`
+}
+
+type registrationStatusDTO struct {
+	billing.RegistrationStatus
+	ServiceID *string `json:"service_id"`
+}
+
+func encodeServiceID(u *uuid.UUID) *string {
+	if u == nil {
+		return nil
+	}
+	s := id.Encode(id.PrefixServiceItem, *u)
+	return &s
+}
+
+// GET /billing/registration-policy — the clinic's rule (any signed-in staff: the
+// desk reads it to explain a fee).
+func (h *Handlers) GetRegistrationPolicy(c *gin.Context) {
+	p, err := h.svc.RegistrationPolicy(c.Request.Context())
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, registrationPolicyDTO{RegistrationPolicy: *p, ServiceID: encodeServiceID(p.ServiceID)})
+}
+
+// PUT /billing/registration-policy — set the clinic's rule (billing.manage).
+func (h *Handlers) SaveRegistrationPolicy(c *gin.Context) {
+	var req struct {
+		ServiceID               *string `json:"service_id"`
+		Rule                    string  `json:"rule"`
+		EveryCount              *int    `json:"every_count"`
+		EveryUnit               string  `json:"every_unit"`
+		PaperPatientsRegistered *bool   `json:"paper_patients_registered"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("invalid registration policy"))
+		return
+	}
+	in := billing.RegistrationPolicy{Rule: req.Rule, EveryCount: req.EveryCount, EveryUnit: req.EveryUnit, PaperPatientsRegistered: true}
+	if req.PaperPatientsRegistered != nil {
+		in.PaperPatientsRegistered = *req.PaperPatientsRegistered
+	}
+	if req.ServiceID != nil && *req.ServiceID != "" {
+		sid, err := id.Decode(id.PrefixServiceItem, *req.ServiceID)
+		if err != nil {
+			httpx.Fail(c, apperr.Validation("invalid service id").WithField("service_id", "invalid"))
+			return
+		}
+		in.ServiceID = &sid
+	}
+	p, err := h.svc.SaveRegistrationPolicy(c.Request.Context(), in)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, registrationPolicyDTO{RegistrationPolicy: *p, ServiceID: encodeServiceID(p.ServiceID)})
+}
+
+// GET /billing/registration-status?patient= — does this arrival owe the
+// registration fee, and why (the desk's preview, before it charges anything).
+func (h *Handlers) RegistrationStatus(c *gin.Context) {
+	pid, err := id.Decode(id.PrefixPatient, c.Query("patient"))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("patient is required").WithField("patient", "invalid"))
+		return
+	}
+	st, err := h.svc.RegistrationStatus(c.Request.Context(), pid)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, registrationStatusDTO{RegistrationStatus: *st, ServiceID: encodeServiceID(st.ServiceID)})
+}

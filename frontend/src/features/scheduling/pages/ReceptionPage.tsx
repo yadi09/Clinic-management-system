@@ -36,9 +36,10 @@ import { useIsLargeScreen } from "@/hooks/useMediaQuery";
 import { searchPatients, type PatientSummary } from "@/features/patients/api";
 import { listDepartments, listProviders, getSettings } from "@/features/admin/api";
 import {
-  deferVisit, listServices, raiseCharge, settleVisit, waiveCharge, waiverReasons,
-  type ServiceItem,
+  deferVisit, getRegistrationStatus, listServices, raiseCharge, settleVisit, waiveCharge, waiverReasons,
+  type RegistrationStatus, type ServiceItem,
 } from "@/features/billing/api";
+import { statusLine } from "@/features/billing/registration";
 import {
   EMPTY_PAYMENT, PaymentRailPicker, PaymentRefused, paymentBlocked, paymentIncomplete,
   usePaymentRails, type PaymentChoice,
@@ -259,6 +260,13 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
   const departments = useQuery({ queryKey: ["departments"], queryFn: listDepartments });
   const providers = useQuery({ queryKey: ["providers"], queryFn: listProviders });
   const services = useQuery({ queryKey: ["services"], queryFn: () => listServices() });
+  // Whether THIS patient owes registration at this arrival, by the clinic's rule
+  // (once / again after a period): the server decides the same way when it charges.
+  const registration = useQuery({
+    queryKey: ["registration-status", p.patient_id],
+    queryFn: () => getRegistrationStatus(p.patient_id),
+    retry: false,
+  });
   const reasons = useQuery({ queryKey: ["waiver-reasons"], queryFn: waiverReasons, enabled: canCollect });
   const rails = usePaymentRails();
 
@@ -289,7 +297,11 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
     [services.data, extras],
   );
   const extrasTotal = chosenExtras.reduce((a, s) => a + (parseFloat(s.price) || 0), 0);
-  const feeDue = covered ? 0 : defaults.reduce((a, s) => a + (parseFloat(s.price) || 0), 0);
+  const reg = registration.data;
+  const regFree = !!reg?.service_id && !reg.due;
+  const feeDue = covered ? 0 : defaults
+    .filter((s) => !(regFree && s.id === reg?.service_id))
+    .reduce((a, s) => a + (parseFloat(s.price) || 0), 0);
   const total = feeDue + extrasTotal;
   const routeReady = !!dept && (triageRequired || !!provider || booked);
   const mustPay = total > 0.005;
@@ -373,6 +385,7 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
       qc.invalidateQueries({ queryKey: ["reception-today"] });
       qc.invalidateQueries({ queryKey: ["pending-charges"] });
       qc.invalidateQueries({ queryKey: ["queue"] });
+      qc.invalidateQueries({ queryKey: ["registration-status", p.patient_id] });
       onDone();
     },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not receive this patient"),
@@ -470,7 +483,7 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
               </p>
             </div>
           ) : canCollect ? (
-            <FeeBlock defaults={defaults} extrasTotal={extrasTotal} total={total} />
+            <FeeBlock defaults={defaults} extrasTotal={extrasTotal} total={total} registration={covered ? undefined : reg} />
           ) : null}
 
           {/* anything extra done at the desk */}
@@ -589,7 +602,9 @@ function ReceivePanel({ p, canCollect, onDone, bare }: {
 }
 
 /** What this visit costs, line by line — the same services the server will raise. */
-function FeeBlock({ defaults, extrasTotal, total }: { defaults: ServiceItem[]; extrasTotal: number; total: number }) {
+function FeeBlock({ defaults, extrasTotal, total, registration }: {
+  defaults: ServiceItem[]; extrasTotal: number; total: number; registration?: RegistrationStatus;
+}) {
   if (defaults.length === 0 && extrasTotal <= 0) {
     return (
       <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
@@ -600,12 +615,21 @@ function FeeBlock({ defaults, extrasTotal, total }: { defaults: ServiceItem[]; e
   }
   return (
     <div className="rounded-md border px-3 py-2">
-      {defaults.map((s) => (
-        <div key={s.id} className="flex items-baseline justify-between gap-2 text-sm">
-          <span className="min-w-0 truncate text-muted-foreground">{s.name}</span>
-          <span className="shrink-0 font-mono">{etb(s.price)}</span>
-        </div>
-      ))}
+      {defaults.map((s) => {
+        // The registration fee says why it is (or is not) charged today.
+        const isReg = !!registration?.service_id && registration.service_id === s.id;
+        const free = isReg && !registration!.due;
+        const why = isReg ? statusLine(registration!) : "";
+        return (
+          <div key={s.id} className="text-sm">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="min-w-0 truncate text-muted-foreground">{s.name}</span>
+              <span className={cn("shrink-0 font-mono", free && "text-muted-foreground line-through")}>{etb(s.price)}</span>
+            </div>
+            {why && <p className={cn("text-xs", free ? "text-emerald-700" : "text-muted-foreground")}>{free ? `No charge. ${why}` : why}</p>}
+          </div>
+        );
+      })}
       {extrasTotal > 0 && (
         <div className="mt-1 flex items-baseline justify-between gap-2 text-sm">
           <span className="text-muted-foreground">Added services</span>

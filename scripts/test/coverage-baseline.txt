@@ -1,6 +1,6 @@
 # Minimum statement coverage per package (scripts/test/coverage_gate.py).
 # Raised by `scripts/test/coverage.sh --update-baseline`; never lowered by hand without a reason.
-internal/billing/http 97.2
+internal/billing/http 97.5
 internal/billing/service 88.5
 internal/clinical/http 29.3
 internal/clinical/service 33.1
@@ -10,7 +10,7 @@ internal/dental 83.2
 internal/dental/http 95.9
 internal/dental/service 86.5
 internal/finance/http 96.4
-internal/finance/service 85.7
+internal/finance/service 86.0
 internal/identity/http 92.4
 internal/identity/service 86.5
 internal/kernel/allergy 100.0
@@ -36,7 +36,7 @@ internal/kernel/sms 99.3
 internal/kernel/storage 100.0
 internal/kernel/tenancy 100.0
 internal/kernel/verifyet 99.0
-internal/messaging/dispatch 90.4 slack=0.5  # the SMS planner/dispatcher run on timers inside the API under test; identical runs measured 89.7-90.0 (2026-10-03)
+internal/messaging/dispatch 89.9 slack=0.5  # the SMS planner/dispatcher run on timers inside the API under test; identical runs measured 89.7-90.4 (2026-10-03..10)
 internal/messaging/http 92.2
 internal/messaging/service 87.5
 internal/notification/http 97.4
