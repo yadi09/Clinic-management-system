@@ -61,7 +61,7 @@ export function renderExam(d: ExamDoc, c: PrintCtx, o: RenderOpts = {}): Built {
       <div><div class="ex-title">${esc(label(c, "exam.title"))}</div>
         <div class="pname">${esc(d.patient)}</div><div class="muted">${meta}</div></div>
       <div class="r"><div class="k2">${esc(label(c, "exam.visitDate"))}</div><b>${esc(fmtDate(d.visitDate, loc))}</b>
-        ${d.recordedBy && flag("doctorName") ? `<div><span class="k2">${esc(label(c, "exam.examinedBy"))}</span>${esc(d.recordedBy)}</div>` : ""}</div>
+        ${d.recordedBy && flag("signerName") ? `<div><span class="k2">${esc(label(c, "exam.examinedBy"))}</span>${esc(d.recordedBy)}</div>` : ""}</div>
     </div>
     ${flag("complaint") ? block(label(c, "exam.complaint"), para(d.chiefComplaint) + para(d.hpi)) : ""}
     ${flag("history") ? block(label(c, "exam.history"), para(d.pastDentalHistory)) : ""}

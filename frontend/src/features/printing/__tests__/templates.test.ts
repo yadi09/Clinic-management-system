@@ -621,7 +621,7 @@ describe("REG-FE-PRTPL the signer's name can be left off, for one paper or for a
     }
   });
 
-  test("REG-FE-PRTPL-072 shared account: the doctor's name goes from the details at the top as well, on the papers that show it", () => {
+  test("REG-FE-PRTPL-072 shared account: the doctor's name goes from the details at the top as well, on every paper that shows it", () => {
     const on = render(rx(), ctx()).text;
     expect(on).toContain("Prescriber Dr Yonas");
     const off = render(rx(), ctx({ signature: { showName: false } })).text;
@@ -629,13 +629,37 @@ describe("REG-FE-PRTPL the signer's name can be left off, for one paper or for a
     expect(render(labrequest(), ctx({ signature: { showName: false } })).text).not.toContain("Dr Yonas");
     expect(render(exam(), ctx()).text).toContain("Examined by Dr Yonas");
     expect(render(exam(), ctx({ signature: { showName: false } })).text).not.toContain("Dr Yonas");
+    // The lab report names the ordering doctor at the top and the validator in its trail.
+    expect(render(labreport(), ctx()).text).toContain("Ordered by Dr Yonas");
+    const lab = render(labreport(), ctx({ signature: { showName: false } })).text;
+    expect(lab).not.toContain("Dr Yonas");
+    expect(lab).not.toContain("Dr Meron");
+    // The dispensing slip names the prescriber.
+    expect(render(dispense(), ctx()).text).toContain("Prescriber Dr Yonas");
+    expect(render(dispense(), ctx({ signature: { showName: false } })).text).not.toContain("Dr Yonas");
+  });
+
+  test("REG-FE-PRTPL-075 the one switch on one paper hides every doctor's name on that paper, and only that paper", () => {
+    const show = { docs: { labreport: { show: { signerName: false } } } };
+    const lab = render(labreport(), ctx(show)).text;
+    expect(lab).not.toContain("Dr Yonas");
+    expect(lab).not.toContain("Dr Meron");
+    const p = render(rx(), ctx(show));
+    expect(p.text).toContain("Prescriber Dr Yonas");
+    const off = render(rx(), ctx({ docs: { prescription: { show: { signerName: false } } } }));
+    expect(off.text).not.toContain("Dr Yonas");
+    expect(sigNames(off.html)).toHaveLength(0);
+    // The Z-report's cashier row is accountability, not a doctor's name: only the line goes.
+    const z = render(zreport(), ctx({ docs: { zreport: { show: { signerName: false } } } }));
+    expect(z.text).toContain("Cashier Hana");
+    expect(sigNames(z.html)).toHaveLength(0);
   });
 
   test("REG-FE-PRTPL-073 a paper can override the one switch, either way", () => {
     const offHere = render(rx(), ctx({ docs: { prescription: { show: { signerName: false } } } }));
     expect(sigNames(offHere.html)).toHaveLength(0);
-    expect(offHere.text).toContain("Prescriber Dr Yonas");
-    const onHere = render(rx(), ctx({ signature: { showName: false }, docs: { prescription: { show: { signerName: true, doctorName: true } } } }));
+    expect(offHere.text).not.toContain("Prescriber");
+    const onHere = render(rx(), ctx({ signature: { showName: false }, docs: { prescription: { show: { signerName: true } } } }));
     expect(sigNames(onHere.html)).toEqual(["Dr Yonas"]);
     expect(onHere.text).toContain("Prescriber Dr Yonas");
     // Another paper still follows the one switch.

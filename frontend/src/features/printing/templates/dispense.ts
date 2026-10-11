@@ -43,7 +43,7 @@ export function renderDispense(d: DispenseDoc, c: PrintCtx, o: RenderOpts = {}):
     ${kvRow(label(c, "dispense.prescription"), `<b>${esc(d.rxRef)}</b>`)}
     ${kvRow(label(c, "common.date"), esc(fmtDate(d.when, loc, true)))}
     ${kvRow(label(c, "common.patient"), `${esc(d.patient)}${d.mrn ? ` (${esc(d.mrn)})` : ""}`)}
-    ${d.prescriber ? kvRow(label(c, "prescription.prescriber"), esc(d.prescriber)) : ""}
+    ${d.prescriber && flag("signerName") ? kvRow(label(c, "prescription.prescriber"), esc(d.prescriber)) : ""}
     <table class="dp"><thead><tr><th>${esc(label(c, "dispense.drug"))}</th>${hasQty ? `<th class="r">${esc(label(c, "dispense.qty"))}</th>` : ""}
       ${hasBatch ? `<th>${esc(label(c, "dispense.batch"))}</th>` : ""}</tr></thead><tbody>${rows}</tbody></table>
     ${flag("allergies") && d.allergies && d.allergies.length ? `<p class="warnline"><b>${esc(label(c, "prescription.allergies"))}:</b> ${d.allergies.map(esc).join(", ")}</p>` : ""}

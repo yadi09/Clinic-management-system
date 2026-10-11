@@ -75,7 +75,7 @@ const SHEET_CSS = `
   .compact .pname{font-size:1.15em}`;
 
 function prescriberLine(c: PrintCtx, name?: string, license?: string, labelKey = "prescription.prescriber", doc: "prescription" | "labrequest" = "prescription"): string {
-  if (!name || !showFlag(c, doc, "doctorName")) return "";
+  if (!name || !showFlag(c, doc, "signerName")) return "";
   const lic = license && showFlag(c, doc, "license") ? ` · ${esc(label(c, "common.license"))} ${esc(license)}` : "";
   return `<div><span class="kk">${esc(label(c, labelKey))}</span>${esc(name)}${lic}</div>`;
 }

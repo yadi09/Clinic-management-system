@@ -330,13 +330,13 @@ describe("REG-FE-PRSCR the printing settings screen", () => {
     const { user } = await open();
     await user.click(tab("Prescriptions"));
     expect(preview()).toContain('class="sig-who"');
-    expect(screen.getByRole("checkbox", { name: /Name under the signature line/ })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /^Doctor's name/ })).toBeChecked();
 
     await user.click(tab("Footer & reprints"));
-    await user.click(screen.getByRole("checkbox", { name: /Print the signer's name under signature lines/ }));
+    await user.click(screen.getByRole("checkbox", { name: /Print the doctor's name on papers/ }));
     // Every paper now follows it: the prescription's own switch reads off, the name is gone.
     await user.click(tab("Prescriptions"));
-    expect(screen.getByRole("checkbox", { name: /Name under the signature line/ })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /^Doctor's name/ })).not.toBeChecked();
     expect(preview()).not.toContain('class="sig-who"');
     expect(preview()).not.toContain("Dr Yonas Bekele");
     await user.click(tab("Lab requests"));
@@ -344,7 +344,7 @@ describe("REG-FE-PRSCR the printing settings screen", () => {
 
     // One paper may still say otherwise.
     await user.click(tab("Prescriptions"));
-    await user.click(screen.getByRole("checkbox", { name: /Name under the signature line/ }));
+    await user.click(screen.getByRole("checkbox", { name: /^Doctor's name/ }));
     expect(preview()).toContain('class="sig-who"');
 
     await user.click(screen.getByRole("button", { name: /Save printing settings/ }));
@@ -390,5 +390,28 @@ describe("REG-FE-PRSCR the printing settings screen", () => {
     const doc = api.savePrintSettings.mock.calls[0][0].settings;
     expect(doc.look.header).toBe("compact");
     expect(doc.docs.labreport.show.critical).toBe(false);
+  });
+  test("REG-FE-PRSCR-023 a paper's own Doctor's name switch hides the name everywhere on that paper — prescription, lab request, lab report", async () => {
+    const text = () => { const d = new DOMParser().parseFromString(preview(), "text/html"); d.querySelectorAll("style").forEach((n) => n.remove()); return d.body.textContent ?? ""; };
+    const sw = () => screen.getByRole("checkbox", { name: /^Doctor's name/ });
+    auth.flags = { laboratory: false };
+    let r = await open();
+    for (const [paper, name] of [["Prescriptions", "Dr Yonas Bekele"], ["Lab requests", "Dr Yonas Bekele"]] as const) {
+      await r.user.click(tab(paper));
+      expect(text()).toContain(name);
+      await r.user.click(sw());
+      expect(text()).not.toContain(name);
+      expect(preview()).not.toContain('class="sig-who"');
+    }
+    r.unmount();
+
+    auth.flags = { laboratory: true };
+    r = await open();
+    await r.user.click(tab("Lab reports"));
+    expect(text()).toContain("Ordered by Dr Yonas Bekele");
+    expect(text()).toContain("Dr Meron Alemu");
+    await r.user.click(sw());
+    expect(text()).not.toContain("Dr Yonas Bekele");
+    expect(text()).not.toContain("Dr Meron Alemu");
   });
 });

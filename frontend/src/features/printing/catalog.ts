@@ -46,17 +46,19 @@ export interface DocInfo {
 
 const ALL: PaperId[] = ["slip58", "slip80", "a5", "a4"];
 
-// A name under a signature line is the signer's, and several people may work from one
-// account: the clinic can leave the line for whoever signs. One switch for every paper
-// (Footer & reprints) that each paper can override.
+// One switch decides whether the doctor's name is printed on a paper — under the
+// signature line and in the details at the top. Several doctors may share one account,
+// and a name printed from it would be the wrong doctor's. A single switch in Footer &
+// reprints sets every paper at once; each paper can still say otherwise.
+const FOLLOWS = "Follows the switch in Footer & reprints until you change it here.";
 const SIGNER: ToggleInfo = {
-  id: "signerName", label: "Name under the signature line", default: true,
-  help: "Turn off when several people sign from one account: the line is left blank for whoever signs.",
+  id: "signerName", label: "Doctor's name", default: true,
+  help: `Under the signature line and in the details at the top. Turn off when several doctors share one account. ${FOLLOWS}`,
   fallback: (s) => s.signature.showName,
 };
-const DOCTOR: ToggleInfo = {
-  id: "doctorName", label: "Doctor's name in the details at the top", default: true,
-  help: "Turn off together with the signature name when several doctors share one account.",
+const CASHIER: ToggleInfo = {
+  id: "signerName", label: "Cashier's name under the signature line", default: true,
+  help: FOLLOWS,
   fallback: (s) => s.signature.showName,
 };
 
@@ -110,7 +112,6 @@ export const CATALOG: DocInfo[] = [
       { id: "stamp", label: "Stamp box", default: true },
       { id: "validity", label: "Validity line", default: true },
       SIGNER,
-      DOCTOR,
     ],
     texts: [
       { id: "validity", label: "Validity line", default: "Valid only with the prescriber's signature & clinic stamp. Present this prescription at any licensed pharmacy.", multiline: true },
@@ -135,7 +136,6 @@ export const CATALOG: DocInfo[] = [
       { id: "signature", label: "Signature line", default: true },
       { id: "license", label: "Requester's licence number", default: true },
       SIGNER,
-      DOCTOR,
     ],
     texts: [
       { id: "instruction", label: "Instruction to the lab", default: "Please perform the tests above and return the report to the patient / referring clinic.", multiline: true },
@@ -176,7 +176,7 @@ export const CATALOG: DocInfo[] = [
       { id: "printedAt", label: "Time it was printed", default: true },
       { id: "signature", label: "Cashier signature line", default: true },
       { id: "managerSign", label: "Manager signature line", default: true },
-      SIGNER,
+      CASHIER,
     ],
     texts: [{ id: "footer", label: "Closing line", default: "", multiline: true }],
     labels: ["zreport.title", "zreport.cashier", "zreport.businessDate", "zreport.collected", "zreport.expected", "zreport.counted",
@@ -251,7 +251,6 @@ export const CATALOG: DocInfo[] = [
       { id: "signature", label: "Signature line", default: true },
       { id: "stamp", label: "Stamp box", default: false },
       SIGNER,
-      DOCTOR,
     ],
     texts: [{ id: "footer", label: "Note under the sections", default: "Confidential — for the named patient and their treating clinicians.", multiline: true }],
     labels: ["exam.title", "exam.visitDate", "exam.examinedBy", "exam.complaint", "exam.history", "exam.extraoral", "exam.intraoral",

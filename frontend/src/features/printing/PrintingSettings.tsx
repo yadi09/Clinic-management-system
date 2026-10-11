@@ -378,8 +378,8 @@ export function PrintingSettings() {
               <div className="space-y-1">
                 <Toggle checked={draft.signature.showName} disabled={ro}
                   onChange={(v) => edit((d) => ({ ...d, signature: { showName: v } }))}
-                  label="Print the signer's name under signature lines"
-                  help="Switch off when several people work from one account, so the line is left for whoever signs. Each paper has its own switch that can override this." />
+                  label="Print the doctor's name on papers"
+                  help="Under the signature line and in the details at the top. Switch off when several doctors work from one account. Each paper has its own switch that can override this." />
               </div>
               <div className="space-y-1">
                 <Toggle checked={draft.integrity.duplicateMark} disabled={ro}

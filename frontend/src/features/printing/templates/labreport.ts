@@ -44,7 +44,7 @@ export function renderLabReport(d: LabReportDoc, c: PrintCtx, o: RenderOpts = {}
   const trail = [
     flag("collection") && d.collectedAt ? `<div><span class="k2">${esc(label(c, "labreport.collected"))}</span> ${esc(fmtDate(d.collectedAt, loc, true))}${d.collectedBy ? ` · ${esc(d.collectedBy)}` : ""}</div>` : "",
     d.reportedAt ? `<div><span class="k2">${esc(label(c, "labreport.reported"))}</span> ${esc(fmtDate(d.reportedAt, loc, true))}</div>` : "",
-    flag("validatedBy") && d.validatedBy ? `<div><span class="k2">${esc(label(c, "labreport.validatedBy"))}</span> ${esc(d.validatedBy)}${d.validatedAt ? ` · ${esc(fmtDate(d.validatedAt, loc, true))}` : ""}</div>` : "",
+    flag("validatedBy") && flag("signerName") && d.validatedBy ? `<div><span class="k2">${esc(label(c, "labreport.validatedBy"))}</span> ${esc(d.validatedBy)}${d.validatedAt ? ` · ${esc(fmtDate(d.validatedAt, loc, true))}` : ""}</div>` : "",
   ].join("");
   const critical = d.critical && flag("critical")
     ? `<p class="critnote">${esc(label(c, "labreport.critical"))}${d.notifiedAt
@@ -59,7 +59,7 @@ export function renderLabReport(d: LabReportDoc, c: PrintCtx, o: RenderOpts = {}
       <div class="r"><div><b>${esc(d.patient)}</b></div><div class="muted">${d.mrn ? `${esc(label(c, "common.cardNo"))} ${esc(d.mrn)}` : ""}</div></div>
     </div>
     <div class="muted">${[d.priority ? `${esc(label(c, "labreport.priority"))} ${esc(d.priority)}` : "",
-      flag("orderedBy") && d.orderedBy ? `${esc(label(c, "labreport.orderedBy"))} ${esc(d.orderedBy)}` : ""].filter(Boolean).join(" · ")}</div>
+      flag("orderedBy") && flag("signerName") && d.orderedBy ? `${esc(label(c, "labreport.orderedBy"))} ${esc(d.orderedBy)}` : ""].filter(Boolean).join(" · ")}</div>
     ${d.clinicalNote && flag("clinicalNote") ? `<div class="muted">${esc(d.clinicalNote)}</div>` : ""}
     <table class="lr"><thead><tr><th>${esc(label(c, "labreport.analyte"))}</th><th>${esc(label(c, "labreport.result"))}</th>
       <th>${esc(label(c, "labreport.reference"))}</th>${flag("flags") ? `<th>${esc(label(c, "labreport.flag"))}</th>` : ""}</tr></thead>
