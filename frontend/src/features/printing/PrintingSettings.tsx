@@ -373,6 +373,12 @@ export function PrintingSettings() {
                   onChange={(e) => edit((d) => ({ ...d, footer: { text: e.target.value } }))} />
               </Field>
               <div className="space-y-1">
+                <Toggle checked={draft.signature.showName} disabled={ro}
+                  onChange={(v) => edit((d) => ({ ...d, signature: { showName: v } }))}
+                  label="Print the signer's name under signature lines"
+                  help="Switch off when several people work from one account, so the line is left for whoever signs. Each paper has its own switch that can override this." />
+              </div>
+              <div className="space-y-1">
                 <Toggle checked={draft.integrity.duplicateMark} disabled={ro}
                   onChange={(v) => edit((d) => ({ ...d, integrity: { ...d.integrity, duplicateMark: v } }))}
                   label="Mark a reprint" help="A paper printed a second time says so. The count is kept on the server, the same on every computer." />
@@ -492,7 +498,7 @@ function DocOptions({ info, draft, ro, onTemplate, onPaper, onShow, onText, onLa
         <div className="grid gap-x-4 sm:grid-cols-2">
           {info.toggles.map((x) => (
             <Toggle key={x.id} label={x.label} help={x.help} disabled={ro}
-              checked={o.show?.[x.id] ?? x.default} onChange={(v) => onShow(x.id, v)} />
+              checked={o.show?.[x.id] ?? x.fallback?.(draft) ?? x.default} onChange={(v) => onShow(x.id, v)} />
           ))}
         </div>
       </Field>

@@ -587,3 +587,64 @@ describe("REG-FE-PRTPL the logo's position, size and shape are obeyed on every p
     expect(header({ logoShape: "square", logoSize: "large" }, "sheet")).toContain("width:84px;height:84px;object-fit:contain;border-radius:0");
   });
 });
+
+describe("REG-FE-PRTPL the signer's name can be left off, for one paper or for all", () => {
+  const sigNames = (html: string) => [...html.matchAll(/class="sig-who">([^<]*)</g)].map((m) => m[1]);
+  const labrequest = (): DocData => ({
+    doc: "labrequest",
+    data: { clinic: "", ref: "L1", qrData: "", patient: "P", prescriber: "Dr Yonas", when: "2026-10-03", tests: ["CBC"] },
+  } as DocData);
+  const cert = (): DocData => ({
+    doc: "certificate",
+    data: { clinic: "", ref: "MC-1", kind: "sick_leave", patient: "Abebe", showDiagnosis: false, restDays: 2, issuedOn: "2026-10-01", issuedBy: "Dr Yonas", status: "active" },
+  } as DocData);
+  const exam = (): DocData => ({
+    doc: "exam",
+    data: { patient: "Abebe", visitDate: "2026-10-01", recordedBy: "Dr Yonas", extraoral: [], intraoral: [], investigations: [], treatmentGiven: [], procedures: [], chiefComplaint: "Pain" },
+  } as DocData);
+  const all: [string, () => DocData][] = [
+    ["prescription", () => rx()], ["labrequest", labrequest], ["certificate", cert], ["exam", exam],
+    ["labreport", () => labreport()], ["dispense", () => dispense()], ["zreport", () => zreport()],
+  ];
+
+  test("REG-FE-PRTPL-070 by default every signed paper prints the signer's name under its line", () => {
+    for (const [name, make] of all) {
+      expect(sigNames(render(make(), ctx()).html), name).toHaveLength(1);
+    }
+  });
+
+  test("REG-FE-PRTPL-071 one switch for every paper leaves the line blank for whoever signs", () => {
+    for (const [name, make] of all) {
+      const r = render(make(), ctx({ signature: { showName: false } }));
+      expect(sigNames(r.html), name).toHaveLength(0);
+      expect(r.html, name).toContain("sig-line");
+    }
+  });
+
+  test("REG-FE-PRTPL-072 shared account: the doctor's name goes from the details at the top as well, on the papers that show it", () => {
+    const on = render(rx(), ctx()).text;
+    expect(on).toContain("Prescriber Dr Yonas");
+    const off = render(rx(), ctx({ signature: { showName: false } })).text;
+    expect(off).not.toContain("Dr Yonas");
+    expect(render(labrequest(), ctx({ signature: { showName: false } })).text).not.toContain("Dr Yonas");
+    expect(render(exam(), ctx()).text).toContain("Examined by Dr Yonas");
+    expect(render(exam(), ctx({ signature: { showName: false } })).text).not.toContain("Dr Yonas");
+  });
+
+  test("REG-FE-PRTPL-073 a paper can override the one switch, either way", () => {
+    const offHere = render(rx(), ctx({ docs: { prescription: { show: { signerName: false } } } }));
+    expect(sigNames(offHere.html)).toHaveLength(0);
+    expect(offHere.text).toContain("Prescriber Dr Yonas");
+    const onHere = render(rx(), ctx({ signature: { showName: false }, docs: { prescription: { show: { signerName: true, doctorName: true } } } }));
+    expect(sigNames(onHere.html)).toEqual(["Dr Yonas"]);
+    expect(onHere.text).toContain("Prescriber Dr Yonas");
+    // Another paper still follows the one switch.
+    expect(sigNames(render(cert(), ctx({ signature: { showName: false }, docs: { prescription: { show: { signerName: true } } } })).html)).toHaveLength(0);
+  });
+
+  test("REG-FE-PRTPL-074 the statement and the receipt never carried a name under a line, so nothing changes there", () => {
+    expect(sigNames(render(statement(), ctx({ docs: { statement: { show: { signature: true } } } })).html)).toHaveLength(0);
+    expect(docInfo("statement")?.toggles.some((t) => t.id === "signerName")).toBe(false);
+    expect(docInfo("receipt")?.toggles.some((t) => t.id === "signerName")).toBe(false);
+  });
+});

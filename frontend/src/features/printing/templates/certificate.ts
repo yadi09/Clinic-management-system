@@ -11,7 +11,7 @@
 //   A voided certificate still prints, watermarked VOID: refusing would leave the
 //   copy already in someone's file as the only version in existence.
 import {
-  duplicateHtml, esc, footerHtml, label, showFlag, signatureBox, stampBox, textSlot, topHtml, type PrintCtx,
+  duplicateHtml, esc, footerHtml, label, showFlag, signatureBox, signer, stampBox, textSlot, topHtml, type PrintCtx,
 } from "@/features/printing/blocks";
 import { fmtDate } from "@/features/printing/format";
 import { pick } from "@/features/printing/templates/resolve";
@@ -94,7 +94,7 @@ export function renderCertificate(d: CertificateDoc, c: PrintCtx, o: RenderOpts 
     ${isVoid ? `<p class="voidnote">${esc(label(c, "certificate.voidNote"))}${d.voidReason ? ` (${esc(d.voidReason)})` : ""}</p>` : ""}
     <div class="cert-sign">
       ${flag("stamp") ? stampBox(label(c, "common.stamp")) : ""}
-      ${flag("signature") ? `<div>${signatureBox(label(c, "certificate.role"), d.issuedBy)}<div class="muted">${esc(label(c, "certificate.issued"))} ${esc(fmtDate(d.issuedOn, loc))}${ec && d.issuedOnEc ? ` · ${esc(d.issuedOnEc)}` : ""}</div></div>` : ""}
+      ${flag("signature") ? `<div>${signatureBox(label(c, "certificate.role"), signer(c, "certificate", d.issuedBy))}<div class="muted">${esc(label(c, "certificate.issued"))} ${esc(fmtDate(d.issuedOn, loc))}${ec && d.issuedOnEc ? ` · ${esc(d.issuedOnEc)}` : ""}</div></div>` : ""}
     </div>
     ${duplicateHtml(c, o.duplicate, (iso) => fmtDate(iso, loc, true))}
     ${footerHtml(c, [`${esc(label(c, "certificate.verify"))}: ${esc(d.ref)}`])}`;

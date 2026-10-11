@@ -1,7 +1,7 @@
 // The in-house laboratory report: the result as the laboratory states it, on the
 // clinic's identity, with who drew the sample, who signed it off and when.
 import {
-  duplicateHtml, esc, footerHtml, headerHtml, label, multiline, showFlag, signatureBox, stampBox, textSlot,
+  duplicateHtml, esc, footerHtml, headerHtml, label, multiline, showFlag, signatureBox, signer, stampBox, textSlot,
   type PrintCtx,
 } from "@/features/printing/blocks";
 import { fmtDate } from "@/features/printing/format";
@@ -70,7 +70,7 @@ export function renderLabReport(d: LabReportDoc, c: PrintCtx, o: RenderOpts = {}
       <div class="muted lr-disc">${disclaimer ? multiline(disclaimer) : ""}</div>
       <div style="display:flex;gap:14px;align-items:flex-end">
         ${flag("stamp") ? stampBox(label(c, "common.stamp")) : ""}
-        ${flag("signature") ? signatureBox(label(c, "common.signatureStamp"), d.validatedBy) : ""}
+        ${flag("signature") ? signatureBox(label(c, "common.signatureStamp"), signer(c, "labreport", d.validatedBy)) : ""}
       </div>
     </div>
     ${duplicateHtml(c, o.duplicate, (iso) => fmtDate(iso, loc, true))}

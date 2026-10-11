@@ -61,6 +61,12 @@ export interface Integrity {
   showReprintLine: boolean;
 }
 
+export interface Signatures {
+  /** Print the signer's name under signature lines. Off when several people work from
+   *  one account and the line should be left for whoever signs. */
+  showName: boolean;
+}
+
 export interface DocOverrides {
   template?: string;
   paper?: PaperId;
@@ -82,6 +88,7 @@ export interface PrintSettings {
   locale: Locale;
   footer: { text: string };
   integrity: Integrity;
+  signature: Signatures;
   docs: Partial<Record<DocId, DocOverrides>>;
   /** The clinic's own wording for any fixed label, keyed "receipt.total", "common.patient". */
   labels: Record<string, string>;
@@ -101,6 +108,7 @@ export const DEFAULT_SETTINGS: PrintSettings = {
   locale: { language: "en", dates: "gregorian", time24: false, currency: "ETB", thousands: true },
   footer: { text: "" },
   integrity: { duplicateMark: true, duplicateText: "DUPLICATE", showReprintLine: true },
+  signature: { showName: true },
   docs: {},
   labels: {},
   branches: {},
@@ -123,6 +131,7 @@ export function resolveSettings(raw: unknown): PrintSettings {
   const lc = isObj(r.locale) ? r.locale : {};
   const ig = isObj(r.integrity) ? r.integrity : {};
   const ft = isObj(r.footer) ? r.footer : {};
+  const sg = isObj(r.signature) ? r.signature : {};
   const docs: PrintSettings["docs"] = {};
   if (isObj(r.docs)) {
     for (const [k, v] of Object.entries(r.docs)) {
@@ -182,6 +191,7 @@ export function resolveSettings(raw: unknown): PrintSettings {
       duplicateText: str(ig.duplicateText, d.integrity.duplicateText).trim() || d.integrity.duplicateText,
       showReprintLine: bool(ig.showReprintLine, d.integrity.showReprintLine),
     },
+    signature: { showName: bool(sg.showName, d.signature.showName) },
     docs, labels, branches,
   };
 }

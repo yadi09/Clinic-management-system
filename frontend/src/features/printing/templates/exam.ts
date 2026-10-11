@@ -2,7 +2,7 @@
 // assessment on one page in the order a clinician reads it. A section with nothing in
 // it is left out entirely — a blank heading reads as missing data.
 import {
-  duplicateHtml, esc, footerHtml, label, multiline, showFlag, signatureBox, stampBox, textSlot, topHtml,
+  duplicateHtml, esc, footerHtml, label, multiline, showFlag, signatureBox, signer, stampBox, textSlot, topHtml,
   type PrintCtx,
 } from "@/features/printing/blocks";
 import { fmtDate } from "@/features/printing/format";
@@ -61,7 +61,7 @@ export function renderExam(d: ExamDoc, c: PrintCtx, o: RenderOpts = {}): Built {
       <div><div class="ex-title">${esc(label(c, "exam.title"))}</div>
         <div class="pname">${esc(d.patient)}</div><div class="muted">${meta}</div></div>
       <div class="r"><div class="k2">${esc(label(c, "exam.visitDate"))}</div><b>${esc(fmtDate(d.visitDate, loc))}</b>
-        ${d.recordedBy ? `<div><span class="k2">${esc(label(c, "exam.examinedBy"))}</span>${esc(d.recordedBy)}</div>` : ""}</div>
+        ${d.recordedBy && flag("doctorName") ? `<div><span class="k2">${esc(label(c, "exam.examinedBy"))}</span>${esc(d.recordedBy)}</div>` : ""}</div>
     </div>
     ${flag("complaint") ? block(label(c, "exam.complaint"), para(d.chiefComplaint) + para(d.hpi)) : ""}
     ${flag("history") ? block(label(c, "exam.history"), para(d.pastDentalHistory)) : ""}
@@ -76,7 +76,7 @@ export function renderExam(d: ExamDoc, c: PrintCtx, o: RenderOpts = {}): Built {
       <div class="muted ex-disc">${disclaimer ? multiline(disclaimer) : ""}</div>
       <div style="display:flex;gap:14px;align-items:flex-end">
         ${flag("stamp") ? stampBox(label(c, "common.stamp")) : ""}
-        ${flag("signature") ? signatureBox(label(c, "common.signatureStamp"), d.recordedBy) : ""}
+        ${flag("signature") ? signatureBox(label(c, "common.signatureStamp"), signer(c, "exam", d.recordedBy)) : ""}
       </div>
     </div>
     ${duplicateHtml(c, o.duplicate, (iso) => fmtDate(iso, loc, true))}

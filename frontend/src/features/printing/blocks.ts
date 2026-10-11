@@ -56,7 +56,14 @@ export function label(c: PrintCtx, key: string): string {
 export function showFlag(c: PrintCtx, doc: DocId, id: string): boolean {
   const o = c.settings.docs[doc]?.show?.[id];
   if (typeof o === "boolean") return o;
-  return docInfo(doc)?.toggles.find((t) => t.id === id)?.default ?? false;
+  const t = docInfo(doc)?.toggles.find((x) => x.id === id);
+  return t?.fallback ? t.fallback(c.settings) : t?.default ?? false;
+}
+
+/** The name printed under a signature line — or none, when several people sign from
+ *  one account and the line is left for whoever signs. */
+export function signer(c: PrintCtx, doc: DocId, who?: string): string | undefined {
+  return showFlag(c, doc, "signerName") ? who : undefined;
 }
 
 export function textSlot(c: PrintCtx, doc: DocId, id: string): string {

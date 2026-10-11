@@ -96,6 +96,13 @@ describe("REG-FE-PRSET printing settings", () => {
     expect(docInfo("nope" as never)).toBeUndefined();
   });
 
+  test("REG-FE-PRSET-009 the signer's name is on unless the clinic switched it off; a wrong type falls back to on", () => {
+    expect(DEFAULT_SETTINGS.signature.showName).toBe(true);
+    expect(resolveSettings({ signature: { showName: false } }).signature.showName).toBe(false);
+    expect(resolveSettings({ signature: { showName: "no" } }).signature.showName).toBe(true);
+    expect(resolveSettings({ signature: "off" }).signature.showName).toBe(true);
+  });
+
   test("REG-FE-PRSET-008 the catalog covers every document, with unique ids, and every wording key it offers exists", () => {
     const ids = CATALOG.map((d) => d.id);
     expect(new Set(ids).size).toBe(ids.length);

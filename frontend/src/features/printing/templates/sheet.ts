@@ -4,7 +4,7 @@
 // same at A5 with smaller type. Pad leaves the top blank for a clinic that already
 // has its own printed pad or letterhead — which is how many clinics really work.
 import {
-  duplicateHtml, esc, footerHtml, identityOf, label, multiline, showFlag, signatureBox, stampBox, textSlot, topHtml,
+  duplicateHtml, esc, footerHtml, identityOf, label, multiline, showFlag, signatureBox, signer, stampBox, textSlot, topHtml,
   type PrintCtx,
 } from "@/features/printing/blocks";
 import { fmtDate } from "@/features/printing/format";
@@ -75,7 +75,7 @@ const SHEET_CSS = `
   .compact .pname{font-size:1.15em}`;
 
 function prescriberLine(c: PrintCtx, name?: string, license?: string, labelKey = "prescription.prescriber", doc: "prescription" | "labrequest" = "prescription"): string {
-  if (!name) return "";
+  if (!name || !showFlag(c, doc, "doctorName")) return "";
   const lic = license && showFlag(c, doc, "license") ? ` · ${esc(label(c, "common.license"))} ${esc(license)}` : "";
   return `<div><span class="kk">${esc(label(c, labelKey))}</span>${esc(name)}${lic}</div>`;
 }
@@ -128,7 +128,7 @@ export function renderPrescription(d: PrescriptionDoc, c: PrintCtx, o: RenderOpt
       <div class="valid">${valid}</div>
       <div class="right">
         ${flag("stamp") ? stampBox(label(c, "common.stamp")) : ""}
-        ${flag("signature") ? signatureBox(label(c, "common.signatureStamp"), d.prescriber) : ""}
+        ${flag("signature") ? signatureBox(label(c, "common.signatureStamp"), signer(c, "prescription", d.prescriber)) : ""}
       </div>
     </div>
     ${dup}
@@ -172,7 +172,7 @@ export function renderLabRequest(d: LabRequestDoc, c: PrintCtx, o: RenderOpts = 
     <ol class="items">${tests || `<li class="muted">—</li>`}</ol>
     <div class="grid-foot">
       <div class="valid">${multiline(textSlot(c, "labrequest", "instruction"))}</div>
-      <div class="right">${flag("signature") ? signatureBox(label(c, "common.signatureStamp"), d.prescriber) : ""}</div>
+      <div class="right">${flag("signature") ? signatureBox(label(c, "common.signatureStamp"), signer(c, "labrequest", d.prescriber)) : ""}</div>
     </div>
     ${dup}
     ${footerHtml(c, [`${esc(id.nameEn)} · ${esc(d.ref)}`])}

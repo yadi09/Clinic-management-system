@@ -1,7 +1,7 @@
 // The dispensing slip: what the pharmacy gave, how to take it, from which batch.
 // Until now the pharmacy "Print" button printed the whole web page, menus and all.
 import {
-  duplicateHtml, esc, footerHtml, headerHtml, kvRow, label, multiline, showFlag, signatureBox, textSlot,
+  duplicateHtml, esc, footerHtml, headerHtml, kvRow, label, multiline, showFlag, signatureBox, signer, textSlot,
   type PrintCtx,
 } from "@/features/printing/blocks";
 import { fmtDate } from "@/features/printing/format";
@@ -48,7 +48,7 @@ export function renderDispense(d: DispenseDoc, c: PrintCtx, o: RenderOpts = {}):
       ${hasBatch ? `<th>${esc(label(c, "dispense.batch"))}</th>` : ""}</tr></thead><tbody>${rows}</tbody></table>
     ${flag("allergies") && d.allergies && d.allergies.length ? `<p class="warnline"><b>${esc(label(c, "prescription.allergies"))}:</b> ${d.allergies.map(esc).join(", ")}</p>` : ""}
     ${flag("counselling") && d.counselling?.trim() ? `<p><span class="k2">${esc(label(c, "dispense.counselling"))}</span>${multiline(d.counselling)}</p>` : ""}
-    ${flag("signature") ? signatureBox(label(c, "common.signature"), d.dispensedBy) : ""}
+    ${flag("signature") ? signatureBox(label(c, "common.signature"), signer(c, "dispense", d.dispensedBy)) : ""}
     ${duplicateHtml(c, o.duplicate, (iso) => fmtDate(iso, loc, true))}
     ${footerHtml(c, text ? [multiline(text)] : [])}`;
   return {

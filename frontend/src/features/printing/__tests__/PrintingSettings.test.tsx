@@ -321,4 +321,31 @@ describe("REG-FE-PRSCR the printing settings screen", () => {
       vi.unstubAllGlobals();
     }
   });
+  test("REG-FE-PRSCR-020 the signer's name: one switch for every paper, which each paper can override", async () => {
+    const { user } = await open();
+    await user.click(tab("Prescriptions"));
+    expect(preview()).toContain('class="sig-who"');
+    expect(screen.getByRole("checkbox", { name: /Name under the signature line/ })).toBeChecked();
+
+    await user.click(tab("Footer & reprints"));
+    await user.click(screen.getByRole("checkbox", { name: /Print the signer's name under signature lines/ }));
+    // Every paper now follows it: the prescription's own switch reads off, the name is gone.
+    await user.click(tab("Prescriptions"));
+    expect(screen.getByRole("checkbox", { name: /Name under the signature line/ })).not.toBeChecked();
+    expect(preview()).not.toContain('class="sig-who"');
+    expect(preview()).not.toContain("Dr Yonas Bekele");
+    await user.click(tab("Lab requests"));
+    expect(preview()).not.toContain('class="sig-who"');
+
+    // One paper may still say otherwise.
+    await user.click(tab("Prescriptions"));
+    await user.click(screen.getByRole("checkbox", { name: /Name under the signature line/ }));
+    expect(preview()).toContain('class="sig-who"');
+
+    await user.click(screen.getByRole("button", { name: /Save printing settings/ }));
+    await waitFor(() => expect(api.savePrintSettings).toHaveBeenCalledTimes(1));
+    const doc = api.savePrintSettings.mock.calls[0][0].settings;
+    expect(doc.signature).toEqual({ showName: false });
+    expect(doc.docs.prescription.show.signerName).toBe(true);
+  });
 });

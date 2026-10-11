@@ -2,7 +2,7 @@
 // Not given to patients, so it is built for being read in a folder a year later: who
 // closed which day at which branch, how the drawer reconciled, and a place to sign.
 import {
-  duplicateHtml, esc, footerHtml, headerHtml, identityOf, kvRow, label, multiline, showFlag, signatureBox, textSlot,
+  duplicateHtml, esc, footerHtml, headerHtml, identityOf, kvRow, label, multiline, showFlag, signatureBox, signer, textSlot,
   type PrintCtx,
 } from "@/features/printing/blocks";
 import { fmtDate, money } from "@/features/printing/format";
@@ -34,7 +34,7 @@ export function renderZReport(d: ZReportDoc, c: PrintCtx, o: RenderOpts = {}): B
     kvRow(`${m.label} (${m.count})${m.cash ? "" : ` — ${label(c, "zreport.notInDrawer")}`}`, amt(m.total))).join("")
     || kvRow(label(c, "zreport.none"), amt("0"));
   const sign = [
-    flag("signature") ? signatureBox(label(c, "zreport.cashierSign"), d.cashier) : "",
+    flag("signature") ? signatureBox(label(c, "zreport.cashierSign"), signer(c, "zreport", d.cashier)) : "",
     flag("managerSign") ? signatureBox(label(c, "zreport.managerSign")) : "",
   ].join("");
   const extra = textSlot(c, "zreport", "footer").trim();

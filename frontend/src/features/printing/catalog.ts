@@ -3,7 +3,7 @@
 // The Settings screen is drawn from this list, not hand-built per document: adding a
 // template, a switch or a wording slot here adds it to the screen, to the preview and
 // to the stored settings without touching the screen's code.
-import type { DocId, PaperId } from "@/features/printing/settings";
+import type { DocId, PaperId, PrintSettings } from "@/features/printing/settings";
 
 export interface TemplateInfo {
   id: string;
@@ -14,7 +14,14 @@ export interface TemplateInfo {
   /** Papers this template draws well on. */
   papers: PaperId[];
 }
-export interface ToggleInfo { id: string; label: string; default: boolean; help?: string }
+export interface ToggleInfo {
+  id: string;
+  label: string;
+  default: boolean;
+  help?: string;
+  /** Read from another setting while this paper has no choice of its own. */
+  fallback?: (s: PrintSettings) => boolean;
+}
 export interface TextInfo { id: string; label: string; default: string; help?: string; multiline?: boolean }
 
 export interface DocInfo {
@@ -32,6 +39,20 @@ export interface DocInfo {
 }
 
 const ALL: PaperId[] = ["slip58", "slip80", "a5", "a4"];
+
+// A name under a signature line is the signer's, and several people may work from one
+// account: the clinic can leave the line for whoever signs. One switch for every paper
+// (Footer & reprints) that each paper can override.
+const SIGNER: ToggleInfo = {
+  id: "signerName", label: "Name under the signature line", default: true,
+  help: "Turn off when several people sign from one account: the line is left blank for whoever signs.",
+  fallback: (s) => s.signature.showName,
+};
+const DOCTOR: ToggleInfo = {
+  id: "doctorName", label: "Doctor's name in the details at the top", default: true,
+  help: "Turn off together with the signature name when several doctors share one account.",
+  fallback: (s) => s.signature.showName,
+};
 
 export const CATALOG: DocInfo[] = [
   {
@@ -82,6 +103,8 @@ export const CATALOG: DocInfo[] = [
       { id: "signature", label: "Signature line", default: true },
       { id: "stamp", label: "Stamp box", default: true },
       { id: "validity", label: "Validity line", default: true },
+      SIGNER,
+      DOCTOR,
     ],
     texts: [
       { id: "validity", label: "Validity line", default: "Valid only with the prescriber's signature & clinic stamp. Present this prescription at any licensed pharmacy.", multiline: true },
@@ -104,6 +127,8 @@ export const CATALOG: DocInfo[] = [
       { id: "qr", label: "QR and reference", default: true },
       { id: "signature", label: "Signature line", default: true },
       { id: "license", label: "Requester's licence number", default: true },
+      SIGNER,
+      DOCTOR,
     ],
     texts: [
       { id: "instruction", label: "Instruction to the lab", default: "Please perform the tests above and return the report to the patient / referring clinic.", multiline: true },
@@ -144,6 +169,7 @@ export const CATALOG: DocInfo[] = [
       { id: "printedAt", label: "Time it was printed", default: true },
       { id: "signature", label: "Cashier signature line", default: true },
       { id: "managerSign", label: "Manager signature line", default: true },
+      SIGNER,
     ],
     texts: [{ id: "footer", label: "Closing line", default: "", multiline: true }],
     labels: ["zreport.title", "zreport.cashier", "zreport.businessDate", "zreport.collected", "zreport.expected", "zreport.counted",
@@ -167,6 +193,7 @@ export const CATALOG: DocInfo[] = [
       { id: "validatedBy", label: "Validated by", default: true },
       { id: "signature", label: "Signature line", default: true },
       { id: "stamp", label: "Stamp box", default: false },
+      SIGNER,
     ],
     texts: [{ id: "footer", label: "Closing line", default: "Results relate only to the sample received. Interpret with the clinical picture.", multiline: true }],
     labels: ["labreport.title", "labreport.sample", "labreport.analyte", "labreport.result", "labreport.reference", "labreport.flag",
@@ -186,6 +213,7 @@ export const CATALOG: DocInfo[] = [
       { id: "qr", label: "QR and reference", default: true },
       { id: "signature", label: "Signature line", default: true },
       { id: "stamp", label: "Stamp box", default: true },
+      SIGNER,
     ],
     texts: [
       { id: "sickLeave", label: "Sick leave wording", default: "This is to certify that {patient} attended this clinic and was examined on {date}. In my professional opinion the patient is **unfit for work or study** and requires rest for {days}.", help: "{patient}, {date} and {days} are filled in. **text** is bold.", multiline: true },
@@ -213,6 +241,8 @@ export const CATALOG: DocInfo[] = [
       { id: "postop", label: "Post-operative instructions", default: true },
       { id: "signature", label: "Signature line", default: true },
       { id: "stamp", label: "Stamp box", default: false },
+      SIGNER,
+      DOCTOR,
     ],
     texts: [{ id: "footer", label: "Note under the sections", default: "Confidential — for the named patient and their treating clinicians.", multiline: true }],
     labels: ["exam.title", "exam.visitDate", "exam.examinedBy", "exam.complaint", "exam.history", "exam.extraoral", "exam.intraoral",
@@ -232,6 +262,7 @@ export const CATALOG: DocInfo[] = [
       { id: "allergies", label: "Allergies", default: true },
       { id: "counselling", label: "Counselling note", default: true },
       { id: "signature", label: "Dispenser's signature line", default: true },
+      SIGNER,
     ],
     texts: [{ id: "footer", label: "Closing line", default: "Keep medicines out of reach of children. Finish the course unless told otherwise.", multiline: true }],
     labels: ["dispense.title", "dispense.prescription", "dispense.drug", "dispense.qty", "dispense.batch", "dispense.counselling",
