@@ -113,9 +113,12 @@ func (e *apptEnv) checkIn(t *testing.T, apptID string) testkit.Resp {
 
 type apptReception struct {
 	Expected []struct {
-		PatientID     string `json:"patient_id"`
-		AppointmentID string `json:"appointment_id"`
-		Name          string `json:"name"`
+		PatientID      string `json:"patient_id"`
+		AppointmentID  string `json:"appointment_id"`
+		Name           string `json:"name"`
+		Reason         string `json:"reason"`
+		TreatmentVisit bool   `json:"treatment_visit"`
+		StartsAt       string `json:"starts_at"`
 	} `json:"expected"`
 	Waiting []struct {
 		PatientID string `json:"patient_id"`
@@ -434,7 +437,9 @@ func TestREG_APPT_013_ReceptionExpectedListsTodaysBookingThenWaiting(t *testing.
 
 // TestREG_APPT_014_ReceptionExpectedListsTodaysDentalVisit: Given a dental treatment
 // whose first visit is planned for today, When the desk opens "Expected today", Then
-// that patient is listed — they are coming in today just as much as a booked one.
+// that patient is listed — they are coming in today just as much as a booked one — as
+// a treatment visit (no appointment, no time) that names the treatment and the visit.
+// (APT-1: this list used to read only appointments.)
 func TestREG_APPT_014_ReceptionExpectedListsTodaysDentalVisit(t *testing.T) {
 	e := apptNewEnv(t)
 	p := e.patient(t)
@@ -447,12 +452,19 @@ func TestREG_APPT_014_ReceptionExpectedListsTodaysDentalVisit(t *testing.T) {
 		t.Fatalf("fixture: the plan has no visit planned for today (sessions %+v)", plan.Sessions)
 	}
 	rt := e.reception(t)
-	listed := false
+	n := 0
 	for _, x := range rt.Expected {
-		listed = listed || x.PatientID == p.ID
+		if x.PatientID != p.ID {
+			continue
+		}
+		n++
+		if !x.TreatmentVisit || x.AppointmentID != "" || x.StartsAt != "" || x.Reason != "Root canal · visit 1 of 2" {
+			t.Fatalf("treatment visit row %+v, want a treatment visit with no booking, no time and the reason 'Root canal · visit 1 of 2'", x)
+		}
 	}
-	testkit.KnownBug(t, "APT-1", !listed,
-		"reception 'Expected today' reads only appointments; a dental visit planned for today (treatment_sessions) is not listed")
+	if n != 1 {
+		t.Fatalf("patient listed %d times in Expected, want once", n)
+	}
 }
 
 // TestREG_APPT_015_FollowupsListIncludesFollowup: Given a follow-up booked by the

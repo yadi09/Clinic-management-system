@@ -48,6 +48,10 @@ export function ArrivalRow({ p, selected, onPick, lens }: {
           <span className="shrink-0 text-xs font-medium tabular-nums text-muted-foreground">{clock(p.waiting_since)}</span>
         )}
         <span className="min-w-0 flex-1 truncate font-medium">{p.name}</span>
+        {/* Not a booking: a visit of a treatment course that is due today. */}
+        {p.treatment_visit && (
+          <Badge variant="outline" className="shrink-0 border-violet-300 bg-violet-50 text-violet-700">Treatment visit</Badge>
+        )}
         <span className="shrink-0 font-mono text-xs text-muted-foreground">{p.mrn}</span>
       </div>
 

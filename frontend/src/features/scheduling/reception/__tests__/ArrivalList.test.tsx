@@ -122,4 +122,18 @@ describe("REG-FE-ARRIVAL reception arrival row", () => {
     expect(minutesSince(at(-10 * MIN))).toBe(10);
     expect(minutesSince(at(5 * MIN))).toBe(0);
   });
+
+  test("REG-FE-ARRIVAL-016 a treatment visit is tagged, shows its course and visit number, and has no booking time", () => {
+    const { btn } = row(P({ treatment_visit: true, provider_name: undefined, reason: "Root canal · visit 2 of 3" }));
+    expect(btn).toHaveTextContent("Treatment visit");
+    expect(btn).toHaveTextContent("34y F · Root canal · visit 2 of 3");
+    // Nothing was booked, so there is no clock and nothing can be "late".
+    expect(btn).not.toHaveTextContent(/\d{1,2}:\d{2}/);
+    expect(btn).not.toHaveTextContent(/min late/);
+  });
+
+  test("REG-FE-ARRIVAL-017 an ordinary booking is not tagged as a treatment visit", () => {
+    const { btn } = row(P({ starts_at: at(30 * MIN), reason: "Cleaning" }));
+    expect(btn).not.toHaveTextContent("Treatment visit");
+  });
 });

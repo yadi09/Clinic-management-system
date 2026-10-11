@@ -86,7 +86,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 <li><b>Fix:</b> I change the code; its test turns from "known bug" to a normal passing test, and the whole suite must still pass.</li>
 <li><b>Verify:</b> you check it and accept it. Then the next one.</li>
 </ol>
-<p style="margin:8px 0 0;color:var(--soft)">Right now: 174 open · 0 explained or confirmed · 13 fixed, waiting for your check · 12 verified.</p>
+<p style="margin:8px 0 0;color:var(--soft)">Right now: 172 open · 0 explained or confirmed · 15 fixed, waiting for your check · 12 verified.</p>
 </div>
 
 <a class="next" href="#FIN-15" data-open="FIN-15"><span>Next up</span><b>A listed service can be billed at any price</b><em>High · FIN-15 · Open</em></a>
@@ -95,7 +95,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 
 <div class="filters">
   <input id="q" type="search" placeholder="Search: cashier, follow-up, refund…" aria-label="Search issues">
-  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (174)</option><option value="explained">Explained (0)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (13)</option><option value="verified">Verified (12)</option><option value="wontfix">Won't fix (0)</option></select>
+  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (172)</option><option value="explained">Explained (0)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (15)</option><option value="verified">Verified (12)</option><option value="wontfix">Won't fix (0)</option></select>
   <select id="ar" aria-label="Area"><option value="">Every area</option><option value="Appointments &amp; front desk">Appointments &amp; front desk</option><option value="Dental">Dental</option><option value="Money">Money</option><option value="Patient records">Patient records</option><option value="Printing">Printing</option><option value="Reliability">Reliability</option><option value="Safety &amp; access">Safety &amp; access</option><option value="Screens &amp; usability">Screens &amp; usability</option></select>
 </div>
 <p class="count" id="count"></p>
@@ -1725,7 +1725,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
     </div>
   </details>
 </article>
-<article class="issue sev-high st-open" id="APT-1" data-sev="high" data-status="open"
+<article class="issue sev-high st-fixed" id="APT-1" data-sev="high" data-status="fixed"
   data-area="Appointments &amp; front desk" data-q="apt-1 reception&#x27;s &#x27;expected today&#x27; leaves out dental treatment visits reception&#x27;s &#x27;expected&#x27; list only reads booked appointments. dental treatment visits planned for today (from treatment plans) are not shown, although the home dashboard counts them. at cure dental most arrivals are treatment visits. the dashboard says five patients are still to come. reception&#x27;s list says &#x27;nobody booked today&#x27;. dawit arrives for his root-canal visit 2 and is received as a walk-in, so his queue card isn&#x27;t linked to the visit. if the dentist forgets to mark the visit done, he shows tomorrow as &#x27;missed&#x27; although he came. receptionist, dentist appointments &amp; front desk">
   <details>
     <summary>
@@ -1733,7 +1733,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">High</span>
       <span class="ttl">Reception&#x27;s &#x27;Expected today&#x27; leaves out dental treatment visits</span>
       <span class="meta"><span class="id">APT-1</span> · Appointments &amp; front desk · effort M</span>
-      <span class="status">Open</span>
+      <span class="status">Fixed</span>
     </summary>
     <div class="body">
       
@@ -1746,11 +1746,11 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       </dl>
       <div class="tech">
         <details><summary>For the developer: tests and code</summary>
-          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li><code>TestREG_APPT_014_ReceptionExpectedListsTodaysDentalVisit</code></li></ul>
-          <p>Where in the code:</p><ul><li><code>backend/internal/scheduling/service/reception.go:77-93</code></li></ul>
+          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li><code>TestREG_APPT_014_ReceptionExpectedListsTodaysDentalVisit</code></li><li><code>TestREG_APPT_016_ABookedPatientWithAVisitTodayIsListedOnceAsTheBooking</code></li><li><code>TestREG_APPT_017_ReceivingATreatmentVisitMovesThemToWaiting</code></li><li><code>TestREG_APPT_018_OnlyVisitsActuallyDueTodayAreListed</code></li><li><code>TestREG_APPT_019_TwoVisitsTodayAreOneRowAndAnotherBranchIsNotListed</code></li><li><code>REG-FE-ARRIVAL-016</code></li><li><code>REG-FE-ARRIVAL-017</code></li><li><code>REG-FE-RECEP-060</code></li></ul>
+          <p>Where in the code:</p><ul><li><code>backend/internal/scheduling/service/reception.go</code></li><li><code>backend/internal/scheduling/ports.go</code></li><li><code>frontend/src/features/scheduling/reception/ArrivalList.tsx</code></li><li><code>frontend/src/features/scheduling/pages/ReceptionPage.tsx</code></li></ul>
         </details>
       </div>
-      
+      <div class="log"><b>History</b><ul><li><time>2026-10-11</time> Explained in plain language; owner said go. Built: reception&#x27;s Expected list now also shows a patient whose treatment course has a planned visit today (one row per patient, lowest visit number, tagged &#x27;Treatment visit&#x27; with &#x27;Root canal · visit 1 of 2&#x27;, no clock because nothing was booked). A patient who is also booked appears once, as the booking; a patient already received leaves Expected and appears under Waiting; another branch&#x27;s visits and finished or cancelled plans are left out. Receiving one goes through the walk-in door, which is correct because no appointment exists.</li><li><time>2026-10-11</time> Full run green: server 755/0 (94 known), screens 1,872, journeys 15/15, routes 277/277, all coverage minimums held. Committed; deploying.</li></ul></div>
     </div>
   </details>
 </article>
@@ -3523,7 +3523,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
     </div>
   </details>
 </article>
-<article class="issue sev-medium st-open" id="FE-6" data-sev="medium" data-status="open"
+<article class="issue sev-medium st-fixed" id="FE-6" data-sev="medium" data-status="fixed"
   data-area="Reliability" data-q="fe-6 after an update, an old tab can crash the whole app the app has one error screen for everything. after a new version is deployed, a tab that was already open may try to load a piece that no longer exists (the dashboard chart, for example), and the whole app, including the side menu, is replaced by the error screen. after a lunchtime update, the owner clicks home in a tab opened in the morning. the entire screen becomes &#x27;this page could not be displayed&#x27;, with no menu to go anywhere else. all staff reliability">
   <details>
     <summary>
@@ -3531,7 +3531,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">Medium</span>
       <span class="ttl">After an update, an old tab can crash the whole app</span>
       <span class="meta"><span class="id">FE-6</span> · Reliability · effort S</span>
-      <span class="status">Open</span>
+      <span class="status">Fixed</span>
     </summary>
     <div class="body">
       
@@ -3544,11 +3544,11 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       </dl>
       <div class="tech">
         <details><summary>For the developer: tests and code</summary>
-          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li><code>REG-FE-CRASH-005</code></li></ul>
-          <p>Where in the code:</p><ul><li><code>frontend/src/main.tsx:11</code></li><li><code>frontend/src/features/dashboard/pages/DashboardPage.tsx:35</code></li></ul>
+          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li><code>REG-FE-CHUNK-001</code></li><li><code>REG-FE-CHUNK-002</code></li><li><code>REG-FE-CHUNK-003</code></li><li><code>REG-FE-CHUNK-004</code></li><li><code>REG-FE-CHUNK-005</code></li><li><code>REG-FE-CHUNK-006</code></li><li><code>REG-FE-CHUNK-007</code></li><li><code>REG-FE-CHUNK-008</code></li><li><code>REG-FE-CRASH-005</code></li></ul>
+          <p>Where in the code:</p><ul><li><code>frontend/src/app/chunkRecovery.ts</code></li><li><code>frontend/src/app/ErrorBoundary.tsx</code></li><li><code>frontend/src/main.tsx</code></li><li><code>frontend/src/features/dashboard/pages/DashboardPage.tsx</code></li><li><code>infra/Caddyfile.standalone</code></li></ul>
         </details>
       </div>
-      
+      <div class="log"><b>History</b><ul><li><time>2026-10-11</time> Owner hit it live (TakingsChart chunk missing after an update). Fixed first: a missing piece after an update now reloads the tab once (at most once a minute) and fetches the new version; the dashboard chart is loaded through the same recovery; the server answers a missing /assets file with a plain 404 that is never cached, so a stale tab cannot be fed the page&#x27;s HTML as if it were code.</li><li><time>2026-10-11</time> Deployed to app.clinicos.cc (commit a67d218). Waiting for the owner to verify.</li></ul></div>
     </div>
   </details>
 </article>
@@ -5873,7 +5873,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   </details>
 </article>
 
-<footer>Built 11 October 2026, 10:03 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
+<footer>Built 11 October 2026, 16:35 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
 </div>
 <script>
 (function () {

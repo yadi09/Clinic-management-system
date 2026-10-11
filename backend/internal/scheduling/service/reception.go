@@ -131,6 +131,60 @@ func (s *Service) ReceptionToday(ctx context.Context) (*scheduling.ReceptionToda
 			return e
 		}
 
+		// --- expected: treatment visits planned for today (APT-1) ------------------
+		//
+		// A dental clinic's day is mostly visits of a course (root canal, visit 2 of 3),
+		// which are planned on the treatment plan and are not appointments. The home
+		// screen counted them; this list did not, so the desk saw a day with half its
+		// patients missing. One row per patient, the earliest planned visit; a patient
+		// already booked today appears once, as the booking; a patient already received
+		// leaves the list, as a booked one does.
+		trows, e := tx.Query(ctx, owedCTE+`
+			SELECT `+receptionCols+`, pl.title, v.seq, pl.session_count
+			  FROM (
+			    SELECT DISTINCT ON (se.patient_id) se.patient_id, se.plan_id, se.seq
+			      FROM treatment_sessions se
+			      JOIN treatment_plans pl ON pl.id = se.plan_id AND pl.tenant_id = se.tenant_id
+			     WHERE se.tenant_id = $1 AND se.kind = 'visit' AND se.status = 'planned' AND pl.status = 'active'
+			       AND se.scheduled_date = (now() AT TIME ZONE $2)::date
+			       AND ($3::uuid IS NULL OR se.branch_id IS NULL OR se.branch_id = $3)
+			     ORDER BY se.patient_id, se.seq
+			  ) v
+			  JOIN treatment_plans pl ON pl.id = v.plan_id
+			  JOIN patients p ON p.id = v.patient_id AND p.tenant_id = $1 AND p.deleted_at IS NULL
+			  LEFT JOIN owed ON owed.patient_id = p.id
+			  LEFT JOIN unbilled ON unbilled.patient_id = p.id
+			 WHERE NOT EXISTS (SELECT 1 FROM appointments a
+			                    WHERE a.tenant_id = $1 AND a.patient_id = p.id AND a.status IN ('booked','confirmed')
+			                      AND (a.starts_at AT TIME ZONE $2)::date = (now() AT TIME ZONE $2)::date
+			                      AND ($3::uuid IS NULL OR a.branch_id = $3))
+			   AND NOT EXISTS (SELECT 1 FROM queue_entries q
+			                    WHERE q.tenant_id = $1 AND q.patient_id = p.id AND q.deleted_at IS NULL
+			                      AND (q.enqueued_at AT TIME ZONE $2)::date = (now() AT TIME ZONE $2)::date
+			                      AND q.state IN ('waiting','called','in_consult','done')
+			                      AND ($3::uuid IS NULL OR q.branch_id = $3))
+			 ORDER BY lower(p.first_name), p.id`,
+			tenantID, addisTZ, branchArg(branch))
+		if e != nil {
+			return e
+		}
+		visits, e := pgx.CollectRows(trows, func(row pgx.CollectableRow) (scheduling.ReceptionPatient, error) {
+			var r scheduling.ReceptionPatient
+			var pid uuid.UUID
+			var title string
+			var seq, of int
+			err := row.Scan(&pid, &r.Name, &r.MRN, &r.Age, &r.Sex, &r.Phone, &r.Owed, &r.OwedOldestDays, &r.OwedAgreed, &r.Unbilled,
+				&title, &seq, &of)
+			r.PatientID = id.Encode(id.PrefixPatient, pid)
+			r.TreatmentVisit = true
+			r.Reason = fmt.Sprintf("%s · visit %d of %d", title, seq, of)
+			return r, err
+		})
+		if e != nil {
+			return e
+		}
+		out.Expected = append(out.Expected, visits...)
+
 		// --- waiting and seen: the queue this desk created --------------------
 		//
 		// Read from queue_entries rather than appointments, because a walk-in has no

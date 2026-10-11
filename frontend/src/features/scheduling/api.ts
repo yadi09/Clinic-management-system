@@ -193,6 +193,9 @@ export interface ReceptionPatient {
   department_name?: string;
   reason?: string;
   is_followup: boolean;
+  /** A visit of a treatment course planned for today, not a booking: no time and no
+   *  appointment, received like a walk-in but expected (APT-1). */
+  treatment_visit?: boolean;
   /** Coverage window on a doctor-booked follow-up. Past it, chargeable again. */
   free_until?: string;
   /** Minutes past the slot. Negative means not due yet. */

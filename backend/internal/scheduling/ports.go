@@ -203,6 +203,10 @@ type ReceptionPatient struct {
 	DepartmentName string `json:"department_name,omitempty"`
 	Reason         string `json:"reason,omitempty"`
 	IsFollowup     bool   `json:"is_followup"`
+	// TreatmentVisit marks a row that is not a booking but a visit of a treatment
+	// course planned for today (APT-1). It has no time and no appointment: the desk
+	// receives it like a walk-in, but knows who is due.
+	TreatmentVisit bool `json:"treatment_visit,omitempty"`
 	// FreeUntil is the coverage window on a doctor-booked follow-up. Past it, the
 	// visit is chargeable again — which is why the date is shown, not just the fact.
 	FreeUntil string `json:"free_until,omitempty"`

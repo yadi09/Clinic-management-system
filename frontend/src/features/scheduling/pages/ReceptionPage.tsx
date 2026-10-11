@@ -131,7 +131,7 @@ export function ReceptionPage() {
       <div>
         <h1 className="text-h1">Reception</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Everyone booked today, everyone waiting. Search for anyone who is not on the list.
+          Everyone booked or due for treatment today, and everyone waiting. Search for anyone who is not on the list.
         </p>
       </div>
 

@@ -928,4 +928,26 @@ describe("REG-FE-RECEP reception desk", () => {
     const exits = within(sheet).getByRole("button", { name: "Send to cashier" }).parentElement!.parentElement!;
     expect(exits.className).toContain("max-sm:sticky");
   });
+
+  test("REG-FE-RECEP-060 a treatment visit due today is listed under Expected, and is received through the walk-in door", async () => {
+    const visit = P({
+      patient_id: "pat_t", name: "Tigist Worku", mrn: "MRN-T", age: 41, treatment_visit: true,
+      reason: "Root canal · visit 1 of 2",
+    });
+    bill.settleVisit.mockResolvedValue({ receipt_no: 9, total: "100", count: 1 });
+    const { user } = page({ expected: [almaz(), visit], waiting: [], seen: [] });
+    const r = await screen.findByRole("button", { name: /Tigist Worku/ });
+    expect(screen.getByText(/booked or due for treatment today/)).toBeInTheDocument();
+    expect(tab(/Expected/)).toHaveTextContent("Expected2");
+    expect(r).toHaveTextContent("Treatment visit");
+    expect(r).toHaveTextContent("Root canal · visit 1 of 2");
+
+    await user.click(r);
+    await choose(user, combos()[0], "Dental");
+    await choose(user, combos()[1], "Dr Sara");
+    await user.click(await screen.findByRole("button", { name: "Collect ETB 100.00 & send through" }));
+    // No appointment exists to check in, so it is the walk-in door: charged and queued.
+    await waitFor(() => expect(sched.walkIn).toHaveBeenCalledWith(expect.objectContaining({ patient_id: "pat_t" })));
+    expect(sched.checkInAppointment).not.toHaveBeenCalled();
+  });
 });
