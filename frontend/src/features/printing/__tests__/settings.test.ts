@@ -6,7 +6,7 @@ import { describe, expect, test } from "vitest";
 import { DEFAULT_SETTINGS, PAPERS, resolveSettings } from "@/features/printing/settings";
 import { pick } from "@/features/printing/templates/resolve";
 import { defaultLabel, LABELS } from "@/features/printing/labels";
-import { CATALOG, docInfo } from "@/features/printing/catalog";
+import { CATALOG, docInfo, docsFor } from "@/features/printing/catalog";
 
 describe("REG-FE-PRSET printing settings", () => {
   test("REG-FE-PRSET-001 nothing stored, or junk, reads as the defaults", () => {
@@ -101,6 +101,15 @@ describe("REG-FE-PRSET printing settings", () => {
     expect(resolveSettings({ signature: { showName: false } }).signature.showName).toBe(false);
     expect(resolveSettings({ signature: { showName: "no" } }).signature.showName).toBe(true);
     expect(resolveSettings({ signature: "off" }).signature.showName).toBe(true);
+  });
+
+  test("REG-FE-PRSET-010 papers follow the clinic's modules: a dental clinic is not offered the laboratory's", () => {
+    const ids = (flags: string[]) => docsFor((f) => flags.includes(f)).map((d) => d.id).sort();
+    const core = ["certificate", "prescription", "receipt", "statement", "zreport"];
+    expect(ids([])).toEqual([...core, "labrequest"].sort());
+    expect(ids(["dental"])).toEqual([...core, "exam"].sort());
+    expect(ids(["laboratory", "pharmacy"])).toEqual([...core, "dispense", "labreport"].sort());
+    expect(ids(["dental", "laboratory", "pharmacy"])).toEqual([...core, "dispense", "exam", "labreport"].sort());
   });
 
   test("REG-FE-PRSET-008 the catalog covers every document, with unique ids, and every wording key it offers exists", () => {

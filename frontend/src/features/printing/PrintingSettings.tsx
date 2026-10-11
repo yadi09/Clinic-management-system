@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 import { getClinic, listBranches } from "@/features/admin/api";
 import { getPrintSettings, savePrintSettings } from "@/features/printing/api";
 import type { PrintCtx } from "@/features/printing/blocks";
-import { CATALOG, docInfo, type DocInfo } from "@/features/printing/catalog";
+import { docInfo, docsFor, type DocInfo } from "@/features/printing/catalog";
 import { build, pageHtml } from "@/features/printing/engine";
 import { LABELS } from "@/features/printing/labels";
 import { PaperFrame } from "@/features/printing/PrintHost";
@@ -102,8 +102,11 @@ function Choice<T extends string>({ value, onChange, options, ariaLabel, disable
 
 export function PrintingSettings() {
   const qc = useQueryClient();
-  const { can } = useAuth();
+  const { can, flagOn } = useAuth();
   const manage = can("clinic.manage");
+  // Only the papers this clinic's modules and plan include. What was saved for the
+  // others is kept in the document and comes back if the module does.
+  const papers = docsFor(flagOn);
   const stored = useQuery({ queryKey: ["print-settings"], queryFn: getPrintSettings, retry: false });
   const clinic = useQuery({ queryKey: ["clinic"], queryFn: getClinic, retry: false });
   const branches = useQuery({ queryKey: ["branches"], queryFn: listBranches });
@@ -161,7 +164,7 @@ export function PrintingSettings() {
     }
   };
 
-  const previewDoc: DocId = (CATALOG.some((d) => d.id === tab) ? tab : "receipt") as DocId;
+  const previewDoc: DocId = (papers.some((d) => d.id === tab) ? tab : "receipt") as DocId;
   const ctx: PrintCtx = useMemo(() => ({
     settings: draft, logo, clinicName: clinic.data?.name ?? "Your clinic", branch: null,
   }), [draft, logo, clinic.data]);
@@ -183,7 +186,7 @@ export function PrintingSettings() {
     { key: "identity", label: "Clinic identity" },
     { key: "look", label: "Look" },
     { key: "language", label: "Language & dates" },
-    ...CATALOG.map((d) => ({ key: d.id as Tab, label: d.label })),
+    ...papers.map((d) => ({ key: d.id as Tab, label: d.label })),
     { key: "reprints", label: "Footer & reprints" },
     ...((branches.data?.length ?? 0) > 1 ? [{ key: "branches" as Tab, label: "Branches" }] : []),
   ];

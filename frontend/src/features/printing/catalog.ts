@@ -36,6 +36,12 @@ export interface DocInfo {
   labels: string[];
   /** Print log kind: set when a reprint should be told apart from the original. */
   logKind?: string;
+  /**
+   * Whether this clinic can ever print this paper, from the same module flags the
+   * sidebar uses (which already carry the plan's entitlements). Omitted: every clinic.
+   * A paper the clinic has no use for is not offered, not merely left at its defaults.
+   */
+  available?: (on: (flag: string) => boolean) => boolean;
 }
 
 const ALL: PaperId[] = ["slip58", "slip80", "a5", "a4"];
@@ -116,6 +122,7 @@ export const CATALOG: DocInfo[] = [
     id: "labrequest",
     label: "Lab requests",
     purpose: "The patient carries it to an outside laboratory: which tests, why, and from whom.",
+    available: (on) => !on("dental") && !on("laboratory"),
     logKind: "labrequest",
     templates: [
       { id: "classic", label: "Classic", description: "Full header with the clinic's identity, QR and signature.", paper: "a4", papers: ["a4", "a5"] },
@@ -179,6 +186,7 @@ export const CATALOG: DocInfo[] = [
     id: "labreport",
     label: "Lab reports",
     purpose: "The laboratory's result for one sample: what was found, what is normal, who collected and who validated it.",
+    available: (on) => on("laboratory"),
     logKind: "labreport",
     templates: [
       { id: "standard", label: "Report", description: "Header, patient, a results table with reference ranges and flags.", paper: "a4", papers: ["a4", "a5"] },
@@ -227,6 +235,7 @@ export const CATALOG: DocInfo[] = [
     id: "exam",
     label: "Dental examinations",
     purpose: "The assessment on one page, in the order a clinician reads it — for a referral, a second opinion or an insurer.",
+    available: (on) => on("dental"),
     templates: [
       { id: "standard", label: "Standard", description: "Header, then each section that has something in it.", paper: "a4", papers: ["a4", "a5"] },
       { id: "pad", label: "Pre-printed pad", description: "No header: leaves the top blank for your own letterhead.", paper: "a4", papers: ["a4", "a5"] },
@@ -252,6 +261,7 @@ export const CATALOG: DocInfo[] = [
     id: "dispense",
     label: "Dispensing slips",
     purpose: "What the pharmacy handed over, how to take it, and from which batch — the patient's copy and the pharmacy's record.",
+    available: (on) => on("pharmacy"),
     logKind: "dispense",
     templates: [
       { id: "slip", label: "Till slip", description: "Narrow roll for a thermal printer at the dispensing hatch.", paper: "slip80", papers: ["slip58", "slip80"] },
@@ -271,4 +281,7 @@ export const CATALOG: DocInfo[] = [
 ];
 
 export const docInfo = (id: DocId): DocInfo | undefined => CATALOG.find((d) => d.id === id);
+
+/** The papers this clinic can print, given its module flags. */
+export const docsFor = (on: (flag: string) => boolean): DocInfo[] => CATALOG.filter((d) => !d.available || d.available(on));
 export { ALL as ALL_PAPERS };

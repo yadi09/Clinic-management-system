@@ -5,9 +5,13 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const auth = vi.hoisted(() => ({ manage: true }));
+const auth = vi.hoisted(() => ({ manage: true, flags: {} as Record<string, boolean> }));
 vi.mock("@/app/auth-context", () => ({
-  useAuth: () => ({ can: (p: string) => (p === "clinic.manage" ? auth.manage : true), flagOn: () => true, user: { id: "u", full_name: "Owner" }, activeBranchId: "b1" }),
+  useAuth: () => ({
+    can: (p: string) => (p === "clinic.manage" ? auth.manage : true),
+    flagOn: (f: string) => !!auth.flags[f],
+    user: { id: "u", full_name: "Owner" }, activeBranchId: "b1",
+  }),
 }));
 const api = vi.hoisted(() => ({ getPrintSettings: vi.fn(), savePrintSettings: vi.fn(), peekPrint: vi.fn(), logPrint: vi.fn() }));
 vi.mock("@/features/printing/api", () => api);
@@ -37,6 +41,7 @@ describe("REG-FE-PRSCR the printing settings screen", () => {
     Object.values(admin).forEach((f) => f.mockReset());
     Object.values(toast).forEach((f) => f.mockReset());
     auth.manage = true;
+    auth.flags = {}; // a general clinic with no optional modules
     admin.getClinic.mockResolvedValue({ name: "Registered Name", timezone: "Africa/Addis_Ababa", locale: "en" });
     admin.listBranches.mockResolvedValue([{ id: "b1", name: "Bole", code: "B1" }]);
     api.savePrintSettings.mockResolvedValue({ settings: {}, logo: "" });
@@ -347,5 +352,43 @@ describe("REG-FE-PRSCR the printing settings screen", () => {
     const doc = api.savePrintSettings.mock.calls[0][0].settings;
     expect(doc.signature).toEqual({ showName: false });
     expect(doc.docs.prescription.show.signerName).toBe(true);
+  });
+  test("REG-FE-PRSCR-021 only the papers this clinic's modules include are offered", async () => {
+    const names = () => screen.getAllByRole("tab").map((t) => t.textContent);
+    const always = ["Receipts", "Prescriptions", "Statements of account", "End-of-day Z-report", "Medical certificates"];
+
+    // A general clinic with no in-house lab: it refers patients to an outside laboratory.
+    let r = await open();
+    expect(names()).toEqual(expect.arrayContaining([...always, "Lab requests"]));
+    expect(names()).not.toContain("Lab reports");
+    expect(names()).not.toContain("Dental examinations");
+    expect(names()).not.toContain("Dispensing slips");
+    r.unmount();
+
+    // A dental clinic: no laboratory, no pharmacy, no outside-lab form.
+    auth.flags = { dental: true };
+    r = await open();
+    expect(names()).toEqual(expect.arrayContaining([...always, "Dental examinations"]));
+    for (const gone of ["Lab requests", "Lab reports", "Dispensing slips"]) expect(names()).not.toContain(gone);
+    r.unmount();
+
+    // A general clinic with its own laboratory and pharmacy.
+    auth.flags = { laboratory: true, pharmacy: true };
+    r = await open();
+    expect(names()).toEqual(expect.arrayContaining([...always, "Lab reports", "Dispensing slips"]));
+    for (const gone of ["Lab requests", "Dental examinations"]) expect(names()).not.toContain(gone);
+  });
+
+  test("REG-FE-PRSCR-022 what was saved for a paper the clinic no longer sees is kept, not dropped", async () => {
+    auth.flags = { dental: true };
+    const stored = { docs: { labreport: { show: { critical: false } } } };
+    const { user } = await open({ settings: stored });
+    await user.click(tab("Look"));
+    await user.click(screen.getByRole("radio", { name: "Compact" }));
+    await user.click(screen.getByRole("button", { name: /Save printing settings/ }));
+    await waitFor(() => expect(api.savePrintSettings).toHaveBeenCalledTimes(1));
+    const doc = api.savePrintSettings.mock.calls[0][0].settings;
+    expect(doc.look.header).toBe("compact");
+    expect(doc.docs.labreport.show.critical).toBe(false);
   });
 });
