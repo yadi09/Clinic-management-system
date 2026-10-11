@@ -81,8 +81,11 @@ export async function requestPrint(doc: DocData, legacy: Legacy = {}): Promise<v
   await printNow(job);
 }
 
-/** Count the print, then send the page — with the reprint mark if it is not the first. */
-export async function printNow(job: PrintJob & { ctx: PrintCtx }, o: RenderOpts = {}): Promise<void> {
+/**
+ * Count the print and draw the final page — with the reprint mark if it is not the
+ * first. Nothing is sent anywhere: the caller decides the moment the page leaves.
+ */
+export async function preparePrint(job: PrintJob & { ctx: PrintCtx }, o: RenderOpts = {}): Promise<string> {
   let dup = job.duplicate ?? null;
   const info = docInfo(job.doc);
   if (job.ref && info?.logKind && job.ctx.settings.integrity.duplicateMark) {
@@ -92,5 +95,10 @@ export async function printNow(job: PrintJob & { ctx: PrintCtx }, o: RenderOpts 
       dup = toDuplicate({ ...m, count: m.count - 1 });
     } catch { /* offline: print with what the preview knew */ }
   }
-  transport.send(job.render({ ...o, duplicate: dup }).html);
+  return job.render({ ...o, duplicate: dup }).html;
+}
+
+/** Count the print, then send the page. */
+export async function printNow(job: PrintJob & { ctx: PrintCtx }, o: RenderOpts = {}): Promise<void> {
+  transport.send(await preparePrint(job, o));
 }

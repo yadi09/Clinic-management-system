@@ -4037,6 +4037,10 @@
    {
     "date": "2026-10-11",
     "note": "Full run green: server 755/0 (94 known), screens 1,872, journeys 15/15, routes 277/277, all coverage minimums held. Committed; deploying."
+   },
+   {
+    "date": "2026-10-11",
+    "note": "Deployed to app.clinicos.cc (commit 89ad722, pre-deploy backup taken, API ready, no errors in the log). No migration. Live check: no clinic has a visit planned for today or tomorrow yet, so nothing shows until a plan with a visit today exists. Waiting for the owner to verify."
    }
   ],
   "order": 49

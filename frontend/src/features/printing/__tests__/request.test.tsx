@@ -165,6 +165,47 @@ describe("REG-FE-PRHOST the preview", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(sent).toHaveLength(0);
   });
+
+  test("REG-FE-PRHOST-007 the preview is already gone when the page is handed to the printer", async () => {
+    // The browser's print window takes the page over right after the paper is sent. A
+    // preview still on screen at that moment was left half-closed for good — a blank
+    // box over the list that Cancel and Esc could not dismiss until a reload.
+    const dialogsWhenSent: number[] = [];
+    vi.mocked(transport.send).mockImplementation((html: string) => {
+      sent.push(html);
+      dialogsWhenSent.push(screen.queryAllByRole("dialog").length);
+    });
+    const { user } = renderUI(<PrintHost />);
+    await act(async () => { await requestPrint(rcp()); });
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: /Print/ }));
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(dialogsWhenSent).toEqual([0]);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(sent[0]).toContain("RCP-000007");
+  });
+
+  test("REG-FE-PRHOST-008 a second press while the first is being counted prints once, not twice", async () => {
+    let release: () => void = () => {};
+    api.logPrint.mockReturnValue(new Promise((r) => { release = () => r({ count: 1 }); }));
+    renderUI(<PrintHost />);
+    await act(async () => { await requestPrint(rcp()); });
+    const press = within(await screen.findByRole("dialog")).getByRole("button", { name: /Print/ });
+    fireEvent.click(press);
+    fireEvent.click(press);
+    await act(async () => { release(); });
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(api.logPrint).toHaveBeenCalledTimes(1);
+  });
+
+  test("REG-FE-PRHOST-009 after one paper is printed the next one opens its own preview", async () => {
+    const { user } = renderUI(<PrintHost />);
+    await act(async () => { await requestPrint(rcp("RCP-000007")); });
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: /Print/ }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await act(async () => { await requestPrint(rcp("RCP-000008")); });
+    const dlg = await screen.findByRole("dialog", { name: "Print preview" });
+    expect(within(dlg).getByTitle("Paper preview")).toHaveAttribute("srcdoc", expect.stringContaining("RCP-000008"));
+  });
 });
 
 describe("REG-FE-PRREQ a prescription's check", () => {

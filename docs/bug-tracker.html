@@ -1750,7 +1750,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>backend/internal/scheduling/service/reception.go</code></li><li><code>backend/internal/scheduling/ports.go</code></li><li><code>frontend/src/features/scheduling/reception/ArrivalList.tsx</code></li><li><code>frontend/src/features/scheduling/pages/ReceptionPage.tsx</code></li></ul>
         </details>
       </div>
-      <div class="log"><b>History</b><ul><li><time>2026-10-11</time> Explained in plain language; owner said go. Built: reception&#x27;s Expected list now also shows a patient whose treatment course has a planned visit today (one row per patient, lowest visit number, tagged &#x27;Treatment visit&#x27; with &#x27;Root canal · visit 1 of 2&#x27;, no clock because nothing was booked). A patient who is also booked appears once, as the booking; a patient already received leaves Expected and appears under Waiting; another branch&#x27;s visits and finished or cancelled plans are left out. Receiving one goes through the walk-in door, which is correct because no appointment exists.</li><li><time>2026-10-11</time> Full run green: server 755/0 (94 known), screens 1,872, journeys 15/15, routes 277/277, all coverage minimums held. Committed; deploying.</li></ul></div>
+      <div class="log"><b>History</b><ul><li><time>2026-10-11</time> Explained in plain language; owner said go. Built: reception&#x27;s Expected list now also shows a patient whose treatment course has a planned visit today (one row per patient, lowest visit number, tagged &#x27;Treatment visit&#x27; with &#x27;Root canal · visit 1 of 2&#x27;, no clock because nothing was booked). A patient who is also booked appears once, as the booking; a patient already received leaves Expected and appears under Waiting; another branch&#x27;s visits and finished or cancelled plans are left out. Receiving one goes through the walk-in door, which is correct because no appointment exists.</li><li><time>2026-10-11</time> Full run green: server 755/0 (94 known), screens 1,872, journeys 15/15, routes 277/277, all coverage minimums held. Committed; deploying.</li><li><time>2026-10-11</time> Deployed to app.clinicos.cc (commit 89ad722, pre-deploy backup taken, API ready, no errors in the log). No migration. Live check: no clinic has a visit planned for today or tomorrow yet, so nothing shows until a plan with a visit today exists. Waiting for the owner to verify.</li></ul></div>
     </div>
   </details>
 </article>
@@ -5873,7 +5873,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   </details>
 </article>
 
-<footer>Built 11 October 2026, 16:35 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
+<footer>Built 11 October 2026, 18:08 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
 </div>
 <script>
 (function () {

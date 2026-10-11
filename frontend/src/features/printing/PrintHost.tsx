@@ -1,14 +1,15 @@
 // The preview every printed paper goes through: see it, change the template or the
 // paper for this one print, then send it to the printer.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { Printer } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { docInfo } from "@/features/printing/catalog";
-import { paperPx, previewHtml, type PrintJob } from "@/features/printing/engine";
-import { printNow, registerPreview } from "@/features/printing/request";
+import { paperPx, previewHtml, transport, type PrintJob } from "@/features/printing/engine";
+import { preparePrint, registerPreview } from "@/features/printing/request";
 import { PAPERS, type PaperId } from "@/features/printing/settings";
 import type { PrintCtx } from "@/features/printing/blocks";
 
@@ -19,6 +20,7 @@ export function PrintHost() {
   const [template, setTemplate] = useState<string | undefined>();
   const [paper, setPaper] = useState<PaperId | undefined>();
   const [busy, setBusy] = useState(false);
+  const sending = useRef(false);
 
   useEffect(() => {
     registerPreview((j) => { setTemplate(undefined); setPaper(undefined); setJob(j); });
@@ -32,14 +34,30 @@ export function PrintHost() {
 
   const close = () => setJob(null);
   const print = async () => {
-    if (!job || !view) return;
+    if (!job || !view || sending.current) return;
+    sending.current = true;
     setBusy(true);
-    try { await printNow(job, { template: view.template, paper: view.paper }); } finally { setBusy(false); }
-    close();
+    try {
+      const html = await preparePrint(job, { template: view.template, paper: view.paper });
+      // The preview is gone from the screen BEFORE the page goes to the printer. The
+      // browser's own print window takes the page over a moment after the paper is
+      // sent, and a dialog that is still fading out at that instant was left
+      // half-closed for good: a blank preview over the cashier's list that Cancel
+      // and Esc could not dismiss, until the page was reloaded.
+      flushSync(close);
+      transport.send(html);
+    } finally {
+      sending.current = false;
+      setBusy(false);
+    }
   };
 
+  // Mounted only while there is a paper to show, so closing is immediate: there is no
+  // exit animation to wait for, and so nothing that can be left waiting.
+  if (!job) return null;
+
   return (
-    <Dialog open={!!job} onOpenChange={(o) => { if (!o) close(); }}>
+    <Dialog open onOpenChange={(o) => { if (!o) close(); }}>
       <DialogContent className="max-w-4xl">
         <DialogHeader>
           <DialogTitle>Print preview</DialogTitle>
