@@ -1808,7 +1808,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>frontend/src/features/printing/PrintHost.tsx</code></li><li><code>frontend/src/features/printing/request.ts</code></li></ul>
         </details>
       </div>
-      <div class="log"><b>History</b><ul><li><time>2026-10-12</time> Reported by the owner with a screenshot (blank preview over the cashier&#x27;s Paid list, cannot be closed). Cause: the page was sent to the printer 50 ms after the preview began its fade-out, so the browser&#x27;s print window took over mid-animation and the dialog was left half-closed. Fixed: the preview is removed from the screen before the page is sent, and it no longer has an exit animation. REG-FE-PRHOST-007 fails on the old code. Commit 9de9bb3 (its subject says FE-7 by mistake; FE-7 is a different issue).</li><li><time>2026-10-12</time> Server 755/0, screens 1,875, journeys 15/15, routes 277/277. The coverage gate flagged finance/service 0.5 points under its baseline at 01:07 Addis time; no Go file changed since the run that passed at 23:10, so this is the known small-hours clock effect. Gate to be re-run after 03:00 Addis before deploying.</li></ul></div>
+      <div class="log"><b>History</b><ul><li><time>2026-10-12</time> Reported by the owner with a screenshot (blank preview over the cashier&#x27;s Paid list, cannot be closed). Cause: the page was sent to the printer 50 ms after the preview began its fade-out, so the browser&#x27;s print window took over mid-animation and the dialog was left half-closed. Fixed: the preview is removed from the screen before the page is sent, and it no longer has an exit animation. REG-FE-PRHOST-007 fails on the old code. Commit 9de9bb3 (its subject says FE-7 by mistake; FE-7 is a different issue).</li><li><time>2026-10-12</time> Server 755/0, screens 1,875, journeys 15/15, routes 277/277. The coverage gate flagged finance/service 0.5 points under its baseline at 01:07 Addis time; no Go file changed since the run that passed at 23:10, so this is the known small-hours clock effect. Gate to be re-run after 03:00 Addis before deploying.</li><li><time>2026-10-12</time> Deployed to app.clinicos.cc on the owner&#x27;s instruction (commit ee1cc97, pre-deploy backup taken, API ready, no errors in the log). No migration. The coverage gate&#x27;s finance/service dip (small-hours clock effect, no Go change) is still to be re-run after 03:00 Addis for the record. Waiting for the owner to verify: print a receipt, the preview must close by itself and the list must stay usable.</li></ul></div>
     </div>
   </details>
 </article>
@@ -5902,7 +5902,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   </details>
 </article>
 
-<footer>Built 11 October 2026, 18:08 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
+<footer>Built 11 October 2026, 18:20 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
 </div>
 <script>
 (function () {

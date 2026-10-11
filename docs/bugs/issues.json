@@ -5244,6 +5244,10 @@
    {
     "date": "2026-10-12",
     "note": "Server 755/0, screens 1,875, journeys 15/15, routes 277/277. The coverage gate flagged finance/service 0.5 points under its baseline at 01:07 Addis time; no Go file changed since the run that passed at 23:10, so this is the known small-hours clock effect. Gate to be re-run after 03:00 Addis before deploying."
+   },
+   {
+    "date": "2026-10-12",
+    "note": "Deployed to app.clinicos.cc on the owner's instruction (commit ee1cc97, pre-deploy backup taken, API ready, no errors in the log). No migration. The coverage gate's finance/service dip (small-hours clock effect, no Go change) is still to be re-run after 03:00 Addis for the record. Waiting for the owner to verify: print a receipt, the preview must close by itself and the list must stay usable."
    }
   ],
   "order": 601
