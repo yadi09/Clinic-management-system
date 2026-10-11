@@ -13,7 +13,7 @@
 //
 // Sections the server leaves out are not drawn: a receptionist gets the day without
 // the takings, a cashier the takings without the queue.
-import { Suspense, lazy, useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { HandCoins, Search, UserPlus, Wallet } from "lucide-react";
@@ -29,10 +29,11 @@ import { NeedsYou } from "@/features/dashboard/components/NeedsYou";
 import { TodayFlow } from "@/features/dashboard/components/TodayFlow";
 import { MoneyTiles } from "@/features/dashboard/components/MoneyTiles";
 import { OwedCard, WeekAhead } from "@/features/dashboard/components/OwedAndWeek";
+import { lazyWithReload } from "@/app/chunkRecovery";
 
 // The chart library is the heaviest thing on the page and the last thing anyone
 // needs; it arrives after the numbers rather than in front of them.
-const TakingsChart = lazy(() => import("@/features/dashboard/components/TakingsChart"));
+const TakingsChart = lazyWithReload(() => import("@/features/dashboard/components/TakingsChart"));
 
 export function DashboardPage() {
   const { user, can } = useAuth();

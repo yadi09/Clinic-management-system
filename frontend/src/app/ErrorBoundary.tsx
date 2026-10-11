@@ -6,6 +6,8 @@
 // failure with a way out, and prints the error where a screenshot will capture it.
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
+import { isChunkError, reloadForNewVersion } from "@/app/chunkRecovery";
+
 interface State { error: Error | null }
 
 export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
@@ -19,6 +21,8 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
     // Keep the component stack out of the UI but in the console, so a developer
     // opening the tab sees exactly where it came from.
     console.error("Unhandled render error:", error, info.componentStack);
+    // A piece of the page that no longer exists is a new version, not a fault: fetch it.
+    if (isChunkError(error)) reloadForNewVersion();
   }
 
   render() {

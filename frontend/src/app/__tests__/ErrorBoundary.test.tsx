@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { toast } from "sonner";
 
 import { ErrorBoundary } from "@/app/ErrorBoundary";
+import { lazyWithReload } from "@/app/chunkRecovery";
 import { Providers } from "@/app/providers";
 import { LIVE_TOASTER } from "@/components/ui/sonner";
 
@@ -59,16 +60,26 @@ describe("REG-FE-CRASH error boundary", () => {
   // that no longer exists after a deploy (the dashboard's chart is one) rejects with
   // "Failed to fetch dynamically imported module" and takes the sidebar, the tab bar
   // and every other page down with it, instead of failing in its own card.
-  test.fails("REG-FE-CRASH-005 KNOWN BUG FE-6 a missing lazy chunk leaves the app's navigation standing", async () => {
-    const Chart = lazy(() => Promise.reject(new TypeError("Failed to fetch dynamically imported module: /assets/TakingsChart-abc.js")));
-    render(
-      <ErrorBoundary>
-        <nav aria-label="Sidebar"><a href="/patients">Patients</a></nav>
-        <main><Suspense fallback={<p>Loading chart…</p>}><Chart /></Suspense></main>
-      </ErrorBoundary>,
-    );
-    await screen.findByRole("heading", { name: "This page could not be displayed" }).catch(() => {});
-    expect(screen.getByRole("navigation", { name: "Sidebar" })).toBeInTheDocument();
+  test("REG-FE-CRASH-005 a missing lazy chunk leaves the app's navigation standing and fetches the new version (FE-6)", async () => {
+    const loc = { reload: vi.fn(), href: "/" };
+    vi.stubGlobal("location", loc);
+    sessionStorage.clear();
+    try {
+      const Chart = lazyWithReload(() => Promise.reject(new TypeError("Failed to fetch dynamically imported module: /assets/TakingsChart-abc.js")));
+      render(
+        <ErrorBoundary>
+          <nav aria-label="Sidebar"><a href="/patients">Patients</a></nav>
+          <main><Suspense fallback={<p>Loading chart…</p>}><Chart /></Suspense></main>
+        </ErrorBoundary>,
+      );
+      await waitFor(() => expect(loc.reload).toHaveBeenCalledTimes(1));
+      // No error screen: the page is on its way to the new version and the menu stays.
+      expect(screen.getByRole("navigation", { name: "Sidebar" })).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "This page could not be displayed" })).not.toBeInTheDocument();
+      expect(screen.getByText("Loading chart…")).toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   test("REG-FE-CRASH-006 today a missing chunk is at least reported, with the module named", async () => {

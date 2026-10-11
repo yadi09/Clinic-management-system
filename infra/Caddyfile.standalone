@@ -29,15 +29,24 @@
 	handle @api {
 		reverse_proxy api:8080
 	}
+	# Content-hashed build assets (their filename changes every build) can be cached
+	# forever. A file that is NOT there is a 404 and is never cached: answering it with
+	# the app page (as the catch-all below does for routes) made a browser holding an
+	# older build see HTML where it expected a script, and labelled that HTML as
+	# cacheable for a year (FE-6).
+	handle /assets/* {
+		root * /srv
+		@found file {path}
+		@missing not file {path}
+		header @found Cache-Control "public, max-age=31536000, immutable"
+		header @missing Cache-Control "no-store"
+		file_server
+	}
 	handle {
 		root * /srv
-		# Content-hashed build assets (their filename changes every build) can be
-		# cached forever; the app shell must always revalidate so a redeploy is
-		# picked up immediately instead of serving a stale, cached SPA.
-		@assets path /assets/*
-		@shell not path /assets/*
-		header @assets Cache-Control "public, max-age=31536000, immutable"
-		header @shell Cache-Control "no-cache"
+		# The app shell must always revalidate so a redeploy is picked up at once
+		# instead of serving a stale, cached SPA.
+		header Cache-Control "no-cache"
 		try_files {path} /index.html
 		file_server
 	}
