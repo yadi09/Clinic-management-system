@@ -2,7 +2,7 @@
 // (here a fresh QueryClient), mock the API module at its import path, drive it the
 // way a user would (user-event, roles/text), and assert on what reached the API.
 //
-// KNOWN-BUG CONVENTION: a test that pins a bug we have NOT fixed yet is written as
+// KNOWN-BUG CONVENTION (PAT-6 below was fixed 2026-10-11 and is now a plain test): a test that pins a bug we have NOT fixed yet is written as
 // `test.fails("REG-... KNOWN BUG <id> ...")`. It asserts the CORRECT behaviour, so
 // today it fails and Vitest reports it as passing (expected failure), keeping the
 // suite green. The day the bug is fixed the assertion passes, `test.fails` turns red,
@@ -62,12 +62,48 @@ describe("REG-FE-PATIENT patient edit dialog", () => {
     });
   });
 
-  test.fails("REG-FE-PATIENT-001 KNOWN BUG PAT-6 editing the phone must not erase passport, address, emergency contact", async () => {
+  test("REG-FE-PATIENT-001 editing the phone hands the passport, address and emergency contact back untouched (PAT-6)", async () => {
     const [, body] = await editPhoneAndSave();
     expect(body).toMatchObject({
       passport_no: "EP1234567",
       address: "Bole, Addis Ababa",
       emergency_contact: "Almaz 0911222333",
     });
+  });
+
+  test("REG-FE-PATIENT-003 a structured address and contact (objects, as the API stores them) come back unchanged", async () => {
+    const structured = {
+      ...patient,
+      address: { city: "Adama", woreda: "04" },
+      emergency_contact: { name: "Almaz", phone: "0911222333" },
+    } as unknown as Patient;
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const onSaved = vi.fn();
+    render(
+      <QueryClientProvider client={qc}>
+        <PatientEditDialog patient={structured} onClose={vi.fn()} onSaved={onSaved} />
+      </QueryClientProvider>,
+    );
+    await userEvent.setup().click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(api.updatePatient).toHaveBeenCalledTimes(1));
+    const [, body] = api.updatePatient.mock.calls[0] as [string, Record<string, unknown>];
+    expect(body.address).toEqual({ city: "Adama", woreda: "04" });
+    expect(body.emergency_contact).toEqual({ name: "Almaz", phone: "0911222333" });
+  });
+
+  test("REG-FE-PATIENT-004 a patient with none of them sends none: nothing is invented, nothing is cleared", async () => {
+    const bare = { ...patient, passport_no: undefined, address: undefined, emergency_contact: undefined } as unknown as Patient;
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <PatientEditDialog patient={bare} onClose={vi.fn()} onSaved={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    await userEvent.setup().click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(api.updatePatient).toHaveBeenCalledTimes(1));
+    const [, body] = api.updatePatient.mock.calls[0] as [string, Record<string, unknown>];
+    expect(body).not.toHaveProperty("passport_no");
+    expect(body).not.toHaveProperty("address");
+    expect(body).not.toHaveProperty("emergency_contact");
   });
 });

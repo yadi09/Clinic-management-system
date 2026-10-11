@@ -36,7 +36,6 @@ export function PatientEditDialog({ patient, onClose, onSaved }: {
   const set = (k: keyof typeof f, v: string) => setF((s) => ({ ...s, [k]: v }));
 
   const mut = useMutation({
-    // The API requires the whole record on update, so send every field back.
     mutationFn: () => updatePatient(patient.id, {
       first_name: f.first_name.trim(),
       middle_name: f.middle_name.trim(),
@@ -47,6 +46,12 @@ export function PatientEditDialog({ patient, onClose, onSaved }: {
       email: f.email.trim(),
       national_id: f.national_id.trim(),
       blood_group: f.blood_group,
+      // What this form does not show is handed back exactly as it was loaded: saving a
+      // new phone number must not erase the passport, address or emergency contact
+      // (PAT-6). Absent ones are left out, and the server then keeps what it holds.
+      ...(patient.passport_no ? { passport_no: patient.passport_no } : {}),
+      ...(patient.address != null ? { address: patient.address } : {}),
+      ...(patient.emergency_contact != null ? { emergency_contact: patient.emergency_contact } : {}),
     }),
     onSuccess: () => { toast.success("Patient details updated"); onSaved(); onClose(); },
     onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not save the changes"),

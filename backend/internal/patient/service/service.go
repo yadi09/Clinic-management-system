@@ -153,23 +153,39 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in patient.PatientIn
 	if err != nil {
 		return nil, apperr.Validation("dob must be YYYY-MM-DD").WithField("dob", "invalid date")
 	}
+	// Only what the caller sent is written. The first name is always sent (it is
+	// required); every other field is kept as stored unless the request carried it,
+	// so an edit that does not show passport, address or emergency contact cannot
+	// erase them. A field sent empty is cleared, as before.
+	sent := func(k string) bool { return in.Sent == nil || in.Sent[k] }
+	set := []string{"first_name = $3"}
+	args := []any{tenantID, id, strings.TrimSpace(in.FirstName)}
+	for _, c := range []struct {
+		key, cast string
+		val       any
+	}{
+		{"middle_name", "", strPtr(in.MiddleName)},
+		{"last_name", "", strings.TrimSpace(in.LastName)},
+		{"gender", "", defaultStr(in.Gender, "unknown")},
+		{"dob", "", dob},
+		{"national_id", "", strPtr(in.NationalID)},
+		{"passport_no", "", strPtr(in.PassportNo)},
+		{"phone", "", strPtr(in.Phone)},
+		{"email", "", strPtr(in.Email)},
+		{"blood_group", "", strPtr(in.BloodGroup)},
+		{"address", "::jsonb", jsonOrEmpty(in.Address)},
+		{"emergency_contact", "::jsonb", jsonOrEmpty(in.EmergencyContact)},
+	} {
+		if sent(c.key) {
+			args = append(args, c.val)
+			set = append(set, fmt.Sprintf("%s = $%d%s", c.key, len(args), c.cast))
+		}
+	}
 	if err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		return patientdb.New(tx).UpdatePatient(ctx, patientdb.UpdatePatientParams{
-			TenantID:         tenantID,
-			ID:               id,
-			FirstName:        strings.TrimSpace(in.FirstName),
-			MiddleName:       strPtr(in.MiddleName),
-			LastName:         strings.TrimSpace(in.LastName),
-			Gender:           defaultStr(in.Gender, "unknown"),
-			Dob:              dob,
-			NationalID:       strPtr(in.NationalID),
-			PassportNo:       strPtr(in.PassportNo),
-			Phone:            strPtr(in.Phone),
-			Email:            strPtr(in.Email),
-			Address:          jsonOrEmpty(in.Address),
-			EmergencyContact: jsonOrEmpty(in.EmergencyContact),
-			BloodGroup:       strPtr(in.BloodGroup),
-		})
+		_, e := tx.Exec(ctx,
+			`UPDATE patients SET `+strings.Join(set, ", ")+`, updated_at = now()
+			  WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`, args...)
+		return e
 	}); err != nil {
 		return nil, mapWriteErr(err)
 	}
@@ -442,17 +458,17 @@ func (s *Service) RecordAttachment(ctx context.Context, patientID uuid.UUID, in 
 	}, nil
 }
 
-// RemoveAttachment soft-deletes the record and best-effort deletes the object.
+// RemoveAttachment soft-deletes the record. The stored file is KEPT: nothing backs
+// the file store up and removal is one tap, so the object stays until a retention
+// rule says it may go (AUD-02). It is unreachable meanwhile: links are short-lived
+// signed URLs minted only for visible rows.
 func (s *Service) RemoveAttachment(ctx context.Context, patientID, id uuid.UUID) error {
 	tenantID, _ := actor(ctx)
-	var key string
 	if err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := patientdb.New(tx)
-		row, e := q.GetAttachment(ctx, patientdb.GetAttachmentParams{TenantID: tenantID, PatientID: patientID, ID: id})
-		if e != nil {
+		if _, e := q.GetAttachment(ctx, patientdb.GetAttachmentParams{TenantID: tenantID, PatientID: patientID, ID: id}); e != nil {
 			return e
 		}
-		key = row.StorageKey
 		return q.RemoveAttachment(ctx, patientdb.RemoveAttachmentParams{TenantID: tenantID, PatientID: patientID, ID: id})
 	}); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -460,7 +476,6 @@ func (s *Service) RemoveAttachment(ctx context.Context, patientID, id uuid.UUID)
 		}
 		return apperr.Internal(err)
 	}
-	_ = s.store.Delete(ctx, key) // best effort
 	return nil
 }
 

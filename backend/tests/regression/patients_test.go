@@ -297,17 +297,18 @@ func TestREG_PATIENT_006_SearchFindsByNameMRNAndPhone(t *testing.T) {
 	}
 }
 
-// TestREG_PATIENT_007_UpdatePersistsAndIsFullReplace: Given a patient with a passport
-// number and an address, When PUT /patients/:id is sent with new names and phone but
-// without passport_no/address, Then the new values persist AND the omitted fields
-// are cleared. That is the API contract: PUT is a full replace, so a client must
-// send the whole record. (Audit item PAT-6 — the edit form dropping fields — is the
-// frontend not sending them; this test pins the server side of that contract.)
-func TestREG_PATIENT_007_UpdatePersistsAndIsFullReplace(t *testing.T) {
+// TestREG_PATIENT_007_UpdatePersistsAndKeepsWhatWasNotSent: Given a patient with a
+// passport number, an address and an emergency contact, When PUT /patients/:id is
+// sent with new names and phone but WITHOUT those three, Then the new values persist
+// AND the three omitted fields are kept. (This used to be a full replace: any edit
+// that did not show those fields erased them — audit PAT-6, AUD-01.)
+func TestREG_PATIENT_007_UpdatePersistsAndKeepsWhatWasNotSent(t *testing.T) {
 	rc := srv.As(t, clinicA, "receptionist")
 	p := patCreate(t, rc, map[string]any{
 		"first_name": uniq("Before"), "last_name": "Old", "gender": "female", "dob": "1992-02-02",
-		"phone": patPhone(), "passport_no": "EP123456", "address": map[string]any{"city": "Adama"}, "force": true,
+		"phone": patPhone(), "passport_no": "EP123456", "address": map[string]any{"city": "Adama"},
+		"emergency_contact": map[string]any{"name": "Almaz", "phone": "0911222333"}, "national_id": "NID-" + uniq("k"),
+		"blood_group": "O+", "force": true,
 	})
 	newPhone := patPhone()
 	newFirst := uniq("After")
@@ -323,12 +324,91 @@ func TestREG_PATIENT_007_UpdatePersistsAndIsFullReplace(t *testing.T) {
 	if got.FirstName != newFirst || got.Phone != newPhone || got.MRN != p.MRN {
 		t.Fatalf("update not persisted (or MRN changed): %+v", got)
 	}
-	var passport *string
-	var addr string
+	var passport, nid, blood *string
+	var addr, emerg string
 	one(t, `SELECT passport_no FROM patients WHERE id = $1`, &passport, patUUID(t, p.ID))
+	one(t, `SELECT national_id FROM patients WHERE id = $1`, &nid, patUUID(t, p.ID))
+	one(t, `SELECT blood_group FROM patients WHERE id = $1`, &blood, patUUID(t, p.ID))
 	one(t, `SELECT address::text FROM patients WHERE id = $1`, &addr, patUUID(t, p.ID))
-	if passport != nil || strings.Contains(addr, "Adama") {
-		t.Fatalf("PUT is documented as full replace, but omitted fields survived: passport=%v address=%s", passport, addr)
+	one(t, `SELECT emergency_contact::text FROM patients WHERE id = $1`, &emerg, patUUID(t, p.ID))
+	if passport == nil || *passport != "EP123456" || nid == nil || blood == nil || *blood != "O+" ||
+		!strings.Contains(addr, "Adama") || !strings.Contains(emerg, "Almaz") {
+		t.Fatalf("an edit that did not send these fields erased them: passport=%v national_id=%v blood=%v address=%s emergency=%s",
+			passport, nid, blood, addr, emerg)
+	}
+}
+
+// TestREG_PATIENT_009_AFieldSentEmptyIsCleared: Given a patient with a passport, an
+// address, an email and a phone, When PUT sends those keys empty (or null), Then they
+// are cleared — "not sent" keeps, "sent empty" clears — and what was not sent stays.
+func TestREG_PATIENT_009_AFieldSentEmptyIsCleared(t *testing.T) {
+	rc := srv.As(t, clinicA, "receptionist")
+	p := patCreate(t, rc, map[string]any{
+		"first_name": uniq("Clear"), "last_name": "Fields", "gender": "male", "dob": "1990-01-01",
+		"phone": patPhone(), "email": "keep" + uniq("") + "@example.test", "passport_no": "EP777",
+		"address": map[string]any{"city": "Bahir Dar"}, "emergency_contact": map[string]any{"name": "Kebede"}, "force": true,
+	})
+	rc.Do("PUT", "/patients/"+p.ID, map[string]any{
+		"first_name": "Clear", "passport_no": "", "phone": "", "address": nil,
+	}).Expect(t, 200, "clear some fields")
+	var passport, phone, email *string
+	var addr, emerg string
+	var gender string
+	var last string
+	one(t, `SELECT passport_no FROM patients WHERE id = $1`, &passport, patUUID(t, p.ID))
+	one(t, `SELECT phone FROM patients WHERE id = $1`, &phone, patUUID(t, p.ID))
+	one(t, `SELECT email FROM patients WHERE id = $1`, &email, patUUID(t, p.ID))
+	one(t, `SELECT address::text FROM patients WHERE id = $1`, &addr, patUUID(t, p.ID))
+	one(t, `SELECT emergency_contact::text FROM patients WHERE id = $1`, &emerg, patUUID(t, p.ID))
+	one(t, `SELECT gender FROM patients WHERE id = $1`, &gender, patUUID(t, p.ID))
+	one(t, `SELECT last_name FROM patients WHERE id = $1`, &last, patUUID(t, p.ID))
+	if passport != nil || phone != nil || strings.Contains(addr, "Bahir") {
+		t.Fatalf("fields sent empty were not cleared: passport=%v phone=%v address=%s", passport, phone, addr)
+	}
+	if email == nil || !strings.Contains(emerg, "Kebede") || gender != "male" || last != "Fields" {
+		t.Fatalf("fields that were NOT sent changed: email=%v emergency=%s gender=%s last=%s", email, emerg, gender, last)
+	}
+}
+
+// TestREG_PATIENT_010_TheFirstNameAloneChangesOnlyTheFirstName: Given a fully filled
+// patient, When PUT sends only first_name, Then every other stored field is untouched.
+func TestREG_PATIENT_010_TheFirstNameAloneChangesOnlyTheFirstName(t *testing.T) {
+	rc := srv.As(t, clinicA, "receptionist")
+	p := patCreate(t, rc, map[string]any{
+		"first_name": uniq("Only"), "middle_name": "Mid", "last_name": "Whole", "gender": "female", "dob": "1988-08-08",
+		"phone": patPhone(), "passport_no": "EP999", "blood_group": "A-", "address": map[string]any{"city": "Hawassa"}, "force": true,
+	})
+	before := patGet(t, rc, p.ID)
+	rc.Do("PUT", "/patients/"+p.ID, map[string]any{"first_name": "Renamed"}).Expect(t, 200, "rename")
+	after := patGet(t, rc, p.ID)
+	if after.FirstName != "Renamed" {
+		t.Fatalf("first name not changed: %+v", after)
+	}
+	if after.MiddleName != before.MiddleName || after.LastName != before.LastName || after.Gender != before.Gender ||
+		after.DOB != before.DOB || after.Phone != before.Phone || after.BloodGroup != before.BloodGroup {
+		t.Fatalf("a rename changed other fields:\nbefore %+v\nafter  %+v", before, after)
+	}
+	var passport *string
+	one(t, `SELECT passport_no FROM patients WHERE id = $1`, &passport, patUUID(t, p.ID))
+	if passport == nil || *passport != "EP999" {
+		t.Fatalf("a rename erased the passport: %v", passport)
+	}
+}
+
+// TestREG_PATIENT_011_AnUpdateWithoutAFirstNameOrWithBrokenJSONIsRefused: When PUT
+// sends no first name, or a body that is not JSON, Then 400 and nothing is stored.
+func TestREG_PATIENT_011_AnUpdateWithoutAFirstNameOrWithBrokenJSONIsRefused(t *testing.T) {
+	rc := srv.As(t, clinicA, "receptionist")
+	first := uniq("Intact")
+	p := patCreate(t, rc, map[string]any{"first_name": first, "phone": patPhone(), "passport_no": "EP-INTACT", "force": true})
+	rc.Do("PUT", "/patients/"+p.ID, map[string]any{"phone": patPhone()}).Expect(t, 400, "no first name")
+	rc.Do("PUT", "/patients/"+p.ID, "this is not an object").Expect(t, 400, "not an object")
+	var stored string
+	var passport *string
+	one(t, `SELECT first_name FROM patients WHERE id = $1`, &stored, patUUID(t, p.ID))
+	one(t, `SELECT passport_no FROM patients WHERE id = $1`, &passport, patUUID(t, p.ID))
+	if stored != first || passport == nil || *passport != "EP-INTACT" {
+		t.Fatalf("a refused update changed the record: first=%q passport=%v", stored, passport)
 	}
 }
 

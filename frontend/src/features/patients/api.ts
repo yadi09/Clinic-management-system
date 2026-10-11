@@ -64,6 +64,10 @@ export interface Patient {
   phone?: string;
   email?: string;
   blood_group?: string;
+  /** Held by the server and returned with the record; the screens do not edit them
+   *  yet, but a save must hand them back untouched (PAT-6). */
+  address?: unknown;
+  emergency_contact?: unknown;
   created_at: string;
 }
 
@@ -86,6 +90,8 @@ export interface PatientFormValues {
   phone?: string;
   email?: string;
   blood_group?: string;
+  address?: unknown;
+  emergency_contact?: unknown;
   /** The clinic recorded an age; dob was derived from it. */
   dob_estimated?: boolean;
 }

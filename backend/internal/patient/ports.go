@@ -33,6 +33,12 @@ type PatientInput struct {
 	Address          json.RawMessage
 	EmergencyContact json.RawMessage
 	Force            bool // proceed despite duplicate warnings
+	// Sent names the fields the caller actually put in an UPDATE request. A field
+	// that was not sent keeps its stored value; a field sent empty is cleared. Nil
+	// means "every field" (create and import, which have nothing stored to keep).
+	// Without this an edit that omitted passport, address or emergency contact
+	// erased them (PAT-6).
+	Sent map[string]bool
 }
 
 // Patient is the full patient record.

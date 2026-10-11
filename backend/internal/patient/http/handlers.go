@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 	"github.com/google/uuid"
 
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
@@ -131,12 +132,24 @@ func (h *Handlers) Update(c *gin.Context) {
 	if !ok {
 		return
 	}
+	// The body is bound once and kept, so the service can tell a field that was left
+	// out (keep what is stored) from one that was sent empty (clear it).
 	var req patientRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
 		httpx.Fail(c, apperr.Validation("first_name is required"))
 		return
 	}
-	p, err := h.svc.Update(c.Request.Context(), pid, toInput(req))
+	var keys map[string]json.RawMessage
+	raw, _ := c.Get(gin.BodyBytesKey)
+	if b, ok := raw.([]byte); ok {
+		_ = json.Unmarshal(b, &keys)
+	}
+	in := toInput(req)
+	in.Sent = make(map[string]bool, len(keys))
+	for k := range keys {
+		in.Sent[k] = true
+	}
+	p, err := h.svc.Update(c.Request.Context(), pid, in)
 	if err != nil {
 		httpx.Fail(c, err)
 		return

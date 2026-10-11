@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pre-production audit: ClinicOS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+
+:root{--paper:#fbfaf7;--card:#fff;--ink:#1f2a33;--soft:#5d6b76;--line:#e3e0d8;--teal:#0f6e6a;--warn:#b45309;--warn-bg:#fdf1e3;--bad:#b42318;--bad-bg:#fdecea;--ok:#1d7a46;--ok-bg:#e5f4ea;--sky:#1d4e89;--sky-bg:#e8f0fa}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--paper:#14181c;--card:#1b2026;--ink:#e7e9ea;--soft:#9aa6b0;--line:#2c333a;--teal:#4fb3ad;--warn:#f0a85a;--warn-bg:#3a2a18;--bad:#f2867c;--bad-bg:#3a1f1d;--ok:#6cc792;--ok-bg:#1a3325;--sky:#86b3e0;--sky-bg:#1c2a38}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.6 "Atkinson Hyperlegible",system-ui,sans-serif}
+.wrap{max-width:960px;margin:0 auto;padding:32px 16px 90px}
+h1{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:2.1rem;line-height:1.15;margin:0 0 8px}
+h2{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:1.5rem;margin:46px 0 10px}
+h3{font-size:1.05rem;margin:24px 0 6px}
+.lede{color:var(--soft);max-width:68ch}
+.box{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:14px 0}
+.key{border-left:6px solid var(--teal)}.warn{border-left:6px solid var(--warn)}
+table{border-collapse:collapse;width:100%;font-size:.94rem;margin:10px 0;background:var(--card)}
+th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--paper)}
+.scroll{overflow-x:auto}
+.tag{display:inline-block;font-size:.76rem;font-weight:700;padding:1px 9px;border-radius:20px;margin-right:4px}
+.s{background:var(--ok-bg);color:var(--ok)}.m{background:var(--warn-bg);color:var(--warn)}.l{background:var(--bad-bg);color:var(--bad)}
+.scene{background:var(--paper);border-radius:8px;padding:10px 14px;font-style:italic;margin:8px 0}
+ul,ol{padding-left:22px}li{margin:3px 0}
+footer{color:var(--soft);font-size:.85rem;margin-top:44px}
+code{font-size:.88em;background:var(--paper);padding:1px 5px;border-radius:4px}
+
+
+.wrap{max-width:1040px}
+.doc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:18px 0}
+.doc h3{margin:0 0 2px;font-size:1.15rem}
+.doc .where{color:var(--soft);font-size:.9rem;margin-bottom:10px}
+.five{display:grid;grid-template-columns:150px 1fr;gap:6px 14px;font-size:.95rem}
+.five dt{font-weight:700;color:var(--teal)}
+.five dd{margin:0}
+.gap{color:var(--bad);font-weight:700}
+.pill{display:inline-block;font-size:.72rem;font-weight:700;padding:1px 8px;border-radius:20px;margin-right:4px}
+.pill.red{background:var(--bad-bg);color:var(--bad)}.pill.amb{background:var(--warn-bg);color:var(--warn)}.pill.grn{background:var(--ok-bg);color:var(--ok)}
+.mocks{display:flex;flex-wrap:wrap;gap:18px;justify-content:center;margin:14px 0;font-family:Inter,system-ui,sans-serif;color:#1c2733}
+.paper{background:#fff;border:1px solid #cfd6df;box-shadow:0 2px 8px rgba(20,30,40,.12);padding:12px 14px;font-size:11px;line-height:1.4}
+.paper .cap{font:700 10px Inter;color:#5a6b7d;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.slip{width:230px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px}
+.slip hr{border:none;border-top:1px dashed #aaa;margin:6px 0}
+.slip .c{text-align:center}.slip .r{text-align:right}.slip .b{font-weight:700}
+.slip .row{display:flex;justify-content:space-between;gap:8px}
+.slip .logo{width:34px;height:34px;border-radius:8px;background:#14532d;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;margin:0 auto 4px}
+.slip .stamp{border:2px solid #b42318;color:#b42318;font-weight:800;text-align:center;padding:2px;transform:rotate(-4deg);margin:6px 18px}
+.a5{width:300px;font-family:Inter,system-ui,sans-serif}
+.a5 .hd{display:flex;gap:8px;align-items:center;border-bottom:3px solid #14532d;padding-bottom:6px;margin-bottom:6px}
+.a5 .lg{width:36px;height:36px;border-radius:8px;background:#14532d;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px}
+.a5 .blank{height:44px;border:1.5px dashed #b6c0cc;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#7a8a9a;font-size:10px;margin-bottom:6px}
+.a5 .rx{font-size:20px;font-weight:700;color:#14532d}
+.a5 .med{border-bottom:1px dashed #cfd6df;padding:5px 0}
+.a5 .sg{display:flex;justify-content:space-between;margin-top:14px;align-items:flex-end}
+.a5 .sg div:not(.box){border-top:1px solid #333;width:120px;text-align:center;font-size:9px;padding-top:2px}
+.a5 .box{border:1px dashed #9aa8b6;width:70px;height:46px;text-align:center;font-size:9px;color:#7a8a9a;padding-top:14px}
+.gridtable td:first-child{font-weight:700;white-space:nowrap}
+.q li{margin:6px 0}
+
+.b{display:inline-block;font-size:.74rem;font-weight:700;padding:1px 9px;border-radius:20px;white-space:nowrap}
+.pass{background:var(--ok-bg);color:var(--ok)}.fail{background:var(--bad-bg);color:var(--bad)}
+.blocked{background:var(--warn-bg);color:var(--warn)}.nt{background:#eef0f2;color:#4a5560}.na{background:#f1ecf8;color:#5b3f8c}
+.p0{background:#b42318;color:#fff}.p1{background:var(--bad-bg);color:var(--bad)}.p2{background:var(--warn-bg);color:var(--warn)}.p3{background:#eef0f2;color:#4a5560}
+td.n{white-space:nowrap}
+.small{font-size:.88rem;color:var(--soft)}
+.wrap{max-width:1080px}
+pre{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow:auto;font-size:.82rem;line-height:1.45}
+</style></head>
+<body><div class="wrap">
+<h1>Pre-production audit: data integrity, money, isolation and recovery</h1>
+<p class="lede">Audit of ClinicOS at commit <code>dee351d</code> (deployed 2026-10-11 08:17 UTC), made on 2026-10-11 before more dental clinics are onboarded.
+It separates what was <b>inspected</b>, what was <b>executed</b>, what was <b>observed in production</b>, and what could <b>not</b> be verified.
+No code, data, configuration or infrastructure was changed by this audit.</p>
+
+<div class="box key"><b>Update, same day.</b> The two pre-onboarding fixes are built and tested, and waiting for your "deploy":
+<b>AUD-01</b> (editing a patient no longer erases passport, address or emergency contact, at both the screen and the server) and
+<b>AUD-02</b> (deleting an image or attachment hides the record but keeps the stored file). Files still have no second copy (AUD-02 remains open for backup and retention).
+Everything else in this report is unchanged.</div>
+<div class="box warn"><b>How this audit was kept safe.</b> Production was touched only by read-only commands: server uptime, disk, container list,
+the backup directory listing and log, public-site requests, and <i>counts</i> over tables (no patient names, phones or records were read or copied).
+All writes were made against an isolated throwaway database that holds synthetic data only (about 3,800 test clinics). One scratch test file was
+created to probe a rounding rule and was deleted immediately; the working tree is unchanged.</div>
+
+<h2>1. Executive risk report</h2>
+<div class="box key"><b>Recommendation: conditional GO for clinics on the dental preset; NO-GO for enabling pharmacy, inpatient, maternity or in-house
+laboratory on newly onboarded clinics.</b> The conditions are at the end of this section. This is a recommendation for the owner to decide, not a guarantee.</div>
+
+<h3>What the evidence supports</h3>
+<ul>
+<li><b>Clinic isolation is sound at the database.</b> Every table that holds a clinic's rows has row-level security enabled <i>and forced</i> with a policy
+(a test checks this for all of them and passes). I found no route that reads a clinic's data without a clinic context; the only direct database use outside the vendor console is a read of the clinic registry by slug.</li>
+<li><b>Money records reconcile.</b> On production (846 paid charges, 6 day-closes, 24 treatment plans) every invariant I tested holds with zero violations,
+except one historical anomaly that needs your confirmation (finding AUD-15). Money is stored as exact <code>numeric</code>; there is no floating-point money column in the schema.</li>
+<li><b>Double payment is guarded and tested.</b> Concurrent settles and concurrent refunds each take the money once (REG-PAY-005, 007); one bank transfer
+cannot pay twice (REG-BILL-032); overlapping appointments are refused by a database exclusion constraint.</li>
+<li><b>Backups run.</b> Nine consecutive nightly dumps (02:30 Addis), each verified readable, encrypted, and uploaded off the server to a separate bucket, plus a verified dump before every deploy.</li>
+<li><b>Today's full run is green:</b> 885 backend tests passed (0 failed), 1,841 frontend tests, 14 browser journeys, 277 of 277 in-scope routes exercised.</li>
+</ul>
+
+<h3>What the evidence does <u>not</u> support</h3>
+<ul>
+<li>That patient data cannot be lost. <b>Editing a patient currently erases passport, address and emergency contact</b> (AUD-01).
+That is active data loss in an everyday action.</li>
+<li>That clinical files are safe. <b>Deleting an X-ray destroys the file immediately</b> and no copy of the file store exists (AUD-02).
+One image has already been deleted in production.</li>
+<li>That a restore works. A restore of a <b>production</b> dump has not been demonstrated in this audit (it would move real patient data; see section 7). Recovery time is unknown.</li>
+<li>That the general-clinic modules are safe. <b>Pharmacy 1.8%, inpatient 0.2%, maternity 1.0%, clinical 33%, lab 39% statement coverage</b>
+by the whole suite. They handle money and clinical data and are essentially unverified (AUD-09).</li>
+<li>That anyone would be told when something breaks. There is no monitoring or missed-backup alert (AUD-07).</li>
+</ul>
+
+<h3>Conditions for onboarding tomorrow</h3>
+<ol>
+<li><b>Fix or disable patient editing</b> (AUD-01) before any new clinic registers patients. Small change, test already written. Needs your approval.</li>
+<li><b>Restrict deleting images</b> to the owner and tell clinics not to delete; ask Cloudflare R2 to keep object versions (AUD-02). Needs your authorization for the bucket setting.</li>
+<li><b>Onboard on the dental preset only.</b> The preset switches off laboratory, pharmacy, inventory, maternity and inpatient (provision.go); REG-PLAT-010 asserts dental on and laboratory, pharmacy and inventory off, and the other two are set in the same preset but not asserted by a test.</li>
+<li><b>Take a manual restore rehearsal</b> to a throwaway server this week (AUD-07); until then, treat recovery as unproven.</li>
+</ol>
+
+<h2>2. Architecture and data-flow map</h2>
+<div class="scroll"><table>
+<tr><th>Layer</th><th>What is actually there</th><th>Evidence</th></tr>
+<tr><td>Front end</td><td>React 18 + TypeScript SPA (Vite, React Query). 20 feature folders; public routes only for the campaign page and the paper-check page.</td><td>frontend/src</td></tr>
+<tr><td>API</td><td>Go modular monolith (Gin, pgx). 21 domain modules, 390 registered routes (277 in the dental scope). 50,000 lines of code, 33,000 lines of tests.</td><td>backend/internal</td></tr>
+<tr><td>Worker</td><td>One background process: event outbox relay, SMS dispatcher, notification producers. No job found that deletes clinical or financial rows.</td><td>backend/cmd/worker; DELETE audit below</td></tr>
+<tr><td>Database</td><td>PostgreSQL 16, one database for all clinics, 113 tables, 244 foreign keys, 95 migrations (goose). Production is 26 MB: 11 clinics, 684 patients.</td><td>catalog queries on test DB; production counts</td></tr>
+<tr><td>Isolation</td><td>Every request runs in a transaction that sets <code>app.tenant_id</code>; row-level security (forced) filters by it. The API connects as a non-superuser role.</td><td>kernel/db, REG-TENANT-006</td></tr>
+<tr><td>Files</td><td>Cloudflare R2 (bucket for attachments), direct signed upload from the browser, key must be inside the clinic's and patient's folder.</td><td>storage/r2.go, RecordImage</td></tr>
+<tr><td>Integrations</td><td>SMSEthiopia, Verify.ET (bank receipt check), DHIS2 (Ministry), NVIDIA AI assistant, Deepgram dictation. All config-gated.</td><td>kernel/*, cmd/api/main.go</td></tr>
+<tr><td>Hosting</td><td>One VPS (2 vCPU, 3.8 GB RAM, disk 80% used) behind Cloudflare, Docker Compose. <b>The same host also runs another product's stack</b> (nginx, backend, Postgres) and a test database container.</td><td>docker ps, df</td></tr>
+<tr><td>Deploy</td><td>Server pulls a git commit, takes and verifies a database dump, builds, migrates, restarts, health-checks; one-command rollback of images.</td><td>scripts/deploy/deploy.sh</td></tr>
+</table></div>
+<pre>
+browser ── Cloudflare ──► host nginx (shared with another product) ──► Caddy (clinicos-web) ──► api ──► Postgres (RLS)
+                                                                              │                  ├──► R2 attachments  (files, no copy)
+   public (no account): /v/:slug/:key (paper check), /c/:code (campaign)      └── worker ───────┴──► SMS / DHIS2 / Verify.ET
+   nightly 23:30 UTC: pg_dump ► verify ► encrypt ► R2 backup bucket (separate key)
+</pre>
+<h3>Trust boundaries</h3>
+<ul>
+<li>Public internet → Cloudflare → origin. <b>Port 8443 on the server is also reachable directly</b> (verified), bypassing Cloudflare (AUD-16).</li>
+<li>Signed-in staff → API: authorization (permission and clinic) is enforced on the server, tested by role matrices (REG-AUTHZ-001, -005).</li>
+<li>Clinic → clinic: row-level security. Vendor console → all clinics: separate token, separate permission, separate table of admins (REG-PLAT-001..008).</li>
+</ul>
+<p class="small">An external port scan from the audit workstation reported every port "open"; the server's own socket list shows only 22, 80, 443 and 8443 listening, and
+neither Postgres, Redis nor the API is published. The scan result was a property of the workstation's network, not the server, and is not a finding.</p>
+
+<h2>3. Findings register</h2>
+<p>Severity follows your rubric. "Known" means it was already in the bug tracker; for every known item below an executable test currently asserts that the defect is
+<b>still present</b> at this commit (a failing-when-fixed marker), so the tracker status is confirmed, not assumed. Findings new to this audit are marked <b>NEW</b>.</p>
+<div class="scroll"><table>
+<tr><th>ID</th><th>Sev</th><th>Conf.</th><th>Finding</th><th>Evidence and root cause</th><th>Real data affected?</th></tr>
+
+<tr><td class="n"><b>AUD-01</b><br>PAT-6 (known)</td><td><span class="b p0">P0</span></td><td>High</td>
+<td><b>Editing a patient erases passport number, address and emergency contact.</b></td>
+<td>The edit window sends nine fields; <code>UpdatePatient</code> replaces every column (backend/internal/patient/repo/queries/patients.sql:25; contract pinned by REG-PATIENT-007).
+Test <code>REG-FE-PATIENT-001</code> asserts the form omits the three fields and passes only because the bug is present.
+Files: frontend/src/features/patients/components/PatientEditDialog.tsx.</td>
+<td><b>Likely yes.</b> 66 of 684 active patients were edited after creation. 71 patients hold an address, 23 an emergency contact, 2 a passport. Earlier values are not in the live row; they exist only in nightly dumps (14 nights) and weekly dumps (8 weeks).</td></tr>
+
+<tr><td class="n"><b>AUD-02</b><br>DEN-2, OPS-3 (known)</td><td><span class="b p1">P1</span></td><td>High</td>
+<td><b>Deleting an X-ray or photo destroys the file at once, and files have no backup.</b></td>
+<td><code>DeleteImage</code> and <code>RemoveAttachment</code> soft-delete the row, then call the storage delete (internal/dental/service/service.go:3014, patient/service/service.go:463).
+Backups cover the database only (scripts/backup/backup.sh). Whether the bucket keeps object versions could not be verified. Delete permission is held by doctor, branch manager, admin and owner.</td>
+<td><b>Yes, one image</b> (1 of 8 attachments is soft-deleted).</td></tr>
+
+<tr><td class="n"><b>AUD-03</b><br>DEN-1, FE-2 (known)</td><td><span class="b p1">P1</span></td><td>High</td>
+<td><b>A dental examination can be overwritten or deleted with no earlier version kept; typed notes are lost on cancel.</b></td>
+<td>Exam save replaces the document; delete is a hard <code>DELETE FROM dental_visits</code> (service.go:2641). No draft or "unsaved changes" guard on the exam form.</td>
+<td>Production holds 1 examination so far.</td></tr>
+
+<tr><td class="n"><b>AUD-04</b><br>NEW-PAT-7, NEW-AUDIT-3 (known)</td><td><span class="b p1">P1</span></td><td>High</td>
+<td><b>A receptionist can delete a patient who still owes money, and nothing records who did it.</b></td>
+<td>Delete, allergy removal, condition removal and attachment removal all require only <code>patient.update</code>, which receptionist holds. The debt drops out of the Finance debt list; the bill remains.</td>
+<td>No: 0 deleted patients in production.</td></tr>
+
+<tr><td class="n"><b>AUD-05</b><br>FIN-15 (known)</td><td><span class="b p1">P1</span></td><td>High</td>
+<td><b>A listed service can be billed at any price</b> by anyone allowed to raise bills and able to call the API directly.</td>
+<td>The price sent in the request is used, not the price list. The normal screens send the right price.</td><td>Not observed.</td></tr>
+
+<tr><td class="n"><b>AUD-06</b><br>FIN-1, FE-9, FIN-2 (known)</td><td><span class="b p1">P1</span></td><td>High</td>
+<td><b>Day boundaries use 03:00 Addis (UTC midnight), not midnight.</b> The cashier screen can show yesterday as "today", the day close splits a late shift, and the home screen ignores refunds made today.</td>
+<td>Casts on <code>settled_at::date</code> under the UTC session zone. Visible side effect: two coverage figures fell during the first hours after Addis midnight in this audit's own run.</td>
+<td>Only for work done between 00:00 and 03:00 Addis.</td></tr>
+
+<tr><td class="n"><b>AUD-07</b><br>OPS-2, OPS-4 (known)</td><td><span class="b p1">P1</span></td><td>High</td>
+<td><b>No rehearsed restore and no monitoring.</b> A failed nightly backup, a stopped worker or a full disk would not alert anyone.</td>
+<td>The restore script exists (scripts/backup/restore-from-r2.sh) and the dump/encrypt/restore round trip passes on synthetic data, but no production restore was timed. No heartbeat line appears in the backup log.</td><td>n/a</td></tr>
+
+<tr><td class="n"><b>AUD-08</b><br>PAT-1, NEW-AUDIT-1/2, SEC-9, DEN-3, DEN-10 (known)</td><td><span class="b p1">P1</span></td><td>High</td>
+<td><b>Many sensitive changes leave no accountable record</b>: patient edits and deletions, staff invitations and role changes, new branches and payment accounts, "sign in as owner", deleting a given extra, price cuts and "pay later".</td>
+<td>No audit event is published on those paths; each has a test that asserts the absence.</td><td>Past actions cannot be reconstructed.</td></tr>
+
+<tr><td class="n"><b>AUD-09</b><br><b>NEW</b></td><td><span class="b p1">P1</span></td><td>High</td>
+<td><b>The general-clinic modules are almost untested.</b> Statement coverage by the entire suite: pharmacy 1.8%, inpatient 0.2%, maternity 1.0%, clinical (consultations) 33%, lab 39%, Ministry reporting 27%, against 83-97% for patients, scheduling, billing, dental and finance.</td>
+<td>These modules are outside the dental coverage gate and the front-end gate excludes them as well (vitest.config.ts). They move money (OTC sales, bed deposits) and clinical data.</td>
+<td>One production clinic (general, 49 patients) uses them.</td></tr>
+
+<tr><td class="n"><b>AUD-10</b><br>FIN-7, SEC-5 (known)</td><td><span class="b p2">P2</span></td><td>High</td>
+<td>A cashier in one branch can see and settle another branch's bills; staff can work in branches they are not assigned to.</td>
+<td>Branch membership is not enforced on writes (a test asserts the cross-branch settle succeeds). Same clinic only; never across clinics.</td><td>Matters only to multi-branch clinics.</td></tr>
+
+<tr><td class="n"><b>AUD-11</b><br>NEW-USER-1 (known)</td><td><span class="b p2">P2</span></td><td>High</td>
+<td>A clinic's only owner can be demoted, suspended or removed, locking the clinic out of administration.</td><td>No guard on the last owner. Recoverable by the vendor console.</td><td>Not observed.</td></tr>
+
+<tr><td class="n"><b>AUD-12</b><br><b>NEW</b></td><td><span class="b p2">P2</span></td><td>High (reproduced)</td>
+<td><b>A course total with a fraction is silently altered when it is split into visits on the server.</b></td>
+<td><code>splitAmount</code> (dental/service/service.go:159) rounds the last visit to a whole birr. Through the API: agreed 1000.25 over 2 visits gives visits summing to 1000.00; 1500.50 over 3 gives 1501.00; 999.99 over 4 gives 1000.00. The plan's stored total keeps the agreed figure, so plan total and billable visits disagree. The same function re-spreads remaining visits when one visit's fee is edited.</td>
+<td>Not observed; the web form sends whole-birr visit amounts, so this needs an API client or a fractional total.</td></tr>
+
+<tr><td class="n"><b>AUD-13</b><br><b>NEW</b></td><td><span class="b p2">P2</span></td><td>High (code)</td>
+<td><b>A file record can be created for an object that was never stored.</b></td>
+<td><code>RecordImage</code> / <code>RecordAttachment</code> check that the key is inside the right folder but, when the storage size lookup fails, fall back to the client's size and save the row anyway (dental/service/service.go:2917; patient/service/service.go:421). The web screens upload first, so this needs an out-of-order or interrupted call.</td>
+<td>Not observed.</td></tr>
+
+<tr><td class="n"><b>AUD-14</b><br><b>NEW</b></td><td><span class="b p2">P2</span></td><td>High (observed)</td>
+<td><b>No browser security headers are sent.</b></td>
+<td>Production responses carry no HSTS, X-Content-Type-Options, frame protection, CSP or Referrer-Policy (observed with a HEAD request; none configured in infra/ or the API).
+A cross-origin preflight is correctly refused. The refresh cookie is HttpOnly and Secure in production.</td><td>n/a</td></tr>
+
+<tr><td class="n"><b>AUD-15</b><br><b>NEW</b></td><td><span class="b p2">P2</span></td><td>Medium</td>
+<td><b>25 receipt numbers cover two patients each</b>, all in one general clinic, charges dated June to September 2026; none issued since July.</td>
+<td>A visit checkout is per patient, so a receipt should belong to one patient. Cause not established (possibly an earlier family-payment behaviour). Needs the owner to say whether one receipt may cover two patients.</td>
+<td>Yes, historical.</td></tr>
+
+<tr><td class="n"><b>AUD-16</b><br>OPS-5, SEC-4, PERF-1, TST-4 (known)</td><td><span class="b p2">P2</span></td><td>High</td>
+<td><b>Operational weaknesses on the single host.</b> The origin answers on port 8443 directly (verified), skipping Cloudflare. The database pool is the driver default (4 connections) with no statement time limit, and every open live-queue screen takes one extra connection.
+The rate limiter keys on a clinic, so one busy clinic can lock out its own staff. Disk is 80% full. The neighbouring product's nginx has been unhealthy for two weeks and also fronts this system.</td>
+<td>docker ps, df -h, <code>statement_timeout=0</code>, pgxpool defaults.</td><td>n/a</td></tr>
+
+<tr><td class="n"><b>AUD-17</b><br>PAT-2, PAT-3, FE-1 (known)</td><td><span class="b p2">P2</span></td><td>High</td>
+<td>Old-register import merges family members who share a phone; an imported card number can block new registrations; two open tabs can sign everyone out without saying so.</td><td>Executable known-bug tests.</td><td>Possible for clinics that import.</td></tr>
+
+<tr><td class="n"><b>AUD-18</b><br><b>NEW</b></td><td><span class="b p3">P3</span></td><td>High</td>
+<td>Money arithmetic in Go uses <code>float64</code> in the dental, pharmacy and billing services (sums, comparisons, display).</td>
+<td>Storage is exact <code>numeric</code>. I summed 5,000,000 random sets of up to 12 two-decimal amounts up to 200,000.00 the way the settle path does: 0 mismatches against exact integer arithmetic. This is a design smell, not an active defect.</td><td>No.</td></tr>
+
+<tr><td class="n"><b>AUD-19</b><br><b>NEW</b></td><td><span class="b p3">P3</span></td><td>Medium</td>
+<td>Build-time dependency alerts: <code>npm audit</code> reports 8 high and 5 moderate (braces, micromatch, fast-glob, chokidar, nanoid, postcss...), none critical. Go module vulnerabilities were <b>not scanned</b> (govulncheck is not installed).</td>
+<td>Whether the flagged packages reach the browser bundle was not established.</td><td>n/a</td></tr>
+
+<tr><td class="n"><b>AUD-20</b><br><b>NEW</b></td><td><span class="b p3">P3</span></td><td>High</td>
+<td>9 sessions are marked done without a completion time (8 extras from August, 1 visit from 2026-10-01).</td>
+<td>The "completed today" flag is false for them. Cosmetic for reports.</td><td>9 rows.</td></tr>
+</table></div>
+<p class="small">Also confirmed present by tests (medium/low, see the tracker): 106 distinct known-bug identifiers in total; 28 are high severity and are listed above.
+115 backend tests were <i>skipped</i> in today's run because they are such markers or conditional; a skip is not a pass.</p>
+
+<h2>4. Data integrity and financial logic</h2>
+<h3>Invariants tested on production (counts only, read-only)</h3>
+<div class="scroll"><table>
+<tr><th>#</th><th>Invariant</th><th>Result</th></tr>
+<tr><td>I1</td><td>Every paid charge has a settle time, a receipt number and a payment method</td><td><span class="b pass">PASS</span> 846 of 846</td></tr>
+<tr><td>I2</td><td>Every refund is negative, reverses a real charge, and equals it exactly</td><td><span class="b pass">PASS</span> no refunds exist yet (0 of 0); tested on synthetic data, 161 of 168 exact, 7 are zero-amount "nothing to refund" rows</td></tr>
+<tr><td>I3</td><td>No pending or void charge carries a receipt number or settle time</td><td><span class="b pass">PASS</span> 0 violations</td></tr>
+<tr><td>I4</td><td>No negative amount other than a refund</td><td><span class="b pass">PASS</span> 0</td></tr>
+<tr><td>I5</td><td>One receipt number belongs to one patient</td><td><span class="b fail">FAIL</span> 25 receipts cover two patients (AUD-15); 0 issued since July</td></tr>
+<tr><td>I6</td><td>A plan's stored total equals the sum of its live visits</td><td><span class="b pass">PASS</span> 0 of 24 drifted (but see AUD-12 for fractional totals)</td></tr>
+<tr><td>I7</td><td>No visit points at a void or deleted charge</td><td><span class="b pass">PASS</span> 0</td></tr>
+<tr><td>I8</td><td>A bank-transfer reference is claimed once per payment method</td><td><span class="b pass">PASS</span> 0 duplicates (unique index)</td></tr>
+<tr><td>I9</td><td>Every done visit has a completion time</td><td><span class="b fail">FAIL</span> 9 without (AUD-20)</td></tr>
+<tr><td>I10</td><td>A charge and its patient belong to the same clinic</td><td><span class="b pass">PASS</span> 0 mismatches</td></tr>
+<tr><td>I11</td><td>Each day close: variance equals counted minus expected</td><td><span class="b pass">PASS</span> 6 of 6</td></tr>
+</table></div>
+<h3>Structural guarantees (database catalog of the test database)</h3>
+<ul>
+<li>Every one of 113 tables has a primary key. Money columns: 28 are <code>numeric</code>; zero are <code>double precision</code>, <code>real</code> or <code>money</code>.</li>
+<li>Every timestamp is <code>timestamptz</code> (one exception: the migration tool's own table).</li>
+<li>Foreign keys: 194 restrict deletion, 46 cascade, 4 set null. The cascades that matter: deleting a patient would cascade allergies, attachments, conditions, dental exams, certificates and histories; deleting a plan cascades its visits and their prescriptions.
+No code path hard-deletes a patient. The three hard deletes in the dental module are guarded by row locks and refusals when a visit was given, billed or has a prescription or image (REG-DENTAL tests).</li>
+<li>Idempotency and uniqueness: patient card number unique per clinic and allocated by an atomic counter; receipt numbers allocated by an atomic counter inside the settle transaction (no gaps on rollback); one reversal per charge; one deposit per plan; one charge per visit; appointments protected by an exclusion constraint.</li>
+</ul>
+<h3>Rules found, ambiguities, and decisions needed</h3>
+<ul>
+<li>Total bill = sum of the visits' fees plus extras plus a deposit. The plan's stored total is recomputed from the rows after every add, remove, reprice and cancel.</li>
+<li>Outstanding = billed and unpaid, plus treatment given and not yet billed (dental statement); upcoming visits are shown separately and not counted as owed.</li>
+<li><b>Needs confirmation:</b> whether a receipt may ever cover two patients (AUD-15); whether a zero-amount "nothing to refund" row should exist, because the unique reversal index means it blocks any later real refund of that charge.</li>
+</ul>
+<h3>Rounding probes executed</h3>
+<pre>
+splitAmount(1500.50, 3) -> [500 500 501]   sum 1501.00   (agreed 1500.50)
+splitAmount(1000.25, 2) -> [500 500]       sum 1000.00   (agreed 1000.25)
+splitAmount( 999.99, 4) -> [200 200 200 400] sum 1000.00 (agreed  999.99)
+float sum vs exact cents, 5,000,000 random settles: 0 mismatches
+</pre>
+
+<h2>5. Dental and general clinic workflows</h2>
+<div class="scroll"><table>
+<tr><th>Workflow</th><th>Status</th><th>Evidence / limit</th></tr>
+<tr><td>Patient registration, search, duplicate warning</td><td><span class="b pass">PASS</span></td><td>REG-PATIENT-001..; duplicate phone/name flagged, <i>not atomic</i>: two simultaneous registrations could both pass the warning (card number stays unique)</td></tr>
+<tr><td>Patient edit</td><td><span class="b fail">FAIL</span></td><td>AUD-01</td></tr>
+<tr><td>Appointments: book, overlap refused, reschedule, cancel</td><td><span class="b pass">PASS</span></td><td>REG-APPT-003..008; database exclusion constraint</td></tr>
+<tr><td>Check-in, queue, cashier-then-dentist gate</td><td><span class="b pass">PASS</span></td><td>REG-APPT-008, REG-RECEP-001..012, e2e REG-E2E-020</td></tr>
+<tr><td>Treatment plan, visits, deposit, extras</td><td><span class="b pass">PASS</span></td><td>REG-DENTAL-*; fractional totals <span class="b fail">FAIL</span> AUD-12</td></tr>
+<tr><td>Dental chart (tooth conditions, history)</td><td><span class="b pass">PASS</span></td><td>REG-E2E-013, -021; children's teeth not built (not a defect)</td></tr>
+<tr><td>Payments: partial, multiple, refund, void, waive</td><td><span class="b pass">PASS</span></td><td>REG-PAY-*, REG-BILL-*; concurrent settle/refund tested</td></tr>
+<tr><td>Day close and Z-report</td><td><span class="b fail">FAIL</span></td><td>AUD-06 around midnight; otherwise reconciles (I11)</td></tr>
+<tr><td>Prescriptions and the paper check</td><td><span class="b pass">PASS</span></td><td>REG-VERIFY-001..011, REG-E2E-024; deployed today</td></tr>
+<tr><td>Dental examination record</td><td><span class="b fail">FAIL</span></td><td>AUD-03</td></tr>
+<tr><td>X-rays and photos: upload, view, delete</td><td><span class="b fail">FAIL</span></td><td>Upload and tenant folder check pass; delete is destructive (AUD-02); record-without-object (AUD-13)</td></tr>
+<tr><td>Medical certificates, statements, receipts, printing</td><td><span class="b pass">PASS</span></td><td>REG-PRINT-*, REG-FE-CERTPRINT-*, template tests</td></tr>
+<tr><td>Reports and dashboards (money)</td><td><span class="b pass">PASS</span></td><td>Server decides who sees money (REG-AUTHZ-003); reconcile with charges (REG-FIN-*); known refund/day-boundary gaps AUD-06</td></tr>
+<tr><td>Ministry (DHIS2) push</td><td><span class="b nt">NOT TESTED</span></td><td>Config-gated; the live network call was not exercised in this audit</td></tr>
+<tr><td>AI assistant and patient data</td><td><span class="b nt">NOT TESTED</span></td><td>Sends visit text to a third-party API when a key is set; its data-handling was not audited</td></tr>
+<tr><td>Pharmacy dispense, OTC sale, stock</td><td><span class="b nt">NOT TESTED</span></td><td>1.8% coverage (AUD-09)</td></tr>
+<tr><td>Inpatient beds, deposits, settle</td><td><span class="b nt">NOT TESTED</span></td><td>0.2% coverage</td></tr>
+<tr><td>Maternity</td><td><span class="b nt">NOT TESTED</span></td><td>1.0% coverage; the dating calculator itself is unit-tested</td></tr>
+<tr><td>Consultation workspace (general clinic)</td><td><span class="b nt">NOT TESTED</span></td><td>33% backend; the page is excluded from front-end coverage</td></tr>
+<tr><td>Laboratory (in-house)</td><td><span class="b nt">NOT TESTED</span></td><td>39%; the lab report print path has tests</td></tr>
+</table></div>
+
+<h2>6. Security and tenant isolation</h2>
+<div class="scroll"><table>
+<tr><th>Control</th><th>Status</th><th>Evidence</th></tr>
+<tr><td>Row-level security enabled and forced on every clinic table, with a policy</td><td><span class="b pass">PASS</span></td><td>REG-TENANT-006 executed; catalog shows 113 tables</td></tr>
+<tr><td>Other clinic's IDs refused (patients, charges, prescriptions, images)</td><td><span class="b pass">PASS</span></td><td>REG-TENANT-001..007; paper check: wrong clinic or token answers 404 uniformly (REG-VERIFY-003)</td></tr>
+<tr><td>Permissions enforced on the server, not the screen</td><td><span class="b pass">PASS</span></td><td>REG-AUTHZ-001..005 role matrices; refused writes change nothing</td></tr>
+<tr><td>Sign-in: lockout, refresh rotation and reuse revocation, suspended clinic or user stops at next request</td><td><span class="b pass">PASS</span></td><td>REG-AUTH-001..027</td></tr>
+<tr><td>Vendor console separate from clinic staff</td><td><span class="b pass">PASS</span></td><td>REG-PLAT-001..008; super-admin lockout exists (SEC-3 listed as open in the tracker for a different path)</td></tr>
+<tr><td>Upload key bound to clinic and patient folder</td><td><span class="b pass">PASS</span></td><td>SEC-1 fix; KeyInFolder checks</td></tr>
+<tr><td>Public endpoints</td><td><span class="b pass">PASS</span></td><td>Sign-in, campaign, paper check, health. The paper check is rate-limited, never cached, noindex, returns no phone, card number or diagnosis (REG-VERIFY-001, -011)</td></tr>
+<tr><td>Secrets in git</td><td><span class="b pass">PASS</span></td><td>Pattern scan of tracked files: only placeholders and a test-only key marked as such; .env and origin keys are ignored</td></tr>
+<tr><td>Browser security headers</td><td><span class="b fail">FAIL</span></td><td>AUD-14</td></tr>
+<tr><td>Origin reachable only through Cloudflare</td><td><span class="b fail">FAIL</span></td><td>Port 8443 answers directly (AUD-16)</td></tr>
+<tr><td>Injection, mass assignment, file-type confusion</td><td><span class="b nt">NOT TESTED</span></td><td>Queries are parameterized (sqlc and bound parameters); no scanner or fuzzing was run</td></tr>
+<tr><td>Logs and the AI integration leaking patient data</td><td><span class="b nt">NOT TESTED</span></td><td>Not inspected end to end</td></tr>
+<tr><td>Dependency vulnerabilities</td><td><span class="b blocked">BLOCKED</span></td><td>npm audit run (AUD-19); Go scanner not installed</td></tr>
+</table></div>
+
+<h2>7. Backup and recovery</h2>
+<div class="scroll"><table>
+<tr><th>Question</th><th>Answer and evidence</th></tr>
+<tr><td>Where does the database run?</td><td>One Postgres container on the same VPS as the application (also a second product's Postgres on the host). No replica, no managed failover.</td></tr>
+<tr><td>Frequency</td><td>Nightly 23:30 UTC (cron). Also a verified dump before every deploy (6 on 2026-10-11 alone).</td></tr>
+<tr><td>Did it run?</td><td>Yes: 9 consecutive nights, 2026-10-02 to 2026-10-10, each "dump ok" then "uploaded to r2" then "done (offsite: yes)". Dumps list 108 to 110 tables. <code>LAST_OK</code> = 2026-10-10 23:30 UTC.</td></tr>
+<tr><td>Off the server?</td><td>Yes: a separate private bucket with its own key (not the application's). Files are encrypted with a passphrase before upload. Where the passphrase copy outside the server is kept is not known to me.</td></tr>
+<tr><td>Retention</td><td>14 nightly, 8 weekly on the server; the weekly dump found was 2026-10-04 (next due tonight). The remote bucket's retention was not verified.</td></tr>
+<tr><td>Files (X-rays, photos)</td><td><b>Not covered.</b> They live in the attachments bucket with no second copy that I can show (AUD-02, OPS-3).</td></tr>
+<tr><td>Restored and checked?</td><td>The tooling is tested on synthetic data in every full run: encrypt, upload, restore returns identical contents; wrong passphrase, damaged and cut-off files are refused. <b>A production dump was not restored</b>; doing so moves real patient data off the server and needs your authorization.</td></tr>
+<tr><td>Demonstrated RPO</td><td>Up to 24 hours (nightly) plus whatever was dumped before the last deploy. Anything entered after 02:30 Addis and before the failure is lost.</td></tr>
+<tr><td>Demonstrated RTO</td><td><b>Unverified.</b> No timed restore exists.</td></tr>
+<tr><td>Failure detection</td><td>The script writes <code>FAILED:</code> lines to a log nobody reads. No alert, no uptime monitor, no missed-backup heartbeat (AUD-07).</td></tr>
+<tr><td>Restored DB without files</td><td>Rows would reference objects that may be missing. Not tested.</td></tr>
+</table></div>
+
+<h2>8. Automated test report</h2>
+<div class="scroll"><table>
+<tr><th>Suite (run 2026-10-11, commit dee351d)</th><th>Result</th><th>Notes</th></tr>
+<tr><td>Backend build, vet, module-boundary lint, backup tooling</td><td><span class="b pass">PASS</span></td><td>Includes encryption and restore round trip on synthetic data</td></tr>
+<tr><td>Backend unit, integration and API regression (35 packages)</td><td><span class="b pass">PASS</span> 885 passed, 0 failed</td><td>115 skipped: known-bug markers and conditional tests. Real API binary, real Postgres, non-superuser role, database pinned to UTC</td></tr>
+<tr><td>Route coverage gate</td><td><span class="b pass">PASS</span> 277 of 277</td><td>113 of 390 routes are outside the dental scope (vendor, general modules)</td></tr>
+<tr><td>Package coverage ratchet</td><td><span class="b pass">PASS</span></td><td>Passed on re-run; dips seen in the first hours after Addis midnight are the day-boundary defect (AUD-06)</td></tr>
+<tr><td>Front end: lint, type-check, 113 test files</td><td><span class="b pass">PASS</span> 1,841 tests</td><td>99.2% lines, 95.8% branches in scope</td></tr>
+<tr><td>Browser end-to-end (Playwright)</td><td><span class="b pass">PASS</span> 14 of 14</td><td>Real API and real browser; includes the new paper-check journey</td></tr>
+<tr><td>Failure injection (restart mid-write, timeout after commit, interrupted upload)</td><td><span class="b nt">NOT TESTED</span></td><td>No isolated fault-injection harness exists</td></tr>
+<tr><td>Load and capacity</td><td><span class="b nt">NOT TESTED</span></td><td>No isolated load test. Only observed fact: production is 26 MB, 11 clinics, 684 patients, 6 connections.</td></tr>
+<tr><td>Restore of a production dump</td><td><span class="b blocked">BLOCKED</span></td><td>Needs authorization and an isolated host</td></tr>
+</table></div>
+<p><b>Limits of this evidence.</b> The test database contains rows created by tests that write directly to tables, so an invariant failing there is not by itself a product defect;
+I therefore relied on production aggregates for the invariants and on reproducing through the API for AUD-12. A passing suite proves the listed behaviours, not the absence of other defects.</p>
+
+<h2>9. Remediation plan (nothing applied)</h2>
+<div class="scroll"><table>
+<tr><th>#</th><th>Fix</th><th>Size</th><th>Regression test</th><th>Rollback</th></tr>
+<tr><td>1</td><td><b>AUD-01.</b> Edit dialog sends every field it loaded; additionally make the server update only fields present in the request (or reject a PUT that omits known columns).</td><td>S</td><td>Flip REG-FE-PATIENT-001 and add a server test for partial update</td><td>Revert commit; no migration</td></tr>
+<tr><td>2</td><td><b>AUD-02/13.</b> Keep the object for a retention window after delete, or enable bucket versioning; verify the object exists before recording; restrict delete to owner. Add attachments to the backup.</td><td>M</td><td>Delete then restore within window; record without object refused</td><td>Setting off; no data change</td></tr>
+<tr><td>3</td><td><b>AUD-07.</b> Rehearse a restore on a throwaway server, time it, write the runbook; add an uptime monitor and set the backup heartbeat.</td><td>M</td><td>Documented timed restore with row counts matched</td><td>n/a</td></tr>
+<tr><td>4</td><td><b>AUD-03.</b> Keep a version history for examinations; soft-delete; draft guard on the form.</td><td>M</td><td>Overwrite then read both versions</td><td>Migration is additive</td></tr>
+<tr><td>5</td><td><b>AUD-04/08.</b> A separate delete permission for patients; audit events for patient edit/delete, staff and role changes, payment accounts, branches.</td><td>M</td><td>Event exists for each action</td><td>Permission seed reversible</td></tr>
+<tr><td>6</td><td><b>AUD-12.</b> Split in exact cents; the last visit takes the remainder to the cent; reject totals that cannot be split.</td><td>S</td><td>Property test: parts always sum to the agreed total</td><td>Revert commit</td></tr>
+<tr><td>7</td><td><b>AUD-05.</b> Take the price from the price list on the server.</td><td>S</td><td>Request with another price is ignored or refused</td><td>Revert commit</td></tr>
+<tr><td>8</td><td><b>AUD-06.</b> Compute every day bucket in the clinic's zone.</td><td>M</td><td>Tests at 00:30 Addis for each report</td><td>Revert commit</td></tr>
+<tr><td>9</td><td><b>AUD-14/16.</b> Add security headers at Caddy; firewall 8443 to Cloudflare's ranges; set statement timeout and a larger pool.</td><td>S-M</td><td>Header and port probes</td><td>Config revert</td></tr>
+<tr><td>10</td><td><b>AUD-09.</b> Before enabling the general modules for a new clinic, add API tests for pharmacy, inpatient and maternity money paths and bring them under the coverage gate.</td><td>L</td><td>Coverage ratchet entries</td><td>n/a</td></tr>
+</table></div>
+
+<h2>10. Go / No-Go checklist</h2>
+<div class="scroll"><table>
+<tr><th>Requirement</th><th>Status</th><th>Condition</th></tr>
+<tr><td>Clinics cannot see each other's data</td><td><span class="b pass">PASS</span></td><td></td></tr>
+<tr><td>Payments and refunds are not applied twice</td><td><span class="b pass">PASS</span></td><td></td></tr>
+<tr><td>Financial records on production reconcile</td><td><span class="b pass">PASS</span></td><td>With the AUD-15 anomaly to be explained</td></tr>
+<tr><td>Dental money workflow end to end</td><td><span class="b pass">PASS</span></td><td>Fractional totals via API: AUD-12</td></tr>
+<tr><td>Patient details survive an edit</td><td><span class="b fail">FAIL</span></td><td><b>Blocks onboarding</b> until AUD-01 is fixed or editing is withheld</td></tr>
+<tr><td>Clinical images survive a delete</td><td><span class="b fail">FAIL</span></td><td><b>Blocks guarantees</b>; mitigate by restricting deletes (AUD-02)</td></tr>
+<tr><td>Examination history is preserved</td><td><span class="b fail">FAIL</span></td><td>Warn clinics; fix in plan item 4</td></tr>
+<tr><td>Nightly backup runs and is off the server</td><td><span class="b pass">PASS</span></td><td></td></tr>
+<tr><td>Files are backed up</td><td><span class="b fail">FAIL</span></td><td>AUD-02</td></tr>
+<tr><td>A restore has been demonstrated with real data</td><td><span class="b blocked">BLOCKED</span></td><td>Needs authorization</td></tr>
+<tr><td>Someone is told when something breaks</td><td><span class="b fail">FAIL</span></td><td>AUD-07</td></tr>
+<tr><td>Who changed what can be reconstructed</td><td><span class="b fail">FAIL</span></td><td>AUD-08</td></tr>
+<tr><td>General modules (pharmacy, inpatient, maternity, lab)</td><td><span class="b nt">NOT TESTED</span></td><td><b>Do not enable for new clinics</b> until tested</td></tr>
+<tr><td>Capacity for the expected clinics</td><td><span class="b nt">NOT TESTED</span></td><td>Production is tiny today; no load evidence</td></tr>
+<tr><td>Failure behaviour (restart mid-write, retries)</td><td><span class="b nt">NOT TESTED</span></td><td></td></tr>
+<tr><td>Go module vulnerabilities</td><td><span class="b blocked">BLOCKED</span></td><td>Scanner missing</td></tr>
+<tr><td>Browser security headers</td><td><span class="b fail">FAIL</span></td><td>Not blocking; fix soon</td></tr>
+<tr><td>AI assistant data handling</td><td><span class="b nt">NOT TESTED</span></td><td>Leave the key unset for new clinics until reviewed</td></tr>
+<tr><td>Ministry (DHIS2) integration</td><td><span class="b nt">NOT TESTED</span></td><td></td></tr>
+</table></div>
+
+<h2>11. Questions only you can answer</h2>
+<ol>
+<li>May one receipt number ever cover two patients? (AUD-15)</li>
+<li>Should an examination keep every earlier version, and who may delete one? (AUD-03)</li>
+<li>Where is the offline copy of the backup passphrase kept, and does the R2 attachments bucket keep object versions? (I cannot see either.)</li>
+<li>Do you authorize a restore rehearsal of a production dump onto an isolated machine, and a Cloudflare bucket setting change?</li>
+<li>Which new clinics are dental only, and does any plan to use pharmacy or inpatient tomorrow?</li>
+<li>May patient deletion be limited to the owner, since it currently shares a permission with editing?</li>
+</ol>
+<footer>Audit made 2026-10-11 against commit dee351d. Production was observed read-only. Nothing in this report was applied.</footer>
+</div></body></html>

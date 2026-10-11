@@ -2406,7 +2406,12 @@
   ],
   "tested": false,
   "status": "open",
-  "log": [],
+  "log": [
+   {
+    "date": "2026-10-11",
+    "note": "Deleting an image no longer destroys the stored file (see DEN-2), which removes the main way files were lost. Files still have no second copy."
+   }
+  ],
   "order": 37
  },
  {
@@ -2973,20 +2978,33 @@
   "simple": "The 'Edit details' window only sends the nine fields it shows. The server replaces the whole record, so the passport number, address and emergency contact are wiped every time anyone saves an edit, even if they only changed the phone. If two people edit the same patient at once, the later save silently replaces the earlier one.",
   "example": "Hanna at reception updates Almaz's phone number to 0922 111 111 and presses Save. Her address 'Bole, Addis Ababa', passport EP1234567 and emergency contact 'Abebe 0911 222 333' are now blank. Months later Almaz has a reaction in the chair and there is no emergency contact.",
   "why": "Patient information is lost during a routine task, and nobody knows it happened.",
-  "fix": "Make a save keep every field the window does not show (or send them all back unchanged), and refuse a save if someone else changed the record since it was opened.",
+  "fix": "Two layers. The edit window now hands back the passport number, address and emergency contact exactly as it loaded them. The server also changes only the fields a request actually sends: a field left out keeps its stored value, a field sent empty is cleared.",
   "effort": "S",
   "decision": null,
   "tests": [
-   "REG-FE-PATIENT-001"
+   "REG-FE-PATIENT-001",
+   "REG-FE-PATIENT-003",
+   "REG-FE-PATIENT-004",
+   "REG-PATIENT-007",
+   "REG-PATIENT-009",
+   "REG-PATIENT-010"
   ],
   "files": [
-   "frontend/src/features/patients/components/PatientEditDialog.tsx:40-50",
+   "backend/internal/patient/http/handlers.go",
    "backend/internal/patient/repo/queries/patients.sql:26-31",
-   "backend/internal/patient/service/service.go:150"
+   "backend/internal/patient/service/service.go",
+   "backend/internal/patient/service/service.go:150",
+   "frontend/src/features/patients/components/PatientEditDialog.tsx",
+   "frontend/src/features/patients/components/PatientEditDialog.tsx:40-50"
   ],
   "tested": true,
-  "status": "open",
-  "log": [],
+  "status": "fixed",
+  "log": [
+   {
+    "date": "2026-10-11",
+    "note": "Found as the P0 of the pre-production audit (AUD-01): 66 of 684 production patients had been edited after creation. Fixed at both layers; the old 'PUT is a full replace' contract test was rewritten. Earlier values, if lost, exist only in the nightly dumps (14 nights) and weekly dumps (8 weeks)."
+   }
+  ],
   "order": 43
  },
  {
@@ -3660,7 +3678,12 @@
   ],
   "tested": false,
   "status": "open",
-  "log": [],
+  "log": [
+   {
+    "date": "2026-10-11",
+    "note": "Half fixed (audit AUD-02): deleting an image or attachment now hides the record and KEEPS the stored file, so a mistaken delete is recoverable. Still open: who deleted it and why is not recorded, and files are not yet backed up (OPS-3). A retention rule that purges kept files after a set time is still to be built."
+   }
+  ],
   "order": 45
  },
  {

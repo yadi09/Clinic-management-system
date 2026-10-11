@@ -2992,18 +2992,25 @@ func (s *Service) ListImages(ctx context.Context, patientID uuid.UUID, sessionID
 	return out, nil
 }
 
+// DeleteImage takes an image off the patient's record. The row is hidden (and stops
+// counting against the clinic's storage allowance); THE FILE IS KEPT. An X-ray is a
+// clinical record, nothing backs the file store up, and "delete" is one tap — so the
+// object stays in storage until a retention rule says it may go (AUD-02). Nothing can
+// reach it meanwhile: links are short-lived signed URLs minted only for visible rows.
 func (s *Service) DeleteImage(ctx context.Context, patientID, imageID uuid.UUID) error {
 	tid, _ := actorOf(ctx)
-	var key string
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		e := tx.QueryRow(ctx,
+		ct, e := tx.Exec(ctx,
 			`UPDATE attachments SET deleted_at = now(), updated_at = now()
-			 WHERE tenant_id = $1 AND patient_id = $2 AND id = $3 AND type = 'image' AND deleted_at IS NULL
-			 RETURNING storage_key`, tid, patientID, imageID).Scan(&key)
-		if errors.Is(e, pgx.ErrNoRows) {
+			 WHERE tenant_id = $1 AND patient_id = $2 AND id = $3 AND type = 'image' AND deleted_at IS NULL`,
+			tid, patientID, imageID)
+		if e != nil {
+			return e
+		}
+		if ct.RowsAffected() == 0 {
 			return apperr.NotFound("IMAGE_NOT_FOUND", "image not found")
 		}
-		return e
+		return nil
 	})
 	if ae, ok := apperr.As(err); ok {
 		return ae
@@ -3011,7 +3018,6 @@ func (s *Service) DeleteImage(ctx context.Context, patientID, imageID uuid.UUID)
 	if err != nil {
 		return apperr.Internal(err)
 	}
-	_ = s.store.Delete(ctx, key) // best effort — frees metered storage
 	return nil
 }
 

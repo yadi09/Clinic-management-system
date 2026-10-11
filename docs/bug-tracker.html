@@ -86,7 +86,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 <li><b>Fix:</b> I change the code; its test turns from "known bug" to a normal passing test, and the whole suite must still pass.</li>
 <li><b>Verify:</b> you check it and accept it. Then the next one.</li>
 </ol>
-<p style="margin:8px 0 0;color:var(--soft)">Right now: 175 open · 0 explained or confirmed · 12 fixed, waiting for your check · 12 verified.</p>
+<p style="margin:8px 0 0;color:var(--soft)">Right now: 174 open · 0 explained or confirmed · 13 fixed, waiting for your check · 12 verified.</p>
 </div>
 
 <a class="next" href="#FIN-15" data-open="FIN-15"><span>Next up</span><b>A listed service can be billed at any price</b><em>High · FIN-15 · Open</em></a>
@@ -95,7 +95,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 
 <div class="filters">
   <input id="q" type="search" placeholder="Search: cashier, follow-up, refund…" aria-label="Search issues">
-  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (175)</option><option value="explained">Explained (0)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (12)</option><option value="verified">Verified (12)</option><option value="wontfix">Won't fix (0)</option></select>
+  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (174)</option><option value="explained">Explained (0)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (13)</option><option value="verified">Verified (12)</option><option value="wontfix">Won't fix (0)</option></select>
   <select id="ar" aria-label="Area"><option value="">Every area</option><option value="Appointments &amp; front desk">Appointments &amp; front desk</option><option value="Dental">Dental</option><option value="Money">Money</option><option value="Patient records">Patient records</option><option value="Printing">Printing</option><option value="Reliability">Reliability</option><option value="Safety &amp; access">Safety &amp; access</option><option value="Screens &amp; usability">Screens &amp; usability</option></select>
 </div>
 <p class="count" id="count"></p>
@@ -1402,7 +1402,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>scripts/backup/backup.sh</code></li><li><code>backend/cmd/api/main.go</code></li><li><code>backend/internal/dental/service/service.go</code></li></ul>
         </details>
       </div>
-      
+      <div class="log"><b>History</b><ul><li><time>2026-10-11</time> Deleting an image no longer destroys the stored file (see DEN-2), which removes the main way files were lost. Files still have no second copy.</li></ul></div>
     </div>
   </details>
 </article>
@@ -1551,7 +1551,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
     </div>
   </details>
 </article>
-<article class="issue sev-high st-open" id="PAT-6" data-sev="high" data-status="open"
+<article class="issue sev-high st-fixed" id="PAT-6" data-sev="high" data-status="fixed"
   data-area="Patient records" data-q="pat-6 editing a patient wipes passport, address and emergency contact the &#x27;edit details&#x27; window only sends the nine fields it shows. the server replaces the whole record, so the passport number, address and emergency contact are wiped every time anyone saves an edit, even if they only changed the phone. if two people edit the same patient at once, the later save silently replaces the earlier one. hanna at reception updates almaz&#x27;s phone number to 0922 111 111 and presses save. her address &#x27;bole, addis ababa&#x27;, passport ep1234567 and emergency contact &#x27;abebe 0911 222 333&#x27; are now blank. months later almaz has a reaction in the chair and there is no emergency contact. receptionist, every clinic patient records">
   <details>
     <summary>
@@ -1559,7 +1559,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       <span class="sev">High</span>
       <span class="ttl">Editing a patient wipes passport, address and emergency contact</span>
       <span class="meta"><span class="id">PAT-6</span> · Patient records · effort S</span>
-      <span class="status">Open</span>
+      <span class="status">Fixed</span>
     </summary>
     <div class="body">
       
@@ -1567,16 +1567,16 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
         <dt>What happens</dt><dd>The &#x27;Edit details&#x27; window only sends the nine fields it shows. The server replaces the whole record, so the passport number, address and emergency contact are wiped every time anyone saves an edit, even if they only changed the phone. If two people edit the same patient at once, the later save silently replaces the earlier one.</dd>
         <dt>In the clinic</dt><dd class="example">Hanna at reception updates Almaz&#x27;s phone number to 0922 111 111 and presses Save. Her address &#x27;Bole, Addis Ababa&#x27;, passport EP1234567 and emergency contact &#x27;Abebe 0911 222 333&#x27; are now blank. Months later Almaz has a reaction in the chair and there is no emergency contact.</dd>
         <dt>Why it matters</dt><dd>Patient information is lost during a routine task, and nobody knows it happened.</dd>
-        <dt>The fix</dt><dd>Make a save keep every field the window does not show (or send them all back unchanged), and refuse a save if someone else changed the record since it was opened.</dd>
+        <dt>The fix</dt><dd>Two layers. The edit window now hands back the passport number, address and emergency contact exactly as it loaded them. The server also changes only the fields a request actually sends: a field left out keeps its stored value, a field sent empty is cleared.</dd>
         <dt>Who notices</dt><dd>Receptionist, every clinic</dd>
       </dl>
       <div class="tech">
         <details><summary>For the developer: tests and code</summary>
-          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li><code>REG-FE-PATIENT-001</code></li></ul>
-          <p>Where in the code:</p><ul><li><code>frontend/src/features/patients/components/PatientEditDialog.tsx:40-50</code></li><li><code>backend/internal/patient/repo/queries/patients.sql:26-31</code></li><li><code>backend/internal/patient/service/service.go:150</code></li></ul>
+          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li><code>REG-FE-PATIENT-001</code></li><li><code>REG-FE-PATIENT-003</code></li><li><code>REG-FE-PATIENT-004</code></li><li><code>REG-PATIENT-007</code></li><li><code>REG-PATIENT-009</code></li><li><code>REG-PATIENT-010</code></li></ul>
+          <p>Where in the code:</p><ul><li><code>backend/internal/patient/http/handlers.go</code></li><li><code>backend/internal/patient/repo/queries/patients.sql:26-31</code></li><li><code>backend/internal/patient/service/service.go</code></li><li><code>backend/internal/patient/service/service.go:150</code></li><li><code>frontend/src/features/patients/components/PatientEditDialog.tsx</code></li><li><code>frontend/src/features/patients/components/PatientEditDialog.tsx:40-50</code></li></ul>
         </details>
       </div>
-      
+      <div class="log"><b>History</b><ul><li><time>2026-10-11</time> Found as the P0 of the pre-production audit (AUD-01): 66 of 684 production patients had been edited after creation. Fixed at both layers; the old &#x27;PUT is a full replace&#x27; contract test was rewritten. Earlier values, if lost, exist only in the nightly dumps (14 nights) and weekly dumps (8 weeks).</li></ul></div>
     </div>
   </details>
 </article>
@@ -1634,7 +1634,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
           <p>Where in the code:</p><ul><li><code>backend/internal/dental/service/service.go:2935-2956</code></li></ul>
         </details>
       </div>
-      
+      <div class="log"><b>History</b><ul><li><time>2026-10-11</time> Half fixed (audit AUD-02): deleting an image or attachment now hides the record and KEEPS the stored file, so a mistaken delete is recoverable. Still open: who deleted it and why is not recorded, and files are not yet backed up (OPS-3). A retention rule that purges kept files after a set time is still to be built.</li></ul></div>
     </div>
   </details>
 </article>
@@ -5873,7 +5873,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   </details>
 </article>
 
-<footer>Built 11 October 2026, 03:53 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
+<footer>Built 11 October 2026, 10:03 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
 </div>
 <script>
 (function () {
