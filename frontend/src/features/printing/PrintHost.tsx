@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { docInfo } from "@/features/printing/catalog";
-import { paperPx, type PrintJob } from "@/features/printing/engine";
+import { paperPx, previewHtml, type PrintJob } from "@/features/printing/engine";
 import { printNow, registerPreview } from "@/features/printing/request";
 import { PAPERS, type PaperId } from "@/features/printing/settings";
 import type { PrintCtx } from "@/features/printing/blocks";
@@ -120,7 +120,7 @@ export function PaperFrame({ html, paper, maxWidth }: { html: string; paper: Pap
         <iframe
           ref={frame}
           title="Paper preview"
-          srcDoc={html}
+          srcDoc={previewHtml(html, paper)}
           style={{ width: w, height: pageH, border: 0, transform: `scale(${scale})`, transformOrigin: "top left", background: "#fff" }}
           onLoad={() => {
             if (h !== null) return;

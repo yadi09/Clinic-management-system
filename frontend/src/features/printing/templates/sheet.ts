@@ -55,6 +55,7 @@ const SHEET_CSS = `
   .pname{font-size:1.3em;font-weight:700;line-height:1.2}
   .pmeta{color:var(--muted);margin-top:2px}
   .side{text-align:right;font-size:.95em}
+  .side .qr{display:flex;flex-direction:column;align-items:flex-end;margin-bottom:6px}
   .side>div{margin-bottom:2px}
   .kk{color:var(--muted);font-size:.78em;text-transform:uppercase;letter-spacing:.06em;margin-right:6px}
   .dxline{margin-top:10px}

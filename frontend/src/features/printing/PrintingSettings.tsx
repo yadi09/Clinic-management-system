@@ -170,7 +170,7 @@ export function PrintingSettings() {
     if (!sample) return null;
     const dup = asReprint ? { count: 1, firstBy: "Hana Desta", firstAt: new Date().toISOString() } : null;
     const b = build(sample, ctx, { duplicate: dup });
-    return { html: pageHtml(b, ctx, { preview: true }), paper: b.paper };
+    return { html: pageHtml(b, ctx), paper: b.paper };
   }, [previewDoc, ctx, asReprint]);
 
   if (stored.isLoading) return <Skeleton className="h-96 w-full" />;
@@ -312,7 +312,7 @@ export function PrintingSettings() {
                 </Field>
               )}
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Logo position">
+                <Field label="Logo position" hint="On a till slip, Left and Right put the logo beside the name; Centre puts it above.">
                   <Choice ariaLabel="Logo position" value={draft.look.logoPosition} disabled={ro} onChange={(v) => setLook("logoPosition", v)}
                     options={[{ value: "left", label: "Left" }, { value: "center", label: "Centre" }, { value: "right", label: "Right" }, { value: "none", label: "None" }]} />
                 </Field>
@@ -320,7 +320,7 @@ export function PrintingSettings() {
                   <Choice ariaLabel="Logo size" value={draft.look.logoSize} disabled={ro} onChange={(v) => setLook("logoSize", v)}
                     options={[{ value: "small", label: "Small" }, { value: "medium", label: "Medium" }, { value: "large", label: "Large" }]} />
                 </Field>
-                <Field label="Logo shape">
+                <Field label="Logo shape" hint="Rounded and Circle crop the picture to fit; Square shows it whole.">
                   <Choice ariaLabel="Logo shape" value={draft.look.logoShape} disabled={ro} onChange={(v) => setLook("logoShape", v)}
                     options={[{ value: "square", label: "Square" }, { value: "rounded", label: "Rounded" }, { value: "circle", label: "Circle" }]} />
                 </Field>
@@ -429,8 +429,9 @@ export function PrintingSettings() {
         <div className="space-y-2 xl:sticky xl:top-4 xl:self-start">
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-semibold">Preview · {docInfo(previewDoc)?.label}</p>
-            <label className="flex items-center gap-2 text-xs text-muted-foreground">
-              <input type="checkbox" checked={asReprint} onChange={(e) => setAsReprint(e.target.checked)} /> As a reprint
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+              <input type="checkbox" className="h-4 w-4 accent-[hsl(var(--brand))]" checked={asReprint}
+                onChange={(e) => setAsReprint(e.target.checked)} /> As a reprint
             </label>
           </div>
           <div className="max-h-[70vh] overflow-auto rounded-md border bg-muted/40 p-3">

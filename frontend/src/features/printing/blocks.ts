@@ -74,10 +74,15 @@ function logoHtml(c: PrintCtx, centered: boolean): string {
   const { look } = c.settings;
   if (look.logoPosition === "none") return "";
   const px = LOGO_PX[look.logoSize];
+  // Square shows the picture whole. Rounded and circle crop it to the shape — a
+  // circle drawn round a picture with a plain background would not be seen at all.
+  const fit = look.logoShape === "square" ? "contain" : "cover";
   const inner = c.logo
-    ? `<img src="${esc(c.logo)}" alt="" style="width:${px}px;height:${px}px;object-fit:contain;border-radius:${LOGO_RADIUS[look.logoShape]};display:block">`
+    ? `<img src="${esc(c.logo)}" alt="" style="width:${px}px;height:${px}px;object-fit:${fit};border-radius:${LOGO_RADIUS[look.logoShape]};display:block">`
     : "";
-  return inner ? `<div class="logo"${centered ? ' style="margin:0 auto 4px"' : ""}>${inner}</div>` : "";
+  // A block as wide as the page would leave the picture at its left edge: the
+  // wrapper is only as wide as the picture, so auto margins can centre it.
+  return inner ? `<div class="logo"${centered ? ' style="width:fit-content;margin:0 auto 4px"' : ""}>${inner}</div>` : "";
 }
 
 /** Identity lines under the name: address, phones, email, web, tax numbers, extras. */
@@ -123,10 +128,16 @@ export function headerHtml(c: PrintCtx, o: { slip?: boolean } = {}): string {
   const text = `<div class="ident">${names.join("")}${lines.map((l) => `<div class="cline">${l}</div>`).join("")}</div>`;
   const rule = look.rule ? `<div class="rule"></div>` : "";
 
+  const pos = look.logoPosition;
   if (o.slip) {
+    // A till roll is narrow, so the logo is stacked above the name by default; the
+    // clinic's choice of left or right puts it beside the name instead.
+    if (pos === "left" || pos === "right") {
+      const sides = pos === "left" ? `${logoHtml(c, false)}${text}` : `${text}${logoHtml(c, false)}`;
+      return `<header class="hd hd-row slip-row">${sides}</header>${rule}`;
+    }
     return `<header class="hd slip-hd">${logoHtml(c, true)}${text}</header>${rule}`;
   }
-  const pos = look.logoPosition;
   const logo = logoHtml(c, false);
   const body =
     pos === "center"
@@ -203,6 +214,7 @@ export function baseCss(c: PrintCtx, paper: PaperId): string {
   .hd-row{display:flex;gap:14px;align-items:center}
   .hd-col{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px}
   .slip-hd{text-align:center}
+  .slip-row{gap:8px}.slip-row .ident{flex:1}
   .ident{min-width:0}
   .cname{font-size:${(slip ? 15 : 20) * scale}px;font-weight:700;color:var(--accent);line-height:1.15}
   .cname-am{font-size:${(slip ? 13 : 16) * scale}px;font-weight:600;color:var(--accent)}

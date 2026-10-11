@@ -134,10 +134,11 @@ export function renderReceipt(d: ReceiptDoc, c: PrintCtx, o: RenderOpts = {}): B
           .pn{font-weight:700;font-size:1.1em} .r{text-align:right}
           table.lines{width:100%;border-collapse:collapse;margin-bottom:10px}
           table.lines td{padding:6px 8px 6px 0;border-bottom:1px solid var(--line);vertical-align:top}
+          table.lines td:last-child{padding-right:0}
           table.lines thead th{border-bottom:2px solid var(--accent);padding:0}
           .totbox{margin-left:auto;min-width:240px;max-width:60%;border-top:2px solid var(--accent);padding-top:6px}
           .words{font-size:.92em;margin-top:4px;text-align:right}
-          .paid{margin-top:12px;max-width:340px}
+          .paid{margin:12px 0 0 auto;min-width:240px;max-width:60%}
           .boxes{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-top:26px}`,
   };
 }

@@ -35,9 +35,21 @@ export type DocData =
   | { doc: "dispense"; data: DispenseDoc };
 
 /** A whole HTML page for one built document. */
-export function pageHtml(b: Built, c: PrintCtx, o: { preview?: boolean } = {}): string {
+export function pageHtml(b: Built, c: PrintCtx): string {
   return `<!doctype html><html><head><meta charset="utf-8"><title>${b.title.replace(/[<>&]/g, "")}</title>
-<style>${baseCss(c, b.paper)}${b.css}${o.preview ? "body{padding:0}" : ""}</style></head><body>${b.html}</body></html>`;
+<style>${baseCss(c, b.paper)}${b.css}</style></head><body>${b.html}</body></html>`;
+}
+
+/**
+ * The same page as it looks on a screen. A printer applies the paper's margins
+ * (`@page`); a frame on a screen does not, so the text would sit hard against the
+ * left edge of the paper and leave a gap on the right. This draws the real margins
+ * as padding, at the real paper width, so what is shown is what comes out.
+ */
+export function previewHtml(html: string, paper: PaperId): string {
+  const p = PAPERS[paper];
+  const css = `html{background:#fff}body{margin:0;padding:${p.marginMm}mm;width:${p.widthMm}mm}`;
+  return html.replace("</head>", `<style>${css}</style></head>`);
 }
 
 /** Draw a QR as inline SVG so the print frame needs no network. */

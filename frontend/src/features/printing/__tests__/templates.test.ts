@@ -5,7 +5,7 @@
 import { describe, expect, test } from "vitest";
 
 import { docInfo } from "@/features/printing/catalog";
-import { build, pageHtml, refOf, type DocData } from "@/features/printing/engine";
+import { build, pageHtml, previewHtml, refOf, type DocData } from "@/features/printing/engine";
 import type { PrintCtx } from "@/features/printing/blocks";
 import { DEFAULT_SETTINGS, resolveSettings } from "@/features/printing/settings";
 import type { ReceiptDoc } from "@/features/printing/templates/receipt";
@@ -530,5 +530,60 @@ describe("REG-FE-PRTPL every document renders on every template and paper withou
         }
       }
     }
+  });
+});
+
+describe("REG-FE-PRTPL the paper as drawn on a screen", () => {
+  test("REG-FE-PRTPL-060 the preview draws the paper's real margins on both sides; the printed page is left to the printer", () => {
+    const slip = render(receipt(), ctx({ docs: { receipt: { template: "slip", paper: "slip80" } } }));
+    const shown = previewHtml(slip.page, "slip80");
+    // 80 mm paper with 4 mm margins: the text starts 4 mm in, not at the edge.
+    expect(shown).toContain("body{margin:0;padding:4mm;width:80mm}");
+    const a4 = previewHtml(render(rx(), ctx()).page, "a4");
+    expect(a4).toContain("body{margin:0;padding:14mm;width:210mm}");
+    // What goes to the printer carries no such padding: the printer applies @page.
+    expect(slip.page).not.toContain("padding:4mm;width:80mm");
+    expect(slip.page).toContain("@page{size:80mm auto;margin:4mm}");
+  });
+
+  test("REG-FE-PRTPL-061 the logo is centred on a till slip when the clinic centres it, and sits at the side on a sheet", () => {
+    const logo = "data:image/png;base64,AAAA";
+    const slip = render(receipt(), ctx({ look: { logoPosition: "center" }, docs: { receipt: { template: "slip" } } }, { logo }));
+    expect(slip.html).toContain('class="logo" style="width:fit-content;margin:0 auto 4px"');
+    const sheet = render(receipt(), ctx({ docs: { receipt: { template: "sheet" } } }, { logo }));
+    expect(sheet.html).toContain('<div class="logo">');
+  });
+});
+
+describe("REG-FE-PRTPL the logo's position, size and shape are obeyed on every paper", () => {
+  const logo = "data:image/png;base64,AAAA";
+  const header = (look: Record<string, unknown>, template: string) =>
+    render(receipt(), ctx({ look, docs: { receipt: { template } } }, { logo })).html.split("</header>")[0];
+
+  test("REG-FE-PRTPL-062 on a till slip: centre stacks the logo above the name, left and right put it beside it, none drops it", () => {
+    const centre = header({ logoPosition: "center" }, "slip");
+    expect(centre).toContain("slip-hd");
+    expect(centre.indexOf('class="logo"')).toBeLessThan(centre.indexOf('class="ident"'));
+    const left = header({ logoPosition: "left" }, "slip");
+    expect(left).toContain("hd-row slip-row");
+    expect(left.indexOf('class="logo"')).toBeLessThan(left.indexOf('class="ident"'));
+    const right = header({ logoPosition: "right" }, "slip");
+    expect(right).toContain("hd-row slip-row");
+    expect(right.indexOf('class="ident"')).toBeLessThan(right.indexOf('class="logo"'));
+    expect(header({ logoPosition: "none" }, "slip")).not.toContain("<img");
+  });
+
+  test("REG-FE-PRTPL-063 on a sheet: the same choices, in the same order", () => {
+    const left = header({ logoPosition: "left" }, "sheet");
+    expect(left.indexOf('class="logo"')).toBeLessThan(left.indexOf('class="ident"'));
+    const right = header({ logoPosition: "right" }, "sheet");
+    expect(right.indexOf('class="ident"')).toBeLessThan(right.indexOf('class="logo"'));
+    expect(header({ logoPosition: "center" }, "sheet")).toContain("hd-col");
+  });
+
+  test("REG-FE-PRTPL-064 the shape crops the picture (rounded, circle) or shows it whole (square); the size is in pixels", () => {
+    expect(header({ logoShape: "circle", logoSize: "small" }, "sheet")).toContain("width:40px;height:40px;object-fit:cover;border-radius:50%");
+    expect(header({ logoShape: "rounded", logoSize: "medium" }, "sheet")).toContain("width:56px;height:56px;object-fit:cover;border-radius:10px");
+    expect(header({ logoShape: "square", logoSize: "large" }, "sheet")).toContain("width:84px;height:84px;object-fit:contain;border-radius:0");
   });
 });

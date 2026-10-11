@@ -45,7 +45,8 @@ describe("REG-FE-PRSCR the printing settings screen", () => {
   test("REG-FE-PRSCR-001 it shows the stored identity and a preview that is the clinic's own receipt", async () => {
     await open({ settings: { identity: { nameEn: "Abeba Dental", tin: "0012345678" } }, logo: PNG });
     expect(screen.getByLabelText(/Clinic name \(English\)/i)).toBe(screen.getByPlaceholderText("Registered Name"));
-    expect(screen.getByPlaceholderText("Registered Name")).toHaveValue("Abeba Dental");
+    // The form is filled from the stored document a moment after it arrives.
+    await waitFor(() => expect(screen.getByPlaceholderText("Registered Name")).toHaveValue("Abeba Dental"));
     expect(screen.getByAltText("Clinic logo")).toHaveAttribute("src", PNG);
     expect(preview()).toContain("Abeba Dental");
     expect(preview()).toContain("TIN 0012345678");
