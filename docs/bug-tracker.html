@@ -75,9 +75,9 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 </style></head>
 <body><div class="wrap">
 <h1>ClinicOS bug tracker</h1>
-<p class="lede">Every known problem in the system, in plain words, most urgent first. 147 of the 199 are already caught by an automated test, so when one is fixed its test proves it, and keeps proving it after every future change. The other 52, marked <i>No test yet</i>, came from the audit (mostly server and operations work); each gets a test or a written check when it is fixed.</p>
+<p class="lede">Every known problem in the system, in plain words, most urgent first. 148 of the 200 are already caught by an automated test, so when one is fixed its test proves it, and keeps proving it after every future change. The other 52, marked <i>No test yet</i>, came from the audit (mostly server and operations work); each gets a test or a written check when it is fixed.</p>
 
-<div class="progress"><div class="bar"><i></i></div><b>12 of 199 closed</b></div>
+<div class="progress"><div class="bar"><i></i></div><b>12 of 200 closed</b></div>
 
 <div class="how"><b>How we work through this list</b>
 <ol>
@@ -86,16 +86,16 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 <li><b>Fix:</b> I change the code; its test turns from "known bug" to a normal passing test, and the whole suite must still pass.</li>
 <li><b>Verify:</b> you check it and accept it. Then the next one.</li>
 </ol>
-<p style="margin:8px 0 0;color:var(--soft)">Right now: 172 open · 0 explained or confirmed · 15 fixed, waiting for your check · 12 verified.</p>
+<p style="margin:8px 0 0;color:var(--soft)">Right now: 172 open · 0 explained or confirmed · 16 fixed, waiting for your check · 12 verified.</p>
 </div>
 
 <a class="next" href="#FIN-15" data-open="FIN-15"><span>Next up</span><b>A listed service can be billed at any price</b><em>High · FIN-15 · Open</em></a>
 
-<div class="tallies"><button class="tally sev-critical" data-filter-sev="critical"><b>9</b><span>Critical</span><small>Money lost or created wrongly, a patient-safety risk, or someone reaching data they must not.</small></button><button class="tally sev-high" data-filter-sev="high"><b>50</b><span>High</span><small>Wrong figures, changes nobody can trace, or permission holes inside a clinic.</small></button><button class="tally sev-medium" data-filter-sev="medium"><b>73</b><span>Medium</span><small>Wrong but recoverable, or a screen that misleads about what is real.</small></button><button class="tally sev-low" data-filter-sev="low"><b>67</b><span>Low</span><small>Cosmetic, a wrong error message, or a rare edge.</small></button></div>
+<div class="tallies"><button class="tally sev-critical" data-filter-sev="critical"><b>9</b><span>Critical</span><small>Money lost or created wrongly, a patient-safety risk, or someone reaching data they must not.</small></button><button class="tally sev-high" data-filter-sev="high"><b>51</b><span>High</span><small>Wrong figures, changes nobody can trace, or permission holes inside a clinic.</small></button><button class="tally sev-medium" data-filter-sev="medium"><b>73</b><span>Medium</span><small>Wrong but recoverable, or a screen that misleads about what is real.</small></button><button class="tally sev-low" data-filter-sev="low"><b>67</b><span>Low</span><small>Cosmetic, a wrong error message, or a rare edge.</small></button></div>
 
 <div class="filters">
   <input id="q" type="search" placeholder="Search: cashier, follow-up, refund…" aria-label="Search issues">
-  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (172)</option><option value="explained">Explained (0)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (15)</option><option value="verified">Verified (12)</option><option value="wontfix">Won't fix (0)</option></select>
+  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (172)</option><option value="explained">Explained (0)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (16)</option><option value="verified">Verified (12)</option><option value="wontfix">Won't fix (0)</option></select>
   <select id="ar" aria-label="Area"><option value="">Every area</option><option value="Appointments &amp; front desk">Appointments &amp; front desk</option><option value="Dental">Dental</option><option value="Money">Money</option><option value="Patient records">Patient records</option><option value="Printing">Printing</option><option value="Reliability">Reliability</option><option value="Safety &amp; access">Safety &amp; access</option><option value="Screens &amp; usability">Screens &amp; usability</option></select>
 </div>
 <p class="count" id="count"></p>
@@ -1783,11 +1783,40 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
     </div>
   </details>
 </article>
+<article class="issue sev-high st-fixed" id="FE-12" data-sev="high" data-status="fixed"
+  data-area="Printing" data-q="fe-12 the print preview can be left stuck on screen after printing after a paper is printed, the preview box can stay on screen as an empty shell. cancel, the x and esc do nothing, and the only way out is to refresh the page. on the cashier&#x27;s paid list the cashier prints a receipt. the browser&#x27;s print window opens and closes, and the preview is left as a blank box over the list that cannot be dismissed. anything unsaved on the page is lost by the refresh. cashier, reception, doctor, lab printing">
+  <details>
+    <summary>
+      <span class="num">59</span>
+      <span class="sev">High</span>
+      <span class="ttl">The print preview can be left stuck on screen after printing</span>
+      <span class="meta"><span class="id">FE-12</span> · Printing · effort S</span>
+      <span class="status">Fixed</span>
+    </summary>
+    <div class="body">
+      
+      <dl>
+        <dt>What happens</dt><dd>After a paper is printed, the preview box can stay on screen as an empty shell. Cancel, the X and Esc do nothing, and the only way out is to refresh the page.</dd>
+        <dt>In the clinic</dt><dd class="example">On the cashier&#x27;s Paid list the cashier prints a receipt. The browser&#x27;s print window opens and closes, and the preview is left as a blank box over the list that cannot be dismissed. Anything unsaved on the page is lost by the refresh.</dd>
+        <dt>Why it matters</dt><dd>Staff are locked out of the screen after the most ordinary action they do all day.</dd>
+        <dt>The fix</dt><dd>The preview now disappears completely before the paper goes to the printer, with no fade-out to wait for, and a double press of Print counts and prints once.</dd>
+        <dt>Who notices</dt><dd>Cashier, reception, doctor, lab</dd>
+      </dl>
+      <div class="tech">
+        <details><summary>For the developer: tests and code</summary>
+          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li><code>REG-FE-PRHOST-007</code></li><li><code>REG-FE-PRHOST-008</code></li><li><code>REG-FE-PRHOST-009</code></li></ul>
+          <p>Where in the code:</p><ul><li><code>frontend/src/features/printing/PrintHost.tsx</code></li><li><code>frontend/src/features/printing/request.ts</code></li></ul>
+        </details>
+      </div>
+      <div class="log"><b>History</b><ul><li><time>2026-10-12</time> Reported by the owner with a screenshot (blank preview over the cashier&#x27;s Paid list, cannot be closed). Cause: the page was sent to the printer 50 ms after the preview began its fade-out, so the browser&#x27;s print window took over mid-animation and the dialog was left half-closed. Fixed: the preview is removed from the screen before the page is sent, and it no longer has an exit animation. REG-FE-PRHOST-007 fails on the old code. Commit 9de9bb3 (its subject says FE-7 by mistake; FE-7 is a different issue).</li><li><time>2026-10-12</time> Server 755/0, screens 1,875, journeys 15/15, routes 277/277. The coverage gate flagged finance/service 0.5 points under its baseline at 01:07 Addis time; no Go file changed since the run that passed at 23:10, so this is the known small-hours clock effect. Gate to be re-run after 03:00 Addis before deploying.</li></ul></div>
+    </div>
+  </details>
+</article>
 <article class="issue sev-high st-fixed" id="FEAT-VERIFY-1" data-sev="high" data-status="fixed"
   data-area="Printing" data-q="feat-verify-1 the qr on a prescription proves nothing: no way to check a paper is genuine the qr on a printed prescription held a few lines of plain text. scanning showed the text; nothing checked whether the prescription was real, cancelled, changed or already used, and anyone could print an identical qr. someone changes &#x27;7 days&#x27; to &#x27;70 days&#x27; on a paper, or photocopies a genuine one and takes it to two pharmacies. both look exactly like the original and nobody can tell. pharmacist, doctor, patient, owner printing">
   <details>
     <summary>
-      <span class="num">59</span>
+      <span class="num">60</span>
       <span class="sev">High</span>
       <span class="ttl">The QR on a prescription proves nothing: no way to check a paper is genuine</span>
       <span class="meta"><span class="id">FEAT-VERIFY-1</span> · Printing · effort M</span>
@@ -1816,7 +1845,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Money" data-q="fin-13 old card-fee button can take money finance never sees an old way of taking a card fee still works behind the scenes. money taken that way is kept in a separate old list and never appears in finance or the day close. no screen uses it today, but it can still be called. someone uses the old card-fee route to take 150 birr from a patient. finance shows 0 birr collected for it and the drawer does not expect it. owner, cashier money">
   <details>
     <summary>
-      <span class="num">60</span>
+      <span class="num">61</span>
       <span class="sev">Medium</span>
       <span class="ttl">Old card-fee button can take money Finance never sees</span>
       <span class="meta"><span class="id">FIN-13</span> · Money · effort S</span>
@@ -1845,7 +1874,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Money" data-q="fin-8 a single bill cannot be part-paid a bill is either paid in full or not at all. paying in parts only works if a deposit and visits were agreed in advance on a treatment course. almaz&#x27;s bill today is 3,250 birr; she can pay 1,000 now. the cashier cannot record the 1,000 against it. cashier, patient money">
   <details>
     <summary>
-      <span class="num">61</span>
+      <span class="num">62</span>
       <span class="sev">Medium</span>
       <span class="ttl">A single bill cannot be part-paid</span>
       <span class="meta"><span class="id">FIN-8</span> · Money · effort L · <i class="notest">No test yet</i></span>
@@ -1874,7 +1903,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Money" data-q="new-cash-1 reprinted z-report shows the wrong cashier&#x27;s name when an old day close (z-report) is reprinted, it prints the name of whoever is signed in now, not the cashier who actually closed that day. meron closed 1 october with 800 birr. on 3 october selam reprints it; the paper says &quot;selam&quot; over meron&#x27;s count. cashier, owner money">
   <details>
     <summary>
-      <span class="num">62</span>
+      <span class="num">63</span>
       <span class="sev">Medium</span>
       <span class="ttl">Reprinted Z-report shows the wrong cashier&#x27;s name</span>
       <span class="meta"><span class="id">NEW-CASH-1</span> · Money · effort S</span>
@@ -1903,7 +1932,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Money" data-q="new-cash-2 cancelled void/waive reason stays picked for the next bill if a cashier opens &quot;void&quot; or &quot;waive&quot; on a bill, picks a reason and then cancels, the next bill&#x27;s void/waive box opens with that reason already chosen and the button ready to press. selam opens waive on abebe&#x27;s bill, picks &quot;staff benefit&quot;, then cancels. she opens waive on almaz&#x27;s bill; &quot;staff benefit&quot; is already chosen and one click writes it off. cashier money">
   <details>
     <summary>
-      <span class="num">63</span>
+      <span class="num">64</span>
       <span class="sev">Medium</span>
       <span class="ttl">Cancelled void/waive reason stays picked for the next bill</span>
       <span class="meta"><span class="id">NEW-CASH-2</span> · Money · effort S</span>
@@ -1932,7 +1961,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Money" data-q="new-day-1 &quot;paid today&quot; list starts at 3 a.m., not midnight the cashier&#x27;s &quot;paid today&quot; list starts at midnight utc (3 a.m. addis). payments taken between midnight and 3 a.m. are missing; between midnight and 3 a.m. it shows yesterday afternoon&#x27;s payments instead. selam takes 450 birr at 00:30. when she opens &quot;paid today&quot; to reprint the receipt, it is not there. cashier money">
   <details>
     <summary>
-      <span class="num">64</span>
+      <span class="num">65</span>
       <span class="sev">Medium</span>
       <span class="ttl">&quot;Paid today&quot; list starts at 3 a.m., not midnight</span>
       <span class="meta"><span class="id">NEW-DAY-1</span> · Money · effort S</span>
@@ -1961,7 +1990,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Money" data-q="new-fu-3 patient charged on the last day of free follow-up the booking screen promises &quot;free if attended on or before&quot; a date. the fee rule treats that date as ending at its first minute (midnight), so a patient who comes later that same day is charged. abebe&#x27;s follow-up is &quot;free until 10 october&quot;. he comes at 10:00 on 10 october and is asked for 200 birr. patient, receptionist money">
   <details>
     <summary>
-      <span class="num">65</span>
+      <span class="num">66</span>
       <span class="sev">Medium</span>
       <span class="ttl">Patient charged on the last day of free follow-up</span>
       <span class="meta"><span class="id">NEW-FU-3</span> · Money · effort S</span>
@@ -1990,7 +2019,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Money" data-q="new-pay-1 any cashier can see every cashier&#x27;s day closes the list of all cashiers&#x27; day closes is meant for managers. a plain cashier can get it too by asking for &quot;all&quot;. selam can see how much meron counted each day and whether meron was short. cashier, owner money">
   <details>
     <summary>
-      <span class="num">66</span>
+      <span class="num">67</span>
       <span class="sev">Medium</span>
       <span class="ttl">Any cashier can see every cashier&#x27;s day closes</span>
       <span class="meta"><span class="id">NEW-PAY-1</span> · Money · effort S</span>
@@ -2019,7 +2048,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Money" data-q="new-pay-2 &quot;open drawers&quot; misses money taken just after midnight on the finance cash tab, the &quot;open drawers&quot; figure (money cashiers hold but have not closed) uses the utc day. money taken between midnight and 3 a.m. addis is left out. (the audit calls this fin-11.) selam took 700 birr during the day and 40 birr at 00:30. the by-cashier line says 740 birr; her open drawer says 700. owner, manager money">
   <details>
     <summary>
-      <span class="num">67</span>
+      <span class="num">68</span>
       <span class="sev">Medium</span>
       <span class="ttl">&quot;Open drawers&quot; misses money taken just after midnight</span>
       <span class="meta"><span class="id">NEW-PAY-2</span> · Money · effort S</span>
@@ -2048,7 +2077,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Money" data-q="new-plan-1 files still save after a clinic&#x27;s storage is full when a clinic&#x27;s storage is full, the app refuses to start a new upload. but the final &quot;save this file&quot; step does not check again, so a request that skips the first step still saves files past the limit. bole dental is on a 1 gb plan and full. a custom tool (or a retried request) records two more x-rays and a pdf, pushing them past 1 gb without being asked to upgrade. vendor (you) money">
   <details>
     <summary>
-      <span class="num">68</span>
+      <span class="num">69</span>
       <span class="sev">Medium</span>
       <span class="ttl">Files still save after a clinic&#x27;s storage is full</span>
       <span class="meta"><span class="id">NEW-PLAN-1</span> · Money · effort S</span>
@@ -2077,7 +2106,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Money" data-q="new-prof-8 failed billing list says &#x27;no charges yet&#x27; on the general-clinic patient page, if the billing list fails to load, it says &#x27;no charges yet.&#x27; instead of &#x27;could not load&#x27;. the connection drops as meron, the cashier, opens abebe&#x27;s page. it says &#x27;no charges yet&#x27;, so she lets him leave without paying the 600 birr he owes. cashier, receptionist (general clinics) money">
   <details>
     <summary>
-      <span class="num">69</span>
+      <span class="num">70</span>
       <span class="sev">Medium</span>
       <span class="ttl">Failed billing list says &#x27;No charges yet&#x27;</span>
       <span class="meta"><span class="id">NEW-PROF-8</span> · Money · effort S</span>
@@ -2106,7 +2135,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Safety &amp; access" data-q="cq-4 some security steps ignore their own failures when the system detects a stolen sign-in pass, or a password is reset, it tries to sign the person out everywhere, but if that step fails it carries on silently. a password is reset after a phone is stolen; the &quot;sign out everywhere&quot; step fails because of a database hiccup, nobody is told, and the stolen phone stays signed in. all staff safety &amp; access">
   <details>
     <summary>
-      <span class="num">70</span>
+      <span class="num">71</span>
       <span class="sev">Medium</span>
       <span class="ttl">Some security steps ignore their own failures</span>
       <span class="meta"><span class="id">CQ-4</span> · Safety &amp; access · effort S · <i class="notest">No test yet</i></span>
@@ -2135,7 +2164,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Safety &amp; access" data-q="db-1 removed staff email or deleted branch code is blocked forever when a staff member is removed, their email is still treated as taken, so they can never be invited back to the same clinic. a deleted branch&#x27;s short code is likewise blocked forever. nurse tigist leaves in march and is removed. in june she returns; hanna invites tigist@gmail.com and is told &quot;email already taken&quot;, with no way to fix it. owner safety &amp; access">
   <details>
     <summary>
-      <span class="num">71</span>
+      <span class="num">72</span>
       <span class="sev">Medium</span>
       <span class="ttl">Removed staff email or deleted branch code is blocked forever</span>
       <span class="meta"><span class="id">DB-1</span> · Safety &amp; access · effort S</span>
@@ -2164,7 +2193,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Safety &amp; access" data-q="db-2 the app can edit or erase its own history records the database account the app uses is allowed to change and delete entries in the clinic&#x27;s history. history should be add-only. a bug, or someone who gets into the server, quietly removes the history line showing who waived a 5,000 birr charge. owner safety &amp; access">
   <details>
     <summary>
-      <span class="num">72</span>
+      <span class="num">73</span>
       <span class="sev">Medium</span>
       <span class="ttl">The app can edit or erase its own history records</span>
       <span class="meta"><span class="id">DB-2</span> · Safety &amp; access · effort S · <i class="notest">No test yet</i></span>
@@ -2193,7 +2222,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Safety &amp; access" data-q="db-3 clinic database account can change vendor price lists the database account used for clinic work can also write the vendor&#x27;s own tables: plans and prices, features, permissions and partner leads. clinic users cannot reach this through the screens, but a bug could. a bug in a clinic screen updates the plans table and every clinic&#x27;s limit changes. vendor (you) safety &amp; access">
   <details>
     <summary>
-      <span class="num">73</span>
+      <span class="num">74</span>
       <span class="sev">Medium</span>
       <span class="ttl">Clinic database account can change vendor price lists</span>
       <span class="meta"><span class="id">DB-3</span> · Safety &amp; access · effort S · <i class="notest">No test yet</i></span>
@@ -2222,7 +2251,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Safety &amp; access" data-q="new-auth-1 owner can suspend herself and lock the clinic out the staff page hides the delete button on your own row, but the suspend button is still there, and the server accepts it. if the only owner suspends herself she is signed out and cannot get back in. hanna is tidying the staff list on her phone and taps suspend on the wrong row, her own. she is thrown out and her password no longer works; the clinic has no one who can switch her back on until the vendor does it. owner safety &amp; access">
   <details>
     <summary>
-      <span class="num">74</span>
+      <span class="num">75</span>
       <span class="sev">Medium</span>
       <span class="ttl">Owner can suspend herself and lock the clinic out</span>
       <span class="meta"><span class="id">NEW-AUTH-1</span> · Safety &amp; access · effort S</span>
@@ -2251,7 +2280,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Safety &amp; access" data-q="new-prof-6 severe-allergy bar never appears when opening a patient fresh on the general-clinic patient page, a bar listing severe allergies is supposed to stick to the top of the screen once the header scrolls away. it is set up while the page is still loading, before the header exists, and never sets itself up again. so on a normal first open of a patient it never shows, however far you scroll. it only works if the patient was already loaded. dr hana opens abebe (allergic to penicillin) from the queue and scrolls down to the prescription section. the red allergy reminder that should be pinned at the top is missing, so the allergy is only visible if she scrolls back up. doctor, nurse (general clinics) safety &amp; access">
   <details>
     <summary>
-      <span class="num">75</span>
+      <span class="num">76</span>
       <span class="sev">Medium</span>
       <span class="ttl">Severe-allergy bar never appears when opening a patient fresh</span>
       <span class="meta"><span class="id">NEW-PROF-6</span> · Safety &amp; access · effort S</span>
@@ -2280,7 +2309,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Safety &amp; access" data-q="ops-10 unsent sms texts and patient phones written to server logs when sms is not switched on, the system writes each message it would have sent, with the patient&#x27;s phone number and the full text, into the server log. the log contains &quot;to 251911223344: almaz, you owe 4,500 etb for your root canal&quot;. anyone who can read logs, or a log file copied for debugging, sees patient phone numbers, treatments and debts. patients&#x27; privacy safety &amp; access">
   <details>
     <summary>
-      <span class="num">76</span>
+      <span class="num">77</span>
       <span class="sev">Medium</span>
       <span class="ttl">Unsent SMS texts and patient phones written to server logs</span>
       <span class="meta"><span class="id">OPS-10</span> · Safety &amp; access · effort S</span>
@@ -2309,7 +2338,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Safety &amp; access" data-q="sec-7 website lacks standard browser security settings the site does not send the usual browser security instructions (always use https, do not allow being framed by other sites, restrict scripts, and so on). a fake site loads the clinic app inside an invisible frame and tricks a receptionist into clicking buttons she cannot see. every clinic safety &amp; access">
   <details>
     <summary>
-      <span class="num">77</span>
+      <span class="num">78</span>
       <span class="sev">Medium</span>
       <span class="ttl">Website lacks standard browser security settings</span>
       <span class="meta"><span class="id">SEC-7</span> · Safety &amp; access · effort S · <i class="notest">No test yet</i></span>
@@ -2338,7 +2367,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Safety &amp; access" data-q="sec-8 cashier can watch the live queue she should not see the live queue feed (who has arrived, who is waiting, who is with the doctor) only checks that you are signed in. a cashier, who is not allowed to open the queue board, can still receive the live feed. each open feed also holds a database connection with no limit. meron the cashier opens the queue feed link and sees every arriving patient&#x27;s name and which doctor they are waiting for, although her role was set up not to see the queue. if many tabs open the feed, the server can run short of database connections. cashier, patients&#x27; privacy safety &amp; access">
   <details>
     <summary>
-      <span class="num">78</span>
+      <span class="num">79</span>
       <span class="sev">Medium</span>
       <span class="ttl">Cashier can watch the live queue she should not see</span>
       <span class="meta"><span class="id">SEC-8</span> · Safety &amp; access · effort S</span>
@@ -2367,7 +2396,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Safety &amp; access" data-q="tenant-fk-1 writes aimed at another clinic&#x27;s record are accepted silently if a request names a patient, branch, allergen or staff member that belongs to a different clinic, the server still saves the new item, inside the requesting clinic, pointing at something it cannot see. the other clinic sees nothing and nothing leaks, but the request is told &quot;saved&quot;. a faulty link at clinic a adds a &quot;penicillin - severe&quot; allergy using a patient number from clinic b. clinic b&#x27;s patient is unchanged, but clinic a now holds an orphan allergy record and the screen said &quot;saved&quot;. the same happens for conditions, guardians, attachments, certificates, history imports, department branches, drug allergy tags and staff roles. every clinic (data tidiness) safety &amp; access">
   <details>
     <summary>
-      <span class="num">79</span>
+      <span class="num">80</span>
       <span class="sev">Medium</span>
       <span class="ttl">Writes aimed at another clinic&#x27;s record are accepted silently</span>
       <span class="meta"><span class="id">TENANT-FK-1</span> · Safety &amp; access · effort M</span>
@@ -2396,7 +2425,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Patient records" data-q="new-certui-1 sick-leave certificate can be issued with no start date in the certificate window, clearing the &#x27;rest from&#x27; date still leaves &#x27;issue &amp; print&#x27; working. a sick-leave certificate is issued and printed with no start date. dr selam gives dawit 3 days&#x27; rest after an extraction, clears the date to change it and presses issue by mistake. a certificate saying &#x27;3 days rest&#x27; with no dates is printed and given to his employer. doctor, dentist patient records">
   <details>
     <summary>
-      <span class="num">80</span>
+      <span class="num">81</span>
       <span class="sev">Medium</span>
       <span class="ttl">Sick-leave certificate can be issued with no start date</span>
       <span class="meta"><span class="id">NEW-CERTUI-1</span> · Patient records · effort S</span>
@@ -2425,7 +2454,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Patient records" data-q="new-pat-2 a patient&#x27;s first name can be blanked out by an edit registration refuses a patient with no first name, but editing does not. saving spaces as the first name stores an empty name. hanna accidentally clears almaz&#x27;s first name while editing and presses save. the record now shows only her surname on lists, receipts and the queue. receptionist patient records">
   <details>
     <summary>
-      <span class="num">81</span>
+      <span class="num">82</span>
       <span class="sev">Medium</span>
       <span class="ttl">A patient&#x27;s first name can be blanked out by an edit</span>
       <span class="meta"><span class="id">NEW-PAT-2</span> · Patient records · effort S</span>
@@ -2454,7 +2483,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Patient records" data-q="new-prof-2 last night&#x27;s vital signs are shown as if taken today the &#x27;last vitals&#x27; card is meant to warn &#x27;not from today&#x27; when the readings are old. it only checks whether they are more than 24 hours old, not whether they were taken on an earlier day. nurse tigist records abebe&#x27;s blood pressure as 128/82 at 8 pm. at 9 am the next morning dr hana opens his record and sees 128/82 with no &#x27;not from today&#x27; note, and assumes it was taken at this morning&#x27;s triage. doctor, nurse (general clinics) patient records">
   <details>
     <summary>
-      <span class="num">82</span>
+      <span class="num">83</span>
       <span class="sev">Medium</span>
       <span class="ttl">Last night&#x27;s vital signs are shown as if taken today</span>
       <span class="meta"><span class="id">NEW-PROF-2</span> · Patient records · effort S</span>
@@ -2483,7 +2512,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Patient records" data-q="new-prof-3 failed lab history says no test was ever ordered if the patient&#x27;s lab history fails to load, the panel says &#x27;no tests have ever been ordered for this patient.&#x27; dr hana checks whether abebe&#x27;s blood sugar was tested last month. the panel fails to load, says no tests ever, and she orders a repeat test he pays for again. doctor, lab (general clinics) patient records">
   <details>
     <summary>
-      <span class="num">83</span>
+      <span class="num">84</span>
       <span class="sev">Medium</span>
       <span class="ttl">Failed lab history says no test was ever ordered</span>
       <span class="meta"><span class="id">NEW-PROF-3</span> · Patient records · effort S</span>
@@ -2512,7 +2541,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Patient records" data-q="new-prof-7 a medical condition that fails to save shows no error when adding a condition (for example asthma) fails, the window just stays open with no message. the allergy window does show an error; this one doesn&#x27;t. dr hana adds &#x27;asthma&#x27; for abebe on a bad connection and presses save. nothing happens. she assumes it is slow, closes the window, and the condition was never saved. doctor, nurse (general clinics) patient records">
   <details>
     <summary>
-      <span class="num">84</span>
+      <span class="num">85</span>
       <span class="sev">Medium</span>
       <span class="ttl">A medical condition that fails to save shows no error</span>
       <span class="meta"><span class="id">NEW-PROF-7</span> · Patient records · effort S</span>
@@ -2541,7 +2570,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Patient records" data-q="new-prof-9 failed visit history says &#x27;no recorded visits yet&#x27; if a patient&#x27;s visit history fails to load, the page says &#x27;no recorded visits yet.&#x27; instead of &#x27;could not load&#x27;. dr hana opens almaz, who has been treated three times. the history fails to load and says &#x27;no recorded visits yet&#x27;, so she treats her as a new patient. doctor (general clinics) patient records">
   <details>
     <summary>
-      <span class="num">85</span>
+      <span class="num">86</span>
       <span class="sev">Medium</span>
       <span class="ttl">Failed visit history says &#x27;No recorded visits yet&#x27;</span>
       <span class="meta"><span class="id">NEW-PROF-9</span> · Patient records · effort S</span>
@@ -2570,7 +2599,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Patient records" data-q="pat-4 duplicate patients can still slip in at registration the &#x27;is this patient already registered?&#x27; check runs separately from the save, so two desks registering the same person at the same moment both pass. phone numbers typed at registration aren&#x27;t standardised (0911… and +251911… look different), and there is no duplicate rule for patients without a birth date. abebe is registered as 0911 223 344 last year. today he is registered again as +251 911 223 344 with no birth date. no duplicate warning appears and he now has two cards. receptionist patient records">
   <details>
     <summary>
-      <span class="num">86</span>
+      <span class="num">87</span>
       <span class="sev">Medium</span>
       <span class="ttl">Duplicate patients can still slip in at registration</span>
       <span class="meta"><span class="id">PAT-4</span> · Patient records · effort M · <i class="notest">No test yet</i></span>
@@ -2599,7 +2628,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Patient records" data-q="pat-5 deleted patients still show in queue and appointment lists; no merge tool when a patient is deleted, their queue entries and appointments still appear on the queue and appointment lists. there is also no way to merge two records for the same person, so deleting one is the only way to clean up a duplicate. hanna deletes almaz&#x27;s duplicate record, but &#x27;almaz&#x27; is still waiting on the queue board and booked for thursday. clicking her opens a record that no longer exists. receptionist, owner patient records">
   <details>
     <summary>
-      <span class="num">87</span>
+      <span class="num">88</span>
       <span class="sev">Medium</span>
       <span class="ttl">Deleted patients still show in queue and appointment lists; no merge tool</span>
       <span class="meta"><span class="id">PAT-5</span> · Patient records · effort L · <i class="notest">No test yet</i></span>
@@ -2628,7 +2657,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Patient records" data-q="pat-8 imported old history can have a future date the &#x27;paste old history&#x27; tool accepts a visit dated in the future and saves it as a signed visit. imported notes are also marked as signed by the person importing them, with nothing to show they were copied from an old record. while copying abebe&#x27;s paper file, hanna types 2027 instead of 2017. the record shows a signed visit dated next year, signed by hanna, and that visit sits at the top of his history. receptionist, doctor patient records">
   <details>
     <summary>
-      <span class="num">88</span>
+      <span class="num">89</span>
       <span class="sev">Medium</span>
       <span class="ttl">Imported old history can have a future date</span>
       <span class="meta"><span class="id">PAT-8</span> · Patient records · effort S</span>
@@ -2657,7 +2686,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Dental" data-q="den-4 down payment can be set to zero unchecked the down payment on a dental course can have its amount changed to 0 through the system, with no reason or permission check. the normal screens do not offer this, but nothing stops it. tigist&#x27;s course has a 1,000 birr unpaid down payment. a change sets it to 0 and the 1,000 birr owed disappears. owner, dentist dental">
   <details>
     <summary>
-      <span class="num">89</span>
+      <span class="num">90</span>
       <span class="sev">Medium</span>
       <span class="ttl">Down payment can be set to zero unchecked</span>
       <span class="meta"><span class="id">DEN-4</span> · Dental · effort S · <i class="notest">No test yet</i></span>
@@ -2686,7 +2715,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Dental" data-q="den-5 visit numbers differ between screens the same dental visit can be &#x27;visit 2&#x27; on the visit card, &#x27;visit 3&#x27; on the receipt and follow-ups list, and &#x27;4/4&#x27; versus &#x27;3 of 3&#x27; elsewhere. screens count visits in different ways (by date, by original order, including cancelled ones). this also covers ux-2. dawit&#x27;s visit 3 is moved earlier than visit 2. the visit card calls it visit 2, the receipt says &#x27;visit 3 of 4&#x27;, and the follow-ups list says &#x27;rebook visit 3&#x27;. dawit asks which visit he actually paid for. dentist, receptionist, cashier, patient dental">
   <details>
     <summary>
-      <span class="num">90</span>
+      <span class="num">91</span>
       <span class="sev">Medium</span>
       <span class="ttl">Visit numbers differ between screens</span>
       <span class="meta"><span class="id">DEN-5</span> · Dental · effort M · <i class="notest">No test yet</i></span>
@@ -2715,7 +2744,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Dental" data-q="den-6 fast taps on the tooth chart can undo a colleague&#x27;s change when the chart is tapped quickly several times, the screen can send an out-of-date version of some teeth and undo a tooth another dentist just changed. the server merges correctly. the problem is what the screen sends. dr selam marks ll6 as filled while dr yonas, on another screen, quickly taps through several teeth. dr yonas&#x27;s save sends the old ll6 value and dr selam&#x27;s change disappears. dentist dental">
   <details>
     <summary>
-      <span class="num">91</span>
+      <span class="num">92</span>
       <span class="sev">Medium</span>
       <span class="ttl">Fast taps on the tooth chart can undo a colleague&#x27;s change</span>
       <span class="meta"><span class="id">DEN-6</span> · Dental · effort M · <i class="notest">No test yet</i></span>
@@ -2744,7 +2773,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Dental" data-q="den-7 tooth chart is basic: no surfaces, no children&#x27;s teeth, no history the chart has 32 adult teeth in palmer notation, one condition per tooth, no tooth surfaces, no baby teeth and no history view. recording a procedure in a visit does not update the chart. dr selam treats a 7-year-old and cannot chart baby teeth. for dawit she can&#x27;t mark &#x27;mesial caries on ll6&#x27;, only &#x27;decayed&#x27;, and after she fills it the chart still says decayed until she changes it by hand. dentist dental">
   <details>
     <summary>
-      <span class="num">92</span>
+      <span class="num">93</span>
       <span class="sev">Medium</span>
       <span class="ttl">Tooth chart is basic: no surfaces, no children&#x27;s teeth, no history</span>
       <span class="meta"><span class="id">DEN-7</span> · Dental · effort L · <i class="notest">No test yet</i></span>
@@ -2773,7 +2802,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Dental" data-q="den-8 &quot;finish treatment&quot; strands visits the patient already paid for when a dentist finishes a course early, visits the patient already paid for but did not receive stay open inside a closed course. the finish dialog says everything is done. hana paid ahead for visits 3 and 4 (2,000 birr). the dentist finishes the course after visit 2. visits 3 and 4 stay as paid, never given, and nothing prompts a refund or credit. dentist, owner, patient dental">
   <details>
     <summary>
-      <span class="num">93</span>
+      <span class="num">94</span>
       <span class="sev">Medium</span>
       <span class="ttl">&quot;Finish treatment&quot; strands visits the patient already paid for</span>
       <span class="meta"><span class="id">DEN-8</span> · Dental · effort M · <i class="notest">No test yet</i></span>
@@ -2802,7 +2831,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Dental" data-q="den-9 visit notes can be edited by any dentist forever treatment notes on a recorded visit stay editable by any dentist with no time limit, and the latest save wins. earlier versions are only in the activity log. months after dawit&#x27;s extraction, a colleague edits the visit note, removing &#x27;patient warned of numbness&#x27;. the note now reads differently from what was written on the day. dentist, owner dental">
   <details>
     <summary>
-      <span class="num">94</span>
+      <span class="num">95</span>
       <span class="sev">Medium</span>
       <span class="ttl">Visit notes can be edited by any dentist forever</span>
       <span class="meta"><span class="id">DEN-9</span> · Dental · effort M · <i class="notest">No test yet</i></span>
@@ -2831,7 +2860,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Dental" data-q="new-den-2 dental records can be saved against another clinic&#x27;s patient the dental chart, treatment plans, medical history and images accept a patient number from another clinic. the record is stored in the requesting clinic, pointing at a patient it cannot see. the other clinic&#x27;s patient is untouched and nothing is shown across clinics. a dentist at clinic b, using a wrong link, saves &quot;ur6 extracted&quot; and a 1,000 birr plan on a patient number from clinic a. clinic a sees no change, but clinic b now has a chart and a plan for a patient who does not exist for it, and the answer differed from a made-up number, which reveals that the number is real. every dental clinic (data tidiness) dental">
   <details>
     <summary>
-      <span class="num">95</span>
+      <span class="num">96</span>
       <span class="sev">Medium</span>
       <span class="ttl">Dental records can be saved against another clinic&#x27;s patient</span>
       <span class="meta"><span class="id">NEW-DEN-2</span> · Dental · effort S</span>
@@ -2860,7 +2889,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Dental" data-q="new-den-4 re-pricing a cancelled visit pushes its fee onto others when a visit in a treatment course is cancelled, the course total drops. if someone then re-prices that cancelled visit and chooses to spread the difference, its old fee is spread onto the remaining visits. selam&#x27;s 3-visit course is 3,000 birr. visit 1 is cancelled, so the course is 2,000 birr. re-pricing visit 1 to 0 with &quot;spread&quot; moves the course back to 3,000 birr and visit 2 becomes 1,500 birr. dentist, patient dental">
   <details>
     <summary>
-      <span class="num">96</span>
+      <span class="num">97</span>
       <span class="sev">Medium</span>
       <span class="ttl">Re-pricing a cancelled visit pushes its fee onto others</span>
       <span class="meta"><span class="id">NEW-DEN-4</span> · Dental · effort S</span>
@@ -2889,7 +2918,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Dental" data-q="new-exam-1 failed exam list shows &#x27;no examination on record&#x27; if the examinations list fails to load (bad connection, server busy), the dental exam card says &#x27;no examination on record&#x27; instead of saying it could not load. on a weak connection dr selam opens dawit&#x27;s chart. the exam list fails to load and the card says &#x27;no examination on record&#x27;, so she thinks no one has examined him and starts a new exam, while last week&#x27;s diagnosis is actually on file. dentist dental">
   <details>
     <summary>
-      <span class="num">97</span>
+      <span class="num">98</span>
       <span class="sev">Medium</span>
       <span class="ttl">Failed exam list shows &#x27;No examination on record&#x27;</span>
       <span class="meta"><span class="id">NEW-EXAM-1</span> · Dental · effort S</span>
@@ -2918,7 +2947,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Dental" data-q="new-paylater-1 &quot;pay later&quot; can be set on paid or cancelled visits the &quot;pay later&quot; promise can be put on a dental visit that is already paid, already waiting at the cashier, or cancelled. nothing checks the visit&#x27;s state. dr. dawit marks a cancelled visit for tigist as &quot;pay later, next month&quot;. it now shows as a promised visit even though it will never happen. dentist, cashier dental">
   <details>
     <summary>
-      <span class="num">98</span>
+      <span class="num">99</span>
       <span class="sev">Medium</span>
       <span class="ttl">&quot;Pay later&quot; can be set on paid or cancelled visits</span>
       <span class="meta"><span class="id">NEW-PAYLATER-1</span> · Dental · effort S</span>
@@ -2947,7 +2976,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Dental" data-q="ux-3 treatment notes lock while the bill waits; unsaved notes can be lost while a visit&#x27;s bill is waiting at the cashier, the treatment notes are locked. if the dentist sends the bill to the cashier while still writing, the unsaved part of the note is dropped. dr selam sends dawit to pay mid-note. her last two sentences vanish, and she can&#x27;t add them until meron collects the payment. dentist dental">
   <details>
     <summary>
-      <span class="num">99</span>
+      <span class="num">100</span>
       <span class="sev">Medium</span>
       <span class="ttl">Treatment notes lock while the bill waits; unsaved notes can be lost</span>
       <span class="meta"><span class="id">UX-3</span> · Dental · effort M · <i class="notest">No test yet</i></span>
@@ -2976,7 +3005,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Dental" data-q="ux-4 the visit being recorded can switch under the dentist on the dental visit screen, the visit being recorded isn&#x27;t fixed. if the patient&#x27;s data refreshes (another visit is moved or paid), the screen can switch to a different visit. while dr selam records visit 2 for dawit, meron takes payment for visit 3. the screen refreshes and dr selam&#x27;s notes are now on visit 3. dentist dental">
   <details>
     <summary>
-      <span class="num">100</span>
+      <span class="num">101</span>
       <span class="sev">Medium</span>
       <span class="ttl">The visit being recorded can switch under the dentist</span>
       <span class="meta"><span class="id">UX-4</span> · Dental · effort S · <i class="notest">No test yet</i></span>
@@ -3005,7 +3034,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Dental" data-q="ux-5 dental prescription needs a treatment and a paid fee a dentist can only write a prescription while recording a visit on a treatment plan that is paid for (or agreed to be paid later). an emergency painkiller with no treatment plan has no path. almaz walks in at 5 pm with severe toothache and only needs a painkiller prescription. dr selam has to create a fake treatment plan and fee first. dentist, patient dental">
   <details>
     <summary>
-      <span class="num">101</span>
+      <span class="num">102</span>
       <span class="sev">Medium</span>
       <span class="ttl">Dental prescription needs a treatment and a paid fee</span>
       <span class="meta"><span class="id">UX-5</span> · Dental · effort M · <i class="notest">No test yet</i></span>
@@ -3034,7 +3063,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Dental" data-q="ux-7 half-filled new treatment plan lost on esc or outside click the long &quot;new treatment plan&quot; form closes, and everything typed is thrown away, if you press esc or click just outside it. there is no question first. dr selam has typed a crown plan: 6,000 birr total, 1,500 down payment, three visits a week apart. reaching for the mouse she clicks the grey area beside the form; it closes and she starts again with the patient waiting. dentist dental">
   <details>
     <summary>
-      <span class="num">102</span>
+      <span class="num">103</span>
       <span class="sev">Medium</span>
       <span class="ttl">Half-filled new treatment plan lost on Esc or outside click</span>
       <span class="meta"><span class="id">UX-7</span> · Dental · effort S</span>
@@ -3063,7 +3092,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Appointments &amp; front desk" data-q="apt-10 branch reception hears the other branch&#x27;s live queue the live queue feed sends every arrival in the clinic to every open screen, whichever branch the person works at. a receptionist limited to one branch sees the other branch&#x27;s patients arriving. the feed also carries the sign-in pass in the web address. cure dental opens a second site in piassa. selam, who works only at bole, sees &quot;abebe kebede checked in&quot; pop up for the piassa branch on her queue board. reception at multi-branch clinics appointments &amp; front desk">
   <details>
     <summary>
-      <span class="num">103</span>
+      <span class="num">104</span>
       <span class="sev">Medium</span>
       <span class="ttl">Branch reception hears the other branch&#x27;s live queue</span>
       <span class="meta"><span class="id">APT-10</span> · Appointments &amp; front desk · effort S</span>
@@ -3092,7 +3121,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Appointments &amp; front desk" data-q="apt-4 check-in can revive a cancelled booking or queue a patient twice checking in a booking doesn&#x27;t look at its status or whether it was already checked in. a cancelled appointment can be checked in, and pressing check-in twice (or two desks at once) creates two queue cards. hanna and meron both check almaz in at the same moment, and she appears twice on dr selam&#x27;s queue. dawit&#x27;s appointment, cancelled yesterday, is checked in by mistake and comes back to life. receptionist, dentist appointments &amp; front desk">
   <details>
     <summary>
-      <span class="num">104</span>
+      <span class="num">105</span>
       <span class="sev">Medium</span>
       <span class="ttl">Check-in can revive a cancelled booking or queue a patient twice</span>
       <span class="meta"><span class="id">APT-4</span> · Appointments &amp; front desk · effort S</span>
@@ -3121,7 +3150,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Appointments &amp; front desk" data-q="apt-5 after a fee is paid, the queue card loses its booking link when a fee must be paid before a patient joins the queue, the queue card created after payment isn&#x27;t linked to their appointment, and the live queue board isn&#x27;t updated after payment. almaz pays at the cashier. her queue card appears without her booking details, and dr selam&#x27;s board doesn&#x27;t show her until it is refreshed. receptionist, dentist appointments &amp; front desk">
   <details>
     <summary>
-      <span class="num">105</span>
+      <span class="num">106</span>
       <span class="sev">Medium</span>
       <span class="ttl">After a fee is paid, the queue card loses its booking link</span>
       <span class="meta"><span class="id">APT-5</span> · Appointments &amp; front desk · effort M · <i class="notest">No test yet</i></span>
@@ -3150,7 +3179,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Appointments &amp; front desk" data-q="apt-6 appointment status can jump anywhere, even from completed back any appointment status can be changed to any other: a completed appointment can go back to &#x27;confirmed&#x27;. rescheduling moves an appointment whatever its status and skips the booking checks. clashes show as server errors. cancelling a checked-in appointment leaves its queue card in place. hanna accidentally sets abebe&#x27;s completed visit back to &#x27;confirmed&#x27;. it reappears as upcoming, and reports now count one fewer completed visit. receptionist, owner appointments &amp; front desk">
   <details>
     <summary>
-      <span class="num">106</span>
+      <span class="num">107</span>
       <span class="sev">Medium</span>
       <span class="ttl">Appointment status can jump anywhere, even from completed back</span>
       <span class="meta"><span class="id">APT-6</span> · Appointments &amp; front desk · effort M</span>
@@ -3179,7 +3208,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Appointments &amp; front desk" data-q="apt-7 patients booked with a departed dentist wait for nobody if the dentist a patient was booked with has been deactivated, check-in still puts the patient in that dentist&#x27;s queue. nobody sees them there. dr yonas leaves and the owner deactivates him. almaz arrives for her booking with him, is checked in, and waits an hour on a queue no dentist looks at. receptionist, patient appointments &amp; front desk">
   <details>
     <summary>
-      <span class="num">107</span>
+      <span class="num">108</span>
       <span class="sev">Medium</span>
       <span class="ttl">Patients booked with a departed dentist wait for nobody</span>
       <span class="meta"><span class="id">APT-7</span> · Appointments &amp; front desk · effort S</span>
@@ -3208,7 +3237,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Appointments &amp; front desk" data-q="apt-8 &#x27;missed visit&#x27; means different things on different screens four screens decide &#x27;missed&#x27; differently: the home dashboard looks back 7 days, the notification bell 14, the follow-ups list 30 (and counts finished treatments), and the visit card all time. the same patient is missed on one screen and not on another. dawit missed his visit 10 days ago. the bell tells the owner about it, the dashboard doesn&#x27;t count him, and follow-ups lists him under &#x27;missed&#x27;. the owner can&#x27;t tell which number is right. owner, receptionist appointments &amp; front desk">
   <details>
     <summary>
-      <span class="num">108</span>
+      <span class="num">109</span>
       <span class="sev">Medium</span>
       <span class="ttl">&#x27;Missed visit&#x27; means different things on different screens</span>
       <span class="meta"><span class="id">APT-8</span> · Appointments &amp; front desk · effort S</span>
@@ -3237,7 +3266,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Appointments &amp; front desk" data-q="fe-5 follow-ups &#x27;missed&#x27; forgets visits older than 30 days the follow-ups list only looks back 30 days, so patients who abandoned their treatment more than a month ago drop off &#x27;missed&#x27; and nobody calls them. almaz stopped coming after visit 2 of 5 in july. by september she is no longer in &#x27;missed&#x27; and nobody contacts her. receptionist, owner appointments &amp; front desk">
   <details>
     <summary>
-      <span class="num">109</span>
+      <span class="num">110</span>
       <span class="sev">Medium</span>
       <span class="ttl">Follow-ups &#x27;Missed&#x27; forgets visits older than 30 days</span>
       <span class="meta"><span class="id">FE-5</span> · Appointments &amp; front desk · effort S · <i class="notest">No test yet</i></span>
@@ -3266,7 +3295,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Appointments &amp; front desk" data-q="new-branch-1 dental calendar shows visits from another branch the dental visits calendar is not filtered by branch, unlike the appointment diary beside it. a desk limited to branch a sees visits delivered at branch b. at a clinic with bole and piassa branches, the bole desk opens the dental calendar and sees a root canal done at piassa today mixed in with bole&#x27;s visits. reception at multi-branch clinics appointments &amp; front desk">
   <details>
     <summary>
-      <span class="num">110</span>
+      <span class="num">111</span>
       <span class="sev">Medium</span>
       <span class="ttl">Dental calendar shows visits from another branch</span>
       <span class="meta"><span class="id">NEW-BRANCH-1</span> · Appointments &amp; front desk · effort S</span>
@@ -3295,7 +3324,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Appointments &amp; front desk" data-q="new-msg-1 reminder hours box can&#x27;t be cleared, so 48 becomes 148 in the automatic-message settings, the hours and repeat boxes turn an empty value into 1 on every keystroke. deleting &#x27;72&#x27; and typing &#x27;48&#x27; leaves &#x27;148&#x27;. the owner changes the unpaid-bill reminder from 72 to 48 hours after the bill. it saves as 148 hours, so patients are reminded 6 days later instead of 2. owner, manager appointments &amp; front desk">
   <details>
     <summary>
-      <span class="num">111</span>
+      <span class="num">112</span>
       <span class="sev">Medium</span>
       <span class="ttl">Reminder hours box can&#x27;t be cleared, so 48 becomes 148</span>
       <span class="meta"><span class="id">NEW-MSG-1</span> · Appointments &amp; front desk · effort S</span>
@@ -3324,7 +3353,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Appointments &amp; front desk" data-q="new-prof-4 failed sms log says nothing was sent to the patient the patient&#x27;s message history says &#x27;nothing has been sent to this patient.&#x27; when it fails to load, the same as when nothing was really sent. almaz says she never got her reminder. hanna opens her messages, the list fails to load and says nothing was sent, so the clinic decides sms is broken when it isn&#x27;t. receptionist, owner appointments &amp; front desk">
   <details>
     <summary>
-      <span class="num">112</span>
+      <span class="num">113</span>
       <span class="sev">Medium</span>
       <span class="ttl">Failed SMS log says nothing was sent to the patient</span>
       <span class="meta"><span class="id">NEW-PROF-4</span> · Appointments &amp; front desk · effort S</span>
@@ -3353,7 +3382,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Appointments &amp; front desk" data-q="new-prof-5 failed appointment list says &#x27;nothing booked&#x27; on a patient&#x27;s schedule page, if appointments fail to load, it says &#x27;nothing booked&#x27; and &#x27;no upcoming visits&#x27;. abebe calls to ask when his next visit is. the page fails to load and says nothing is booked, so hanna books him again, and now he has two bookings. receptionist appointments &amp; front desk">
   <details>
     <summary>
-      <span class="num">113</span>
+      <span class="num">114</span>
       <span class="sev">Medium</span>
       <span class="ttl">Failed appointment list says &#x27;Nothing booked&#x27;</span>
       <span class="meta"><span class="id">NEW-PROF-5</span> · Appointments &amp; front desk · effort S</span>
@@ -3382,7 +3411,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Appointments &amp; front desk" data-q="new-queue-1 a finished queue visit can be moved back to waiting a queue card marked &#x27;done&#x27; can be moved back to &#x27;waiting&#x27;. the system checks only that the new state is a real state, not whether the move makes sense. by mistake hanna moves almaz&#x27;s finished visit back to &#x27;waiting&#x27;. almaz reappears on the dentist&#x27;s board as if she has not been seen, with her finish time still set. receptionist, dentist appointments &amp; front desk">
   <details>
     <summary>
-      <span class="num">114</span>
+      <span class="num">115</span>
       <span class="sev">Medium</span>
       <span class="ttl">A finished queue visit can be moved back to waiting</span>
       <span class="meta"><span class="id">NEW-QUEUE-1</span> · Appointments &amp; front desk · effort S</span>
@@ -3411,7 +3440,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Appointments &amp; front desk" data-q="new-queue-3 queue patients can be assigned to the cashier or a stranger a waiting patient can be assigned to any user: the cashier, or even a user from another clinic. no patient data leaks to the other clinic (checked), but the patient is now &#x27;with&#x27; someone who will never see them. hanna picks the wrong name and assigns almaz to meron the cashier. almaz disappears from the dentists&#x27; lists and waits. receptionist, dentist appointments &amp; front desk">
   <details>
     <summary>
-      <span class="num">115</span>
+      <span class="num">116</span>
       <span class="sev">Medium</span>
       <span class="ttl">Queue patients can be assigned to the cashier or a stranger</span>
       <span class="meta"><span class="id">NEW-QUEUE-3</span> · Appointments &amp; front desk · effort S</span>
@@ -3440,7 +3469,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Appointments &amp; front desk" data-q="new-queueui-1 a queue that fails to load says &#x27;no patients&#x27; if the queue fails to load, the page says &#x27;no patients in this range.&#x27;, so an outage looks like an empty waiting room. the server hiccups at 10 am. dr selam&#x27;s queue page says no patients while three are waiting outside. receptionist, dentist appointments &amp; front desk">
   <details>
     <summary>
-      <span class="num">116</span>
+      <span class="num">117</span>
       <span class="sev">Medium</span>
       <span class="ttl">A queue that fails to load says &#x27;No patients&#x27;</span>
       <span class="meta"><span class="id">NEW-QUEUEUI-1</span> · Appointments &amp; front desk · effort S</span>
@@ -3469,7 +3498,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Appointments &amp; front desk" data-q="new-recep-3 desk without collect permission still sees &quot;collect&quot; button a receptionist who is not allowed to take money still sees &quot;collect ... &amp; send through&quot;. pressing it checks the patient in and raises the fee, then the payment step is refused and an error shows. hana may raise bills but not take money. she presses &quot;collect 200 birr &amp; send through&quot; for almaz; almaz is checked in with a bill, but the screen shows an error. receptionist appointments &amp; front desk">
   <details>
     <summary>
-      <span class="num">117</span>
+      <span class="num">118</span>
       <span class="sev">Medium</span>
       <span class="ttl">Desk without collect permission still sees &quot;Collect&quot; button</span>
       <span class="meta"><span class="id">NEW-RECEP-3</span> · Appointments &amp; front desk · effort S</span>
@@ -3498,7 +3527,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Reliability" data-q="fe-3 no &#x27;you are offline&#x27; signal; chart says saved when it wasn&#x27;t the app has no offline warning and requests have no time limit. the tooth chart says &#x27;saved automatically&#x27; even when nothing reached the server. the wi-fi drops while dr selam charts dawit&#x27;s teeth. the chart says &#x27;saved automatically&#x27;, she closes it, and the changes are gone. dentist, all staff reliability">
   <details>
     <summary>
-      <span class="num">118</span>
+      <span class="num">119</span>
       <span class="sev">Medium</span>
       <span class="ttl">No &#x27;you are offline&#x27; signal; chart says saved when it wasn&#x27;t</span>
       <span class="meta"><span class="id">FE-3</span> · Reliability · effort M · <i class="notest">No test yet</i></span>
@@ -3527,7 +3556,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Reliability" data-q="fe-6 after an update, an old tab can crash the whole app the app has one error screen for everything. after a new version is deployed, a tab that was already open may try to load a piece that no longer exists (the dashboard chart, for example), and the whole app, including the side menu, is replaced by the error screen. after a lunchtime update, the owner clicks home in a tab opened in the morning. the entire screen becomes &#x27;this page could not be displayed&#x27;, with no menu to go anywhere else. all staff reliability">
   <details>
     <summary>
-      <span class="num">119</span>
+      <span class="num">120</span>
       <span class="sev">Medium</span>
       <span class="ttl">After an update, an old tab can crash the whole app</span>
       <span class="meta"><span class="id">FE-6</span> · Reliability · effort S</span>
@@ -3556,7 +3585,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Reliability" data-q="ops-11 test database and another business share the live server the production server also runs a test database, and another business&#x27;s software, with no memory limits on that other software. the other business has a busy day and its program uses all the memory; the clinic database is slowed or stopped. every clinic reliability">
   <details>
     <summary>
-      <span class="num">120</span>
+      <span class="num">121</span>
       <span class="sev">Medium</span>
       <span class="ttl">Test database and another business share the live server</span>
       <span class="meta"><span class="id">OPS-11</span> · Reliability · effort M · <i class="notest">No test yet</i></span>
@@ -3585,7 +3614,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Reliability" data-q="ops-7 updates go live in clinic hours, untested on a copy new versions are put live during clinic hours (five times on 2 october), with no test copy of the system to try them on first and only one step of undo. an update at 10:30 has a mistake in the cashier page; cure dental cannot take payments until it is undone, with a waiting room full. every clinic reliability">
   <details>
     <summary>
-      <span class="num">121</span>
+      <span class="num">122</span>
       <span class="sev">Medium</span>
       <span class="ttl">Updates go live in clinic hours, untested on a copy</span>
       <span class="meta"><span class="id">OPS-7</span> · Reliability · effort M · <i class="notest">No test yet</i></span>
@@ -3614,7 +3643,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Reliability" data-q="ops-8 a failed update can leave the system half-changed if a database change or the after-update health check fails, the update stops but nothing is put back automatically. the system can be left half old, half new. a database change fails halfway at 21:00; the app is on the new version, the database on the old one, and patient pages error until someone fixes it by hand. every clinic reliability">
   <details>
     <summary>
-      <span class="num">122</span>
+      <span class="num">123</span>
       <span class="sev">Medium</span>
       <span class="ttl">A failed update can leave the system half-changed</span>
       <span class="meta"><span class="id">OPS-8</span> · Reliability · effort M · <i class="notest">No test yet</i></span>
@@ -3643,7 +3672,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Reliability" data-q="ops-9 server logs vanish on every update and are not size-limited the application logs are lost each time a new version is put live, and are probably not limited in size. the disk is already about 81% full. a clinic reports a strange payment from yesterday; the logs that would explain it disappeared with this morning&#x27;s update. meanwhile logs slowly fill the disk until the database stops. vendor (you) reliability">
   <details>
     <summary>
-      <span class="num">123</span>
+      <span class="num">124</span>
       <span class="sev">Medium</span>
       <span class="ttl">Server logs vanish on every update and are not size-limited</span>
       <span class="meta"><span class="id">OPS-9</span> · Reliability · effort S · <i class="notest">No test yet</i></span>
@@ -3672,7 +3701,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Screens &amp; usability" data-q="fe-7 a refused change is not reported; the page says nothing some admin buttons (suspend or reactivate a staff member, remove a drug or allergen, remove the receipt-check key on the platform) show nothing when the server refuses. the row stays as it was and the person assumes it worked. hanna suspends a dentist who has left; the server refuses because of a network hiccup. nothing appears, hanna assumes it worked, and the dentist keeps his access. owner, vendor (you) screens &amp; usability">
   <details>
     <summary>
-      <span class="num">124</span>
+      <span class="num">125</span>
       <span class="sev">Medium</span>
       <span class="ttl">A refused change is not reported; the page says nothing</span>
       <span class="meta"><span class="id">FE-7</span> · Screens &amp; usability · effort S</span>
@@ -3701,7 +3730,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Screens &amp; usability" data-q="new-api-1 an empty list from the server can crash a screen when the server answers &quot;empty&quot; in one particular way, the app mistakes the reply&#x27;s wrapper for the list itself. a screen expecting a list then fails and shows a crash page instead of &quot;nothing yet&quot;. a new clinic opens a list that has never had any entries; instead of &quot;no staff yet&quot; the page goes blank with an error. all staff screens &amp; usability">
   <details>
     <summary>
-      <span class="num">125</span>
+      <span class="num">126</span>
       <span class="sev">Medium</span>
       <span class="ttl">An empty list from the server can crash a screen</span>
       <span class="meta"><span class="id">NEW-API-1</span> · Screens &amp; usability · effort S</span>
@@ -3730,7 +3759,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Screens &amp; usability" data-q="new-fe-plat-1 suspending a whole clinic happens on one click, no question on the platform console the suspend button locks a clinic out immediately, with no &quot;are you sure?&quot;. &quot;sign in as owner&quot; asks first, but suspend does not. scrolling the clinic list on your phone you tap suspend on cure dental instead of the test clinic below it. their staff can no longer sign in in the middle of a busy morning. vendor (you), suspended clinic screens &amp; usability">
   <details>
     <summary>
-      <span class="num">126</span>
+      <span class="num">127</span>
       <span class="sev">Medium</span>
       <span class="ttl">Suspending a whole clinic happens on one click, no question</span>
       <span class="meta"><span class="id">NEW-FE-PLAT-1</span> · Screens &amp; usability · effort S</span>
@@ -3759,7 +3788,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Screens &amp; usability" data-q="new-fin-1 finance page says &quot;loading...&quot; forever when it fails if the finance page cannot load (no permission, server error, no internet), it shows &quot;loading...&quot; for ever instead of an error. the internet drops while the owner opens finance. the page sits on &quot;loading...&quot; and never says anything is wrong. owner, manager screens &amp; usability">
   <details>
     <summary>
-      <span class="num">127</span>
+      <span class="num">128</span>
       <span class="sev">Medium</span>
       <span class="ttl">Finance page says &quot;Loading...&quot; forever when it fails</span>
       <span class="meta"><span class="id">NEW-FIN-1</span> · Screens &amp; usability · effort S</span>
@@ -3788,7 +3817,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Screens &amp; usability" data-q="new-notif-1 failed unread count says &#x27;you&#x27;re all caught up&#x27; if the unread-notification count fails to load, the notifications page counts it as zero and says &#x27;you&#x27;re all caught up&#x27;, even above a list of unread notices. the count request fails. the owner sees &#x27;you&#x27;re all caught up&#x27; and doesn&#x27;t read the two missed-visit notices below it. all staff screens &amp; usability">
   <details>
     <summary>
-      <span class="num">128</span>
+      <span class="num">129</span>
       <span class="sev">Medium</span>
       <span class="ttl">Failed unread count says &#x27;You&#x27;re all caught up&#x27;</span>
       <span class="meta"><span class="id">NEW-NOTIF-1</span> · Screens &amp; usability · effort S</span>
@@ -3817,7 +3846,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Screens &amp; usability" data-q="new-org-1 branch screen shows plan&#x27;s cap, not the clinic&#x27;s real one when you give a clinic its own branch limit (different from its plan), the settings screen still shows the plan&#x27;s limit. adding a branch is then refused although the screen said there was room. bole dental is on the 10-branch plan but you set it to 1 branch. their settings page says &quot;1 of 10 branches&quot; and offers &quot;add branch&quot;; hanna fills in the piassa branch and gets &quot;branch limit reached&quot;. owner screens &amp; usability">
   <details>
     <summary>
-      <span class="num">129</span>
+      <span class="num">130</span>
       <span class="sev">Medium</span>
       <span class="ttl">Branch screen shows plan&#x27;s cap, not the clinic&#x27;s real one</span>
       <span class="meta"><span class="id">NEW-ORG-1</span> · Screens &amp; usability · effort S</span>
@@ -3846,7 +3875,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Screens &amp; usability" data-q="new-palette-1 quick search (ctrl+k) hides patients the server found the quick-search box (ctrl+k / cmd+k) asks the server for matching patients, then filters the results again by matching the typed letters against the patient&#x27;s internal id instead of the name. most real matches are hidden and it says &#x27;no results&#x27;. hanna presses ctrl+k and types &#x27;al&#x27; for almaz haile. the server finds her, but the box says &#x27;no results&#x27;, so hanna decides she isn&#x27;t registered. all staff screens &amp; usability">
   <details>
     <summary>
-      <span class="num">130</span>
+      <span class="num">131</span>
       <span class="sev">Medium</span>
       <span class="ttl">Quick search (Ctrl+K) hides patients the server found</span>
       <span class="meta"><span class="id">NEW-PALETTE-1</span> · Screens &amp; usability · effort S</span>
@@ -3875,7 +3904,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Screens &amp; usability" data-q="new-svccat-1 failed price list load says &quot;no services yet&quot; if the price list cannot load, the page says &quot;no services yet - add the ones your clinic bills for&quot; instead of showing an error. the connection drops while the manager opens services. seeing &quot;no services yet&quot;, she starts typing the whole price list again. owner, manager screens &amp; usability">
   <details>
     <summary>
-      <span class="num">131</span>
+      <span class="num">132</span>
       <span class="sev">Medium</span>
       <span class="ttl">Failed price list load says &quot;No services yet&quot;</span>
       <span class="meta"><span class="id">NEW-SVCCAT-1</span> · Screens &amp; usability · effort S</span>
@@ -3904,7 +3933,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Screens &amp; usability" data-q="ux-1 a failed load looks like &quot;nothing here&quot;, not an error when a list fails to load (bad connection, server problem), several screens show the empty-state message instead of an error. reception&#x27;s patient search says &quot;nobody matches. register them&quot;; the cashier&#x27;s day close looks like a quiet day; the platform console says &quot;no clinics yet&quot;. the internet drops for a moment. selam searches &quot;abebe&quot; and sees &quot;nobody matches. register them&quot;, so she registers abebe again, creating a duplicate file without his allergies or his 2,000 birr balance. reception, cashier, vendor (you) screens &amp; usability">
   <details>
     <summary>
-      <span class="num">132</span>
+      <span class="num">133</span>
       <span class="sev">Medium</span>
       <span class="ttl">A failed load looks like &quot;nothing here&quot;, not an error</span>
       <span class="meta"><span class="id">UX-1</span> · Screens &amp; usability · effort M</span>
@@ -3933,7 +3962,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Dental" data-q="new-draft-1 an old visit draft can come back after recording while a dentist types a visit record, the form saves a draft 0.8 seconds after typing. if the visit was saved before that timer fired, the save cleared the draft and then the timer wrote it back, so an old &#x27;draft restored&#x27; note could reappear later on a visit already recorded. dr selam opens visit 2, the earlier draft is restored, and she presses save straight away. next week, reopening that visit shows &#x27;draft restored&#x27; with last week&#x27;s text. dentist dental">
   <details>
     <summary>
-      <span class="num">133</span>
+      <span class="num">134</span>
       <span class="sev">Low</span>
       <span class="ttl">An old visit draft can come back after recording</span>
       <span class="meta"><span class="id">NEW-DRAFT-1</span> · Dental · effort S</span>
@@ -3962,7 +3991,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Money" data-q="new-fin-order-1 debts owed for the same days reshuffled on every load the finance debts list sorted oldest first, but patients owing for the same number of days came out in a random order each time the page loaded. two patients each owing for 10 days swap places every time the cashier refreshes, so the one she was about to call moves. owner, cashier money">
   <details>
     <summary>
-      <span class="num">134</span>
+      <span class="num">135</span>
       <span class="sev">Low</span>
       <span class="ttl">Debts owed for the same days reshuffled on every load</span>
       <span class="meta"><span class="id">NEW-FIN-ORDER-1</span> · Money · effort S</span>
@@ -3991,7 +4020,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Money" data-q="cq-6 old card-fee &quot;paid today&quot; uses the utc day the old card-fee feature works out &quot;paid today&quot; by utc. no screen uses it now; it goes away when the old card-fee route (fin-13) is removed. a card fee paid at 01:00 addis is counted as yesterday&#x27;s. cashier money">
   <details>
     <summary>
-      <span class="num">135</span>
+      <span class="num">136</span>
       <span class="sev">Low</span>
       <span class="ttl">Old card-fee &quot;paid today&quot; uses the UTC day</span>
       <span class="meta"><span class="id">CQ-6</span> · Money · effort S · <i class="notest">No test yet</i></span>
@@ -4020,7 +4049,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Money" data-q="fin-10 day list compares all-method takings with a cash-only count the list of days shows total takings from all payment methods next to a difference worked out from cash only, so the numbers look like they do not add up. a day has 5,000 birr cash and 3,000 birr telebirr. the row shows 8,000 taken beside a cash difference based on 5,000. cashier, owner money">
   <details>
     <summary>
-      <span class="num">136</span>
+      <span class="num">137</span>
       <span class="sev">Low</span>
       <span class="ttl">Day list compares all-method takings with a cash-only count</span>
       <span class="meta"><span class="id">FIN-10</span> · Money · effort S · <i class="notest">No test yet</i></span>
@@ -4049,7 +4078,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Money" data-q="fin-14 pharmacy counter sales are kept outside the main books over-the-counter pharmacy sales are stored separately from other bills. only matters if the pharmacy module is switched on, which dental clinics do not use. a clinic with the pharmacy on sells 500 birr of medicine over the counter; that money is handled outside the normal billing records. owner money">
   <details>
     <summary>
-      <span class="num">137</span>
+      <span class="num">138</span>
       <span class="sev">Low</span>
       <span class="ttl">Pharmacy counter sales are kept outside the main books</span>
       <span class="meta"><span class="id">FIN-14</span> · Money · effort M · <i class="notest">No test yet</i></span>
@@ -4078,7 +4107,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Money" data-q="new-kernel-limits-1 monthly sms allowance starts at 3 a.m., not midnight the monthly sms count resets at midnight utc, which is 3:00 a.m. in addis. messages sent between midnight and 3 a.m. on the 1st count toward the previous month. a clinic&#x27;s reminder batch goes out at 01:00 on 1 october; those 200 texts are counted in last month, which was already closed, so they are effectively free. vendor (you) money">
   <details>
     <summary>
-      <span class="num">138</span>
+      <span class="num">139</span>
       <span class="sev">Low</span>
       <span class="ttl">Monthly SMS allowance starts at 3 a.m., not midnight</span>
       <span class="meta"><span class="id">NEW-KERNEL-LIMITS-1</span> · Money · effort S</span>
@@ -4107,7 +4136,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Money" data-q="new-payhist-1 patient payment history puts after-midnight payments on the wrong day in a patient&#x27;s payment history and printed statement, payments are grouped by the utc date. a payment taken between midnight and 3 a.m. addis shows under the previous day. tigist pays at 00:30 on 3 october. her statement lists it under 2 october. receptionist, patient money">
   <details>
     <summary>
-      <span class="num">139</span>
+      <span class="num">140</span>
       <span class="sev">Low</span>
       <span class="ttl">Patient payment history puts after-midnight payments on the wrong day</span>
       <span class="meta"><span class="id">NEW-PAYHIST-1</span> · Money · effort S</span>
@@ -4136,7 +4165,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Safety &amp; access" data-q="audit-cloudinary-1 old cloudinary secret copy still on the development computer old editor history files on the development computer still contain a cloudinary secret key that was once leaked. the laptop is lost or shared; whoever has it finds the key and could read or delete files in that cloudinary account if it was never changed. every clinic safety &amp; access">
   <details>
     <summary>
-      <span class="num">140</span>
+      <span class="num">141</span>
       <span class="sev">Low</span>
       <span class="ttl">Old Cloudinary secret copy still on the development computer</span>
       <span class="meta"><span class="id">AUDIT-CLOUDINARY-1</span> · Safety &amp; access · effort S · <i class="notest">No test yet</i></span>
@@ -4165,7 +4194,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Safety &amp; access" data-q="cq-7 demo seed passwords are guessable and not blocked in production the demo data tool sets a default password (changeme123!) and nothing stops it being run against production. someone runs the demo seed on the live server by mistake; several accounts now have a password anyone could guess. every clinic safety &amp; access">
   <details>
     <summary>
-      <span class="num">141</span>
+      <span class="num">142</span>
       <span class="sev">Low</span>
       <span class="ttl">Demo seed passwords are guessable and not blocked in production</span>
       <span class="meta"><span class="id">CQ-7</span> · Safety &amp; access · effort S · <i class="notest">No test yet</i></span>
@@ -4194,7 +4223,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Safety &amp; access" data-q="new-kernel-auth-2 a sign-in pass with no expiry date would be accepted the server accepts a correctly signed sign-in pass that has no expiry date at all. the server never makes such passes itself, so this needs the secret signing key to exploit; it is a safety-net gap. if the signing key ever leaked, a pass made without an expiry would keep working forever instead of 15 minutes. all clinics (hardening) safety &amp; access">
   <details>
     <summary>
-      <span class="num">142</span>
+      <span class="num">143</span>
       <span class="sev">Low</span>
       <span class="ttl">A sign-in pass with no expiry date would be accepted</span>
       <span class="meta"><span class="id">NEW-KERNEL-AUTH-2</span> · Safety &amp; access · effort S</span>
@@ -4223,7 +4252,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Safety &amp; access" data-q="new-kernel-storage-1 file storage does not block &quot;../&quot; tricks in file names the storage layer would accept a file name containing &quot;../&quot; that steps out of the clinic&#x27;s folder. today the app always builds safe names itself, so this cannot be reached; it is a missing safety net. if a future screen let the user name an upload, a name like &quot;../../otherclinic/x&quot; could land in another clinic&#x27;s folder. all clinics (hardening) safety &amp; access">
   <details>
     <summary>
-      <span class="num">143</span>
+      <span class="num">144</span>
       <span class="sev">Low</span>
       <span class="ttl">File storage does not block &quot;../&quot; tricks in file names</span>
       <span class="meta"><span class="id">NEW-KERNEL-STORAGE-1</span> · Safety &amp; access · effort S</span>
@@ -4252,7 +4281,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Safety &amp; access" data-q="new-org-2 branch module switches answer &quot;saved&quot; for another clinic&#x27;s branch reading or changing which modules are on for a branch does not check the branch is yours. asking about another clinic&#x27;s branch returns your own defaults, and changing it stores a stray setting in your clinic. the other clinic is not affected. through a bad link, hanna turns off dental for a branch number that belongs to another clinic. the screen says saved; nothing changes anywhere that matters, but a stray setting sits in cure dental&#x27;s data. owner safety &amp; access">
   <details>
     <summary>
-      <span class="num">144</span>
+      <span class="num">145</span>
       <span class="sev">Low</span>
       <span class="ttl">Branch module switches answer &quot;saved&quot; for another clinic&#x27;s branch</span>
       <span class="meta"><span class="id">NEW-ORG-2</span> · Safety &amp; access · effort S</span>
@@ -4281,7 +4310,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Safety &amp; access" data-q="sec-11 two-step sign-in exists but staff cannot turn it on the system has code for a second sign-in step (a phone code), but there is no way for a staff member to set it up. the owner wants the cashier and herself to use a phone code because they handle money; there is no screen to do it. all staff safety &amp; access">
   <details>
     <summary>
-      <span class="num">145</span>
+      <span class="num">146</span>
       <span class="sev">Low</span>
       <span class="ttl">Two-step sign-in exists but staff cannot turn it on</span>
       <span class="meta"><span class="id">SEC-11</span> · Safety &amp; access · effort M · <i class="notest">No test yet</i></span>
@@ -4310,7 +4339,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Safety &amp; access" data-q="sec-12 anyone can lock staff out with deliberate wrong passwords after a few wrong passwords an account is locked for a while. someone who knows a staff member&#x27;s email can deliberately type wrong passwords to keep that person locked out. a former employee keeps entering wrong passwords for the cashier&#x27;s email, and meron cannot sign in at the start of her shift. all staff safety &amp; access">
   <details>
     <summary>
-      <span class="num">146</span>
+      <span class="num">147</span>
       <span class="sev">Low</span>
       <span class="ttl">Anyone can lock staff out with deliberate wrong passwords</span>
       <span class="meta"><span class="id">SEC-12</span> · Safety &amp; access · effort S · <i class="notest">No test yet</i></span>
@@ -4339,7 +4368,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Safety &amp; access" data-q="sec-14 ai assistant and voice transcription send patient details outside the ai assistant and the voice-to-text features send visit details to outside companies (nvidia and deepgram). patients have not been asked. a dentist uses the assistant on almaz&#x27;s visit; her symptoms and history are sent to a company abroad. patients&#x27; privacy safety &amp; access">
   <details>
     <summary>
-      <span class="num">147</span>
+      <span class="num">148</span>
       <span class="sev">Low</span>
       <span class="ttl">AI assistant and voice transcription send patient details outside</span>
       <span class="meta"><span class="id">SEC-14</span> · Safety &amp; access · effort S · <i class="notest">No test yet</i></span>
@@ -4368,7 +4397,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Safety &amp; access" data-q="sec-6 front desk sees empty x-ray list, not &quot;not allowed&quot; reception and cashier are allowed onto the dental image list but the server quietly empties it for them, so no x-ray is actually shown. it works, but the screen reads &quot;no images&quot; rather than &quot;you don&#x27;t have access&quot;, and the protection depends on that one emptying step. they can still see the tooth chart, by design. selam at reception opens abebe&#x27;s x-rays to check one is there before his visit. the list says there are none, although the dentist uploaded two yesterday; she tells the patient to bring his x-ray again. receptionist, cashier safety &amp; access">
   <details>
     <summary>
-      <span class="num">148</span>
+      <span class="num">149</span>
       <span class="sev">Low</span>
       <span class="ttl">Front desk sees empty X-ray list, not &quot;not allowed&quot;</span>
       <span class="meta"><span class="id">SEC-6</span> · Safety &amp; access · effort S</span>
@@ -4397,7 +4426,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Patient records" data-q="new-cert-1 certificate actions on missing records give confusing errors issuing a medical certificate for a patient that doesn&#x27;t exist gives a server error. voiding a certificate that never existed says &#x27;already void&#x27;. both should say &#x27;not found&#x27;. a broken link sends dr hana to void certificate #123, which does not exist. she is told it is &#x27;already void&#x27;, so she thinks someone else voided it. doctor patient records">
   <details>
     <summary>
-      <span class="num">149</span>
+      <span class="num">150</span>
       <span class="sev">Low</span>
       <span class="ttl">Certificate actions on missing records give confusing errors</span>
       <span class="meta"><span class="id">NEW-CERT-1</span> · Patient records · effort S</span>
@@ -4426,7 +4455,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Patient records" data-q="new-pat-1 deleting a patient who doesn&#x27;t exist reports success if the system is asked to delete a patient that doesn&#x27;t exist (or was already deleted), it reports &#x27;done&#x27; instead of &#x27;not found&#x27;. two receptionists delete the same duplicate record a second apart. both screens say it worked, which is harmless but hides that it was already gone. receptionist patient records">
   <details>
     <summary>
-      <span class="num">150</span>
+      <span class="num">151</span>
       <span class="sev">Low</span>
       <span class="ttl">Deleting a patient who doesn&#x27;t exist reports success</span>
       <span class="meta"><span class="id">NEW-PAT-1</span> · Patient records · effort S</span>
@@ -4455,7 +4484,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Patient records" data-q="new-pat-3 removing an allergy that doesn&#x27;t exist reports success removing an allergy that isn&#x27;t there (already removed, or a wrong link) reports success instead of &#x27;not found&#x27;. dr hana and nurse tigist both remove almaz&#x27;s duplicate &#x27;dust&#x27; allergy from two screens. both are told it worked. receptionist, doctor patient records">
   <details>
     <summary>
-      <span class="num">151</span>
+      <span class="num">152</span>
       <span class="sev">Low</span>
       <span class="ttl">Removing an allergy that doesn&#x27;t exist reports success</span>
       <span class="meta"><span class="id">NEW-PAT-3</span> · Patient records · effort S</span>
@@ -4484,7 +4513,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Patient records" data-q="new-pat-4 removing a condition that doesn&#x27;t exist reports success removing a medical condition that isn&#x27;t there reports success instead of &#x27;not found&#x27;. two people remove abebe&#x27;s old &#x27;hypertension&#x27; entry at the same time. both are told it worked. doctor, receptionist patient records">
   <details>
     <summary>
-      <span class="num">152</span>
+      <span class="num">153</span>
       <span class="sev">Low</span>
       <span class="ttl">Removing a condition that doesn&#x27;t exist reports success</span>
       <span class="meta"><span class="id">NEW-PAT-4</span> · Patient records · effort S</span>
@@ -4513,7 +4542,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Patient records" data-q="new-patui-1 an impossible age like 150 is silently dropped when registering by age, typing an impossible age (for example 150) is not refused. the birth date is silently left blank and the form moves on. hanna mistypes abebe&#x27;s age as 150 instead of 50. the patient is registered with no birth date and no warning, and age-based dosing has nothing to go on. receptionist patient records">
   <details>
     <summary>
-      <span class="num">153</span>
+      <span class="num">154</span>
       <span class="sev">Low</span>
       <span class="ttl">An impossible age like 150 is silently dropped</span>
       <span class="meta"><span class="id">NEW-PATUI-1</span> · Patient records · effort S</span>
@@ -4542,7 +4571,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Patient records" data-q="new-patui-2 old-history date defaults to yesterday just after midnight on the &#x27;import old history&#x27; page, the record date defaults to today and cannot be later than today. &#x27;today&#x27; is worked out on world (utc) time, so between midnight and 3 am addis time it is yesterday. working late at 00:20 on 3 october, hanna opens the import page. the date shows 2 october and she cannot choose the 3rd. receptionist patient records">
   <details>
     <summary>
-      <span class="num">154</span>
+      <span class="num">155</span>
       <span class="sev">Low</span>
       <span class="ttl">Old-history date defaults to yesterday just after midnight</span>
       <span class="meta"><span class="id">NEW-PATUI-2</span> · Patient records · effort S</span>
@@ -4571,7 +4600,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Patient records" data-q="new-patui-3 import error list gives wrong row numbers after a blank line the failed-rows list from a bulk import promises each row&#x27;s line number in the original sheet. blank lines are removed before counting, so every row after a blank line is reported one line too early. the report says &#x27;row 5: name missing&#x27;. hanna opens the spreadsheet at line 5, finds it blank, and has to hunt for selam&#x27;s row, which is really on line 6. receptionist, owner patient records">
   <details>
     <summary>
-      <span class="num">155</span>
+      <span class="num">156</span>
       <span class="sev">Low</span>
       <span class="ttl">Import error list gives wrong row numbers after a blank line</span>
       <span class="meta"><span class="id">NEW-PATUI-3</span> · Patient records · effort S</span>
@@ -4600,7 +4629,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Patient records" data-q="new-patui-4 a future birth date can be saved when editing a patient the edit window accepts a birth date in the future and saves it. hanna enters almaz&#x27;s birth date as 15 jan next year instead of last century. the record saves, and her age shows as blank or nonsense. receptionist patient records">
   <details>
     <summary>
-      <span class="num">156</span>
+      <span class="num">157</span>
       <span class="sev">Low</span>
       <span class="ttl">A future birth date can be saved when editing a patient</span>
       <span class="meta"><span class="id">NEW-PATUI-4</span> · Patient records · effort S</span>
@@ -4629,7 +4658,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Patient records" data-q="new-patui-5 edit window accepts an invalid email that registration rejects registration refuses an invalid email like &#x27;not-an-email&#x27;. the edit window sends it without checking. hanna types abebe&#x27;s email without the @ and saves. it is stored, and any email to him fails. receptionist patient records">
   <details>
     <summary>
-      <span class="num">157</span>
+      <span class="num">158</span>
       <span class="sev">Low</span>
       <span class="ttl">Edit window accepts an invalid email that registration rejects</span>
       <span class="meta"><span class="id">NEW-PATUI-5</span> · Patient records · effort S</span>
@@ -4658,7 +4687,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Patient records" data-q="new-prof-1 patient&#x27;s age is a year short on their birthday morning the banner on the general-clinic patient page works out age on world (utc) time. from midnight to 3 am addis time on the birthday, it still shows last year&#x27;s age. other screens get it right, so the screens disagree. at 00:20 on 3 october, the night nurse opens almaz, who turns 26 that day. the banner says 25y. doctor, receptionist (general clinics) patient records">
   <details>
     <summary>
-      <span class="num">158</span>
+      <span class="num">159</span>
       <span class="sev">Low</span>
       <span class="ttl">Patient&#x27;s age is a year short on their birthday morning</span>
       <span class="meta"><span class="id">NEW-PROF-1</span> · Patient records · effort S</span>
@@ -4687,7 +4716,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Patient records" data-q="pat-9 import dry run misses card numbers that are already taken the &#x27;check file&#x27; (dry run) step of the patient import says a row will import fine even when its card number already belongs to another patient. only the real import then fails that row. the dry run says all 200 rows of the old register are ready. during the real import, row 57 (card leg-90, already used) fails, and hanna has to fix and re-import it. receptionist, owner patient records">
   <details>
     <summary>
-      <span class="num">159</span>
+      <span class="num">160</span>
       <span class="sev">Low</span>
       <span class="ttl">Import dry run misses card numbers that are already taken</span>
       <span class="meta"><span class="id">PAT-9</span> · Patient records · effort S</span>
@@ -4716,7 +4745,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Dental" data-q="den-11 chair list counts extras as treatment visits on the dentist&#x27;s chair list, &quot;visits done&quot; counts extras (such as an x-ray added to a visit) as if they were visits, while the total counts only real visits. hana&#x27;s course has 3 visits. visit 1 is done with an x-ray added. the chair list says &quot;2 of 3&quot; instead of &quot;1 of 3&quot;. dentist dental">
   <details>
     <summary>
-      <span class="num">160</span>
+      <span class="num">161</span>
       <span class="sev">Low</span>
       <span class="ttl">Chair list counts extras as treatment visits</span>
       <span class="meta"><span class="id">DEN-11</span> · Dental · effort S</span>
@@ -4745,7 +4774,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Dental" data-q="den-12 small gaps in dental rules, reachable only by direct api calls a few dental rules are checked on screen but not on the server: changing a cancelled treatment&#x27;s visits, reverting a visit with a zero fee, and repricing a cancelled visit. normal screen use doesn&#x27;t hit them. only a connected tool or a technical user could, for example, change a visit on a cancelled treatment for dawit. owner dental">
   <details>
     <summary>
-      <span class="num">161</span>
+      <span class="num">162</span>
       <span class="sev">Low</span>
       <span class="ttl">Small gaps in dental rules, reachable only by direct API calls</span>
       <span class="meta"><span class="id">DEN-12</span> · Dental · effort S · <i class="notest">No test yet</i></span>
@@ -4774,7 +4803,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Dental" data-q="new-den-1 new clinic&#x27;s first chart save is refused until conditions are opened a new dental clinic&#x27;s list of tooth conditions (decayed, filled, missing…) is only created the first time someone opens that list. if a chart save arrives before that (another device, a page that loads the chart first), it is refused with &#x27;unknown condition decayed&#x27;. a newly set-up clinic&#x27;s dentist marks ur1 as decayed on a tablet whose palette hasn&#x27;t loaded yet, and gets &#x27;unknown condition&#x27;. opening the condition list once makes it work. dentist (new clinics) dental">
   <details>
     <summary>
-      <span class="num">162</span>
+      <span class="num">163</span>
       <span class="sev">Low</span>
       <span class="ttl">New clinic&#x27;s first chart save is refused until conditions are opened</span>
       <span class="meta"><span class="id">NEW-DEN-1</span> · Dental · effort S</span>
@@ -4803,7 +4832,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Dental" data-q="new-den-3 a treatment plan can be renamed to a blank title creating a treatment plan requires a name, but editing it doesn&#x27;t. a plan can be saved with an empty title. dr selam edits dawit&#x27;s &#x27;root canal&#x27; plan, clears the name and saves. receipts and lists now show a nameless treatment. dentist dental">
   <details>
     <summary>
-      <span class="num">163</span>
+      <span class="num">164</span>
       <span class="sev">Low</span>
       <span class="ttl">A treatment plan can be renamed to a blank title</span>
       <span class="meta"><span class="id">NEW-DEN-3</span> · Dental · effort S</span>
@@ -4832,7 +4861,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Dental" data-q="new-den-5 image limit on the plan can be bypassed the subscription plan limits how many images a patient can have (for example 8). the limit is checked when an upload is prepared, but not when the image is finally recorded, so a 9th can get in by reusing an upload. on the basic plan, a 9th x-ray for dawit is accepted when a staff member re-sends an earlier upload. owner (subscription) dental">
   <details>
     <summary>
-      <span class="num">164</span>
+      <span class="num">165</span>
       <span class="sev">Low</span>
       <span class="ttl">Image limit on the plan can be bypassed</span>
       <span class="meta"><span class="id">NEW-DEN-5</span> · Dental · effort S</span>
@@ -4861,7 +4890,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Appointments &amp; front desk" data-q="apt-11 some lists don&#x27;t hide deleted records a few appointment and queue lists don&#x27;t filter out deleted records, so deleted items can still show up. a deleted appointment for abebe still shows in one list. receptionist appointments &amp; front desk">
   <details>
     <summary>
-      <span class="num">165</span>
+      <span class="num">166</span>
       <span class="sev">Low</span>
       <span class="ttl">Some lists don&#x27;t hide deleted records</span>
       <span class="meta"><span class="id">APT-11</span> · Appointments &amp; front desk · effort S · <i class="notest">No test yet</i></span>
@@ -4890,7 +4919,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Appointments &amp; front desk" data-q="apt-12 yesterday&#x27;s queue cards never close; dental visits have no time or chair queue cards left open at the end of a day stay open forever. dental treatment visits have only a date, no time or chair, so they can&#x27;t be scheduled into slots. abebe&#x27;s queue card from monday is still &#x27;waiting&#x27; on friday. three treatment visits are all &#x27;today&#x27; with no times. receptionist, dentist appointments &amp; front desk">
   <details>
     <summary>
-      <span class="num">166</span>
+      <span class="num">167</span>
       <span class="sev">Low</span>
       <span class="ttl">Yesterday&#x27;s queue cards never close; dental visits have no time or chair</span>
       <span class="meta"><span class="id">APT-12</span> · Appointments &amp; front desk · effort M · <i class="notest">No test yet</i></span>
@@ -4919,7 +4948,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Appointments &amp; front desk" data-q="apt-9 midnight-to-3am times use world time, not addis the queue board starts its day at 3 am addis (midnight world time), so anyone arriving between midnight and 3 am isn&#x27;t on today&#x27;s board. the booking window also shows an appointment between midnight and 3 am on the day before, and saving it without changes moves it a day earlier. an emergency patient arrives at 00:30 and isn&#x27;t on the queue board. hanna opens a 01:30 appointment for 5 october, presses save without changing anything, and it moves to 4 october. receptionist appointments &amp; front desk">
   <details>
     <summary>
-      <span class="num">167</span>
+      <span class="num">168</span>
       <span class="sev">Low</span>
       <span class="ttl">Midnight-to-3am times use world time, not Addis</span>
       <span class="meta"><span class="id">APT-9</span> · Appointments &amp; front desk · effort S</span>
@@ -4948,7 +4977,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Appointments &amp; front desk" data-q="new-appt-1 reassign window remembers the doctor picked last time the &#x27;reassign doctor&#x27; window keeps the doctor chosen the last time, even if that was cancelled, when opened for another appointment. one click can send a pointless &#x27;reassign to the same doctor&#x27;. hanna picks dr abebe for almaz, then cancels. she opens reassign for chaltu, who is already with dr abebe, and &#x27;reassign&#x27; is ready to press with dr abebe still selected. receptionist appointments &amp; front desk">
   <details>
     <summary>
-      <span class="num">168</span>
+      <span class="num">169</span>
       <span class="sev">Low</span>
       <span class="ttl">Reassign window remembers the doctor picked last time</span>
       <span class="meta"><span class="id">NEW-APPT-1</span> · Appointments &amp; front desk · effort S</span>
@@ -4977,7 +5006,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Appointments &amp; front desk" data-q="new-followup-1 follow-ups list numbers moved visits differently from the patient card the follow-ups list shows each visit&#x27;s original number, while the patient card numbers visits in date order. a visit moved earlier is &#x27;visit 2&#x27; on the card and &#x27;visit 3&#x27; in follow-ups. this is part of den-5. hanna sees &#x27;rebook visit 3&#x27; for almaz in follow-ups, opens her card, and finds the missed visit called &#x27;visit 2&#x27;. receptionist appointments &amp; front desk">
   <details>
     <summary>
-      <span class="num">169</span>
+      <span class="num">170</span>
       <span class="sev">Low</span>
       <span class="ttl">Follow-ups list numbers moved visits differently from the patient card</span>
       <span class="meta"><span class="id">NEW-FOLLOWUP-1</span> · Appointments &amp; front desk · effort S</span>
@@ -5006,7 +5035,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Appointments &amp; front desk" data-q="new-queue-2 setting priority on a queue card that doesn&#x27;t exist reports success setting the priority of a queue card that doesn&#x27;t exist says &#x27;done&#x27; instead of &#x27;not found&#x27;. a screen that hasn&#x27;t refreshed raises the priority of a card already removed. it says it worked. receptionist appointments &amp; front desk">
   <details>
     <summary>
-      <span class="num">170</span>
+      <span class="num">171</span>
       <span class="sev">Low</span>
       <span class="ttl">Setting priority on a queue card that doesn&#x27;t exist reports success</span>
       <span class="meta"><span class="id">NEW-QUEUE-2</span> · Appointments &amp; front desk · effort S</span>
@@ -5035,7 +5064,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Reliability" data-q="apt-13 one clinic&#x27;s broken time-zone setting stops sms for every clinic the sms sender and reminder planner handle all clinics in one go. if one clinic&#x27;s time-zone setting were invalid, the whole run fails and no clinic&#x27;s messages go out. clinics cannot change this setting themselves today, so it would take a bad manual edit. a typo in one clinic&#x27;s time zone during a manual fix, and that evening no clinic sends any reminders. all clinics using sms reliability">
   <details>
     <summary>
-      <span class="num">171</span>
+      <span class="num">172</span>
       <span class="sev">Low</span>
       <span class="ttl">One clinic&#x27;s broken time-zone setting stops SMS for every clinic</span>
       <span class="meta"><span class="id">APT-13</span> · Reliability · effort S</span>
@@ -5064,7 +5093,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Reliability" data-q="db-4 some links between records are not enforced by the database a few tables refer to other records without a database rule making sure the referred record exists, and one common lookup (treatment visits by clinic and date) has no index. a bug leaves a visit pointing at a deleted plan; screens that expect the plan then error. every clinic reliability">
   <details>
     <summary>
-      <span class="num">172</span>
+      <span class="num">173</span>
       <span class="sev">Low</span>
       <span class="ttl">Some links between records are not enforced by the database</span>
       <span class="meta"><span class="id">DB-4</span> · Reliability · effort S · <i class="notest">No test yet</i></span>
@@ -5093,7 +5122,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Reliability" data-q="fe-4 patient page reloads 12 things every 6 seconds while a bill waits while a visit&#x27;s bill is waiting at the cashier, the patient page re-fetches 12 sets of data every 6 seconds. dr selam leaves dawit&#x27;s page open while he pays. the page keeps hammering the server, which slows things for everyone on a weak connection. dentist reliability">
   <details>
     <summary>
-      <span class="num">173</span>
+      <span class="num">174</span>
       <span class="sev">Low</span>
       <span class="ttl">Patient page reloads 12 things every 6 seconds while a bill waits</span>
       <span class="meta"><span class="id">FE-4</span> · Reliability · effort S · <i class="notest">No test yet</i></span>
@@ -5122,7 +5151,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Reliability" data-q="fe-8 cancelled confirm-dialog actions cause hidden errors when an action confirmed in a pop-up fails, the pop-up correctly stays open, but the error is also thrown again in the background as an unhandled error. users see nothing extra. it clutters error logs and makes it hard to write a test for it (recorded as new-confirm-1). removing an allergen fails. the dialog stays open with a message (fine), and the browser logs an extra &#x27;unhandled error&#x27;. developers (no visible effect) reliability">
   <details>
     <summary>
-      <span class="num">174</span>
+      <span class="num">175</span>
       <span class="sev">Low</span>
       <span class="ttl">Cancelled confirm-dialog actions cause hidden errors</span>
       <span class="meta"><span class="id">FE-8</span> · Reliability · effort S · <i class="notest">No test yet</i></span>
@@ -5151,7 +5180,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Reliability" data-q="new-den-6 badly typed dates on dental reports cause server errors the dental calendar and &#x27;unbilled treatment&#x27; report crash with a server error if a date in the link isn&#x27;t in the expected format, instead of saying &#x27;invalid date&#x27;. the owner edits the report link by hand to 13/10/2026 and gets &#x27;something went wrong&#x27;. owner, dentist reliability">
   <details>
     <summary>
-      <span class="num">175</span>
+      <span class="num">176</span>
       <span class="sev">Low</span>
       <span class="ttl">Badly typed dates on dental reports cause server errors</span>
       <span class="meta"><span class="id">NEW-DEN-6</span> · Reliability · effort S</span>
@@ -5180,7 +5209,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Reliability" data-q="new-kernel-audit-1 a history entry can be written twice the clinic&#x27;s history is written by a background worker. if the worker has to retry a step, the same entry can be written a second time. the history shows &quot;hanna waived 500 birr&quot; twice at 10:14, and the owner wonders whether two waivers happened. owner reading the history reliability">
   <details>
     <summary>
-      <span class="num">176</span>
+      <span class="num">177</span>
       <span class="sev">Low</span>
       <span class="ttl">A history entry can be written twice</span>
       <span class="meta"><span class="id">NEW-KERNEL-AUDIT-1</span> · Reliability · effort S</span>
@@ -5209,7 +5238,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Reliability" data-q="new-kernel-auth-1 a damaged stored password makes sign-in crash if a stored password record were ever corrupted (for example by a bad manual database edit), signing in as that person crashes the request instead of saying &quot;wrong password&quot;. the server recovers, but the person sees a general error. after a manual data fix, dr selam&#x27;s sign-in always shows &quot;something went wrong&quot; and support cannot tell why. one staff member reliability">
   <details>
     <summary>
-      <span class="num">177</span>
+      <span class="num">178</span>
       <span class="sev">Low</span>
       <span class="ttl">A damaged stored password makes sign-in crash</span>
       <span class="meta"><span class="id">NEW-KERNEL-AUTH-1</span> · Reliability · effort S</span>
@@ -5238,7 +5267,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Reliability" data-q="new-kernel-ethiocal-1 ethiopian date for years before 8 ad differs from the screen the server&#x27;s ethiopian-calendar conversion disagrees with the screen&#x27;s by one day for dates before the year 8 ad (including an &#x27;empty&#x27; date). real dates (birth dates, visits) are converted correctly. this was checked for leap years and pagumē. only an empty or corrupted date (year 0001) would show as -7-05-07 on a server document and -7-05-08 on screen. no real patient date is affected. nobody in practice reliability">
   <details>
     <summary>
-      <span class="num">178</span>
+      <span class="num">179</span>
       <span class="sev">Low</span>
       <span class="ttl">Ethiopian date for years before 8 AD differs from the screen</span>
       <span class="meta"><span class="id">NEW-KERNEL-ETHIOCAL-1</span> · Reliability · effort S</span>
@@ -5267,7 +5296,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Reliability" data-q="new-kernel-httpx-1 &quot;too many requests&quot; does not say when to try again when the server refuses because of too many requests, it does not say how long to wait. screens that refresh automatically retry straight away and make it worse. during the morning rush the queue screen gets &quot;too many requests&quot;, retries at once, and keeps getting refused for longer than needed. all staff (automatic refreshes) reliability">
   <details>
     <summary>
-      <span class="num">179</span>
+      <span class="num">180</span>
       <span class="sev">Low</span>
       <span class="ttl">&quot;Too many requests&quot; does not say when to try again</span>
       <span class="meta"><span class="id">NEW-KERNEL-HTTPX-1</span> · Reliability · effort S</span>
@@ -5296,7 +5325,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Reliability" data-q="new-kernel-storage-2 pdfs on the backup storage service would not open the older cloudinary storage option builds every link as if the file were an image. pdfs and other documents would get a link that does not work and could not be deleted. production uses cloudflare r2, so this only matters if the system falls back to cloudinary. r2 fails to start after a deploy, the app silently switches to cloudinary, and a referral letter pdf uploaded that day will not open. clinics, only if storage falls back to cloudinary reliability">
   <details>
     <summary>
-      <span class="num">180</span>
+      <span class="num">181</span>
       <span class="sev">Low</span>
       <span class="ttl">PDFs on the backup storage service would not open</span>
       <span class="meta"><span class="id">NEW-KERNEL-STORAGE-2</span> · Reliability · effort S</span>
@@ -5325,7 +5354,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Reliability" data-q="new-pat-5 file upload with storage switched off shows a server error if file storage isn&#x27;t set up or is unavailable, trying to upload a patient document shows a general server error instead of a clear &#x27;file storage is not available&#x27; message. storage is down for maintenance. hanna tries to attach almaz&#x27;s referral letter and sees &#x27;something went wrong&#x27; with no hint why. receptionist reliability">
   <details>
     <summary>
-      <span class="num">181</span>
+      <span class="num">182</span>
       <span class="sev">Low</span>
       <span class="ttl">File upload with storage switched off shows a server error</span>
       <span class="meta"><span class="id">NEW-PAT-5</span> · Reliability · effort S</span>
@@ -5354,7 +5383,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Reliability" data-q="new-pat-6 some invalid patient entries cause server errors, not messages a condition with an unknown status, a document with a type the system doesn&#x27;t accept, or a guardian who isn&#x27;t a real patient are all rejected by the database. staff see a general server error instead of an explanation. nothing wrong is saved. a connected tool sends abebe&#x27;s asthma with status &#x27;chronic&#x27; (the system only knows its own statuses). the screen shows &#x27;something went wrong&#x27; instead of &#x27;unknown status&#x27;. receptionist, doctor reliability">
   <details>
     <summary>
-      <span class="num">182</span>
+      <span class="num">183</span>
       <span class="sev">Low</span>
       <span class="ttl">Some invalid patient entries cause server errors, not messages</span>
       <span class="meta"><span class="id">NEW-PAT-6</span> · Reliability · effort S</span>
@@ -5383,7 +5412,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Reliability" data-q="ops-13 background worker gives up if the database is briefly down if the database is not ready when the background worker starts, it exits instead of retrying, and some failure exits are reported as success, so nothing restarts it properly. after a server reboot the database takes 30 seconds to start; the worker exits, and reminders and history entries stop until someone notices. every clinic reliability">
   <details>
     <summary>
-      <span class="num">183</span>
+      <span class="num">184</span>
       <span class="sev">Low</span>
       <span class="ttl">Background worker gives up if the database is briefly down</span>
       <span class="meta"><span class="id">OPS-13</span> · Reliability · effort S · <i class="notest">No test yet</i></span>
@@ -5412,7 +5441,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Reliability" data-q="ops-14 a restore can lose a full day of work backups run once a night, so restoring after a disaster brings back the state of last night: everything since then is gone. the database is damaged at 16:00; after restoring, the whole day&#x27;s 40 visits and 60,000 birr of payments must be re-entered from paper. every clinic reliability">
   <details>
     <summary>
-      <span class="num">184</span>
+      <span class="num">185</span>
       <span class="sev">Low</span>
       <span class="ttl">A restore can lose a full day of work</span>
       <span class="meta"><span class="id">OPS-14</span> · Reliability · effort S · <i class="notest">No test yet</i></span>
@@ -5441,7 +5470,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Reliability" data-q="perf-2 dashboard and lists do much more database work than needed each open dashboard runs about 25 database queries every 30 seconds, some lists are not limited in size, &quot;today&quot; filters cannot use quick lookups, and the whole app downloads as one large file. fine for two clinics, but it will not scale. with ten clinics each keeping three dashboards open all day, the server is busy answering the same questions over and over and screens become slow. every clinic reliability">
   <details>
     <summary>
-      <span class="num">185</span>
+      <span class="num">186</span>
       <span class="sev">Low</span>
       <span class="ttl">Dashboard and lists do much more database work than needed</span>
       <span class="meta"><span class="id">PERF-2</span> · Reliability · effort L · <i class="notest">No test yet</i></span>
@@ -5470,7 +5499,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Reliability" data-q="rls-guc-1 internal &quot;no clinic&quot; lookups error instead of finding nothing the database protection that keeps clinics apart is working and stays locked. but in one rare internal situation (a lookup with no clinic set, on a reused connection) it throws an error instead of simply returning nothing. a background job that runs a lookup without a clinic set occasionally fails with a confusing error instead of quietly finding no rows. no patient data is shown anywhere. no one directly (system internals) reliability">
   <details>
     <summary>
-      <span class="num">186</span>
+      <span class="num">187</span>
       <span class="sev">Low</span>
       <span class="ttl">Internal &quot;no clinic&quot; lookups error instead of finding nothing</span>
       <span class="meta"><span class="id">RLS-GUC-1</span> · Reliability · effort S</span>
@@ -5499,7 +5528,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Screens &amp; usability" data-q="fe-10 &#x27;no permission&#x27; errors are shown as connection problems when a page can&#x27;t load because the user&#x27;s role isn&#x27;t allowed to see it, the message says to check the connection and retry, the same as a network failure. hanna opens the staff list, which her role can&#x27;t see. she is told to check the connection and retries five times, then calls the owner about &#x27;the internet&#x27;. receptionist, all staff screens &amp; usability">
   <details>
     <summary>
-      <span class="num">187</span>
+      <span class="num">188</span>
       <span class="sev">Low</span>
       <span class="ttl">&#x27;No permission&#x27; errors are shown as connection problems</span>
       <span class="meta"><span class="id">FE-10</span> · Screens &amp; usability · effort S</span>
@@ -5528,7 +5557,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Screens &amp; usability" data-q="fe-11 crash screen falsely promises nothing was lost when a screen crashes, the error page says &#x27;your data is safe – nothing was saved or changed&#x27;. it can&#x27;t know that: a save may have just gone through, or typed text may be gone. dr selam&#x27;s page crashes right after she pressed save on an exam. the message says nothing was saved, so she types it again and creates a duplicate. all staff screens &amp; usability">
   <details>
     <summary>
-      <span class="num">188</span>
+      <span class="num">189</span>
       <span class="sev">Low</span>
       <span class="ttl">Crash screen falsely promises nothing was lost</span>
       <span class="meta"><span class="id">FE-11</span> · Screens &amp; usability · effort S</span>
@@ -5557,7 +5586,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Screens &amp; usability" data-q="new-cat-1 editing a deleted drug or allergen says &quot;saved&quot; editing or removing a drug or allergen that no longer exists answers as if it worked. nothing is changed. dr selam renames &quot;amoxicillin 500mg&quot; in one tab after a colleague already removed it in another. the screen says saved, but the drug list does not have it. doctor, owner screens &amp; usability">
   <details>
     <summary>
-      <span class="num">189</span>
+      <span class="num">190</span>
       <span class="sev">Low</span>
       <span class="ttl">Editing a deleted drug or allergen says &quot;saved&quot;</span>
       <span class="meta"><span class="id">NEW-CAT-1</span> · Screens &amp; usability · effort S</span>
@@ -5586,7 +5615,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Screens &amp; usability" data-q="new-helpui-1 dental clinic&#x27;s help center talks about triage, which they lack a dental clinic has no triage step, but its help center tells reception to route patients to triage and says check-in sends them to triage. a new receptionist at cure dental reads the help and looks for a triage screen that doesn&#x27;t exist. receptionist (dental clinics) screens &amp; usability">
   <details>
     <summary>
-      <span class="num">190</span>
+      <span class="num">191</span>
       <span class="sev">Low</span>
       <span class="ttl">Dental clinic&#x27;s Help Center talks about triage, which they lack</span>
       <span class="meta"><span class="id">NEW-HELPUI-1</span> · Screens &amp; usability · effort S</span>
@@ -5615,7 +5644,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Screens &amp; usability" data-q="new-helpui-2 dental pages have no &#x27;how this works&#x27; help button the help center promises a &#x27;how this works&#x27; button on every page, but dental clinics&#x27; own pages (chairside, unbilled treatment) have none, and the help center doesn&#x27;t list them. a new dentist on the chairside screen looks for the help button that the help center promised and finds nothing. dentist, owner (dental clinics) screens &amp; usability">
   <details>
     <summary>
-      <span class="num">191</span>
+      <span class="num">192</span>
       <span class="sev">Low</span>
       <span class="ttl">Dental pages have no &#x27;How this works&#x27; help button</span>
       <span class="meta"><span class="id">NEW-HELPUI-2</span> · Screens &amp; usability · effort S</span>
@@ -5644,7 +5673,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Screens &amp; usability" data-q="new-notif-2 notice times say &#x27;yesterday&#x27; based on hours, not the calendar a notification&#x27;s age reads &#x27;yesterday&#x27; when it is 24 to 48 hours old, whatever the calendar day. a notice from early this morning reads &#x27;yesterday&#x27; late at night, and one from two days ago can read &#x27;yesterday&#x27;. the page heading groups by calendar day, so the two disagree. at 23:50 the owner sees a notice from 00:10 the same day labelled &#x27;yesterday&#x27; under the &#x27;today&#x27; heading. all staff screens &amp; usability">
   <details>
     <summary>
-      <span class="num">192</span>
+      <span class="num">193</span>
       <span class="sev">Low</span>
       <span class="ttl">Notice times say &#x27;yesterday&#x27; based on hours, not the calendar</span>
       <span class="meta"><span class="id">NEW-NOTIF-2</span> · Screens &amp; usability · effort S</span>
@@ -5673,7 +5702,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Screens &amp; usability" data-q="new-org-3 renaming or deleting a missing department says &quot;done&quot; renaming or deleting a department that does not exist (or belongs to another clinic) answers as if it worked. nothing actually changes. two managers edit departments at the same time; one deletes &quot;hygiene&quot; and the other renames it a second later. the rename says saved, but the department is gone. owner screens &amp; usability">
   <details>
     <summary>
-      <span class="num">193</span>
+      <span class="num">194</span>
       <span class="sev">Low</span>
       <span class="ttl">Renaming or deleting a missing department says &quot;done&quot;</span>
       <span class="meta"><span class="id">NEW-ORG-3</span> · Screens &amp; usability · effort S</span>
@@ -5702,7 +5731,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Screens &amp; usability" data-q="new-plat-1 retired plan can still be given to a new clinic a retired plan is meant to stay only for clinics already on it. but the &quot;new clinic&quot; form still offers it, and the server accepts it. changing an existing clinic&#x27;s plan already refuses retired plans. you retired the old 1,500 birr &quot;legacy&quot; plan. a colleague setting up a new clinic picks it from the list and the clinic is created on the old price. vendor (you) screens &amp; usability">
   <details>
     <summary>
-      <span class="num">194</span>
+      <span class="num">195</span>
       <span class="sev">Low</span>
       <span class="ttl">Retired plan can still be given to a new clinic</span>
       <span class="meta"><span class="id">NEW-PLAT-1</span> · Screens &amp; usability · effort S</span>
@@ -5731,7 +5760,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Screens &amp; usability" data-q="new-plat-2 usage page for a missing clinic shows a server error asking for the usage of a clinic that does not exist returns a general server error instead of &quot;clinic not found&quot;. you open an old bookmark to a clinic you deleted in testing and get &quot;something went wrong&quot; rather than &quot;no such clinic&quot;. vendor (you) screens &amp; usability">
   <details>
     <summary>
-      <span class="num">195</span>
+      <span class="num">196</span>
       <span class="sev">Low</span>
       <span class="ttl">Usage page for a missing clinic shows a server error</span>
       <span class="meta"><span class="id">NEW-PLAT-2</span> · Screens &amp; usability · effort S</span>
@@ -5760,7 +5789,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Screens &amp; usability" data-q="new-plat-3 saving an unknown plan feature shows a server error saving a plan with a feature name that is not in the feature list returns a general server error instead of &quot;unknown feature&quot;. an outdated console page sends a feature that was renamed; you get &quot;something went wrong&quot; and do not know why. vendor (you) screens &amp; usability">
   <details>
     <summary>
-      <span class="num">196</span>
+      <span class="num">197</span>
       <span class="sev">Low</span>
       <span class="ttl">Saving an unknown plan feature shows a server error</span>
       <span class="meta"><span class="id">NEW-PLAT-3</span> · Screens &amp; usability · effort S</span>
@@ -5789,7 +5818,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Screens &amp; usability" data-q="ux-6 reception &#x27;new&#x27; and &#x27;register them&#x27; open the list, not the form reception&#x27;s &#x27;new&#x27; button and the &#x27;register them&#x27; link go to the patients list with a &#x27;new&#x27; marker the list ignores. the desk lands on the list, not the registration form, and the name they typed in search is lost. hanna searches &#x27;genet&#x27;, finds nobody and clicks &#x27;register them&#x27;. she lands on the patient list and has to click &#x27;new patient&#x27; and type genet again. receptionist screens &amp; usability">
   <details>
     <summary>
-      <span class="num">197</span>
+      <span class="num">198</span>
       <span class="sev">Low</span>
       <span class="ttl">Reception &#x27;New&#x27; and &#x27;Register them&#x27; open the list, not the form</span>
       <span class="meta"><span class="id">UX-6</span> · Screens &amp; usability · effort S</span>
@@ -5818,7 +5847,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Screens &amp; usability" data-q="ux-8 mixed words for the same thing across screens different screens use different words for the same thing: treatment plan / course / treatment, session / visit, owes / owed / unbilled. hanna is told to &#x27;bill the unbilled session&#x27; while her screen says &#x27;visit owed&#x27;. she isn&#x27;t sure it is the same thing. all staff screens &amp; usability">
   <details>
     <summary>
-      <span class="num">198</span>
+      <span class="num">199</span>
       <span class="sev">Low</span>
       <span class="ttl">Mixed words for the same thing across screens</span>
       <span class="meta"><span class="id">UX-8</span> · Screens &amp; usability · effort M · <i class="notest">No test yet</i></span>
@@ -5847,7 +5876,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   data-area="Screens &amp; usability" data-q="ux-9 treatment plan window overflows on small phones on a narrow phone (360 pixels wide), the new treatment plan window runs off the side of the screen. dr selam creates a plan on her phone and can&#x27;t see the right-hand edge of the visit amounts. dentist (on phone) screens &amp; usability">
   <details>
     <summary>
-      <span class="num">199</span>
+      <span class="num">200</span>
       <span class="sev">Low</span>
       <span class="ttl">Treatment plan window overflows on small phones</span>
       <span class="meta"><span class="id">UX-9</span> · Screens &amp; usability · effort S · <i class="notest">No test yet</i></span>

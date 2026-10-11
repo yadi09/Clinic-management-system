@@ -5212,5 +5212,40 @@
    }
   ],
   "order": 701
+ },
+ {
+  "id": "FE-12",
+  "title": "The print preview can be left stuck on screen after printing",
+  "severity": "high",
+  "area": "Printing",
+  "who": "Cashier, reception, doctor, lab",
+  "simple": "After a paper is printed, the preview box can stay on screen as an empty shell. Cancel, the X and Esc do nothing, and the only way out is to refresh the page.",
+  "example": "On the cashier's Paid list the cashier prints a receipt. The browser's print window opens and closes, and the preview is left as a blank box over the list that cannot be dismissed. Anything unsaved on the page is lost by the refresh.",
+  "why": "Staff are locked out of the screen after the most ordinary action they do all day.",
+  "fix": "The preview now disappears completely before the paper goes to the printer, with no fade-out to wait for, and a double press of Print counts and prints once.",
+  "effort": "S",
+  "decision": null,
+  "tests": [
+   "REG-FE-PRHOST-007",
+   "REG-FE-PRHOST-008",
+   "REG-FE-PRHOST-009"
+  ],
+  "files": [
+   "frontend/src/features/printing/PrintHost.tsx",
+   "frontend/src/features/printing/request.ts"
+  ],
+  "tested": true,
+  "status": "fixed",
+  "log": [
+   {
+    "date": "2026-10-12",
+    "note": "Reported by the owner with a screenshot (blank preview over the cashier's Paid list, cannot be closed). Cause: the page was sent to the printer 50 ms after the preview began its fade-out, so the browser's print window took over mid-animation and the dialog was left half-closed. Fixed: the preview is removed from the screen before the page is sent, and it no longer has an exit animation. REG-FE-PRHOST-007 fails on the old code. Commit 9de9bb3 (its subject says FE-7 by mistake; FE-7 is a different issue)."
+   },
+   {
+    "date": "2026-10-12",
+    "note": "Server 755/0, screens 1,875, journeys 15/15, routes 277/277. The coverage gate flagged finance/service 0.5 points under its baseline at 01:07 Addis time; no Go file changed since the run that passed at 23:10, so this is the known small-hours clock effect. Gate to be re-run after 03:00 Addis before deploying."
+   }
+  ],
+  "order": 601
  }
 ]
