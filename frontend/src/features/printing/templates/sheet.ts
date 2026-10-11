@@ -16,7 +16,14 @@ export interface PrescriptionDoc {
   clinic: string;
   clinicContact?: string;
   rxRef: string;
+  /** What the QR carries. The print engine sets it to the paper's check link when
+   *  `verify` is given; empty means no QR rather than a QR that checks nothing. */
   qrData: string;
+  /** Names the prescription so the server can issue its check (see verification). */
+  verify?: { kind: "dental_rx" | "encounter_rx"; id: string };
+  /** Set by the engine from the issued check: the short code and the address. */
+  verifyCode?: string;
+  verifyHost?: string;
   patient: string;
   mrn?: string;
   age?: number;
@@ -56,6 +63,8 @@ const SHEET_CSS = `
   .pmeta{color:var(--muted);margin-top:2px}
   .side{text-align:right;font-size:.95em}
   .side .qr{display:flex;flex-direction:column;align-items:flex-end;margin-bottom:6px}
+  .vcode{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:1.05em;font-weight:700;letter-spacing:.08em;margin-top:2px}
+  .vhint{font-size:.78em;color:var(--muted)}
   .side>div{margin-bottom:2px}
   .kk{color:var(--muted);font-size:.78em;text-transform:uppercase;letter-spacing:.06em;margin-right:6px}
   .dxline{margin-top:10px}
@@ -96,9 +105,15 @@ export function renderPrescription(d: PrescriptionDoc, c: PrintCtx, o: RenderOpt
     d.age != null ? `${esc(d.age)}${d.gender ? esc(d.gender[0].toUpperCase()) : ""}` : "",
     d.weightKg && flag("weight") ? `${esc(d.weightKg)} kg` : "",
   ].filter(Boolean).join("&nbsp;&nbsp;·&nbsp;&nbsp;");
+  // Under the QR: the reference, and what to type when a camera will not read it.
   const qr = flag("qr") && o.qrSvg
-    ? `<div class="qr">${o.qrSvg}<div class="ref">${esc(d.rxRef)}</div></div>` : "";
+    ? `<div class="qr">${o.qrSvg}<div class="ref">${esc(d.rxRef)}</div>${d.verifyCode
+      ? `<div class="vcode">${esc(d.verifyCode)}</div><div class="vhint">${esc(label(c, "prescription.verifyAt"))} ${esc(d.verifyHost || "")}/v</div>` : ""}</div>` : "";
   const valid = flag("validity") ? multiline(textSlot(c, "prescription", "validity")) : "";
+  // How long it stays valid, printed as a date so a pharmacist need not do the sum.
+  const days = parseInt(textSlot(c, "prescription", "validDays"), 10);
+  const until = days > 0 && !Number.isNaN(new Date(d.when).getTime())
+    ? fmtDate(new Date(new Date(d.when).getTime() + days * 86_400_000).toISOString(), loc) : "";
   const dup = duplicateHtml(c, o.duplicate, (iso) => fmtDate(iso, loc, true));
   const title = label(c, "prescription.title");
   const id = identityOf(c);
@@ -114,6 +129,7 @@ export function renderPrescription(d: PrescriptionDoc, c: PrintCtx, o: RenderOpt
       <div class="side">
         ${qr}
         <div><span class="kk">${esc(label(c, "common.date"))}</span>${esc(fmtDate(d.when, loc))}</div>
+        ${until ? `<div><span class="kk">${esc(label(c, "prescription.validUntil"))}</span>${esc(until)}</div>` : ""}
         ${prescriberLine(c, d.prescriber, d.prescriberLicense)}
       </div>
     </div>

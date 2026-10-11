@@ -38,6 +38,8 @@ export const LABELS: Record<string, Label> = {
   "receipt.balance": { en: "Balance remaining", am: "ቀሪ ሂሳብ" },
   "receipt.customerSign": { en: "Customer signature", am: "የደንበኛ ፊርማ" },
 
+  "prescription.validUntil": { en: "Valid until", am: "የሚያገለግለው እስከ" },
+  "prescription.verifyAt": { en: "Check this paper at", am: "ይህን ወረቀት ያረጋግጡ በ" },
   "prescription.title": { en: "Prescription", am: "የመድኃኒት ማዘዣ" },
   "prescription.diagnosis": { en: "Diagnosis", am: "ምርመራ" },
   "prescription.context": { en: "Treatment", am: "ሕክምና" },

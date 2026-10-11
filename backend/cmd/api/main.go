@@ -32,10 +32,10 @@ import (
 
 	billinghttp "github.com/reicb/clinicsaas/internal/billing/http"
 	billingservice "github.com/reicb/clinicsaas/internal/billing/service"
-	clinicalhttp "github.com/reicb/clinicsaas/internal/clinical/http"
-	clinicalservice "github.com/reicb/clinicsaas/internal/clinical/service"
 	campaignhttp "github.com/reicb/clinicsaas/internal/campaign/http"
 	campaignservice "github.com/reicb/clinicsaas/internal/campaign/service"
+	clinicalhttp "github.com/reicb/clinicsaas/internal/clinical/http"
+	clinicalservice "github.com/reicb/clinicsaas/internal/clinical/service"
 	crmhttp "github.com/reicb/clinicsaas/internal/crm/http"
 	crmservice "github.com/reicb/clinicsaas/internal/crm/service"
 	dashboardhttp "github.com/reicb/clinicsaas/internal/dashboard/http"
@@ -69,6 +69,8 @@ import (
 	reportingservice "github.com/reicb/clinicsaas/internal/reporting/service"
 	schedulinghttp "github.com/reicb/clinicsaas/internal/scheduling/http"
 	schedulingservice "github.com/reicb/clinicsaas/internal/scheduling/service"
+	verificationhttp "github.com/reicb/clinicsaas/internal/verification/http"
+	verificationservice "github.com/reicb/clinicsaas/internal/verification/service"
 )
 
 func main() {
@@ -185,9 +187,14 @@ func main() {
 	}
 
 	campaignHandlers := campaignhttp.New(campaignservice.New(db))
+	// A paper's check: tokens are derived from the prescription and the server secret,
+	// so a reprint carries the same QR. Typing a short code by hand is rate limited
+	// separately from the rest of the API (a person needs a few tries, not hundreds).
+	verificationHandlers := verificationhttp.New(
+		verificationservice.New(db, cfg.JWTSecret), ratelimit.NewInProcess(0.2, 8))
 	notificationHandlers := notificationhttp.NewHandlers(notificationservice.NewService(db))
 
-	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, reportingHandlers, dashboardHandlers, maternityHandlers, inpatientHandlers, dentalHandlers, messagingHandlers, pharmacyHandlers, labHandlers, financeHandlers, platformHandlers, crmHandlers, campaignHandlers, notificationHandlers)
+	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, reportingHandlers, dashboardHandlers, maternityHandlers, inpatientHandlers, dentalHandlers, messagingHandlers, pharmacyHandlers, labHandlers, financeHandlers, platformHandlers, crmHandlers, campaignHandlers, notificationHandlers, verificationHandlers)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -237,6 +244,7 @@ func newRouter(
 	crmHandlers *crmhttp.Handlers,
 	campaignHandlers *campaignhttp.Handlers,
 	notificationHandlers *notificationhttp.Handlers,
+	verificationHandlers *verificationhttp.Handlers,
 ) *gin.Engine {
 	if cfg.IsProd() {
 		gin.SetMode(gin.ReleaseMode)
@@ -270,12 +278,14 @@ func newRouter(
 	if platformHandlers != nil {
 		platformHandlers.Register(v1, tokens) // /platform/auth/login (public) + /platform/clinics (platform.admin)
 	}
-	campaignHandlers.Register(v1, tokens) // public /campaigns/:code/... + /platform/campaigns/...
+	campaignHandlers.Register(v1, tokens)   // public /campaigns/:code/... + /platform/campaigns/...
+	verificationHandlers.RegisterPublic(v1) // public /verify/t|c|logo/...: check a printed paper
 	if crmHandlers != nil {
 		crmHandlers.Register(v1, tokens) // /platform/crm/... (crm.work; campaigns + accounts need platform.admin)
 	}
 	protected := v1.Group("", httpx.RequireAuth(tokens))     // requires a valid access token
 	identityHandlers.RegisterProtected(protected)            // /auth/me
+	verificationHandlers.RegisterProtected(protected)        // /verify/issue
 	orgHandlers.RegisterProtected(protected)                 // /org/...
 	patientHandlers.RegisterProtected(protected)             // /patients/...
 	schedulingHandlers.RegisterProtected(protected)          // /appointments/..., /queue/..., /worklist

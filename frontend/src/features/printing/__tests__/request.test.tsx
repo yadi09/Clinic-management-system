@@ -6,6 +6,8 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const api = vi.hoisted(() => ({ peekPrint: vi.fn(), logPrint: vi.fn(), getPrintSettings: vi.fn(), savePrintSettings: vi.fn() }));
 vi.mock("@/features/printing/api", () => api);
+const verify = vi.hoisted(() => ({ issueCheck: vi.fn() }));
+vi.mock("@/features/printing/verify", () => verify);
 
 import { PrintHost } from "@/features/printing/PrintHost";
 import { setPrintContext } from "@/features/printing/context";
@@ -13,6 +15,7 @@ import { paperPx, transport, type DocData } from "@/features/printing/engine";
 import { printNow, registerPreview, requestPrint } from "@/features/printing/request";
 import { DEFAULT_SETTINGS, resolveSettings } from "@/features/printing/settings";
 import { renderUI } from "@/test/render";
+import QRCode from "qrcode";
 
 const rx: DocData = {
   doc: "prescription",
@@ -30,6 +33,7 @@ const sent: string[] = [];
 beforeEach(() => {
   sent.length = 0;
   Object.values(api).forEach((f) => f.mockReset());
+  verify.issueCheck.mockReset();
   api.peekPrint.mockResolvedValue({ count: 0 });
   api.logPrint.mockResolvedValue({ count: 1 });
   vi.spyOn(transport, "send").mockImplementation((html: string) => { sent.push(html); });
@@ -160,5 +164,46 @@ describe("REG-FE-PRHOST the preview", () => {
     fireEvent.keyDown(await screen.findByRole("dialog"), { key: "Escape", code: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(sent).toHaveLength(0);
+  });
+});
+
+describe("REG-FE-PRREQ a prescription's check", () => {
+  const named: DocData = {
+    doc: "prescription",
+    data: {
+      clinic: "Cure", rxRef: "Rx local", qrData: "", verify: { kind: "dental_rx", id: "drx_abc" }, patient: "Abebe",
+      when: "2026-10-03T09:00:00+03:00", diagnoses: [], meds: [{ drug_name: "Amoxicillin" }],
+    },
+  };
+
+  test("REG-FE-PRREQ-008 the QR becomes the paper's link and the short code is printed under it, with the server's reference", async () => {
+    verify.issueCheck.mockResolvedValue({
+      token: "abcdefghijklmnopqrstuvwxyz", slug: "cure-dental", path: "/v/cure-dental/abcdefghijklmnopqrstuvwxyz", code: "K7MQ-4XPR", ref: "Rx 7gbzsm",
+    });
+    const qr = vi.spyOn(QRCode, "toString");
+    await requestPrint(named);
+    expect(verify.issueCheck).toHaveBeenCalledWith("dental_rx", "drx_abc");
+    expect(qr.mock.calls[0][0]).toBe(`${window.location.origin}/v/cure-dental/abcdefghijklmnopqrstuvwxyz`);
+    expect(sent[0]).toContain("K7MQ-4XPR");
+    expect(sent[0]).toContain(`Check this paper at ${window.location.host}/v`);
+    expect(sent[0]).toContain("Rx 7gbzsm");
+    // The paper is counted under the reference the page shows.
+    expect(api.logPrint).toHaveBeenCalledWith("prescription", "Rx 7gbzsm");
+  });
+
+  test("REG-FE-PRREQ-009 when the check cannot be issued the paper still prints, with no QR that checks nothing", async () => {
+    verify.issueCheck.mockRejectedValue(new Error("offline"));
+    await requestPrint(named);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).not.toContain('class="qr"');
+    expect(sent[0]).not.toContain("Check this paper at");
+    expect(sent[0]).toContain("Amoxicillin");
+    expect(api.logPrint).toHaveBeenCalledWith("prescription", "Rx local");
+  });
+
+  test("REG-FE-PRREQ-010 other papers and prescriptions that do not name themselves never ask for a check", async () => {
+    await requestPrint(rcp());
+    await requestPrint(rx);
+    expect(verify.issueCheck).not.toHaveBeenCalled();
   });
 });

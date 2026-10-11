@@ -51,3 +51,5 @@ internal/platform/provision 73.9
 internal/platform/service 83.8
 internal/scheduling/http 81.9
 internal/scheduling/service 86.4
+internal/verification/http 95.3
+internal/verification/service 87.6

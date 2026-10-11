@@ -296,7 +296,10 @@ describe("REG-FE-RX prescriptions on a dental visit", () => {
       context: "Root canal (36)",
       meds: [{ drug_name: "Amoxicillin" }],
     });
-    expect(doc.qrData).toBe("DRX:rx_abcdef123456\nSmile Dental\nAbebe K Bekele MRN-77\n2026-08-10");
+    // The QR is the paper's check, issued by the server while printing: the screen
+    // names the prescription and sends no patient details of its own.
+    expect(doc.qrData).toBe("");
+    expect(doc.verify).toEqual({ kind: "dental_rx", id: "rx_abcdef123456" });
   });
 
   test("REG-FE-RX-013 Print with nothing known falls back: the printer's own name, 'Clinic', no contact, no diagnosis", async () => {

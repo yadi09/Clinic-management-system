@@ -115,6 +115,7 @@ export const CATALOG: DocInfo[] = [
     ],
     texts: [
       { id: "validity", label: "Validity line", default: "Valid only with the prescriber's signature & clinic stamp. Present this prescription at any licensed pharmacy.", multiline: true },
+      { id: "validDays", label: "Valid for (days)", default: "", help: "How long a prescription stays valid. It is printed as a date, and its check page shows \"past its validity\" after it. Leave empty for no limit." },
     ],
     labels: ["prescription.title", "common.patient", "common.cardNo", "common.date", "common.age", "common.weight", "prescription.diagnosis",
       "prescription.context", "prescription.allergies", "prescription.prescriber", "common.note", "common.signatureStamp", "common.stamp"],

@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verifying a printed paper: plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+
+:root{--paper:#fbfaf7;--card:#fff;--ink:#1f2a33;--soft:#5d6b76;--line:#e3e0d8;--teal:#0f6e6a;--warn:#b45309;--warn-bg:#fdf1e3;--bad:#b42318;--bad-bg:#fdecea;--ok:#1d7a46;--ok-bg:#e5f4ea;--sky:#1d4e89;--sky-bg:#e8f0fa}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--paper:#14181c;--card:#1b2026;--ink:#e7e9ea;--soft:#9aa6b0;--line:#2c333a;--teal:#4fb3ad;--warn:#f0a85a;--warn-bg:#3a2a18;--bad:#f2867c;--bad-bg:#3a1f1d;--ok:#6cc792;--ok-bg:#1a3325;--sky:#86b3e0;--sky-bg:#1c2a38}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.6 "Atkinson Hyperlegible",system-ui,sans-serif}
+.wrap{max-width:960px;margin:0 auto;padding:32px 16px 90px}
+h1{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:2.1rem;line-height:1.15;margin:0 0 8px}
+h2{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:1.5rem;margin:46px 0 10px}
+h3{font-size:1.05rem;margin:24px 0 6px}
+.lede{color:var(--soft);max-width:68ch}
+.box{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:14px 0}
+.key{border-left:6px solid var(--teal)}.warn{border-left:6px solid var(--warn)}
+table{border-collapse:collapse;width:100%;font-size:.94rem;margin:10px 0;background:var(--card)}
+th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--paper)}
+.scroll{overflow-x:auto}
+.tag{display:inline-block;font-size:.76rem;font-weight:700;padding:1px 9px;border-radius:20px;margin-right:4px}
+.s{background:var(--ok-bg);color:var(--ok)}.m{background:var(--warn-bg);color:var(--warn)}.l{background:var(--bad-bg);color:var(--bad)}
+.scene{background:var(--paper);border-radius:8px;padding:10px 14px;font-style:italic;margin:8px 0}
+ul,ol{padding-left:22px}li{margin:3px 0}
+footer{color:var(--soft);font-size:.85rem;margin-top:44px}
+code{font-size:.88em;background:var(--paper);padding:1px 5px;border-radius:4px}
+
+
+.wrap{max-width:1040px}
+.doc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:18px 0}
+.doc h3{margin:0 0 2px;font-size:1.15rem}
+.doc .where{color:var(--soft);font-size:.9rem;margin-bottom:10px}
+.five{display:grid;grid-template-columns:150px 1fr;gap:6px 14px;font-size:.95rem}
+.five dt{font-weight:700;color:var(--teal)}
+.five dd{margin:0}
+.gap{color:var(--bad);font-weight:700}
+.pill{display:inline-block;font-size:.72rem;font-weight:700;padding:1px 8px;border-radius:20px;margin-right:4px}
+.pill.red{background:var(--bad-bg);color:var(--bad)}.pill.amb{background:var(--warn-bg);color:var(--warn)}.pill.grn{background:var(--ok-bg);color:var(--ok)}
+.mocks{display:flex;flex-wrap:wrap;gap:18px;justify-content:center;margin:14px 0;font-family:Inter,system-ui,sans-serif;color:#1c2733}
+.paper{background:#fff;border:1px solid #cfd6df;box-shadow:0 2px 8px rgba(20,30,40,.12);padding:12px 14px;font-size:11px;line-height:1.4}
+.paper .cap{font:700 10px Inter;color:#5a6b7d;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.slip{width:230px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px}
+.slip hr{border:none;border-top:1px dashed #aaa;margin:6px 0}
+.slip .c{text-align:center}.slip .r{text-align:right}.slip .b{font-weight:700}
+.slip .row{display:flex;justify-content:space-between;gap:8px}
+.slip .logo{width:34px;height:34px;border-radius:8px;background:#14532d;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;margin:0 auto 4px}
+.slip .stamp{border:2px solid #b42318;color:#b42318;font-weight:800;text-align:center;padding:2px;transform:rotate(-4deg);margin:6px 18px}
+.a5{width:300px;font-family:Inter,system-ui,sans-serif}
+.a5 .hd{display:flex;gap:8px;align-items:center;border-bottom:3px solid #14532d;padding-bottom:6px;margin-bottom:6px}
+.a5 .lg{width:36px;height:36px;border-radius:8px;background:#14532d;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px}
+.a5 .blank{height:44px;border:1.5px dashed #b6c0cc;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#7a8a9a;font-size:10px;margin-bottom:6px}
+.a5 .rx{font-size:20px;font-weight:700;color:#14532d}
+.a5 .med{border-bottom:1px dashed #cfd6df;padding:5px 0}
+.a5 .sg{display:flex;justify-content:space-between;margin-top:14px;align-items:flex-end}
+.a5 .sg div:not(.box){border-top:1px solid #333;width:120px;text-align:center;font-size:9px;padding-top:2px}
+.a5 .box{border:1px dashed #9aa8b6;width:70px;height:46px;text-align:center;font-size:9px;color:#7a8a9a;padding-top:14px}
+.gridtable td:first-child{font-weight:700;white-space:nowrap}
+.q li{margin:6px 0}
+
+.phone{max-width:340px;border:1px solid var(--line);border-radius:22px;background:var(--card);overflow:hidden;margin:14px 0;box-shadow:0 2px 14px rgba(0,0,0,.08)}
+.phone .ok{background:var(--ok);color:#fff;padding:14px 16px;font-weight:700}
+.phone .ok small{display:block;font-weight:400;opacity:.9}
+.phone .bd{padding:14px 16px;font-size:.95rem}
+.phone .bd div{margin:5px 0}.phone .k{color:var(--soft);font-size:.8rem;text-transform:uppercase;letter-spacing:.05em}
+.phone .no{background:var(--bad)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.yes{color:var(--ok);font-weight:700}.nope{color:var(--bad);font-weight:700}
+.q{border-left:6px solid var(--sky);background:var(--sky-bg)}
+</style></head>
+<body><div class="wrap">
+
+<h1>Verifying a printed paper: what the QR code is today, and what it should become</h1>
+<div class="box key"><b>Built (2026-10-11), phase 1.</b> You approved the plan with all seven recommendations. Prescriptions (dental and consultation) now carry a
+QR that opens the clinic's own record, with a short code under it. The page shows Genuine, Cancelled, A newer version exists, Past its validity or
+Already dispensed; the doctor's name follows the "Doctor's name" switch; the clinic can set how many days a prescription stays valid in
+Settings &rsaquo; Printing &rsaquo; Prescriptions. <b>Not yet:</b> certificates, lab reports and receipts; outside pharmacies marking a paper used;
+doctors' licence numbers; Amharic on the check page.</div>
+<p class="lede">You asked what the QR code on a prescription is for, what a scan returns, and how it could prove a paper is genuine.
+This page answers that plainly, shows what I propose with a day in the life of each case, and ends with the decisions I need from you.
+<b>Phase 1 of this plan is now built (see above).</b></p>
+
+<h2>1. The honest answer: today it is a label, not a check</h2>
+<div class="box warn"><b>The QR on a prescription proves nothing today.</b> It holds a few lines of plain text. No server looks at it, and anyone
+who can type the same lines into a free QR generator can print an identical one.</div>
+<div class="scroll"><table>
+<tr><th>Paper</th><th>What is inside the QR today (plain text, as printed)</th></tr>
+<tr><td>Dental prescription</td><td><code>DRX:&lt;prescription id&gt;</code> · clinic name · patient name and card number · date</td></tr>
+<tr><td>General prescription</td><td><code>RX:&lt;visit id&gt;</code> · clinic name · patient name and card number · date</td></tr>
+<tr><td>Outside-lab request</td><td><code>LABREQ:&lt;id&gt;</code> · clinic name · patient name and card number</td></tr>
+<tr><td>Medical certificate</td><td><code>MC:&lt;reference&gt;</code> · clinic name · patient name and card number · date</td></tr>
+</table></div>
+<p>The short text under the QR (for example <b>Rx 7gbzsm</b>) is the last six characters of the prescription's id. When a phone scans it, it just
+shows those lines. It does not say whether the prescription is real, cancelled, altered or already used. It also carries the patient's name and
+card number in clear text, which is printed on the paper anyway.</p>
+
+<h2>2. What you proposed, and one adjustment</h2>
+<div class="box q"><b>Your idea:</b> put everything in the QR (patient, doctor, drugs, date) plus a unique id, so scanning tells you whether it is correct.
+<br><b>My suggestion:</b> keep the QR small and make it a <i>key</i>, not a <i>copy</i>. The QR holds only an unguessable link. The clinic's own
+record, on the clinic's server, holds the truth. Scanning opens a page that shows that record.</div>
+<p>Why not put everything in the QR? Three reasons that matter for a pharmacy:</p>
+<ul>
+<li><b>A QR full of data cannot be switched off.</b> If the doctor cancels a prescription, a printed QR cannot change. A link to the record can say "Cancelled".</li>
+<li><b>It cannot say "already used".</b> A copy of a genuine prescription carries identical data; only a server that remembers can notice the second use.</li>
+<li><b>It makes the paper a bigger privacy leak and harder to scan.</b> More data means a denser code, which a thermal printer and a cheap phone camera read badly.</li>
+</ul>
+<p>Your worry, "people may use the exact same QR code for a fake prescription", is the right worry. The link design answers it:
+the scan shows the <b>original</b> content from the clinic's record, so a paper whose drugs or doses were changed no longer matches the screen.</p>
+
+<h2>3. A day in the life: what the pharmacist sees</h2>
+<div class="scene"><b>A. A genuine prescription.</b> Abebe takes his prescription to a pharmacy. Selam, the pharmacist, scans the QR. A green page opens:
+"Genuine · issued by Cure Dental Clinic, 11 Oct 2026", then the medicines. She compares the screen with the paper. They match. She dispenses.</div>
+<div class="scene"><b>B. A changed paper.</b> Someone altered "7 days" to "70 days" on the paper. The QR still opens the genuine record, which says 7 days.
+Selam sees the difference between paper and screen. The paper is refused.</div>
+<div class="scene"><b>C. A photocopy used twice.</b> A genuine prescription is photocopied and taken to a second pharmacy. The page now says
+"Already checked 2 times; first on 11 Oct at 10:40". If the clinic's own pharmacy dispensed it, it says "Dispensed on 11 Oct". Not proof of fraud,
+but a clear reason to ask.</div>
+<div class="scene"><b>D. A made-up paper.</b> A forger prints a QR that points nowhere, or at a lookalike. The scan says "Not found" (or lands on a
+different website, which is why the pharmacist is taught to look for the clinic system's address).</div>
+<div class="scene"><b>E. A cancelled prescription.</b> Dr Yonas cancels it the same afternoon. The page turns red: "Cancelled by the clinic".</div>
+<div class="scene"><b>F. No internet at the pharmacy.</b> The page cannot load. The paper still carries the reference and a short code. The pharmacy
+can check later or call the clinic. We never print anything that makes a paper unusable without a connection.</div>
+<div class="scene"><b>G. A shared doctor account.</b> The clinic switched "Doctor's name" off. The verification page then shows the clinic, not a doctor's name,
+so it matches what the paper says.</div>
+
+<h2>4. What the page would show</h2>
+<div class="cols">
+<div class="phone"><div class="ok">Genuine<small>Cure Dental Clinic · Bole branch</small></div>
+<div class="bd">
+<div><span class="k">Issued</span><br>11 Oct 2026 (1 Tikimt 2019) · 1 day ago</div>
+<div><span class="k">Patient</span><br>Abebe K. · 29 · male</div>
+<div><span class="k">Medicines</span><br><b>Amoxicillin 500 mg capsule</b><br>1 capsule · 3 times a day · 7 days<br><b>Ibuprofen 400 mg tablet</b><br>1 tablet · 3 times a day · 3 days</div>
+<div><span class="k">Prescriber</span><br>Dr Yonas Bekele · Licence FMHACA-12345</div>
+<div><span class="k">Reference</span><br>Rx 7gbzsm</div>
+<div><span class="k">Checked</span><br>1 time · first on 11 Oct, 10:40</div>
+</div></div>
+<div class="phone"><div class="ok no">Cancelled<small>Cure Dental Clinic</small></div>
+<div class="bd">
+<div>This prescription was cancelled by the clinic on 11 Oct 2026.</div>
+<div><b>Do not dispense.</b> Ask the patient to return to the clinic.</div>
+<div><span class="k">Reference</span><br>Rx 7gbzsm</div>
+</div></div>
+</div>
+<p><b>Deliberately not shown:</b> phone number, card number, address, and the diagnosis. The pharmacist needs the medicines, the doctor and the date;
+nothing more. The patient is shown by first name and initial with age, enough to match the paper in the hand.</p>
+
+<h2>5. The three ways to do it</h2>
+<div class="scroll"><table>
+<tr><th></th><th>A. Link to the clinic's record (recommended)</th><th>B. Everything inside the QR</th><th>C. Everything inside, plus a digital signature</th></tr>
+<tr><td>Detects a changed paper</td><td class="yes">Yes, the screen shows the original</td><td class="nope">No: the changed data can be printed into a new QR</td><td class="yes">Yes</td></tr>
+<tr><td>Can be cancelled</td><td class="yes">Yes</td><td class="nope">No</td><td class="nope">No</td></tr>
+<tr><td>Shows "already used"</td><td class="yes">Yes (scan count, in-house dispense)</td><td class="nope">No</td><td class="nope">No</td></tr>
+<tr><td>Needs internet at the pharmacy</td><td>Yes</td><td class="yes">No</td><td class="yes">No, but needs a checker app with the clinic's public key</td></tr>
+<tr><td>Size of the QR</td><td class="yes">Small, scans on any printer</td><td class="nope">Dense</td><td class="nope">Denser still</td></tr>
+<tr><td>Privacy</td><td class="yes">Data stays on the server</td><td class="nope">Everything readable by anyone holding the paper</td><td class="nope">Same</td></tr>
+<tr><td>Effort</td><td>Medium</td><td>Small</td><td>Large</td></tr>
+</table></div>
+<p>C is the only way to verify with no internet, and it can be added later on top of A. For a pharmacy that has a phone, A is stronger and simpler.</p>
+
+<h2>6. How it would work</h2>
+<ol>
+<li><b>First print:</b> the system asks the server for a verification token for that prescription. The server writes down a <b>snapshot</b> of what is being
+printed, built from its own records and not from the browser, and returns a long random token and a short code.</li>
+<li><b>The QR</b> becomes the link <code>app.clinicos.cc/v/&lt;token&gt;</code>. Under it, the reference and a short code.</li>
+<li><b>A reprint</b> uses the same token and is already marked DUPLICATE. It is a copy of the same record, not a new one.</li>
+<li><b>A scan</b> opens a public page, with no sign-in. It shows the snapshot, its status (genuine, cancelled, newer version exists), and how many times it was checked.</li>
+<li><b>If the prescription is cancelled or edited</b> after printing, the page says so at once; a newer print gets a new token.</li>
+<li><b>When our own pharmacy dispenses it,</b> the record is marked dispensed, so a second use shows "Dispensed".</li>
+</ol>
+<h3>Safety measures</h3>
+<ul>
+<li>The token is 128 bits of randomness, so it cannot be guessed. Only a hash of it is stored.</li>
+<li>Lookups are rate-limited. An unknown token and a wrong token give the same answer, so nobody can probe which exist.</li>
+<li>The public page is excluded from search engines and carries no sign-in, no patient phone or card number.</li>
+<li>The public lookup works across clinics through one narrow database function, so the usual clinic isolation is not loosened elsewhere.</li>
+<li>Typing by hand (when a QR will not scan) needs the reference <b>and</b> the short code, and is rate-limited too.</li>
+</ul>
+
+<h2>7. Phases</h2>
+<div class="scroll"><table>
+<tr><th>Phase</th><th>What</th><th>Size</th></tr>
+<tr><td><b>1</b> Prescriptions</td><td>Token table and snapshot; issue, public check and scan-count endpoints; the public page; the QR on dental and general prescriptions becomes the link;
+cancelled and changed prescriptions show; tests for genuine, not found, cancelled, changed, rate limits and isolation between clinics.</td><td><span class="tag m">Medium</span></td></tr>
+<tr><td><b>2</b> Other papers</td><td>Medical certificates (for employers and schools), lab reports (a patient cannot edit a result), then receipts.</td><td><span class="tag s">Small each</span></td></tr>
+<tr><td><b>3</b> Used once</td><td>Our pharmacy's "complete dispense" marks the prescription dispensed. Later, a way for outside pharmacies to mark it.</td><td><span class="tag m">Medium</span></td></tr>
+<tr><td><b>4</b> Doctors' licence numbers; optional signature</td><td>A licence number on staff profiles, so the page can show it; the offline-signature option if a pharmacy chain asks.</td><td><span class="tag m">Medium</span></td></tr>
+</table></div>
+
+<h2>8. What this cannot do</h2>
+<div class="box warn"><ul>
+<li><b>A perfect photocopy of a genuine paper still looks genuine on its own.</b> Only the clinic's memory (used, scanned twice) tells the second one apart.
+An outside pharmacy cannot mark it used until phase 3.</li>
+<li><b>A pharmacist who does not scan, or does not compare the screen with the paper, is not protected.</b> The page is a tool; the habit is the control.</li>
+<li><b>A QR that points to a lookalike website</b> would show a fake "genuine" page. We reduce it by using one fixed address and by training pharmacists to look at it.</li>
+<li><b>It proves the paper matches what the clinic printed, not that the treatment was right.</b> It is a check on the paper, not on the medicine.</li>
+</ul></div>
+
+<h2>9. What I need from you</h2>
+<div class="box q">
+<ol>
+<li><b>QR as a link to the clinic's record</b> (option A), rather than all the data inside? <i>I recommend yes.</i></li>
+<li><b>How much of the patient to show</b> on the public page. <i>Recommended: first name and initial, age and sex. Alternatives: full name; or nothing.</i></li>
+<li><b>The doctor's name and licence</b> on the page follow the "Doctor's name" switch of that paper. <i>Recommended yes.</i></li>
+<li><b>Show "already checked N times"</b> to the next person who scans. <i>Recommended yes; it shows times only, never who.</i></li>
+<li><b>Prescription validity.</b> Show "issued N days ago" always; and optionally let each clinic set "valid for N days" that turns the page amber after that. <i>Recommended: both.</i></li>
+<li><b>Papers in the first release.</b> <i>Recommended: prescriptions only, then certificates as the next small step.</i></li>
+<li><b>When a prescription is edited after printing,</b> the old paper says "A newer version exists. Ask the clinic". <i>Recommended yes.</i></li>
+</ol>
+</div>
+<p>Once you have answered these, or changed any of them, I will build phase 1 with tests and show you the pages before anything is deployed.</p>
+
+<footer>Plan written 2026-10-11. Current QR contents were read from the print code; nothing was changed.</footer>
+</div></body></html>

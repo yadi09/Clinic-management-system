@@ -51,6 +51,8 @@ import { PlatformLoginPage } from "@/features/platform/pages/PlatformLoginPage";
 import { PlatformConsolePage } from "@/features/platform/pages/PlatformConsolePage";
 import { CampaignPage } from "@/features/campaign/CampaignPage";
 import { CampaignRegisterPage } from "@/features/campaign/RegisterPage";
+import { VerifyPage } from "@/features/verify/VerifyPage";
+import { VerifyEntryPage } from "@/features/verify/VerifyEntryPage";
 
 export function AppRoutes() {
   return (
@@ -59,6 +61,10 @@ export function AppRoutes() {
       {/* The campaign page: public by an unguessable code, outside every shell —
           a dental clinic opening this from Telegram has no account and no theme. */}
       <Route path="/c/:code" element={<CampaignPage />} />
+      {/* Check a printed paper: opened from the QR on a prescription by whoever holds
+          it, with no account. The clinic's slug and the paper's token are in the link. */}
+      <Route path="/v" element={<VerifyEntryPage />} />
+      <Route path="/v/:slug/:key" element={<VerifyPage />} />
       {/* The wide net: sent to every clinic, before anyone is invited to play. */}
       <Route path="/c/:code/register" element={<CampaignRegisterPage />} />
 

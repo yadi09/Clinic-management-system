@@ -5,7 +5,7 @@
 // way staff do. Selectors are roles and visible words only.
 import { expect, test, type Page } from "@playwright/test";
 
-import { apiAs, login, uniq } from "./stack";
+import { apiAs, login, stack, uniq } from "./stack";
 
 // A date on the clinic's calendar (Addis), the same calendar the browser runs on
 // (playwright.config.ts timezoneId). The test process itself runs on the host's zone,
@@ -267,4 +267,46 @@ test("REG-E2E-023 an extra added at the chair is sent to the cashier, paid there
 
   // No reload: the chair finds out within a few seconds.
   await expect(page.getByText("✓ Paid — go ahead")).toBeVisible({ timeout: 20_000 });
+});
+
+test("REG-E2E-024 anyone with the paper can check a prescription without an account, and sees it cancelled once the clinic withdraws it", async ({ browser }, testInfo) => {
+  const p = await newPatient(uniq("Abebe"));
+  const { plan, doctor } = await newPlan(p.id, "Extraction", [0]);
+  const rx = await doctor<{ id: string }>("POST", `/dental/patients/${p.id}/sessions/${plan.sessions[0].id}/prescriptions`, {
+    note: "After extraction", items: [
+      { drug_name: "Amoxicillin 500 mg", dose: "1 capsule", frequency: "3 times a day", duration: "7 days" },
+      { drug_name: "Ibuprofen 400 mg", dose: "1 tablet", frequency: "3 times a day", duration: "3 days" },
+    ],
+  });
+  // What the print screen does while the paper is being printed.
+  const issued = await doctor<{ path: string; code: string; slug: string }>("POST", "/verify/issue", { kind: "dental_rx", id: rx.id });
+
+  // A pharmacist: a phone with no account, signed in nowhere.
+  const context = await browser.newContext({
+    baseURL: testInfo.project.use.baseURL, viewport: { width: 390, height: 844 }, timezoneId: "Africa/Addis_Ababa",
+  });
+  const phone = await context.newPage();
+  await phone.goto(issued.path);
+  await expect(phone.getByRole("heading", { name: "Genuine prescription" })).toBeVisible();
+  await expect(phone.getByText("Amoxicillin 500 mg")).toBeVisible();
+  await expect(phone.getByText("Ibuprofen 400 mg")).toBeVisible();
+  await expect(phone.getByText(/7 days/).first()).toBeVisible();
+  // Not the surname, the card number or the phone: first name and an initial.
+  await expect(phone.getByText(new RegExp(`^${p.first} [A-Z]\\.`))).toBeVisible();
+
+  // The same paper typed by hand, as when a camera will not read the QR.
+  await phone.goto("/v");
+  await phone.getByLabel(/Clinic/).fill(stack().slug);
+  await phone.getByLabel(/Code/).fill(issued.code);
+  await phone.getByRole("button", { name: "Check this paper" }).click();
+  await expect(phone.getByRole("heading", { name: "Genuine prescription" })).toBeVisible();
+  await expect(phone.getByText(/Checked once before/)).toBeVisible();
+
+  // The doctor withdraws it; the same paper now says so and shows no medicines.
+  await doctor("DELETE", `/dental/patients/${p.id}/prescriptions/${rx.id}`, { reason: "Wrong drug" });
+  await phone.goto(issued.path);
+  await expect(phone.getByRole("heading", { name: "Cancelled by the clinic" })).toBeVisible();
+  await expect(phone.getByRole("status")).toContainText("Do not dispense.");
+  await expect(phone.getByText("Amoxicillin 500 mg")).toHaveCount(0);
+  await context.close();
 });

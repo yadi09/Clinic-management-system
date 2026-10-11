@@ -66,7 +66,10 @@ export function PrescriptionSection({ patientId, session, editable, onChanged }:
       clinic: clinicName,
       clinicContact: branch ? [branch.address, branch.phone].filter(Boolean).join(" · ") || undefined : undefined,
       rxRef: `Rx ${rx.id.slice(-6)}`,
-      qrData: `DRX:${rx.id}\n${clinicName}\n${name}${p ? " " + p.mrn : ""}\n${rx.created_at.slice(0, 10)}`,
+      // The QR is the paper's check: the server issues it from this prescription's own
+      // record while the paper is printed (features/printing/verify.ts).
+      qrData: "",
+      verify: { kind: "dental_rx", id: rx.id },
       patient: name,
       mrn: p?.mrn,
       age: p ? ageYears(p.dob) : undefined,

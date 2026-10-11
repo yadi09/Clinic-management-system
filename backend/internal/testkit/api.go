@@ -157,6 +157,7 @@ type Client struct {
 // from the "error" envelope.
 type Resp struct {
 	Status  int
+	Header  http.Header
 	Data    json.RawMessage
 	Code    string
 	Message string
@@ -228,7 +229,7 @@ func (c *Client) Do(method, path string, body any) Resp {
 	}
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(res.Body)
-	out := Resp{Status: res.StatusCode, Raw: string(raw)}
+	out := Resp{Status: res.StatusCode, Header: res.Header, Raw: string(raw)}
 	var env struct {
 		Data  json.RawMessage `json:"data"`
 		Error *struct {

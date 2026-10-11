@@ -5098,5 +5098,53 @@
    }
   ],
   "order": 32
+ },
+ {
+  "id": "FEAT-VERIFY-1",
+  "title": "The QR on a prescription proves nothing: no way to check a paper is genuine",
+  "severity": "high",
+  "area": "Printing",
+  "who": "Pharmacist, Doctor, Patient, Owner",
+  "simple": "The QR on a printed prescription held a few lines of plain text. Scanning showed the text; nothing checked whether the prescription was real, cancelled, changed or already used, and anyone could print an identical QR.",
+  "example": "Someone changes '7 days' to '70 days' on a paper, or photocopies a genuine one and takes it to two pharmacies. Both look exactly like the original and nobody can tell.",
+  "why": "A pharmacy cannot trust a paper it cannot check, and a doctor cannot withdraw a prescription once it has left the building.",
+  "fix": "The QR is now a link to the clinic's own record. Scanning opens a public page (no account) showing what the clinic issued: Genuine, Cancelled, A newer version exists, Past its validity, or Already dispensed, with the medicines, doctor, date and how many times it has been checked. A short code under the QR works when a camera will not. The doctor's name follows the printing switch. Plan: docs/paper-verification-plan.html.",
+  "effort": "M",
+  "decision": null,
+  "tests": [
+   "REG-VERIFY-001",
+   "REG-VERIFY-002",
+   "REG-VERIFY-003",
+   "REG-VERIFY-004",
+   "REG-VERIFY-005",
+   "REG-VERIFY-006",
+   "REG-VERIFY-007",
+   "REG-VERIFY-008",
+   "REG-VERIFY-009",
+   "REG-VERIFY-010",
+   "REG-VERIFY-011",
+   "REG-FE-VERIFY-001",
+   "REG-FE-VERIFY-004",
+   "REG-FE-VERIFY-020",
+   "REG-FE-PRREQ-008",
+   "REG-E2E-024"
+  ],
+  "files": [
+   "backend/db/migrations/00094_paper_verification.sql",
+   "backend/internal/verification/",
+   "frontend/src/features/verify/",
+   "frontend/src/features/printing/verify.ts",
+   "frontend/src/features/printing/request.ts",
+   "docs/paper-verification-plan.html"
+  ],
+  "tested": true,
+  "status": "fixed",
+  "log": [
+   {
+    "date": "2026-10-11",
+    "note": "Plan written and approved with all seven recommendations. Built phase 1 for dental and consultation prescriptions: token and snapshot table (migration 00094), signed-in issue, public check and short-code endpoints with a stricter limit on typing codes, the check page and the type-the-code page, and the QR on the paper. Not yet: certificates, lab reports, receipts; outside pharmacies marking a paper used; doctors' licence numbers; Amharic on the page."
+   }
+  ],
+  "order": 701
  }
 ]

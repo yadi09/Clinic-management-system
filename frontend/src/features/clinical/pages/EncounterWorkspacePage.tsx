@@ -1301,8 +1301,10 @@ function PrescriptionPanel({ ws, locked, onChanged }: { ws: Workspace; locked: b
       clinic: clinicName,
       clinicContact: [branch?.address, branch?.phone].filter(Boolean).join(" · ") || undefined,
       rxRef,
-      // Verification payload — ties the paper script back to this exact encounter.
-      qrData: `RX:${ws.encounter_id}\n${clinicName}\n${ws.patient.name} ${ws.patient.mrn}\n${new Date().toISOString().slice(0, 10)}`,
+      // The QR is the paper's check, issued by the server from this consultation's
+      // own record while the paper is printed (features/printing/verify.ts).
+      qrData: "",
+      verify: { kind: "encounter_rx", id: ws.encounter_id },
       patient: ws.patient.name,
       mrn: ws.patient.mrn,
       age: ws.patient.age,

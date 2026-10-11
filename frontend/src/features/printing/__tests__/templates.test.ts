@@ -672,3 +672,25 @@ describe("REG-FE-PRTPL the signer's name can be left off, for one paper or for a
     expect(docInfo("receipt")?.toggles.some((t) => t.id === "signerName")).toBe(false);
   });
 });
+
+describe("REG-FE-PRTPL a prescription that can be checked", () => {
+  const withCheck = (over: Record<string, unknown> = {}): DocData =>
+    ({ doc: "prescription", data: { ...(rx() as { data: object }).data, verifyCode: "K7MQ-4XPR", verifyHost: "app.clinicos.cc", ...over } } as DocData);
+  const QR = "<svg xmlns='http://www.w3.org/2000/svg'></svg>";
+
+  test("REG-FE-PRTPL-080 the reference, the short code and where to type it sit under the QR", () => {
+    const r = render(withCheck(), ctx(), { qrSvg: QR });
+    expect(r.text).toContain("Rx 4F2A K7MQ-4XPR Check this paper at app.clinicos.cc/v");
+    // No QR (switched off, or none could be made): no code either — it would point nowhere.
+    expect(render(withCheck(), ctx(), {}).text).not.toContain("K7MQ-4XPR");
+    expect(render(withCheck(), ctx({ docs: { prescription: { show: { qr: false } } } }), { qrSvg: QR }).text).not.toContain("K7MQ-4XPR");
+  });
+
+  test("REG-FE-PRTPL-081 'valid for N days' prints as a date on the paper, and only when the clinic set it", () => {
+    expect(render(rx(), ctx()).text).not.toContain("Valid until");
+    const r = render(rx(), ctx({ docs: { prescription: { text: { validDays: "30" } } } }));
+    // 3 Oct 2026 + 30 days.
+    expect(r.text).toContain("Valid until 2 Nov 2026");
+    expect(render(rx(), ctx({ docs: { prescription: { text: { validDays: "soon" } } } })).text).not.toContain("Valid until");
+  });
+});

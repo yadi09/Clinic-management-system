@@ -4,6 +4,7 @@ import { build, pageHtml, qrSvg, refOf, transport, type DocData, type PrintJob }
 import { docInfo } from "@/features/printing/catalog";
 import type { DuplicateInfo, PrintCtx } from "@/features/printing/blocks";
 import { logPrint, peekPrint, type PrintMark } from "@/features/printing/api";
+import { issueCheck } from "@/features/printing/verify";
 import type { RenderOpts } from "@/features/printing/templates/types";
 
 /** Whatever shows the preview. Absent in tests and before sign-in: then it prints at once. */
@@ -21,8 +22,32 @@ export interface Legacy {
   contact?: string;
 }
 
+/**
+ * A prescription that names itself (`verify`) gets its check from the server: the QR
+ * becomes a link to the clinic's own record, with a short code under it. When the
+ * server cannot be reached the paper is printed without a QR — a QR that checks
+ * nothing would give a false sense of safety, and the paper is still a valid paper.
+ */
+async function withCheck(d: DocData): Promise<DocData> {
+  if (d.doc !== "prescription" || !d.data.verify) return d;
+  const { kind, id } = d.data.verify;
+  try {
+    const v = await issueCheck(kind, id);
+    return {
+      doc: "prescription",
+      data: {
+        ...d.data, rxRef: v.ref, qrData: `${window.location.origin}${v.path}`,
+        verifyCode: v.code, verifyHost: window.location.host,
+      },
+    };
+  } catch {
+    return { doc: "prescription", data: { ...d.data, qrData: "", verifyCode: undefined } };
+  }
+}
+
 /** Print a document with this clinic's look; shows the preview first when it can. */
-export async function requestPrint(d: DocData, legacy: Legacy = {}): Promise<void> {
+export async function requestPrint(doc: DocData, legacy: Legacy = {}): Promise<void> {
+  const d = await withCheck(doc);
   const base = getPrintContext();
   const ctx: PrintCtx = {
     ...base,
