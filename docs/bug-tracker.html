@@ -75,7 +75,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 </style></head>
 <body><div class="wrap">
 <h1>ClinicOS bug tracker</h1>
-<p class="lede">Every known problem in the system, in plain words, most urgent first. 148 of the 200 are already caught by an automated test, so when one is fixed its test proves it, and keeps proving it after every future change. The other 52, marked <i>No test yet</i>, came from the audit (mostly server and operations work); each gets a test or a written check when it is fixed.</p>
+<p class="lede">Every known problem in the system, in plain words, most urgent first. 149 of the 200 are already caught by an automated test, so when one is fixed its test proves it, and keeps proving it after every future change. The other 51, marked <i>No test yet</i>, came from the audit (mostly server and operations work); each gets a test or a written check when it is fixed.</p>
 
 <div class="progress"><div class="bar"><i></i></div><b>12 of 200 closed</b></div>
 
@@ -86,7 +86,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 <li><b>Fix:</b> I change the code; its test turns from "known bug" to a normal passing test, and the whole suite must still pass.</li>
 <li><b>Verify:</b> you check it and accept it. Then the next one.</li>
 </ol>
-<p style="margin:8px 0 0;color:var(--soft)">Right now: 172 open · 0 explained or confirmed · 16 fixed, waiting for your check · 12 verified.</p>
+<p style="margin:8px 0 0;color:var(--soft)">Right now: 171 open · 0 explained or confirmed · 17 fixed, waiting for your check · 12 verified.</p>
 </div>
 
 <a class="next" href="#FIN-15" data-open="FIN-15"><span>Next up</span><b>A listed service can be billed at any price</b><em>High · FIN-15 · Open</em></a>
@@ -95,7 +95,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
 
 <div class="filters">
   <input id="q" type="search" placeholder="Search: cashier, follow-up, refund…" aria-label="Search issues">
-  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (172)</option><option value="explained">Explained (0)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (16)</option><option value="verified">Verified (12)</option><option value="wontfix">Won't fix (0)</option></select>
+  <select id="st" aria-label="Status"><option value="">Every status</option><option value="active" selected>Not closed yet</option><option value="open">Open (171)</option><option value="explained">Explained (0)</option><option value="confirmed">Confirmed (0)</option><option value="fixed">Fixed (17)</option><option value="verified">Verified (12)</option><option value="wontfix">Won't fix (0)</option></select>
   <select id="ar" aria-label="Area"><option value="">Every area</option><option value="Appointments &amp; front desk">Appointments &amp; front desk</option><option value="Dental">Dental</option><option value="Money">Money</option><option value="Patient records">Patient records</option><option value="Printing">Printing</option><option value="Reliability">Reliability</option><option value="Safety &amp; access">Safety &amp; access</option><option value="Screens &amp; usability">Screens &amp; usability</option></select>
 </div>
 <p class="count" id="count"></p>
@@ -3523,15 +3523,15 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
     </div>
   </details>
 </article>
-<article class="issue sev-medium st-open" id="FE-3" data-sev="medium" data-status="open"
+<article class="issue sev-medium st-fixed" id="FE-3" data-sev="medium" data-status="fixed"
   data-area="Reliability" data-q="fe-3 no &#x27;you are offline&#x27; signal; chart says saved when it wasn&#x27;t the app has no offline warning and requests have no time limit. the tooth chart says &#x27;saved automatically&#x27; even when nothing reached the server. the wi-fi drops while dr selam charts dawit&#x27;s teeth. the chart says &#x27;saved automatically&#x27;, she closes it, and the changes are gone. dentist, all staff reliability">
   <details>
     <summary>
       <span class="num">119</span>
       <span class="sev">Medium</span>
       <span class="ttl">No &#x27;you are offline&#x27; signal; chart says saved when it wasn&#x27;t</span>
-      <span class="meta"><span class="id">FE-3</span> · Reliability · effort M · <i class="notest">No test yet</i></span>
-      <span class="status">Open</span>
+      <span class="meta"><span class="id">FE-3</span> · Reliability · effort M</span>
+      <span class="status">Fixed</span>
     </summary>
     <div class="body">
       
@@ -3544,11 +3544,11 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
       </dl>
       <div class="tech">
         <details><summary>For the developer: tests and code</summary>
-          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li>No automated test yet: an operational item</li></ul>
-          <p>Where in the code:</p><ul><li><code>frontend/src/lib/api-client.ts:71</code></li><li><code>frontend/src/features/dental/DentalWorkspace.tsx:469</code></li></ul>
+          <p>Tests that prove it (they flip to normal passing tests when fixed):</p><ul><li><code>REG-FE-API-018</code></li><li><code>REG-FE-API-019</code></li><li><code>REG-FE-API-020</code></li><li><code>REG-FE-API-021</code></li><li><code>REG-FE-API-022</code></li><li><code>REG-FE-API-023</code></li><li><code>REG-FE-API-024</code></li><li><code>REG-FE-API-025</code></li><li><code>REG-FE-API-026</code></li><li><code>REG-FE-API-027</code></li><li><code>REG-FE-API-028</code></li><li><code>REG-FE-API-029</code></li><li><code>REG-FE-API-030</code></li><li><code>REG-FE-API-031</code></li><li><code>REG-FE-CONN-001</code></li><li><code>REG-FE-CONN-002</code></li><li><code>REG-FE-CONN-003</code></li><li><code>REG-FE-CONN-004</code></li><li><code>REG-FE-CONN-005</code></li><li><code>REG-FE-CONN-006</code></li><li><code>REG-FE-CONN-007</code></li><li><code>REG-FE-CONN-008</code></li><li><code>REG-FE-CONN-009</code></li><li><code>REG-FE-CONN-010</code></li><li><code>REG-FE-CONN-011</code></li><li><code>REG-FE-SHELL-009</code></li><li><code>REG-FE-CHART-034</code></li><li><code>REG-FE-CHART-035</code></li></ul>
+          <p>Where in the code:</p><ul><li><code>frontend/src/lib/api-client.ts</code></li><li><code>frontend/src/lib/connection.ts</code></li><li><code>frontend/src/components/ConnectionBanner.tsx</code></li><li><code>frontend/src/app/layouts/AppShell.tsx</code></li><li><code>frontend/src/features/dental/DentalWorkspace.tsx</code></li><li><code>frontend/src/features/dental/ToothChart.tsx</code></li><li><code>frontend/src/features/dental/api.ts</code></li><li><code>frontend/src/features/clinical/api.ts</code></li></ul>
         </details>
       </div>
-      
+      <div class="log"><b>History</b><ul><li><time>2026-10-13</time> Explained in plain language; owner said go. Part of the description was already out of date: the tooth chart already showed &#x27;✓ Saved&#x27; only after the server confirmed (FEAT-CHART-1). The real gaps were a hung request (no time limit, so &#x27;Saving…&#x27; for ever) and no warning anywhere. Built: every request gives up after 30 s (2 min for the Ministry push, bulk imports and the AI; 2 min for files sent to storage); a save with no answer says &#x27;may not have been saved, check before doing it again&#x27;; a request that cannot be sent says &#x27;could not reach the server&#x27; instead of a raw &#x27;Failed to fetch&#x27;; a banner under the top bar says &#x27;No connection to the server&#x27; or &#x27;The server is slow to answer&#x27; and clears by itself (the browser&#x27;s offline signal plus failed requests, then the server&#x27;s /healthz is asked every 8 s until it answers). The tooth chart no longer says &#x27;changes undone&#x27; after a timeout, because the save may have landed: it says &#x27;Not confirmed — reload to check what was saved&#x27;.</li><li><time>2026-10-13</time> Full run green: server 755/0 (94 known), screens 1,903, journeys 15/15, routes 277/277, all coverage minimums held (the first run failed because the local test database had stopped when the session ended, and the lib branch coverage was 0.1 under its minimum; the unreachable &#x27;rethrow&#x27; branches were removed and the gaps tested, no threshold lowered). Committed; deploying.</li></ul></div>
     </div>
   </details>
 </article>
@@ -5902,7 +5902,7 @@ footer { color:var(--soft); font-size:.85rem; margin-top:30px }
   </details>
 </article>
 
-<footer>Built 11 October 2026, 18:20 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
+<footer>Built 13 October 2026, 00:47 from <code>docs/bugs/issues.json</code> by <code>scripts/bugs/build_tracker.py</code>. Severity says how much harm; the number is the order we fix them in.</footer>
 </div>
 <script>
 (function () {

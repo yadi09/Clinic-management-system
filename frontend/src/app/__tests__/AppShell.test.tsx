@@ -22,6 +22,7 @@ vi.mock("@/features/notifications/LiveAlerts", () => ({ LiveAlerts: () => null }
 import { AppShell } from "@/app/layouts/AppShell";
 import { MobileNav } from "@/app/layouts/MobileNav";
 import { navSections, visibleNav } from "@/app/nav";
+import { setLink } from "@/lib/connection";
 import { authFns, OWNER_PERMS, resetToasts, setAuth, toastSpy } from "@/test/admin";
 import { currentLocation, renderUI } from "@/test/render";
 
@@ -45,6 +46,7 @@ const tabBar = () => screen.getByRole("navigation", { name: "Primary" });
 beforeEach(() => {
   setAuth();
   resetToasts();
+  act(() => setLink("ok")); // another test's unanswered request must not leave the banner up
   lab.inboxCount.mockResolvedValue({ count: 0 });
   patients.searchPatients.mockResolvedValue({ items: [] });
 });
@@ -130,6 +132,16 @@ describe("REG-FE-SHELL app shell", () => {
     await user.click(screen.getByRole("button", { name: /^HD/ }));
     await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "All branches" }));
     await waitFor(() => expect(authFns.switchBranch).toHaveBeenCalledWith("all"));
+  });
+
+  test("REG-FE-SHELL-009 when the server cannot be reached a banner says so on every page, and goes when it can again", () => {
+    Shell({});
+    expect(screen.queryByText(/No connection to the server/)).not.toBeInTheDocument();
+    act(() => setLink("down"));
+    expect(screen.getByRole("status", { name: "" })).toHaveTextContent("No connection to the server. Changes you make now may not be saved.");
+    expect(screen.getByText("Dashboard page")).toBeInTheDocument(); // the work on screen is not taken away
+    act(() => setLink("ok"));
+    expect(screen.queryByText(/No connection to the server/)).not.toBeInTheDocument();
   });
 
   test("REG-FE-SHELL-008 a user with no name or role still gets a sensible header", () => {

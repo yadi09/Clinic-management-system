@@ -1,4 +1,4 @@
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch, sendFile } from "@/lib/api-client";
 import { tokenStore } from "@/lib/token";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api/v1";
@@ -190,14 +190,14 @@ export function signReferralUpload(referralId: string, body: { filename: string;
  *  when the referral is next read. */
 export async function uploadToTarget(target: UploadTarget, file: File): Promise<ReferralFile> {
   if ((target.method || "POST").toUpperCase() === "PUT") {
-    const res = await fetch(target.url, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+    const res = await sendFile(target.url, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
     if (!res.ok) throw new Error("Upload failed");
     return { key: target.key, url: "", name: file.name, mime: file.type };
   }
   const fd = new FormData();
   Object.entries(target.fields ?? {}).forEach(([k, v]) => fd.append(k, v));
   fd.append("file", file);
-  const res = await fetch(target.url, { method: "POST", body: fd });
+  const res = await sendFile(target.url, { method: "POST", body: fd });
   if (!res.ok) throw new Error("Upload failed");
   const j = await res.json();
   return { key: j.public_id ?? target.key, url: j.secure_url ?? j.url, name: file.name, mime: file.type };

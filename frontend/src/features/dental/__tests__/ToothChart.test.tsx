@@ -307,6 +307,29 @@ describe("REG-FE-CHART the tooth chart", () => {
     expect(screen.getByText("Not saved — changes undone")).toBeInTheDocument();
   });
 
+  test("REG-FE-CHART-034 a save that got no answer does not claim its changes were undone: it may have landed", async () => {
+    await ready({ failed: "unconfirmed" });
+    expect(screen.getByText("Not confirmed — reload to check what was saved")).toBeInTheDocument();
+    expect(screen.queryByText("Not saved — changes undone")).not.toBeInTheDocument();
+  });
+
+  test("REG-FE-CHART-035 a timed-out save puts the chart back, says it is not confirmed, and the pop-up says it may not have been saved", async () => {
+    const { AppError } = await vi.importActual<typeof import("@/lib/api-client")>("@/lib/api-client");
+    const { user } = await openChart({ LR6: "decayed" });
+    api.saveChart.mockRejectedValue(new AppError(0, "TIMEOUT", "The server did not answer in time. Your change may not have been saved — check before doing it again."));
+    await user.click(chip("Filled"));
+    await user.click(tooth("LR6"));
+    await waitFor(() => expect(api.saveChart).toHaveBeenCalled(), { timeout: 3000 });
+    await waitFor(() => expect(tooth("LR6")).toHaveAccessibleName("LR6 — Decayed"));
+    expect(await screen.findByText(/may not have been saved/)).toBeInTheDocument();
+    expect(screen.getByText("Not confirmed — reload to check what was saved")).toBeInTheDocument();
+    expect(screen.queryByText("Not saved — changes undone")).not.toBeInTheDocument();
+    // The next change clears it.
+    api.saveChart.mockResolvedValue({ teeth: { LR6: "filled" } });
+    await user.click(tooth("LR5"));
+    expect(screen.queryByText(/Not confirmed/)).not.toBeInTheDocument();
+  });
+
   test("REG-FE-CHART-021 keyboard: arrows walk the teeth and stop at the edge, A selects every tooth, Enter marks with the chosen condition", async () => {
     const { user, onApply } = await ready();
     await user.click(chip("Filled"));

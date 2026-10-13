@@ -227,7 +227,7 @@ describe("REG-FE-CLINAPI direct upload of an attachment", () => {
   test("REG-FE-CLINAPI-016 presigned PUT (R2): raw body with its content type; the key is returned, no URL", async () => {
     respond(true, null);
     const out = await api.uploadToTarget({ method: "put", url: "https://r2/x", fields: {}, key: "k/1" }, file);
-    expect(fetchSpy).toHaveBeenCalledWith("https://r2/x", { method: "PUT", body: file, headers: { "Content-Type": "application/pdf" } });
+    expect(fetchSpy).toHaveBeenCalledWith("https://r2/x", { method: "PUT", body: file, headers: { "Content-Type": "application/pdf" }, signal: expect.any(AbortSignal) });
     expect(out).toEqual({ key: "k/1", url: "", name: "result.pdf", mime: "application/pdf" });
     respond(false, null);
     await expect(api.uploadToTarget({ method: "PUT", url: "https://r2/x", fields: {}, key: "k" }, file)).rejects.toThrow("Upload failed");

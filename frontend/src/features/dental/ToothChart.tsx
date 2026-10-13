@@ -56,8 +56,9 @@ export interface ToothChartProps {
   canRedo: boolean;
   /** A save is waiting or in flight. */
   saving: boolean;
-  /** The last save failed and the chart was put back to what the server holds. */
-  failed?: boolean;
+  /** The last save failed and the chart was put back to what the server holds.
+   *  "unconfirmed": no answer came, so the save may or may not have landed. */
+  failed?: boolean | "unconfirmed";
 }
 
 export function ToothChart({ teeth, editable: canEdit, onApply, onUndo, onRedo, canUndo, canRedo, saving, failed }: ToothChartProps) {
@@ -270,7 +271,9 @@ export function ToothChart({ teeth, editable: canEdit, onApply, onUndo, onRedo, 
               options={[{ value: "mark", label: "Mark" }, { value: "select", label: "Select" }]} />
             <div className="flex items-center gap-1.5">
               {failed ? (
-                <span role="status" className="mr-1 text-xs font-medium text-destructive">Not saved — changes undone</span>
+                <span role="status" className="mr-1 text-xs font-medium text-destructive">
+                  {failed === "unconfirmed" ? "Not confirmed — reload to check what was saved" : "Not saved — changes undone"}
+                </span>
               ) : edited && (
                 <span role="status" className="mr-1 text-xs text-muted-foreground">{saving ? "Saving…" : "✓ Saved"}</span>
               )}

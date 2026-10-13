@@ -113,7 +113,7 @@ describe("REG-FE-MONEY dental API contract", () => {
     const file = new File(["abc"], "x.jpg", { type: "image/jpeg" });
     await expect(d.uploadDentalImage(P, file, "ses_1", "xray")).resolves.toEqual({ id: "img_1" });
     expect(http.apiFetch.mock.calls[0]).toEqual([`/dental/patients/${P}/images/sign`, { method: "POST", body: { filename: "x.jpg", mime_type: "image/jpeg" } }]);
-    expect(fetchMock).toHaveBeenCalledWith("https://r2.example/put", { method: "PUT", body: file, headers: { "Content-Type": "image/jpeg" } });
+    expect(fetchMock).toHaveBeenCalledWith("https://r2.example/put", { method: "PUT", body: file, headers: { "Content-Type": "image/jpeg" }, signal: expect.any(AbortSignal) });
     expect(http.apiFetch.mock.calls[1]).toEqual([`/dental/patients/${P}/images`, {
       method: "POST",
       body: { storage_key: "k/1.jpg", filename: "x.jpg", mime_type: "image/jpeg", size_bytes: 3, session_id: "ses_1", category: "xray" },

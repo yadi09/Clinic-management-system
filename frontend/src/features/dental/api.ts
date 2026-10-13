@@ -2,7 +2,7 @@
 // dated SESSIONS (each with its own payment, notes/Rx and images), and the
 // installment balance. Session payments flow through the shared billing spine:
 // "collect" puts a pending charge on the cashier's queue (source='dental').
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch, sendFile } from "@/lib/api-client";
 
 export type ToothStatus = "healthy" | "decayed" | "filled" | "extracted" | "crown";
 
@@ -317,13 +317,13 @@ export async function uploadDentalImage(patientId: string, file: File, sessionId
     body: { filename: file.name, mime_type: file.type },
   });
   if ((target.method || "POST").toUpperCase() === "PUT") {
-    const res = await fetch(target.url, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+    const res = await sendFile(target.url, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
     if (!res.ok) throw new Error("Upload failed");
   } else {
     const fd = new FormData();
     Object.entries(target.fields ?? {}).forEach(([k, v]) => fd.append(k, v));
     fd.append("file", file);
-    const res = await fetch(target.url, { method: "POST", body: fd });
+    const res = await sendFile(target.url, { method: "POST", body: fd });
     if (!res.ok) throw new Error("Upload failed");
   }
   return apiFetch<DentalImage>(`/dental/patients/${patientId}/images`, {

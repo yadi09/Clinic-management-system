@@ -12,6 +12,7 @@ import { PrintProvider } from "@/features/printing/PrintProvider";
 import { LiveAlerts } from "@/features/notifications/LiveAlerts";
 import { CommandPalette } from "@/app/command-palette";
 import { MobileNav } from "@/app/layouts/MobileNav";
+import { ConnectionBanner } from "@/components/ConnectionBanner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -169,6 +170,7 @@ export function AppShell() {
           </DropdownMenu>
         </div>
       </header>
+      <ConnectionBanner />
 
       <div className="flex">
         {/* Left nav rail (brand-blue) */}

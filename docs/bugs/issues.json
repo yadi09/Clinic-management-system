@@ -4514,14 +4514,58 @@
   "fix": "Show an offline banner, add request time limits, and only say 'saved' after the server confirms.",
   "effort": "M",
   "decision": null,
-  "tests": [],
-  "files": [
-   "frontend/src/lib/api-client.ts:71",
-   "frontend/src/features/dental/DentalWorkspace.tsx:469"
+  "tests": [
+   "REG-FE-API-018",
+   "REG-FE-API-019",
+   "REG-FE-API-020",
+   "REG-FE-API-021",
+   "REG-FE-API-022",
+   "REG-FE-API-023",
+   "REG-FE-API-024",
+   "REG-FE-API-025",
+   "REG-FE-API-026",
+   "REG-FE-API-027",
+   "REG-FE-API-028",
+   "REG-FE-API-029",
+   "REG-FE-API-030",
+   "REG-FE-API-031",
+   "REG-FE-CONN-001",
+   "REG-FE-CONN-002",
+   "REG-FE-CONN-003",
+   "REG-FE-CONN-004",
+   "REG-FE-CONN-005",
+   "REG-FE-CONN-006",
+   "REG-FE-CONN-007",
+   "REG-FE-CONN-008",
+   "REG-FE-CONN-009",
+   "REG-FE-CONN-010",
+   "REG-FE-CONN-011",
+   "REG-FE-SHELL-009",
+   "REG-FE-CHART-034",
+   "REG-FE-CHART-035"
   ],
-  "tested": false,
-  "status": "open",
-  "log": [],
+  "files": [
+   "frontend/src/lib/api-client.ts",
+   "frontend/src/lib/connection.ts",
+   "frontend/src/components/ConnectionBanner.tsx",
+   "frontend/src/app/layouts/AppShell.tsx",
+   "frontend/src/features/dental/DentalWorkspace.tsx",
+   "frontend/src/features/dental/ToothChart.tsx",
+   "frontend/src/features/dental/api.ts",
+   "frontend/src/features/clinical/api.ts"
+  ],
+  "tested": true,
+  "status": "fixed",
+  "log": [
+   {
+    "date": "2026-10-13",
+    "note": "Explained in plain language; owner said go. Part of the description was already out of date: the tooth chart already showed '✓ Saved' only after the server confirmed (FEAT-CHART-1). The real gaps were a hung request (no time limit, so 'Saving…' for ever) and no warning anywhere. Built: every request gives up after 30 s (2 min for the Ministry push, bulk imports and the AI; 2 min for files sent to storage); a save with no answer says 'may not have been saved, check before doing it again'; a request that cannot be sent says 'could not reach the server' instead of a raw 'Failed to fetch'; a banner under the top bar says 'No connection to the server' or 'The server is slow to answer' and clears by itself (the browser's offline signal plus failed requests, then the server's /healthz is asked every 8 s until it answers). The tooth chart no longer says 'changes undone' after a timeout, because the save may have landed: it says 'Not confirmed — reload to check what was saved'."
+   },
+   {
+    "date": "2026-10-13",
+    "note": "Full run green: server 755/0 (94 known), screens 1,903, journeys 15/15, routes 277/277, all coverage minimums held (the first run failed because the local test database had stopped when the session ended, and the lib branch coverage was 0.1 under its minimum; the unreachable 'rethrow' branches were removed and the gaps tested, no threshold lowered). Committed; deploying."
+   }
+  ],
   "order": 600
  },
  {

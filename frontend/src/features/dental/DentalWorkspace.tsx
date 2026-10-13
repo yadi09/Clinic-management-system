@@ -205,7 +205,9 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
   const [teeth, setTeeth] = useState<Record<string, string>>({});
   // The last save failed and the chart went back to the server's copy. Shown in the
   // chart's bar until the next change, so the failure outlives the pop-up.
-  const [chartFailed, setChartFailed] = useState(false);
+  // "unconfirmed" when the save got no answer: it may have landed, so the chart cannot
+  // claim its changes were undone.
+  const [chartFailed, setChartFailed] = useState<false | true | "unconfirmed">(false);
   const draft = useRef<Record<string, string>>({});
   const confirmed = useRef<Record<string, string>>({});
   const queued = useRef<Record<string, string> | null>(null);
@@ -238,7 +240,7 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
       if (timer.current) { clearTimeout(timer.current); timer.current = null; }
       queued.current = null;
       showChart(confirmed.current);
-      setChartFailed(true);
+      setChartFailed(e instanceof AppError && e.code === "TIMEOUT" ? "unconfirmed" : true);
       toast.error(e instanceof AppError ? e.message : "Could not save the tooth chart — your last changes were undone");
       qc.invalidateQueries({ queryKey: ["dental-summary", patientId] });
     },
