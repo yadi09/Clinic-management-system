@@ -4564,6 +4564,10 @@
    {
     "date": "2026-10-13",
     "note": "Full run green: server 755/0 (94 known), screens 1,903, journeys 15/15, routes 277/277, all coverage minimums held (the first run failed because the local test database had stopped when the session ended, and the lib branch coverage was 0.1 under its minimum; the unreachable 'rethrow' branches were removed and the gaps tested, no threshold lowered). Committed; deploying."
+   },
+   {
+    "date": "2026-10-13",
+    "note": "Deployed to app.clinicos.cc (commit 44a104e, pre-deploy backup taken, API ready, no errors in the log, /healthz answers 200 from outside). No migration. Waiting for the owner to verify: switch the browser to Offline (F12 → Network) or turn Wi-Fi off, and the banner must appear; turn it back and it must clear within about 8 seconds."
    }
   ],
   "order": 600
