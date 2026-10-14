@@ -150,11 +150,19 @@
   --border-strong: hsl(var(--muted-foreground) / 0.45);
   --border-accent: #378ADD;
 }
+.tooth-anatomy {
+  --text-danger: #A32D2D;
+  --text-success: #3B6D11;
+}
 .dark .tooth-anatomy {
   --text-accent: #85B7EB;
   --text-warning: #EF9F27;
   --bg-accent: #0C447C;
+  --text-danger: #F09595;
+  --text-success: #97C459;
 }
+.tooth-anatomy .ta-cap { font-size: 13px; color: var(--text-secondary); min-width: 74px; }
+.tooth-anatomy .ta-help { font-size: 12px; color: var(--text-muted); margin: 0 0 8px; line-height: 1.5; }
 .tooth-anatomy .ta-btn {
   color: var(--text-primary); background: var(--surface-2);
   border: 0.5px solid var(--border-strong); border-radius: 8px; cursor: pointer;

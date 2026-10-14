@@ -233,6 +233,7 @@ func (s *Service) loadChartTx(ctx context.Context, tx pgx.Tx, tid, patientID uui
 	var updated time.Time
 	e := tx.QueryRow(ctx, `SELECT teeth, anatomy, updated_at FROM dental_charts WHERE tenant_id = $1 AND patient_id = $2`, tid, patientID).Scan(&raw, &anat, &updated)
 	if errors.Is(e, pgx.ErrNoRows) {
+		chart.Items, chart.Positions = []dental.ChartItem{}, map[string]dental.Position{}
 		return nil
 	}
 	if e != nil {
@@ -250,7 +251,7 @@ func (s *Service) loadChartTx(ctx context.Context, tx pgx.Tx, tid, patientID uui
 	}
 	u := updated.Format(time.RFC3339)
 	chart.UpdatedAt = &u
-	return nil
+	return loadV2Tx(ctx, tx, tid, patientID, chart)
 }
 
 // palmerTeeth is every tooth a chart may name: four quadrants, 1–8.

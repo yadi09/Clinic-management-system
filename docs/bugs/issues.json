@@ -5403,5 +5403,44 @@
    }
   ],
   "order": 602
+ },
+ {
+  "id": "FEAT-CHART-3",
+  "title": "Anatomical chart version 2: what is in the mouth, what is to be done, what was done today",
+  "severity": "medium",
+  "area": "Dental",
+  "who": "Dentist, clinic admin",
+  "simple": "The anatomical chart from dental-chart-reference_3d.html (2D view; 3D is phase B). Every item is recorded as already in mouth, to be done or done today: caries, composite/amalgam fillings per surface, crowns (zirconia, porcelain-metal, gold, stainless steel), root canal, extraction, missing, implant, bridge — with the reference's rules and plain-language refusals, a Treatment plan list and a Done today list under the chart.",
+  "example": "Dr Selam marks a planned composite filling on 16 and a planned implant on missing 46: both turn red and appear in the Treatment plan list. She does the filling and taps 'Mark this tooth's planned work as done': it moves to Done today and the number turns green.",
+  "why": "The dentist records the mouth as found, the plan, and today's work in one place — the basis for the plan and the bill (phase C).",
+  "fix": "dental_chart_items (mig 00096): one row per item with status, author, day done; positions apart; version 1's column frozen as the rollback copy. Rules in model.ts mirrored in chart_items.go; the server checks the teeth a save touches.",
+  "effort": "L",
+  "decision": "Owner approved the plan 2026-10-14: rows table, migrate v1 with 'material not recorded' notes, confirm-to-bill, phases A (2D) → B (3D) → C (prices/plan/bill).",
+  "tests": [
+   "TestREG_DENTAL_ITEMS_001..007",
+   "TestMIGRATION_096_ChartItemsCarryVersionOneOverAndRollBack",
+   "TestMIGRATION_096_TheProductionRecord",
+   "REG-FE-ANAT2-001..049",
+   "REG-E2E-025",
+   "REG-E2E-026",
+   "REG-E2E-027",
+   "REG-E2E-028"
+  ],
+  "files": [
+   "backend/db/migrations/00096_dental_chart_items.sql",
+   "backend/internal/dental/service/chart_items.go",
+   "frontend/src/features/dental/anatomical/model.ts",
+   "frontend/src/features/dental/anatomical/AnatomicalWorkspace.tsx",
+   "frontend/src/features/dental/anatomical/ToothPanel.tsx"
+  ],
+  "tested": true,
+  "status": "fixed",
+  "order": 603,
+  "log": [
+   {
+    "date": "2026-10-15",
+    "note": "Phase A built. Found while checking: the server refused a bridge onto a filled tooth (the reference allows it) — fixed to refuse only new surface marks under a crown; the taller panel pushed the chart off screen — the chart now stays pinned beside it. Migration tested on the real production record (findings only). Full run: server 772/0, screens 1,961, journeys 19/19, routes 282/282; coverage: dental gaps closed with tests (dental/http 96.1%), finance/service 85.5 vs 86.0 is the known small-hours clock effect (00:37 Addis, no finance change). Committed; not deployed."
+   }
+  ]
  }
 ]

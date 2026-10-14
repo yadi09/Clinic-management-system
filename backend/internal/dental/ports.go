@@ -21,8 +21,52 @@ type Chart struct {
 	// Anatomy is the anatomical chart's record, by FDI number ("11", "54"): surfaces,
 	// whole-tooth findings and the tooth's position. It lives beside Teeth on the same
 	// row, so a clinic can switch charts without losing or hiding anything.
-	Anatomy   map[string]ToothAnatomy `json:"anatomy"`
-	UpdatedAt *string                 `json:"updated_at,omitempty"`
+	Anatomy map[string]ToothAnatomy `json:"anatomy"`
+	// Items and Positions are the anatomical chart (version 2): one row per thing
+	// recorded on a tooth, and each tooth's position by FDI number. Anatomy above is
+	// version 1, kept unchanged as the rollback copy and no longer written by the app.
+	Items     []ChartItem         `json:"items"`
+	Positions map[string]Position `json:"positions"`
+	UpdatedAt *string             `json:"updated_at,omitempty"`
+}
+
+// ChartItem is one thing recorded on a tooth. Kind is caries | filling | crown |
+// root_canal | extraction | missing | implant | bridge; Surface (O M D B L) only for
+// caries and filling; Status existing | planned | done; a bridge is stored on one end
+// tooth and names the other in BridgeEnd. DoneOn is the clinic day it became done.
+type ChartItem struct {
+	ID        uuid.UUID
+	Tooth     int
+	Kind      string
+	Surface   string
+	Material  string
+	Status    string
+	BridgeEnd int
+	Note      string
+	DoneOn    *string
+	CreatedBy string // name
+	CreatedAt time.Time
+	UpdatedBy string // name
+	UpdatedAt time.Time
+}
+
+// ItemInput is one item as the chart sends it. Note nil keeps a stored note; "" clears it.
+type ItemInput struct {
+	Kind      string  `json:"kind"`
+	Surface   string  `json:"surface"`
+	Material  string  `json:"material"`
+	Status    string  `json:"status"`
+	BridgeEnd int     `json:"bridge_end"`
+	Note      *string `json:"note"`
+}
+
+// Position is a tooth's position: degrees and millimetres, as on the chart's sliders.
+type Position struct {
+	Rotation      float64 `json:"rotation"`
+	Tipping       float64 `json:"tipping"`
+	BuccalLingual float64 `json:"buccal_lingual"`
+	Vertical      float64 `json:"vertical"`
+	GapMesial     float64 `json:"gap_mesial"`
 }
 
 // ToothAnatomy is one tooth on the anatomical chart. Surfaces maps O/M/D/B/L to
@@ -416,6 +460,11 @@ type Service interface {
 	SaveChart(ctx context.Context, patientID uuid.UUID, teeth map[string]string) (*Chart, error)
 	// SaveAnatomy merges anatomical-chart changes by FDI number; nil clears a tooth.
 	SaveAnatomy(ctx context.Context, patientID uuid.UUID, changes map[string]*ToothAnatomy) (*Chart, error)
+	// SaveChartItems replaces the items of each tooth named: {fdi: every item that
+	// tooth now has}. The result must keep the chart's rules; otherwise nothing is saved.
+	SaveChartItems(ctx context.Context, patientID uuid.UUID, teeth map[string][]ItemInput) (*Chart, error)
+	// SavePositions merges tooth positions by FDI number; nil clears a tooth.
+	SavePositions(ctx context.Context, patientID uuid.UUID, changes map[string]*Position) (*Chart, error)
 	GetDentalSettings(ctx context.Context) (*DentalSettings, error)
 	SaveDentalSettings(ctx context.Context, in DentalSettings) (*DentalSettings, error)
 

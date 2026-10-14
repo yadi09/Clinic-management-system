@@ -323,11 +323,15 @@ test("REG-E2E-024 anyone with the paper can check a prescription without an acco
 // --- the anatomical chart ---------------------------------------------------------
 
 const anat = (page: Page, n: number) => page.getByRole("button", { name: new RegExp(`^Tooth ${n},`) });
-const anatTool = (page: Page, name: string) => page.getByRole("toolbar", { name: "Chart tools" }).getByRole("button", { name: new RegExp(`^${name}$`) });
-const anatSurface = (page: Page, name: string) => page.getByRole("group", { name: "Tooth surfaces" }).getByRole("button", { name: new RegExp(`^${name}`) });
+const anatTool = (page: Page, name: string) => page.getByRole("toolbar", { name: "Add" }).getByRole("button", { name: new RegExp(`^${name}$`) });
+const anatSurface = (page: Page, name: string) => page.getByRole("group", { name: "Surface" }).getByRole("button", { name: new RegExp(`^${name}`) });
+const anatAs = (page: Page, name: string) => page.getByRole("radiogroup", { name: "Record as" }).getByRole("radio", { name });
+const anatMat = (page: Page, name: RegExp) => page.getByRole("radiogroup", { name: "Material" }).getByRole("radio", { name });
 const anatInfo = (page: Page) => page.getByTestId("tooth-info");
+const anatSay = (page: Page) => page.locator(".tooth-anatomy p[role=status][aria-live]").first();
 
-test("REG-E2E-025 the admin turns on the anatomical chart; every condition, every position and gaps on both arches survive a reload", async ({ page, browser }, testInfo) => {
+test("REG-E2E-025 the admin turns on the anatomical chart; every item, status, bridge, implant, extraction and position survives a reload, and the lists are right", async ({ page, browser }, testInfo) => {
+  test.setTimeout(180_000);
   await chartStyle("simple");
   // The admin chooses the chart in Settings, on their own computer.
   const adminCtx = await browser.newContext({ baseURL: testInfo.project.use.baseURL, timezoneId: "Africa/Addis_Ababa" });
@@ -340,87 +344,177 @@ test("REG-E2E-025 the admin turns on the anatomical chart; every condition, ever
   await adminCtx.close();
 
   const p = await newPatient();
+  await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, "doctor");
   await page.goto(`/patients/${p.id}`);
   await page.getByRole("button", { name: /^Tooth chart/ }).click();
   await expect(page.getByRole("radio", { name: "Adult (32)" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("button", { name: /^Tooth \d+,/ })).toHaveCount(32);
+  const saved = () => page.waitForResponse((r) => r.url().includes(`/dental/patients/${p.id}/chart/`) && r.request().method() === "PUT");
+  const step = async (act: () => Promise<unknown>) => { const s = saved(); await act(); expect((await s).ok()).toBe(true); };
 
-  const saved = () => page.waitForResponse((r) => r.url().includes(`/dental/patients/${p.id}/chart/anatomy`) && r.request().method() === "PUT");
-
-  // Surfaces: caries and filling.
+  // 16: caries (a finding) and a planned composite filling on the top; an existing amalgam on the cheek side.
   await anat(page, 16).click();
   await anatTool(page, "Caries").click();
-  await anatSurface(page, "Occlusal").click();
+  await step(() => anatSurface(page, "Top").click());
+  await anatAs(page, "To be done").click();
   await anatTool(page, "Filling").click();
-  let s = saved();
-  await anatSurface(page, "Mesial").click();
-  expect((await s).ok()).toBe(true);
-  // Whole tooth: crown, root canal, missing.
+  await step(() => anatSurface(page, "Top").click());
+  await anatAs(page, "Already in mouth").click();
+  await anatMat(page, /^Amalgam/).click();
+  await step(() => anatSurface(page, "Cheek side").click());
+  // 26: an existing root canal and porcelain-metal crown. Crown is applied as it is
+  // pressed, with the material showing; to change the material, take it off and put
+  // the new one on (as in the reference).
   await anat(page, 26).click();
+  await step(() => anatTool(page, "Root canal").click());
+  await step(() => anatTool(page, "Crown").click());
+  await anatMat(page, /^Porcelain-metal/).click();
+  await step(async () => { await anatTool(page, "Crown").click(); await anatTool(page, "Crown").click(); });
+  await expect(anatSay(page)).toHaveText("Porcelain-metal crown (already in mouth) on 26.");
+  // 21: a planned zirconia crown, a root canal done today.
+  await anat(page, 21).click();
+  await anatAs(page, "To be done").click();
   await anatTool(page, "Crown").click();
-  s = saved();
-  await anatTool(page, "Root canal").click();
-  expect((await s).ok()).toBe(true);
+  await anatAs(page, "Done today").click();
+  await step(() => anatTool(page, "Root canal").click());
+  // 38: a planned extraction; 47: extracted today.
+  await anat(page, 38).click();
+  await anatAs(page, "To be done").click();
+  await step(() => anatTool(page, "Extraction").click());
+  await expect(anatSay(page)).toHaveText("Extraction of 38 planned. The tooth is shown in red.");
+  await anat(page, 47).click();
+  await anatAs(page, "Done today").click();
+  await step(() => anatTool(page, "Extraction").click());
+  // Extraction "already in mouth" is refused, in words.
+  await anat(page, 37).click();
+  await anatAs(page, "Already in mouth").click();
+  await anatTool(page, "Extraction").click();
+  await expect(anatSay(page)).toContainText("For a tooth that is already gone, use Missing");
+  // 46: missing, then a planned implant, removed, added again.
   await anat(page, 46).click();
-  s = saved();
-  await anatTool(page, "Missing").click();
-  expect((await s).ok()).toBe(true);
-  // Every position slider on one tooth.
+  await step(() => anatTool(page, "Missing").click());
+  await anatAs(page, "To be done").click();
+  await step(() => anatTool(page, "Implant").click());
+  await step(() => anatTool(page, "Implant").click());
+  await expect(anatSay(page)).toHaveText("Implant removed. The tooth is back to missing.");
+  await step(() => anatTool(page, "Implant").click());
+  // An implant on a tooth that is there is refused.
+  await anat(page, 45).click();
+  await anatTool(page, "Implant").click();
+  await expect(anatSay(page)).toHaveText("An implant replaces a missing tooth. Mark this tooth as Missing first (or extract it).");
+  // A bridge 13–16 over missing 14 and 15 (existing, gold), then one cleared and made again.
+  await anatAs(page, "Already in mouth").click();
+  for (const n of [14, 15]) { await anat(page, n).click(); await step(() => anatTool(page, "Missing").click()); }
+  await anat(page, 13).click();
+  await anatTool(page, "Bridge").click();
+  await anatMat(page, /^Gold/).click();
+  await expect(anatSay(page)).toHaveText("Bridge starts at 13. Now tap the natural tooth on the other side of the gap.");
+  // 16 has fillings: a bridge may still go over it — they stay on record beneath its crown.
+  await step(() => anat(page, 16).click());
+  await expect(anatSay(page)).toHaveText("Bridge 16–13 added.");
+  await anatTool(page, "Caries").click();
+  await expect(anatSay(page)).toHaveText("This tooth is covered by a crown, so its surfaces are hidden.");
+  // Positions: every slider on 12; gaps on both sides of both arches.
   await anat(page, 12).click();
   await page.getByLabel("Rotation").fill("35");
   await page.getByLabel("Tipping").fill("-10");
   await page.getByLabel("Buccal/lingual").fill("1.5");
   await page.getByLabel("Vertical").fill("-2.5");
-  s = saved();
-  await page.getByLabel("Gap (mesial)").fill("2");
-  expect((await s).ok()).toBe(true);
-  // Gaps on both sides of both arches.
-  for (const [n, g] of [[11, "2"], [24, "1"], [35, "3"], [45, "1.5"]] as const) {
+  await step(() => page.getByLabel("Gap (mesial)").fill("2"));
+  for (const [n, g] of [[24, "1"], [35, "3"], [42, "1.5"]] as const) {
     await anat(page, n).click();
-    s = saved();
-    await page.getByLabel("Gap (mesial)").fill(g);
-    expect((await s).ok()).toBe(true);
+    await step(() => page.getByLabel("Gap (mesial)").fill(g));
   }
-  // The child chart is separate.
+  // Child chart: separate data.
   await page.getByRole("radio", { name: "Child (20)" }).click();
   await expect(page.getByRole("button", { name: /^Tooth \d+,/ })).toHaveCount(20);
   await anat(page, 54).click();
   await anatTool(page, "Caries").click();
-  s = saved();
-  await anatSurface(page, "Distal").click();
-  expect((await s).ok()).toBe(true);
+  await step(() => anatSurface(page, "Back side").click());
+  await anatTool(page, "Implant").click();
+  await expect(anatSay(page)).toHaveText("Implants are not used for baby teeth.");
   await page.getByRole("radio", { name: "Adult (32)" }).click();
-  await page.locator(".tooth-anatomy").screenshot({ path: testInfo.outputPath("anatomical-adult.png") });
+  await page.locator(".tooth-anatomy").first().screenshot({ path: testInfo.outputPath("v2-adult.png") });
 
-  // Reload: everything is still there.
+  // Reload: everything is still there, and the lists are right.
   await page.reload();
   await page.getByRole("button", { name: /^Tooth chart/ }).click();
-  await anat(page, 16).click();
-  await expect(anatInfo(page)).toHaveText("Upper right first molar. caries (occlusal), filling (mesial)");
-  await anat(page, 26).click();
-  await expect(anatInfo(page)).toHaveText("Upper left first molar. crown, root canal");
-  await anat(page, 46).click();
-  await expect(anatInfo(page)).toHaveText("Lower right first molar. missing");
-  await anat(page, 12).click();
-  await expect(anatInfo(page)).toHaveText("Upper right lateral incisor. rotated 35° clockwise, tipped 10° distally, 1.5mm buccal, 2.5mm intruded, 2mm gap on mesial side");
-  for (const [n, g] of [[11, "2mm"], [24, "1mm"], [35, "3mm"], [45, "1.5mm"]] as const) {
-    await anat(page, n).click();
-    await expect(anatInfo(page)).toContainText(`${g} gap on mesial side`);
-  }
-  // The gap pills show the real size on the chart.
-  for (const g of ["2mm", "1mm", "3mm", "1.5mm"]) await expect(page.locator(".tooth-anatomy svg text", { hasText: new RegExp(`^${g.replace(".", "\\.")}$`) }).first()).toBeVisible();
+  const info = async (n: number, text: string) => { await anat(page, n).click(); await expect(anatInfo(page)).toHaveText(text); };
+  await info(16, "Gold bridge 16–13 (already in mouth) · Caries, top (already in mouth) · Composite filling, top (to be done) · Amalgam filling, cheek side (already in mouth)");
+  await info(14, "Gold bridge 16–13, replacement tooth (already in mouth)");
+  await info(13, "Bridge crown (part of bridge 16–13) (already in mouth)");
+  await info(26, "Porcelain-metal crown (already in mouth) · Root canal (already in mouth)");
+  // The crown material stays chosen from one tooth to the next (as in the reference): 21 got the porcelain-metal picked on 26.
+  await info(21, "Porcelain-metal crown (to be done) · Root canal (done today)");
+  await info(38, "Extraction (to be done)");
+  await info(47, "Extracted (done today)");
+  await info(46, "Implant with porcelain-metal crown (to be done)");
+  await info(12, "Rotated 35° clockwise · Tipped 10° distally · 1.5mm buccal · 2.5mm intruded · 2mm gap on mesial side");
+  const plan = page.getByRole("region", { name: "Treatment plan" }).first();
+  const done = page.getByRole("region", { name: "Done today" }).first();
+  await expect(plan).toContainText("16 · composite filling, top");
+  await expect(plan).toContainText("21 · porcelain-metal crown");
+  await expect(plan).toContainText("38 · extraction");
+  await expect(plan).toContainText("46 · implant with porcelain-metal crown");
+  await expect(done).toContainText("21 · root canal");
+  await expect(done).toContainText("47 · extracted");
+  // "Mark this tooth's planned work as done" on 38: the extraction is done today.
+  await anat(page, 38).click();
+  await step(() => page.getByRole("button", { name: "Mark this tooth's planned work as done" }).click());
+  await expect(anatInfo(page)).toHaveText("Extracted (done today)");
+  await expect(done).toContainText("38 · extracted");
   await page.getByRole("radio", { name: "Child (20)" }).click();
-  await anat(page, 54).click();
-  await expect(anatInfo(page)).toHaveText("Upper right primary first molar. caries (distal)");
+  await info(54, "Caries, back side (already in mouth)");
 
   // Switching the clinic back to the simple chart hides nothing.
   await chartStyle("simple");
   await page.reload();
   await page.getByRole("button", { name: /^Tooth chart/ }).click();
   const note = page.getByRole("region", { name: "Recorded on the anatomical chart" });
-  await expect(note).toContainText("16 (UR6) Upper right first molar: caries (occlusal), filling (mesial)");
-  await expect(note).toContainText("54 Upper right primary first molar: caries (distal)");
+  await expect(note).toContainText("16 (UR6) Upper right first molar: gold bridge 16–13 (already in mouth), caries, top (already in mouth), composite filling, top (to be done)");
+  await expect(note).toContainText("38 (LL8) Lower left third molar: extracted (done today)");
+  await expect(note).toContainText("54 Upper right primary first molar: caries, back side (already in mouth)");
+});
+
+test("REG-E2E-028 a bridge is made across missing teeth, shown as one, and cleared from any of its teeth", async ({ page }, testInfo) => {
+  await chartStyle("anatomical");
+  const p = await newPatient();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page, "doctor");
+  await page.goto(`/patients/${p.id}`);
+  await page.getByRole("button", { name: /^Tooth chart/ }).click();
+  const saved = () => page.waitForResponse((r) => r.url().includes(`/dental/patients/${p.id}/chart/items`) && r.request().method() === "PUT");
+  for (const n of [35, 36]) { await anat(page, n).click(); const s = saved(); await anatTool(page, "Missing").click(); expect((await s).ok()).toBe(true); }
+  await anat(page, 34).click();
+  await anatAs(page, "To be done").click();
+  await anatTool(page, "Bridge").click();
+  await anatMat(page, /^Zirconia/).click();
+  const s = saved();
+  await anat(page, 37).click();
+  expect((await s).ok()).toBe(true);
+  await expect(anatSay(page)).toHaveText("Bridge 34–37 added.");
+  await expect(page.locator("[data-bridge='34-37']")).toHaveCount(1); // a flat bar: present, though it has no height
+  await expect(page.getByRole("region", { name: "Treatment plan" }).first()).toContainText("zirconia bridge 34–37");
+  // The bridge's teeth refuse what a bridge cannot hold.
+  await anat(page, 35).click();
+  await anatTool(page, "Missing").click();
+  await expect(anatSay(page)).toHaveText("This tooth is part of a bridge. Use Clear tooth to remove the bridge first.");
+  await anat(page, 37).click();
+  await anatTool(page, "Crown").click();
+  await expect(anatSay(page)).toHaveText("Bridge end teeth already have crowns.");
+  await page.locator(".tooth-anatomy").first().screenshot({ path: testInfo.outputPath("bridge.png") });
+  // Clearing a pontic removes the whole bridge; it stays gone after a reload.
+  await anat(page, 36).click();
+  const c = saved();
+  await anatTool(page, "Clear tooth").click();
+  expect((await c).ok()).toBe(true);
+  await expect(page.locator("[data-bridge]")).toHaveCount(0);
+  await page.reload();
+  await page.getByRole("button", { name: /^Tooth chart/ }).click();
+  await expect(page.locator("[data-bridge]")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Treatment plan" }).first()).toContainText("No planned treatment");
+  await chartStyle("simple");
 });
 
 test("REG-E2E-026 on a phone the anatomical chart fits the screen and a tooth is chosen with a tap", async ({ page }, testInfo) => {
@@ -444,16 +538,16 @@ test("REG-E2E-026 on a phone the anatomical chart fits the screen and a tooth is
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await anat(page, 28).click(); // the far end: scrolled to, then tapped — opens the editor
   const dlg = page.getByRole("dialog", { name: "Tooth chart" });
-  await expect(dlg.getByText("Tooth 28", { exact: true })).toBeVisible();
+  await expect(dlg.getByText(/^Tooth 28: /)).toBeVisible();
   await dlg.getByRole("button", { name: /^Tooth 36,/ }).click();
-  await expect(dlg.getByText("Tooth 36", { exact: true })).toBeVisible();
+  await expect(dlg.getByText(/^Tooth 36: /)).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("anatomical-phone.png") });
   await chartStyle("simple");
 });
 
-test("REG-E2E-027 the chart and the selected tooth's controls are on screen together, on a laptop, a large monitor and in full screen", async ({ page }, testInfo) => {
+test("REG-E2E-027 whichever control the dentist is using, the tooth it moves stays in view — on a laptop, a large monitor, in full screen and on a phone", async ({ page }, testInfo) => {
+  test.setTimeout(150_000);
   await chartStyle("anatomical");
-  test.setTimeout(150_000); // two screen sizes and a phone, each with a save
   const p = await newPatient();
   await login(page, "doctor");
   const inView = async (loc: import("@playwright/test").Locator) => {
@@ -461,25 +555,31 @@ test("REG-E2E-027 the chart and the selected tooth's controls are on screen toge
     const vp = page.viewportSize()!;
     return b.y >= 0 && b.y + b.height <= vp.height && b.x >= 0 && b.x + b.width <= vp.width;
   };
+  const SLIDERS = ["Rotation", "Tipping", "Buccal/lingual", "Vertical", "Gap (mesial)"];
   for (const [w, h] of [[1366, 768], [1920, 1080]] as const) {
     await page.setViewportSize({ width: w, height: h });
     await page.goto(`/patients/${p.id}`);
     await page.getByRole("button", { name: /^Tooth chart/ }).click();
     await anat(page, 12).click();
-    await page.getByRole("group", { name: "Adult tooth chart" }).scrollIntoViewIfNeeded();
+    // In the page: scrolled down to each slider, the tooth is still on screen.
+    for (const label of SLIDERS) {
+      await page.getByLabel(label).scrollIntoViewIfNeeded();
+      expect(await inView(page.getByLabel(label)), `${w} ${label}`).toBe(true);
+      expect(await inView(anat(page, 12)), `${w} tooth with ${label}`).toBe(true);
+    }
     await page.getByLabel("Rotation").fill("35");
-    // In the page: the tooth being moved and the slider moving it are both visible.
-    expect(await inView(anat(page, 12))).toBe(true);
-    expect(await inView(page.getByLabel("Rotation"))).toBe(true);
-    await page.locator(".tooth-anatomy").first().screenshot({ path: testInfo.outputPath(`page-${w}.png`) });
+    await page.screenshot({ path: testInfo.outputPath(`page-${w}.png`) });
 
-    // Full screen: the whole chart AND every slider, with no scrolling at all.
+    // Full screen: the whole chart stays put while the panel scrolls beside it.
     await page.getByRole("button", { name: "Full screen" }).click();
     const dlg = page.getByRole("dialog", { name: "Tooth chart" });
     await expect(dlg).toBeVisible();
-    expect(await inView(dlg.getByRole("group", { name: "Adult tooth chart" }))).toBe(true);
-    for (const label of ["Rotation", "Tipping", "Buccal/lingual", "Vertical", "Gap (mesial)"]) expect(await inView(dlg.getByLabel(label)), label).toBe(true);
-    const s = page.waitForResponse((r) => r.url().includes(`/dental/patients/${p.id}/chart/anatomy`) && r.request().method() === "PUT");
+    for (const label of SLIDERS) {
+      await dlg.getByLabel(label).scrollIntoViewIfNeeded();
+      expect(await inView(dlg.getByLabel(label)), `full ${w} ${label}`).toBe(true);
+      expect(await inView(dlg.getByRole("group", { name: "Adult tooth chart" })), `full ${w} chart with ${label}`).toBe(true);
+    }
+    const s = page.waitForResponse((r) => r.url().includes(`/dental/patients/${p.id}/chart/positions`) && r.request().method() === "PUT");
     const gap = w === 1366 ? "2" : "3"; // a new value each time, or nothing is saved
     await dlg.getByLabel("Gap (mesial)").fill(gap);
     expect((await s).ok()).toBe(true);
@@ -487,7 +587,7 @@ test("REG-E2E-027 the chart and the selected tooth's controls are on screen toge
     await page.screenshot({ path: testInfo.outputPath(`full-${w}.png`) });
     await page.keyboard.press("Escape");
     await expect(dlg).toBeHidden();
-    await expect(anatInfo(page)).toContainText("rotated 35° clockwise");
+    await expect(anatInfo(page)).toContainText("Rotated 35° clockwise");
     await expect(anatInfo(page)).toContainText(`${w === 1366 ? 2 : 3}mm gap on mesial side`);
   }
   // A phone: picking a tooth opens the full-screen editor; the chart stays at the top
@@ -497,7 +597,7 @@ test("REG-E2E-027 the chart and the selected tooth's controls are on screen toge
   await page.getByRole("button", { name: /^Tooth chart/ }).click();
   await anat(page, 46).click();
   const dlg = page.getByRole("dialog", { name: "Tooth chart" });
-  await expect(dlg.getByText("Tooth 46", { exact: true })).toBeVisible();
+  await expect(dlg.getByText(/^Tooth 46: /)).toBeVisible();
   await dlg.getByLabel("Gap (mesial)").scrollIntoViewIfNeeded();
   expect(await inView(dlg.getByLabel("Gap (mesial)"))).toBe(true);
   expect(await inView(dlg.locator(".ta-chart-scroll"))).toBe(true);

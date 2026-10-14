@@ -11,6 +11,12 @@ import type { SurfaceKey, ToothAnatomy } from "@/features/dental/api";
 
 /* ---------- Colours and scale ---------- */
 export const C = { caries: "#E24B4A", filling: "#378ADD", crown: "#EF9F27", rct: "#7F77DD", gap: "#1D9E75" } as const;
+/** The 2D chart's colours (the reference's C2): materials in their real colours,
+ *  planned work in translucent red. */
+export const C2 = {
+  caries: "#5a3a22", composite: "#efe3c4", amalgam: "#9aa0a8", zirconia: "#f4f1ea", pfm: "#efe5cf", gold: "#e2b85c", steel: "#c9ccd0",
+  rct: "#e0703c", plan: "#E24B4A", ti: "#9da3aa", edge: "#378ADD", gap: "#1D9E75",
+} as const;
 export const S = 0.65; // drawing scale of a tooth in the chart
 export const MM = 4; // chart pixels per mm of gap (deliberately enlarged so gaps are visible)
 
@@ -88,8 +94,8 @@ export function topRegions(n: number): Record<SurfaceKey, Rect> {
 /* ---------- Arch layout: teeth touch; mesial gaps push teeth apart ---------- */
 export interface Slot { n: number; x: number; w: number }
 export interface GapSlot { x: number; w: number; g: number }
-export function layout(arr: number[], get: (n: number) => ToothAnatomy | undefined) {
-  const gp = (n: number) => { const a = get(n); return a?.missing ? 0 : pos(a).gap; };
+/** `gp(n)` is the tooth's mesial gap in mm (0 for a tooth that is not there). */
+export function layout(arr: number[], gp: (n: number) => number) {
   let x = 0, mid = 0;
   const items: Slot[] = [], gaps: GapSlot[] = [], h = arr.length / 2 - 1;
   arr.forEach((n, i) => {

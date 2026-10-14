@@ -95,7 +95,9 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	// --- write: the clinical record, dentist only ---
 	g := d.Group("", httpx.RequirePermission("dental.manage"))
 	g.PUT("/patients/:id/chart", h.SaveChart)
-	g.PUT("/patients/:id/chart/anatomy", h.SaveAnatomy)
+	g.PUT("/patients/:id/chart/anatomy", h.SaveAnatomy) // version 1: kept for a tab opened before the update
+	g.PUT("/patients/:id/chart/items", h.SaveChartItems)
+	g.PUT("/patients/:id/chart/positions", h.SavePositions)
 
 	// Medical history is clinical and sensitive — read AND write sit with the
 	// clinician, and it is deliberately absent from Summary so the front desk's

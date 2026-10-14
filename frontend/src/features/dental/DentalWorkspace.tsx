@@ -514,12 +514,12 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
           },
           ...(editable ? [{
             key: "chart", label: "Tooth chart", icon: SHELF_ICONS.Grid3x3,
-            badge: (Object.keys(teeth).length + Object.keys(summary.data.chart.anatomy ?? {}).length) || undefined,
+            badge: (Object.keys(teeth).length + new Set((summary.data.chart.items ?? []).map((i) => i.tooth)).size) || undefined,
             render: () => (
               dentalSettings.isLoading ? <Skeleton className="h-64 w-full" /> :
               // A setting that cannot be read falls back to the chart the clinic had.
               dentalSettings.data?.chart_style === "anatomical" ? (
-                <AnatomicalWorkspace patientId={patientId} server={summary.data!.chart.anatomy} editable={editable}
+                <AnatomicalWorkspace patientId={patientId} server={summary.data!.chart} editable={editable} today={todayISO}
                   marks={(palmer) => {
                     const code = teeth[palmer];
                     if (!code) return null;
@@ -531,7 +531,7 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
                   <ToothChart teeth={teeth} editable={editable} onApply={applyChanges}
                     onUndo={undo} onRedo={redo} canUndo={undoStack.current.length > 0} canRedo={redoStack.current.length > 0}
                     saving={chartSave.isPending || queued.current !== null} failed={chartFailed} />
-                  <AnatomyNote anatomy={summary.data!.chart.anatomy} />
+                  <AnatomyNote chart={summary.data!.chart} today={todayISO} />
                 </div>
               )
             ),

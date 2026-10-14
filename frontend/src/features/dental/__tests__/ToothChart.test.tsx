@@ -540,8 +540,9 @@ describe("REG-FE-CHART saving the chart from the patient page", () => {
 describe("REG-FE-CHART the clinic's choice of chart", () => {
   const withSettings = (impl: (path: string) => Promise<unknown>) =>
     vi.mocked(apiFetch).mockImplementation(async (path: string) => impl(path));
-  const anatomySummary = (teeth: Record<string, string>, anatomy: Summary["chart"]["anatomy"]) =>
-    ({ ...summary(teeth), chart: { teeth, anatomy } }) as Summary;
+  const anatomySummary = (teeth: Record<string, string>, items: Summary["chart"]["items"], positions: Summary["chart"]["positions"] = {}) =>
+    ({ ...summary(teeth), chart: { teeth, items, positions } }) as Summary;
+  const P0 = { rotation: 0, tipping: 0, buccal_lingual: 0, vertical: 0, gap_mesial: 0 };
 
   beforeEach(() => {
     Object.values(api).forEach((f) => f.mockReset());
@@ -552,14 +553,14 @@ describe("REG-FE-CHART the clinic's choice of chart", () => {
 
   test("REG-FE-CHART-036 a clinic on the anatomical chart gets it, with the simple chart's marks shown on the teeth", async () => {
     withSettings(async (p) => (p === "/dental/settings" ? { chart_style: "anatomical" } : quietApiFetch(p)));
-    api.dentalSummary.mockResolvedValue(anatomySummary({ UR6: "decayed" }, { 11: { surfaces: {}, crown: false, root_canal: false, missing: false, rotation: 20, tipping: 0, buccal_lingual: 0, vertical: 0, gap_mesial: 0 } }));
+    api.dentalSummary.mockResolvedValue(anatomySummary({ UR6: "decayed" }, [], { 11: { ...P0, rotation: 20 } }));
     const { user } = renderUI(<><DentalWorkspace patientId="pat_1" /><Toaster /></>, { route: "/patients/pat_1" });
     await user.click(await screen.findByRole("button", { name: /Tooth chart/ }));
     expect(await screen.findByRole("radio", { name: "Adult (32)" })).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Conditions" })).not.toBeInTheDocument();
     // The clinic's own name for the condition (this fixture's list calls it "decayed").
     expect(await screen.findByRole("button", { name: "Tooth 16, Upper right first molar, decayed" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Tooth 11, Upper right central incisor: rotated 20° clockwise/ })).toBeInTheDocument();
+    expect(screen.getAllByTestId("tooth-info")[0]).toHaveTextContent("Rotated 20° clockwise");
     // Removing the old mark goes through the simple chart's own save.
     await user.click(screen.getByRole("button", { name: /^Tooth 16,/ }));
     await user.click(screen.getByRole("button", { name: "Remove mark" }));
@@ -568,16 +569,17 @@ describe("REG-FE-CHART the clinic's choice of chart", () => {
   });
 
   test("REG-FE-CHART-037 a clinic on the simple chart keeps its squares, and still sees what was recorded on the anatomical chart", async () => {
-    api.dentalSummary.mockResolvedValue(anatomySummary({ UR6: "decayed" }, {
-      11: { surfaces: {}, crown: false, root_canal: false, missing: false, rotation: 20, tipping: 0, buccal_lingual: 0, vertical: 0, gap_mesial: 2 },
-      54: { surfaces: { O: "caries" }, crown: false, root_canal: false, missing: false, rotation: 0, tipping: 0, buccal_lingual: 0, vertical: 0, gap_mesial: 0 },
-    }));
+    api.dentalSummary.mockResolvedValue(anatomySummary({ UR6: "decayed" }, [
+      { id: "a", tooth: 54, kind: "caries", surface: "O", status: "existing" },
+      { id: "b", tooth: 26, kind: "crown", material: "pfm", status: "planned" },
+    ], { 11: { ...P0, rotation: 20, gap_mesial: 2 } }));
     const { user } = renderUI(<><DentalWorkspace patientId="pat_1" /><Toaster /></>, { route: "/patients/pat_1" });
     await user.click(await screen.findByRole("button", { name: /Tooth chart/ }));
     await waitFor(() => expect(tooth("UR1")).toBeEnabled());
     const note = screen.getByRole("region", { name: "Recorded on the anatomical chart" });
-    expect(note).toHaveTextContent("11 (UR1) Upper right central incisor: rotated 20° clockwise, 2mm gap on mesial side");
-    expect(note).toHaveTextContent("54 Upper right primary first molar: caries (occlusal)");
+    expect(note).toHaveTextContent("11 (UR1) Upper right central incisor: rotated 20°, 2mm gap on mesial side");
+    expect(note).toHaveTextContent("26 (UL6) Upper left first molar: porcelain-metal crown (to be done)");
+    expect(note).toHaveTextContent("54 Upper right primary first molar: caries, top (already in mouth)");
   });
 
   test("REG-FE-CHART-038 a setting that cannot be read falls back to the simple chart the clinic had", async () => {

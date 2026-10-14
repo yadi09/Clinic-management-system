@@ -37,7 +37,32 @@ func chartDTO(ch dental.Chart) gin.H {
 	if anatomy == nil {
 		anatomy = map[string]dental.ToothAnatomy{}
 	}
-	h := gin.H{"teeth": ch.Teeth, "anatomy": anatomy}
+	items := make([]gin.H, 0, len(ch.Items))
+	for _, it := range ch.Items {
+		row := gin.H{"id": id.Encode(id.PrefixChartItem, it.ID), "tooth": it.Tooth, "kind": it.Kind, "status": it.Status,
+			"created_by": it.CreatedBy, "created_at": it.CreatedAt, "updated_by": it.UpdatedBy, "updated_at": it.UpdatedAt}
+		if it.Surface != "" {
+			row["surface"] = it.Surface
+		}
+		if it.Material != "" {
+			row["material"] = it.Material
+		}
+		if it.BridgeEnd != 0 {
+			row["bridge_end"] = it.BridgeEnd
+		}
+		if it.Note != "" {
+			row["note"] = it.Note
+		}
+		if it.DoneOn != nil {
+			row["done_on"] = *it.DoneOn
+		}
+		items = append(items, row)
+	}
+	positions := ch.Positions
+	if positions == nil {
+		positions = map[string]dental.Position{}
+	}
+	h := gin.H{"teeth": ch.Teeth, "anatomy": anatomy, "items": items, "positions": positions}
 	if ch.UpdatedAt != nil {
 		h["updated_at"] = *ch.UpdatedAt
 	}
@@ -314,6 +339,50 @@ func (h *Handlers) SaveAnatomy(c *gin.Context) {
 		return
 	}
 	ch, err := h.svc.SaveAnatomy(c.Request.Context(), pid, req.Changes)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, chartDTO(*ch))
+}
+
+// SaveChartItems: {"teeth": {"16": [{"kind": "filling", "surface": "O", "material":
+// "composite", "status": "planned"}, …], "21": []}} — each tooth named gets exactly
+// the items listed (an empty list clears it).
+func (h *Handlers) SaveChartItems(c *gin.Context) {
+	pid, ok := decode(c, id.PrefixPatient, c.Param("id"))
+	if !ok {
+		return
+	}
+	var req struct {
+		Teeth map[string][]dental.ItemInput `json:"teeth"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Teeth == nil {
+		httpx.Fail(c, apperr.Validation("send the teeth that changed"))
+		return
+	}
+	ch, err := h.svc.SaveChartItems(c.Request.Context(), pid, req.Teeth)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, chartDTO(*ch))
+}
+
+// SavePositions: {"changes": {"12": {"rotation": 20, …}, "11": null}}.
+func (h *Handlers) SavePositions(c *gin.Context) {
+	pid, ok := decode(c, id.PrefixPatient, c.Param("id"))
+	if !ok {
+		return
+	}
+	var req struct {
+		Changes map[string]*dental.Position `json:"changes"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Changes == nil {
+		httpx.Fail(c, apperr.Validation("send the teeth that changed"))
+		return
+	}
+	ch, err := h.svc.SavePositions(c.Request.Context(), pid, req.Changes)
 	if err != nil {
 		httpx.Fail(c, err)
 		return

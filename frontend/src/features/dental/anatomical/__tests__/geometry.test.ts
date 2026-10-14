@@ -52,7 +52,7 @@ describe("REG-FE-ANAT geometry", () => {
   });
 
   test("REG-FE-ANAT-006 with no gaps the teeth touch: the arch is exactly the sum of the slots and the midline sits between 11 and 21", () => {
-    const L = layout(SETS.adult.up, () => undefined);
+    const L = layout(SETS.adult.up, () => 0);
     expect(L.gaps).toEqual([]);
     expect(L.width).toBeCloseTo(SETS.adult.up.reduce((s, n) => s + SW(n), 0));
     for (let i = 1; i < L.items.length; i++) expect(L.items[i].x).toBeCloseTo(L.items[i - 1].x + L.items[i - 1].w);
@@ -61,7 +61,7 @@ describe("REG-FE-ANAT geometry", () => {
 
   test("REG-FE-ANAT-007 a gap belongs to the mesial side of its tooth, pushes the teeth apart by 4 px per mm, and keeps its real size", () => {
     const anatomy: Record<string, ToothAnatomy> = { 11: T({ gap_mesial: 2 }), 12: T({ gap_mesial: 1.5 }), 24: T({ gap_mesial: 1 }) };
-    const L = layout(SETS.adult.up, (n) => anatomy[n]);
+    const L = layout(SETS.adult.up, (n) => anatomy[n]?.gap_mesial ?? 0);
     const at = (n: number) => L.items.find((i) => i.n === n)!;
     // 11's gap is between 11 and 21 (its mesial side faces the midline)…
     const g11 = L.gaps.find((g) => g.g === 2)!;
@@ -73,12 +73,13 @@ describe("REG-FE-ANAT geometry", () => {
     // 12's mesial side faces 11; 24's faces 23.
     expect(L.gaps.find((g) => g.g === 1.5)!.x).toBeCloseTo(at(12).x + at(12).w);
     expect(L.gaps.find((g) => g.g === 1)!.x).toBeCloseTo(at(23).x + at(23).w);
-    const plain = layout(SETS.adult.up, () => undefined);
+    const plain = layout(SETS.adult.up, () => 0);
     expect(L.width).toBeCloseTo(plain.width + 4.5 * MM);
   });
 
-  test("REG-FE-ANAT-008 gaps on both sides of one contact add up; a missing tooth keeps no gap", () => {
-    const L = layout(SETS.adult.lo, (n) => ({ 31: T({ gap_mesial: 1 }), 41: T({ gap_mesial: 2 }), 35: T({ gap_mesial: 3, missing: true }) } as Record<number, ToothAnatomy>)[n]);
+  test("REG-FE-ANAT-008 gaps on both sides of one contact add up into one band", () => {
+    const g: Record<number, number> = { 31: 1, 41: 2 };
+    const L = layout(SETS.adult.lo, (n) => g[n] ?? 0);
     expect(L.gaps).toHaveLength(1);
     expect(L.gaps[0].g).toBe(3);
   });

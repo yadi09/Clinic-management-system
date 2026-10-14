@@ -13,8 +13,47 @@ export interface Chart {
    *  the same row as `teeth`, so switching charts never hides or loses anything.
    *  Absent from a server that predates it. */
   anatomy?: Record<string, ToothAnatomy>;
+  /** The anatomical chart (version 2): one row per thing recorded on a tooth, and each
+   *  tooth's position by FDI number. `anatomy` above is version 1, kept unchanged on
+   *  the server as a rollback copy and no longer read by the chart. */
+  items?: ChartItem[];
+  positions?: Record<string, Position>;
   updated_at?: string;
 }
+
+export type ItemKind = "caries" | "filling" | "crown" | "root_canal" | "extraction" | "missing" | "implant" | "bridge";
+export type ItemStatus = "existing" | "planned" | "done";
+export type FillMaterial = "composite" | "amalgam";
+export type CrownMaterial = "zirconia" | "pfm" | "gold" | "steel";
+
+/** One thing recorded on a tooth, as the server keeps it. */
+export interface ChartItem {
+  id: string;
+  tooth: number;
+  kind: ItemKind;
+  surface?: SurfaceKey;
+  material?: FillMaterial | CrownMaterial;
+  status: ItemStatus;
+  bridge_end?: number;
+  note?: string;
+  done_on?: string;
+  created_by?: string;
+  created_at?: string;
+  updated_by?: string;
+  updated_at?: string;
+}
+
+/** One item as the chart sends it. `note` absent keeps the stored note; "" clears it. */
+export interface ItemInput {
+  kind: ItemKind;
+  surface?: SurfaceKey;
+  material?: FillMaterial | CrownMaterial;
+  status: ItemStatus;
+  bridge_end?: number;
+  note?: string;
+}
+
+export interface Position { rotation: number; tipping: number; buccal_lingual: number; vertical: number; gap_mesial: number }
 
 export type SurfaceKey = "O" | "M" | "D" | "B" | "L";
 export type SurfaceFinding = "caries" | "filling";
@@ -206,6 +245,16 @@ export function saveChart(patientId: string, changes: Record<string, string>, op
  *  and gets the merged chart back (both charts). */
 export function saveAnatomy(patientId: string, changes: Record<string, ToothAnatomy | null>, opts?: { keepalive?: boolean }) {
   return apiFetch<Chart>(`/dental/patients/${patientId}/chart/anatomy`, { method: "PUT", body: { changes }, keepalive: opts?.keepalive });
+}
+
+/** Replaces the items of each tooth named (an empty list clears it); the server
+ *  refuses, in words, anything that breaks the chart's rules. Returns the whole chart. */
+export function saveChartItems(patientId: string, teeth: Record<string, ItemInput[]>, opts?: { keepalive?: boolean }) {
+  return apiFetch<Chart>(`/dental/patients/${patientId}/chart/items`, { method: "PUT", body: { teeth }, keepalive: opts?.keepalive });
+}
+/** Merges tooth positions by FDI number; null clears a tooth. */
+export function savePositions(patientId: string, changes: Record<string, Position | null>, opts?: { keepalive?: boolean }) {
+  return apiFetch<Chart>(`/dental/patients/${patientId}/chart/positions`, { method: "PUT", body: { changes }, keepalive: opts?.keepalive });
 }
 
 /** Which tooth chart this clinic draws on. */
