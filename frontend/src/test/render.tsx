@@ -54,5 +54,7 @@ export async function quietApiFetch(path: string): Promise<unknown> {
     };
   }
   if (path === "/org/clinic") return { name: "Test Clinic" };
+  // Existing chart tests draw on the simple chart, the one every clinic had.
+  if (path === "/dental/settings") return { chart_style: "simple" };
   return [];
 }

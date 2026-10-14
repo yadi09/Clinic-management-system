@@ -32,6 +32,7 @@ import {
   addPrescription, deleteDentalImage, deletePrescription, uploadDentalImage,
   type DentalImage, type ImageCategory, type Prescription, type RxItem, type Session,
 } from "@/features/dental/api";
+import { useToothText } from "@/features/dental/toothNumbering";
 
 /** Whole years, for the prescription header. */
 function ageYears(dob: string): number | undefined {
@@ -45,6 +46,7 @@ export const MAX_SESSION_IMAGES = 12;
 
 export function PrescriptionSection({ patientId, session, editable, onChanged }: { patientId: string; session: Session; editable: boolean; onChanged: () => void }) {
   const { user, activeBranchId } = useAuth();
+  const tt = useToothText();
   const clinic = useQuery({ queryKey: ["clinic"], queryFn: getClinic, retry: false });
   const branches = useQuery({ queryKey: ["branches"], queryFn: listBranches });
   const patient = useQuery({ queryKey: ["patient", patientId], queryFn: () => getPatient(patientId) });
@@ -83,7 +85,7 @@ export function PrescriptionSection({ patientId, session, editable, onChanged }:
       // What was done at the visit is the TREATMENT, not a diagnosis — it used to be
       // printed under the heading "Diagnosis".
       diagnoses: [],
-      context: session.procedure ? session.procedure + (session.tooth ? ` (${session.tooth})` : "") : undefined,
+      context: session.procedure ? session.procedure + (session.tooth ? ` (${tt(session.tooth)})` : "") : undefined,
       meds: rx.items,
     });
   };

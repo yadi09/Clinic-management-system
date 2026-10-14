@@ -39,6 +39,11 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	cfg.DELETE("/tooth-statuses/:id", h.DeleteToothStatus)
 	cfg.POST("/tooth-statuses/reorder", h.ReorderToothStatuses)
 
+	// Which chart this clinic draws on: everyone who sees a chart needs to know, and
+	// so does the admin who chooses it. Choosing is the clinic admin's decision.
+	d.GET("/settings", httpx.RequireAnyPermission("dental.manage", "dental.read", "clinic.manage"), h.GetDentalSettings)
+	d.PUT("/settings", httpx.RequirePermission("clinic.manage"), h.SaveDentalSettings)
+
 	view.GET("/outstanding", h.Outstanding)
 	view.GET("/patients/:id/summary", h.Summary)
 	view.GET("/patients/:id/chart", h.GetChart)
@@ -90,6 +95,7 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	// --- write: the clinical record, dentist only ---
 	g := d.Group("", httpx.RequirePermission("dental.manage"))
 	g.PUT("/patients/:id/chart", h.SaveChart)
+	g.PUT("/patients/:id/chart/anatomy", h.SaveAnatomy)
 
 	// Medical history is clinical and sensitive — read AND write sit with the
 	// clinician, and it is deliberately absent from Summary so the front desk's

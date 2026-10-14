@@ -41,6 +41,7 @@ import {
   createExam, deleteExam, listExams, updateExam,
   type Exam, type ExamBody, type ExamProcedure,
 } from "@/features/dental/api";
+import { useToothText } from "@/features/dental/toothNumbering";
 
 const todayISO = () => {
   const d = new Date();
@@ -400,12 +401,13 @@ function ReadChip({ label, tone }: { label: string; tone: "finding" | "test" | "
  * table, and it is the one actually being performed here.
  */
 function ReadToothWork({ rows }: { rows: ExamProcedure[] }) {
+  const tt = useToothText();
   return (
     <div className="divide-y overflow-hidden rounded-md border">
       {rows.map((p, i) => (
         <div key={i} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-2.5 py-2 text-sm">
           <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs font-semibold">
-            {p.tooth || "—"}
+            {tt(p.tooth) || "—"}
           </span>
           <span className="min-w-0 flex-1">{p.procedure}</span>
           {filled(p.notes) && <span className="w-full text-xs text-muted-foreground sm:w-auto">{p.notes}</span>}
@@ -611,10 +613,11 @@ function ProcedureTable({ rows, onChange }: { rows: ExamProcedure[]; onChange: (
 }
 
 function SelectGroupBlock({ label, codes }: { label: string; codes: string[] }) {
+  const tt = useToothText();
   return (
     <>
       <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
-      {codes.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+      {codes.map((c) => <SelectItem key={c} value={c}>{tt(c)}</SelectItem>)}
     </>
   );
 }

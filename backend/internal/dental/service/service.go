@@ -212,7 +212,7 @@ func genDates(start time.Time, unit string, intervalCount, n int) []time.Time {
 
 func (s *Service) GetChart(ctx context.Context, patientID uuid.UUID) (*dental.Chart, error) {
 	tid, _ := actorOf(ctx)
-	chart := &dental.Chart{Teeth: map[string]string{}}
+	chart := &dental.Chart{Teeth: map[string]string{}, Anatomy: map[string]dental.ToothAnatomy{}}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		return s.loadChartTx(ctx, tx, tid, patientID, chart)
 	})
@@ -223,9 +223,15 @@ func (s *Service) GetChart(ctx context.Context, patientID uuid.UUID) (*dental.Ch
 }
 
 func (s *Service) loadChartTx(ctx context.Context, tx pgx.Tx, tid, patientID uuid.UUID, chart *dental.Chart) error {
-	var raw []byte
+	if chart.Teeth == nil {
+		chart.Teeth = map[string]string{}
+	}
+	if chart.Anatomy == nil {
+		chart.Anatomy = map[string]dental.ToothAnatomy{}
+	}
+	var raw, anat []byte
 	var updated time.Time
-	e := tx.QueryRow(ctx, `SELECT teeth, updated_at FROM dental_charts WHERE tenant_id = $1 AND patient_id = $2`, tid, patientID).Scan(&raw, &updated)
+	e := tx.QueryRow(ctx, `SELECT teeth, anatomy, updated_at FROM dental_charts WHERE tenant_id = $1 AND patient_id = $2`, tid, patientID).Scan(&raw, &anat, &updated)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return nil
 	}
@@ -234,6 +240,11 @@ func (s *Service) loadChartTx(ctx context.Context, tx pgx.Tx, tid, patientID uui
 	}
 	if len(raw) > 0 {
 		if e := json.Unmarshal(raw, &chart.Teeth); e != nil {
+			return e
+		}
+	}
+	if len(anat) > 0 {
+		if e := json.Unmarshal(anat, &chart.Anatomy); e != nil {
 			return e
 		}
 	}
@@ -300,10 +311,10 @@ func (s *Service) SaveChart(ctx context.Context, patientID uuid.UUID, changes ma
 			tid, patientID, actor); e != nil {
 			return e
 		}
-		var raw []byte
+		var raw, rawAnat []byte
 		if e := tx.QueryRow(ctx,
-			`SELECT teeth FROM dental_charts WHERE tenant_id = $1 AND patient_id = $2 FOR UPDATE`,
-			tid, patientID).Scan(&raw); e != nil {
+			`SELECT teeth, anatomy FROM dental_charts WHERE tenant_id = $1 AND patient_id = $2 FOR UPDATE`,
+			tid, patientID).Scan(&raw, &rawAnat); e != nil {
 			return e
 		}
 		teeth := map[string]string{}
@@ -311,6 +322,11 @@ func (s *Service) SaveChart(ctx context.Context, patientID uuid.UUID, changes ma
 			if e := json.Unmarshal(raw, &teeth); e != nil {
 				return e
 			}
+		}
+		// The reply carries the anatomical chart too, so a save here never blanks it.
+		out.Anatomy = map[string]dental.ToothAnatomy{}
+		if e := json.Unmarshal(rawAnat, &out.Anatomy); e != nil {
+			return e
 		}
 		diff := map[string]any{}
 		for tooth, st := range changes {
@@ -352,6 +368,218 @@ func (s *Service) SaveChart(ctx context.Context, patientID uuid.UUID, changes ma
 		return nil, apperr.Internal(err)
 	}
 	return out, nil
+}
+
+// --- the anatomical chart ---
+
+// fdiTeeth is every tooth the anatomical chart may name: permanent 11–48 and
+// primary 51–85, by FDI number.
+var fdiTeeth = func() map[string]bool {
+	m := map[string]bool{}
+	for q := 1; q <= 4; q++ {
+		for i := 1; i <= 8; i++ {
+			m[fmt.Sprintf("%d%d", q, i)] = true
+		}
+	}
+	for q := 5; q <= 8; q++ {
+		for i := 1; i <= 5; i++ {
+			m[fmt.Sprintf("%d%d", q, i)] = true
+		}
+	}
+	return m
+}()
+
+var anatomySurfaces = map[string]bool{"O": true, "M": true, "D": true, "B": true, "L": true}
+
+// validAnatomy refuses a value the chart cannot draw, so what is stored is always
+// what the dentist saw.
+func validAnatomy(tooth string, a *dental.ToothAnatomy) error {
+	for k, v := range a.Surfaces {
+		if !anatomySurfaces[k] {
+			return apperr.Validation("unknown surface " + k + " on tooth " + tooth)
+		}
+		if v != "caries" && v != "filling" {
+			return apperr.Validation("a surface is caries or filling, not " + v + " (tooth " + tooth + ")")
+		}
+	}
+	in := func(v, lo, hi float64) bool { return v >= lo && v <= hi }
+	switch {
+	case !in(a.Rotation, -90, 90):
+		return apperr.Validation("rotation is between -90 and 90 degrees (tooth " + tooth + ")")
+	case !in(a.Tipping, -30, 30):
+		return apperr.Validation("tipping is between -30 and 30 degrees (tooth " + tooth + ")")
+	case !in(a.BuccalLingual, -3, 3):
+		return apperr.Validation("buccal/lingual shift is between -3 and 3 mm (tooth " + tooth + ")")
+	case !in(a.Vertical, -3, 3):
+		return apperr.Validation("vertical position is between -3 and 3 mm (tooth " + tooth + ")")
+	case !in(a.GapMesial, 0, 6):
+		return apperr.Validation("a gap is between 0 and 6 mm (tooth " + tooth + ")")
+	}
+	return nil
+}
+
+// emptyAnatomy is a tooth with nothing recorded: it is not stored at all.
+func emptyAnatomy(a *dental.ToothAnatomy) bool {
+	return a == nil || (len(a.Surfaces) == 0 && !a.Crown && !a.RootCanal && !a.Missing &&
+		a.Rotation == 0 && a.Tipping == 0 && a.BuccalLingual == 0 && a.Vertical == 0 && a.GapMesial == 0)
+}
+
+// SaveAnatomy applies anatomical-chart changes: {fdi: whole tooth record}, and a null
+// (or an all-empty record) clears the tooth. It merges under the same row lock as
+// SaveChart, so two people on two teeth both keep their work, and every save is in
+// the chart's history (dental.chart.saved, "anatomy" changes with from/to).
+func (s *Service) SaveAnatomy(ctx context.Context, patientID uuid.UUID, changes map[string]*dental.ToothAnatomy) (*dental.Chart, error) {
+	tid, actor := actorOf(ctx)
+	for tooth, a := range changes {
+		if !fdiTeeth[tooth] {
+			return nil, apperr.Validation("unknown tooth " + tooth)
+		}
+		if a != nil {
+			if e := validAnatomy(tooth, a); e != nil {
+				return nil, e
+			}
+		}
+	}
+	out := &dental.Chart{}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		if _, e := tx.Exec(ctx,
+			`INSERT INTO dental_charts (tenant_id, patient_id, teeth, updated_by, updated_at)
+			 VALUES ($1, $2, '{}'::jsonb, $3, now()) ON CONFLICT (tenant_id, patient_id) DO NOTHING`,
+			tid, patientID, actor); e != nil {
+			return e
+		}
+		var rawTeeth, rawAnat []byte
+		if e := tx.QueryRow(ctx,
+			`SELECT teeth, anatomy FROM dental_charts WHERE tenant_id = $1 AND patient_id = $2 FOR UPDATE`,
+			tid, patientID).Scan(&rawTeeth, &rawAnat); e != nil {
+			return e
+		}
+		out.Teeth = map[string]string{}
+		if len(rawTeeth) > 0 {
+			if e := json.Unmarshal(rawTeeth, &out.Teeth); e != nil {
+				return e
+			}
+		}
+		anat := map[string]dental.ToothAnatomy{}
+		if len(rawAnat) > 0 {
+			if e := json.Unmarshal(rawAnat, &anat); e != nil {
+				return e
+			}
+		}
+		diff := map[string]any{}
+		for tooth, a := range changes {
+			was, had := anat[tooth]
+			if emptyAnatomy(a) {
+				if !had {
+					continue
+				}
+				delete(anat, tooth)
+				diff[tooth] = map[string]any{"from": was, "to": nil}
+				continue
+			}
+			next := *a
+			if next.Surfaces == nil {
+				next.Surfaces = map[string]string{}
+			}
+			if had && sameAnatomy(was, next) {
+				continue
+			}
+			anat[tooth] = next
+			var from any
+			if had {
+				from = was
+			}
+			diff[tooth] = map[string]any{"from": from, "to": next}
+		}
+		out.Anatomy = anat
+		if len(diff) == 0 {
+			return nil
+		}
+		merged, e := json.Marshal(anat)
+		if e != nil {
+			return e
+		}
+		var at time.Time
+		if e := tx.QueryRow(ctx,
+			`UPDATE dental_charts SET anatomy = $3, updated_by = $4, updated_at = now()
+			  WHERE tenant_id = $1 AND patient_id = $2 RETURNING updated_at`,
+			tid, patientID, merged, actor).Scan(&at); e != nil {
+			return e
+		}
+		u := at.Format(time.RFC3339)
+		out.UpdatedAt = &u
+		return s.publisher.Publish(ctx, tx, &tid, "patient", patientID, "dental.chart.saved",
+			map[string]any{"patient_id": patientID, "anatomy": diff})
+	})
+	if ae, ok := apperr.As(err); ok {
+		return nil, ae
+	}
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+func sameAnatomy(a, b dental.ToothAnatomy) bool {
+	x, _ := json.Marshal(a)
+	y, _ := json.Marshal(b)
+	return string(x) == string(y)
+}
+
+// --- the clinic's dental settings ---
+
+// defaultChartStyle is what a clinic without a dental_settings row gets: every clinic
+// that existed when the anatomical chart arrived was given a row pinning "simple".
+const defaultChartStyle = "anatomical"
+
+func (s *Service) GetDentalSettings(ctx context.Context) (*dental.DentalSettings, error) {
+	tid, _ := actorOf(ctx)
+	out := &dental.DentalSettings{ChartStyle: defaultChartStyle}
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		e := tx.QueryRow(ctx, `SELECT chart_style FROM dental_settings WHERE tenant_id = $1`, tid).Scan(&out.ChartStyle)
+		if errors.Is(e, pgx.ErrNoRows) {
+			return nil
+		}
+		return e
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+func (s *Service) SaveDentalSettings(ctx context.Context, in dental.DentalSettings) (*dental.DentalSettings, error) {
+	if in.ChartStyle != "simple" && in.ChartStyle != "anatomical" {
+		return nil, apperr.Validation("the tooth chart is simple or anatomical")
+	}
+	tid, actor := actorOf(ctx)
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		var was string
+		e := tx.QueryRow(ctx, `SELECT chart_style FROM dental_settings WHERE tenant_id = $1 FOR UPDATE`, tid).Scan(&was)
+		if errors.Is(e, pgx.ErrNoRows) {
+			was = defaultChartStyle
+		} else if e != nil {
+			return e
+		}
+		if _, e := tx.Exec(ctx,
+			`INSERT INTO dental_settings (tenant_id, chart_style, updated_by, updated_at) VALUES ($1, $2, $3, now())
+			 ON CONFLICT (tenant_id) DO UPDATE SET chart_style = EXCLUDED.chart_style, updated_by = EXCLUDED.updated_by, updated_at = now()`,
+			tid, in.ChartStyle, actor); e != nil {
+			return e
+		}
+		if was == in.ChartStyle {
+			return nil
+		}
+		return s.publisher.Publish(ctx, tx, &tid, "tenant", tid, "dental.settings.saved",
+			map[string]any{"chart_style": map[string]string{"from": was, "to": in.ChartStyle}})
+	})
+	if ae, ok := apperr.As(err); ok {
+		return nil, ae
+	}
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return &dental.DentalSettings{ChartStyle: in.ChartStyle}, nil
 }
 
 // --- medical history (pre-treatment health questionnaire) ---

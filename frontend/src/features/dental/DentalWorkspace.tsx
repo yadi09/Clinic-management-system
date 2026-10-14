@@ -37,6 +37,8 @@ import { AllergyDialog } from "@/features/dental/AllergyDialog";
 import { ExaminationCard } from "@/features/dental/ExaminationCard";
 import { invalidateDental } from "@/features/dental/invalidate";
 import { ToothChart } from "@/features/dental/ToothChart";
+import { AnatomicalWorkspace } from "@/features/dental/anatomical/AnatomicalWorkspace";
+import { AnatomyNote } from "@/features/dental/anatomical/AnatomyNote";
 import { pushEntry, type HistoryEntry } from "@/features/dental/chart/chartModel";
 import { useToothStatuses } from "@/features/dental/toothStatus";
 import { FLAT_TEETH, ToothMultiSelect } from "@/features/dental/shared/pickers";
@@ -49,7 +51,7 @@ import { UnbilledRows, owedOnPlan } from "@/features/dental/shared/UnbilledWork"
 import { ImageGallery } from "@/features/dental/shared/visitRecord";
 
 import {
-  createPlan, deleteDentalImage, dentalSummary,
+  createPlan, deleteDentalImage, dentalSummary, getDentalSettings,
   listDentalImages, saveChart, chartChanges, uploadDentalImage,
   type Balance, type Plan,
 } from "@/features/dental/api";
@@ -174,6 +176,9 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
     refetchInterval: (q) => (Number(q.state.data?.balance?.at_cashier ?? 0) > 0 ? 15_000 : false),
   });
   const invalidate = () => invalidateDental(qc, patientId);
+  // Which tooth chart this clinic draws on — the clinic admin's choice. Both charts
+  // share one record, so the choice changes the drawing, never the data.
+  const dentalSettings = useQuery({ queryKey: ["dental-settings"], queryFn: getDentalSettings, staleTime: 300_000, retry: 1 });
 
   // Resolution replaces filtering. The old code filtered plans by date scope FIRST
   // and then auto-picked a tab from what survived, so a patient with no session today
@@ -509,13 +514,26 @@ export function DentalWorkspace({ patientId }: { patientId: string }) {
           },
           ...(editable ? [{
             key: "chart", label: "Tooth chart", icon: SHELF_ICONS.Grid3x3,
-            badge: Object.keys(teeth).length || undefined,
+            badge: (Object.keys(teeth).length + Object.keys(summary.data.chart.anatomy ?? {}).length) || undefined,
             render: () => (
-              <div className="space-y-2">
-                <ToothChart teeth={teeth} editable={editable} onApply={applyChanges}
-                  onUndo={undo} onRedo={redo} canUndo={undoStack.current.length > 0} canRedo={redoStack.current.length > 0}
-                  saving={chartSave.isPending || queued.current !== null} failed={chartFailed} />
-              </div>
+              dentalSettings.isLoading ? <Skeleton className="h-64 w-full" /> :
+              // A setting that cannot be read falls back to the chart the clinic had.
+              dentalSettings.data?.chart_style === "anatomical" ? (
+                <AnatomicalWorkspace patientId={patientId} server={summary.data!.chart.anatomy} editable={editable}
+                  marks={(palmer) => {
+                    const code = teeth[palmer];
+                    if (!code) return null;
+                    return { code, label: toothSts.labelOf(code), color: toothSts.styleOf(code).borderColor };
+                  }}
+                  onClearMark={(palmer) => applyChanges({ [palmer]: "" }, `${palmer}: mark removed`)} />
+              ) : (
+                <div className="space-y-2">
+                  <ToothChart teeth={teeth} editable={editable} onApply={applyChanges}
+                    onUndo={undo} onRedo={redo} canUndo={undoStack.current.length > 0} canRedo={redoStack.current.length > 0}
+                    saving={chartSave.isPending || queued.current !== null} failed={chartFailed} />
+                  <AnatomyNote anatomy={summary.data!.chart.anatomy} />
+                </div>
+              )
             ),
           }] : []),
           ...(editable ? [{

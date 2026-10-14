@@ -21,6 +21,7 @@ vi.mock("@/features/admin/api", async (orig) => ({ ...(await orig<object>()), ..
 const dental = vi.hoisted(() => ({
   listProcedures: vi.fn(), createProcedure: vi.fn(), updateProcedure: vi.fn(), deleteProcedure: vi.fn(), reorderProcedures: vi.fn(),
   listToothStatuses: vi.fn(), createToothStatus: vi.fn(), updateToothStatus: vi.fn(), deleteToothStatus: vi.fn(), reorderToothStatuses: vi.fn(),
+  getDentalSettings: vi.fn(), saveDentalSettings: vi.fn(),
 }));
 vi.mock("@/features/dental/api", async (orig) => ({ ...(await orig<object>()), ...dental }));
 const auth = vi.hoisted(() => ({ changeEmailApi: vi.fn(), changePasswordApi: vi.fn(), signOutOtherDevicesApi: vi.fn() }));
@@ -101,10 +102,10 @@ beforeEach(() => {
 });
 
 describe("REG-FE-SETTINGS sections", () => {
-  test("REG-FE-SETTINGS-001 a dental clinic's rail: its procedures and tooth conditions; no vitals, no diagnosis catalog, no branches", () => {
+  test("REG-FE-SETTINGS-001 a dental clinic's rail: its procedures, tooth chart and tooth conditions; no vitals, no diagnosis catalog, no branches", () => {
     open();
     const items = within(rail()).getAllByRole("button").map((b) => b.textContent);
-    expect(items).toEqual(["Account & security", "Clinic profile", "Printing", "Visit flow", "Payment methods", "Drugs & allergens", "Dental procedures", "Tooth conditions"]);
+    expect(items).toEqual(["Account & security", "Clinic profile", "Printing", "Visit flow", "Payment methods", "Drugs & allergens", "Dental procedures", "Tooth chart", "Tooth conditions"]);
   });
 
   test("REG-FE-SETTINGS-002 a general clinic's rail has vitals and diagnoses, not dental", () => {
@@ -893,6 +894,52 @@ describe("REG-FE-SETTINGS general-clinic panes (reachable by URL)", () => {
     expect(await screen.findByText("Laboratory")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "On" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Add branch/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("REG-FE-SETTINGS tooth chart", () => {
+  const radio = (name: RegExp) => within(screen.getByRole("radiogroup", { name: "Tooth chart" })).getByRole("radio", { name });
+
+  test("REG-FE-SETTINGS-092 the admin sees which chart is in use and switches with one press", async () => {
+    dental.getDentalSettings.mockResolvedValue({ chart_style: "simple" });
+    dental.saveDentalSettings.mockResolvedValue({ chart_style: "anatomical" });
+    const { user } = open("toothchart");
+    await waitFor(() => expect(radio(/^Simple/)).toHaveAttribute("aria-checked", "true"));
+    expect(radio(/^Simple/)).toHaveTextContent("In use");
+    expect(radio(/^Anatomical/)).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByText(/nothing a dentist recorded is lost or hidden/)).toBeInTheDocument();
+    await user.click(radio(/^Anatomical/));
+    await waitFor(() => expect(dental.saveDentalSettings).toHaveBeenCalledWith({ chart_style: "anatomical" }));
+    await waitFor(() => expect(radio(/^Anatomical/)).toHaveAttribute("aria-checked", "true"));
+    expect(toastSpy.success).toHaveBeenCalledWith("Tooth chart: Anatomical");
+    // Pressing the one already in use sends nothing.
+    await user.click(radio(/^Anatomical/));
+    expect(dental.saveDentalSettings).toHaveBeenCalledTimes(1);
+  });
+
+  test("REG-FE-SETTINGS-093 a refused change says why and leaves the choice as it was", async () => {
+    dental.getDentalSettings.mockResolvedValue({ chart_style: "anatomical" });
+    dental.saveDentalSettings.mockRejectedValue(new AppError(403, "FORBIDDEN", "You do not have permission"));
+    const { user } = open("toothchart");
+    await waitFor(() => expect(radio(/^Anatomical/)).toHaveAttribute("aria-checked", "true"));
+    await user.click(radio(/^Simple/));
+    await waitFor(() => expect(toastSpy.error).toHaveBeenCalledWith("You do not have permission"));
+    expect(radio(/^Anatomical/)).toHaveAttribute("aria-checked", "true");
+  });
+
+  test("REG-FE-SETTINGS-094 someone who is not the admin sees the choice but cannot change it", async () => {
+    setAuth({ perms: ["dental.manage", "dental.read"] });
+    dental.getDentalSettings.mockResolvedValue({ chart_style: "simple" });
+    open("toothchart");
+    await waitFor(() => expect(radio(/^Simple/)).toHaveAttribute("aria-checked", "true"));
+    expect(radio(/^Anatomical/)).toBeDisabled();
+    expect(screen.getByText("Only the clinic's administrator can change this.")).toBeInTheDocument();
+  });
+
+  test("REG-FE-SETTINGS-095 a choice that cannot be loaded says so", async () => {
+    dental.getDentalSettings.mockRejectedValue(new Error("down"));
+    open("toothchart");
+    expect(await screen.findByText("The current choice could not be loaded.")).toBeInTheDocument();
   });
 });
 

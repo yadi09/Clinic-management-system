@@ -34,6 +34,7 @@ import { UnbilledRemindDialog } from "@/features/messaging/UnbilledRemind";
 import { DualDate } from "@/components/DualDate";
 import { birr } from "@/features/dental/money";
 import { collectSession, unbilledTreatment, writeOffSession, type UnbilledLane, type UnbilledRow } from "@/features/dental/api";
+import { useToothText } from "@/features/dental/toothNumbering";
 
 const LANE: Record<UnbilledLane, { label: string; hint: string; tone: string }> = {
   never_billed: {
@@ -63,6 +64,7 @@ function ageTone(days: number) {
 }
 
 export function UnbilledPage() {
+  const tt = useToothText();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { can } = useAuth();
@@ -310,7 +312,7 @@ export function UnbilledPage() {
                           )}
                           {r.kind === "visit" && <>session {r.seq} of {r.session_count}</>}
                           {r.procedure && <span className="text-muted-foreground"> · {r.procedure}</span>}
-                          {r.tooth && <span className="text-muted-foreground"> · {r.tooth}</span>}
+                          {r.tooth && <span className="text-muted-foreground"> · {tt(r.tooth)}</span>}
                         </p>
                         <p className="mt-0.5 text-xs text-muted-foreground">
                           {r.kind === "deposit" ? "agreed " : ""}

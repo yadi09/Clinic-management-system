@@ -132,3 +132,51 @@
     html { -webkit-tap-highlight-color: transparent; }
   }
 }
+
+/* The anatomical tooth chart (features/dental/anatomical). The reference prototype
+   draws with its own variables; here they are mapped onto the app's theme so the
+   chart follows light and dark mode. Only the clinical colours (caries, filling,
+   crown, root canal, gap) are fixed, in geometry.ts, so they mean the same in both. */
+.tooth-anatomy {
+  --surface-1: hsl(var(--muted));
+  --surface-2: hsl(var(--card));
+  --text-primary: hsl(var(--foreground));
+  --text-secondary: hsl(var(--muted-foreground));
+  --text-muted: hsl(var(--muted-foreground) / 0.75);
+  --text-accent: #185FA5;
+  --text-warning: #B5651D;
+  --bg-accent: #E6F1FB;
+  --border: hsl(var(--border));
+  --border-strong: hsl(var(--muted-foreground) / 0.45);
+  --border-accent: #378ADD;
+}
+.dark .tooth-anatomy {
+  --text-accent: #85B7EB;
+  --text-warning: #EF9F27;
+  --bg-accent: #0C447C;
+}
+.tooth-anatomy .ta-btn {
+  color: var(--text-primary); background: var(--surface-2);
+  border: 0.5px solid var(--border-strong); border-radius: 8px; cursor: pointer;
+}
+.tooth-anatomy .ta-btn:hover:not(:disabled) { background: var(--surface-1); }
+.tooth-anatomy .ta-btn:disabled { opacity: 0.45; cursor: default; }
+.tooth-anatomy .ta-tool { font-size: 13px; padding: 6px 10px; display: flex; align-items: center; gap: 6px; }
+.tooth-anatomy .ta-tool.on { border: 1.5px solid var(--border-accent); background: var(--bg-accent); color: var(--text-accent); }
+.tooth-anatomy .ta-seg { display: inline-flex; border: 0.5px solid var(--border-strong); border-radius: 8px; overflow: hidden; }
+.tooth-anatomy .ta-seg button { border: none; border-radius: 0; font-size: 13px; padding: 6px 14px; background: transparent; color: var(--text-primary); cursor: pointer; }
+.tooth-anatomy .ta-seg button.on { background: var(--bg-accent); color: var(--text-accent); font-weight: 500; }
+.tooth-anatomy .ta-surf { stroke: var(--text-secondary); stroke-width: 1; }
+.tooth-anatomy .ta-hit:focus { outline: none; }
+.tooth-anatomy .ta-hit:focus-visible, .tooth-anatomy .ta-surf:focus-visible {
+  outline: none; stroke: var(--border-accent); stroke-width: 2;
+}
+.tooth-anatomy .ta-btn:focus-visible, .tooth-anatomy .ta-seg button:focus-visible {
+  outline: 2px solid var(--border-accent); outline-offset: 1px;
+}
+@media (max-width: 767px) {
+  .tooth-anatomy .ta-tool { padding: 8px 11px; } /* a thumb, not a cursor */
+  /* 32 teeth across a phone is ~9 px a tooth, too narrow to tap. */
+  .tooth-anatomy .ta-chart-scroll { overflow-x: auto; overscroll-behavior-x: contain; }
+  .tooth-anatomy .ta-chart-scroll > svg { min-width: 640px; }
+}

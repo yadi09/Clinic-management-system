@@ -41,6 +41,12 @@ async function newPlan(patientId: string, title: string, days: number[], fee = "
   return { plan: full, doctor };
 }
 
+/** Which tooth chart the test clinic draws on — the clinic admin's setting. */
+async function chartStyle(style: "simple" | "anatomical") {
+  const owner = await apiAs("owner");
+  await owner("PUT", "/dental/settings", { chart_style: style });
+}
+
 const cardHeading = (page: Page) => page.getByRole("heading", { level: 3, name: /^(Next: visit|Visit) \d/ });
 
 test("REG-E2E-010 doctor starts a treatment from the card and sees visit 1 booked today", async ({ page }) => {
@@ -128,6 +134,7 @@ test("REG-E2E-012 the cashier takes the payment and the patient owes nothing for
 });
 
 test("REG-E2E-013 a tooth set on the chart is still there after a reload", async ({ page }) => {
+  await chartStyle("simple");
   const p = await newPatient();
   await login(page, "doctor");
   await page.goto(`/patients/${p.id}`);
@@ -173,6 +180,7 @@ const chartChips = (page: import("@playwright/test").Page) => page.getByRole("gr
 const tooth = (page: import("@playwright/test").Page, code: string) => page.getByRole("button", { name: new RegExp(`^${code}( —|$)`) });
 
 test("REG-E2E-021 a whole mouth is charted in a few taps, survives a reload, and can be cleared and undone", async ({ page }) => {
+  await chartStyle("simple");
   const p = await newPatient();
   await login(page, "doctor");
   await page.goto(`/patients/${p.id}`);
@@ -214,6 +222,7 @@ test("REG-E2E-021 a whole mouth is charted in a few taps, survives a reload, and
 });
 
 test("REG-E2E-022 on a phone the condition bar is at the bottom and a tap on a tooth with nothing chosen offers a menu", async ({ page }) => {
+  await chartStyle("simple");
   await page.setViewportSize({ width: 390, height: 844 });
   const p = await newPatient();
   await login(page, "doctor");
@@ -309,4 +318,137 @@ test("REG-E2E-024 anyone with the paper can check a prescription without an acco
   await expect(phone.getByRole("status")).toContainText("Do not dispense.");
   await expect(phone.getByText("Amoxicillin 500 mg")).toHaveCount(0);
   await context.close();
+});
+
+// --- the anatomical chart ---------------------------------------------------------
+
+const anat = (page: Page, n: number) => page.getByRole("button", { name: new RegExp(`^Tooth ${n},`) });
+const anatTool = (page: Page, name: string) => page.getByRole("toolbar", { name: "Chart tools" }).getByRole("button", { name: new RegExp(`^${name}$`) });
+const anatSurface = (page: Page, name: string) => page.getByRole("group", { name: "Tooth surfaces" }).getByRole("button", { name: new RegExp(`^${name}`) });
+const anatInfo = (page: Page) => page.getByTestId("tooth-info");
+
+test("REG-E2E-025 the admin turns on the anatomical chart; every condition, every position and gaps on both arches survive a reload", async ({ page, browser }, testInfo) => {
+  await chartStyle("simple");
+  // The admin chooses the chart in Settings, on their own computer.
+  const adminCtx = await browser.newContext({ baseURL: testInfo.project.use.baseURL, timezoneId: "Africa/Addis_Ababa" });
+  const admin = await adminCtx.newPage();
+  await login(admin, "owner");
+  await admin.goto("/settings?section=toothchart");
+  const choice = admin.getByRole("radiogroup", { name: "Tooth chart" });
+  await choice.getByRole("radio", { name: /^Anatomical/ }).click();
+  await expect(choice.getByRole("radio", { name: /^Anatomical/ })).toHaveAttribute("aria-checked", "true");
+  await adminCtx.close();
+
+  const p = await newPatient();
+  await login(page, "doctor");
+  await page.goto(`/patients/${p.id}`);
+  await page.getByRole("button", { name: /^Tooth chart/ }).click();
+  await expect(page.getByRole("radio", { name: "Adult (32)" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("button", { name: /^Tooth \d+,/ })).toHaveCount(32);
+
+  const saved = () => page.waitForResponse((r) => r.url().includes(`/dental/patients/${p.id}/chart/anatomy`) && r.request().method() === "PUT");
+
+  // Surfaces: caries and filling.
+  await anat(page, 16).click();
+  await anatTool(page, "Caries").click();
+  await anatSurface(page, "Occlusal").click();
+  await anatTool(page, "Filling").click();
+  let s = saved();
+  await anatSurface(page, "Mesial").click();
+  expect((await s).ok()).toBe(true);
+  // Whole tooth: crown, root canal, missing.
+  await anat(page, 26).click();
+  await anatTool(page, "Crown").click();
+  s = saved();
+  await anatTool(page, "Root canal").click();
+  expect((await s).ok()).toBe(true);
+  await anat(page, 46).click();
+  s = saved();
+  await anatTool(page, "Missing").click();
+  expect((await s).ok()).toBe(true);
+  // Every position slider on one tooth.
+  await anat(page, 12).click();
+  await page.getByLabel("Rotation").fill("35");
+  await page.getByLabel("Tipping").fill("-10");
+  await page.getByLabel("Buccal/lingual").fill("1.5");
+  await page.getByLabel("Vertical").fill("-2.5");
+  s = saved();
+  await page.getByLabel("Gap (mesial)").fill("2");
+  expect((await s).ok()).toBe(true);
+  // Gaps on both sides of both arches.
+  for (const [n, g] of [[11, "2"], [24, "1"], [35, "3"], [45, "1.5"]] as const) {
+    await anat(page, n).click();
+    s = saved();
+    await page.getByLabel("Gap (mesial)").fill(g);
+    expect((await s).ok()).toBe(true);
+  }
+  // The child chart is separate.
+  await page.getByRole("radio", { name: "Child (20)" }).click();
+  await expect(page.getByRole("button", { name: /^Tooth \d+,/ })).toHaveCount(20);
+  await anat(page, 54).click();
+  await anatTool(page, "Caries").click();
+  s = saved();
+  await anatSurface(page, "Distal").click();
+  expect((await s).ok()).toBe(true);
+  await page.getByRole("radio", { name: "Adult (32)" }).click();
+  await page.locator(".tooth-anatomy").screenshot({ path: testInfo.outputPath("anatomical-adult.png") });
+
+  // Reload: everything is still there.
+  await page.reload();
+  await page.getByRole("button", { name: /^Tooth chart/ }).click();
+  await anat(page, 16).click();
+  await expect(anatInfo(page)).toHaveText("Upper right first molar. caries (occlusal), filling (mesial)");
+  await anat(page, 26).click();
+  await expect(anatInfo(page)).toHaveText("Upper left first molar. crown, root canal");
+  await anat(page, 46).click();
+  await expect(anatInfo(page)).toHaveText("Lower right first molar. missing");
+  await anat(page, 12).click();
+  await expect(anatInfo(page)).toHaveText("Upper right lateral incisor. rotated 35° clockwise, tipped 10° distally, 1.5mm buccal, 2.5mm intruded, 2mm gap on mesial side");
+  for (const [n, g] of [[11, "2mm"], [24, "1mm"], [35, "3mm"], [45, "1.5mm"]] as const) {
+    await anat(page, n).click();
+    await expect(anatInfo(page)).toContainText(`${g} gap on mesial side`);
+  }
+  // The gap pills show the real size on the chart.
+  for (const g of ["2mm", "1mm", "3mm", "1.5mm"]) await expect(page.locator(".tooth-anatomy svg text", { hasText: new RegExp(`^${g.replace(".", "\\.")}$`) }).first()).toBeVisible();
+  await page.getByRole("radio", { name: "Child (20)" }).click();
+  await anat(page, 54).click();
+  await expect(anatInfo(page)).toHaveText("Upper right primary first molar. caries (distal)");
+
+  // Switching the clinic back to the simple chart hides nothing.
+  await chartStyle("simple");
+  await page.reload();
+  await page.getByRole("button", { name: /^Tooth chart/ }).click();
+  const note = page.getByRole("region", { name: "Recorded on the anatomical chart" });
+  await expect(note).toContainText("16 (UR6) Upper right first molar: caries (occlusal), filling (mesial)");
+  await expect(note).toContainText("54 Upper right primary first molar: caries (distal)");
+});
+
+test("REG-E2E-026 on a phone the anatomical chart fits the screen and a tooth is chosen with a tap", async ({ page }, testInfo) => {
+  await chartStyle("anatomical");
+  await page.setViewportSize({ width: 390, height: 844 });
+  const p = await newPatient();
+  await login(page, "doctor");
+  await page.goto(`/patients/${p.id}`);
+  await page.getByRole("button", { name: /^Tooth chart/ }).click();
+  const svg = page.getByRole("group", { name: "Adult tooth chart" });
+  await expect(svg).toBeVisible();
+  // The arches keep a tappable size and scroll in their own box…
+  const scroller = page.locator(".ta-chart-scroll");
+  const box = (await scroller.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(390);
+  expect((await svg.boundingBox())!.width).toBeGreaterThanOrEqual(640);
+  const slot = (await anat(page, 36).boundingBox())!;
+  expect(slot.width).toBeGreaterThanOrEqual(16); // a fingertip, not a pixel
+  // …and the page itself never scrolls sideways.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await anat(page, 28).click(); // the far end: scrolled to, then tapped
+  await expect(page.getByText("Tooth 28", { exact: true })).toBeVisible();
+  await anat(page, 36).click();
+  await expect(page.getByText("Tooth 36", { exact: true })).toBeVisible();
+  await page.locator(".tooth-anatomy").screenshot({ path: testInfo.outputPath("anatomical-phone.png") });
+  // Dark mode: the chart takes its colours from the app's theme.
+  await page.evaluate(() => document.documentElement.classList.add("dark"));
+  await page.locator(".tooth-anatomy").screenshot({ path: testInfo.outputPath("anatomical-phone-dark.png") });
+  await chartStyle("simple");
 });

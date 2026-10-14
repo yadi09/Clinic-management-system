@@ -17,8 +17,33 @@ import (
 // Chart is a patient's odontogram: a map of tooth code (Palmer, e.g. "UR1") to a
 // status string. The frontend owns the status vocabulary; we store the map verbatim.
 type Chart struct {
-	Teeth     map[string]string `json:"teeth"`
-	UpdatedAt *string           `json:"updated_at,omitempty"`
+	Teeth map[string]string `json:"teeth"`
+	// Anatomy is the anatomical chart's record, by FDI number ("11", "54"): surfaces,
+	// whole-tooth findings and the tooth's position. It lives beside Teeth on the same
+	// row, so a clinic can switch charts without losing or hiding anything.
+	Anatomy   map[string]ToothAnatomy `json:"anatomy"`
+	UpdatedAt *string                 `json:"updated_at,omitempty"`
+}
+
+// ToothAnatomy is one tooth on the anatomical chart. Surfaces maps O/M/D/B/L to
+// "caries" or "filling". Angles are degrees, distances millimetres.
+type ToothAnatomy struct {
+	Surfaces      map[string]string `json:"surfaces"`
+	Crown         bool              `json:"crown"`
+	RootCanal     bool              `json:"root_canal"`
+	Missing       bool              `json:"missing"`
+	Rotation      float64           `json:"rotation"`       // -90..90, + = clockwise
+	Tipping       float64           `json:"tipping"`        // -30..30, + = mesial
+	BuccalLingual float64           `json:"buccal_lingual"` // -3..3, + = buccal
+	Vertical      float64           `json:"vertical"`       // -3..3, + = extruded
+	GapMesial     float64           `json:"gap_mesial"`     // 0..6
+}
+
+// DentalSettings are the clinic's dental choices. ChartStyle is "simple" (squares,
+// Palmer numbers, the clinic's own conditions) or "anatomical" (FDI numbers,
+// surfaces and tooth position, adult and child teeth).
+type DentalSettings struct {
+	ChartStyle string `json:"chart_style"`
 }
 
 // Image is a stored dental image (X-ray, before/after), backed by the shared
@@ -389,6 +414,10 @@ type Service interface {
 
 	GetChart(ctx context.Context, patientID uuid.UUID) (*Chart, error)
 	SaveChart(ctx context.Context, patientID uuid.UUID, teeth map[string]string) (*Chart, error)
+	// SaveAnatomy merges anatomical-chart changes by FDI number; nil clears a tooth.
+	SaveAnatomy(ctx context.Context, patientID uuid.UUID, changes map[string]*ToothAnatomy) (*Chart, error)
+	GetDentalSettings(ctx context.Context) (*DentalSettings, error)
+	SaveDentalSettings(ctx context.Context, in DentalSettings) (*DentalSettings, error)
 
 	// Medical history (pre-treatment health questionnaire). Deliberately NOT part of
 	// Summary: Summary is readable by the front desk, and this is clinical.

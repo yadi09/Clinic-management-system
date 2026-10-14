@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/app/auth-context";
+import { getDentalSettings, saveDentalSettings, type ChartStyle } from "@/features/dental/api";
 import { createProcedure, deleteProcedure, listProcedures, reorderProcedures, updateProcedure,
   createToothStatus, deleteToothStatus, listToothStatuses, reorderToothStatuses, updateToothStatus } from "@/features/dental/api";
 import { changeEmailApi, changePasswordApi, signOutOtherDevicesApi } from "@/features/auth/api";
@@ -72,7 +73,7 @@ import { PrintingSettings } from "@/features/printing/PrintingSettings";
 import { AppError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
-type SectionKey = "account" | "profile" | "printing" | "locations" | "flow" | "payments" | "vitals" | "diagnoses" | "drugs" | "procedures" | "toothconditions";
+type SectionKey = "account" | "profile" | "printing" | "locations" | "flow" | "payments" | "vitals" | "diagnoses" | "drugs" | "procedures" | "toothchart" | "toothconditions";
 // flag: shown only with it. hideWhen: hidden with it — a dental clinic has no
 // triage (so no vitals form) and its examination's diagnosis is free text, not the
 // general clinic's catalogue.
@@ -102,6 +103,7 @@ const SECTIONS: { group: string; items: { key: SectionKey; label: string; icon: 
       // Dental only: the list of what this practice does. Hidden elsewhere by
       // the same flag that hides the chart and the treatment plan.
       { key: "procedures", label: "Dental procedures", icon: Stethoscope, flag: "dental" },
+      { key: "toothchart", label: "Tooth chart", icon: Stethoscope, flag: "dental" },
       { key: "toothconditions", label: "Tooth conditions", icon: ClipboardList, flag: "dental" },
     ],
   },
@@ -169,6 +171,7 @@ export function SettingsPage() {
           {active === "diagnoses" && <DiagnosisCatalogCard manage={manage} />}
           {active === "drugs" && <DrugLibraryCard manage={manage} />}
           {active === "procedures" && <DentalProceduresCard manage={manage} />}
+          {active === "toothchart" && <ToothChartStyleCard manage={manage} />}
           {active === "toothconditions" && <ToothConditionsCard manage={manage} />}
         </div>
       </div>
@@ -1623,6 +1626,75 @@ function DentalProceduresCard({ manage }: { manage: boolean }) {
  * exactly as the dentist marked it. Removing one is equally safe: a tooth already
  * marked keeps its mark.
  */
+/**
+ * Which tooth chart this clinic draws on. Both charts read and write the same
+ * record, so switching changes the drawing and never the data: a mark made on one
+ * is shown on the other.
+ */
+const CHART_STYLES: { value: ChartStyle; title: string; body: string }[] = [
+  {
+    value: "simple",
+    title: "Simple",
+    body: "One square per tooth, Palmer numbers (UR1), and this clinic's own tooth conditions. Quick to mark a whole mouth.",
+  },
+  {
+    value: "anatomical",
+    title: "Anatomical",
+    body: "Each tooth drawn from the side and from above, FDI numbers (11), caries and fillings on each surface, crown, root canal, missing, tooth position and gaps. Adult and child teeth.",
+  },
+];
+
+function ToothChartStyleCard({ manage }: { manage: boolean }) {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["dental-settings"], queryFn: getDentalSettings });
+  const save = useMutation({
+    mutationFn: (chart_style: ChartStyle) => saveDentalSettings({ chart_style }),
+    onSuccess: (res) => {
+      qc.setQueryData(["dental-settings"], res);
+      toast.success(`Tooth chart: ${res.chart_style === "anatomical" ? "Anatomical" : "Simple"}`);
+    },
+    onError: (e) => toast.error(e instanceof AppError ? e.message : "Could not change the tooth chart"),
+  });
+  const current = q.data?.chart_style;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Tooth chart</CardTitle>
+        <CardDescription>
+          The chart your dentists draw on. You can switch at any time: both charts keep the
+          same record, so nothing a dentist recorded is lost or hidden when you change.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {q.isError && <p className="text-sm text-destructive">The current choice could not be loaded.</p>}
+        <div role="radiogroup" aria-label="Tooth chart" className="grid gap-3 sm:grid-cols-2">
+          {CHART_STYLES.map((o) => {
+            const on = current === o.value;
+            return (
+              <button key={o.value} type="button" role="radio" aria-checked={on}
+                disabled={!manage || q.isLoading || save.isPending}
+                onClick={() => { if (!on) save.mutate(o.value); }}
+                className={cn(
+                  "rounded-lg border p-4 text-left transition-colors disabled:cursor-not-allowed",
+                  on ? "border-brand bg-brand/5 ring-1 ring-brand" : "hover:bg-accent/50",
+                  !manage && !on && "opacity-60",
+                )}>
+                <span className="flex items-center justify-between gap-2">
+                  <span className="font-medium">{o.title}</span>
+                  {on && <Badge variant="outline" className="border-brand text-brand">In use</Badge>}
+                </span>
+                <span className="mt-1 block text-sm text-muted-foreground">{o.body}</span>
+              </button>
+            );
+          })}
+        </div>
+        {!manage && <p className="text-xs text-muted-foreground">Only the clinic's administrator can change this.</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ToothConditionsCard({ manage }: { manage: boolean }) {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["tooth-statuses-all"], queryFn: () => listToothStatuses(true) });

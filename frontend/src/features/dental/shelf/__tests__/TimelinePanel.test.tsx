@@ -1,6 +1,7 @@
 // The timeline: every visit across every course, on one date spine, read outwards
 // from today. Read-only — a row hands off to the cockpit via onOpenVisit.
 import { render, screen, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -14,7 +15,11 @@ const T = "2026-08-12";
 function panel(plans: Plan[], patientId = "pat_1") {
   const onOpenVisit = vi.fn();
   const user = userEvent.setup();
-  const r = render(<TimelinePanel patientId={patientId} plans={plans} todayISO={T} onOpenVisit={onOpenVisit} />);
+  // The app's data provider, with the clinic's numbering already known (simple:
+  // Palmer), as it is on the patient page that hosts this panel.
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  qc.setQueryData(["dental-settings"], { chart_style: "simple" });
+  const r = render(<QueryClientProvider client={qc}><TimelinePanel patientId={patientId} plans={plans} todayISO={T} onOpenVisit={onOpenVisit} /></QueryClientProvider>);
   return { ...r, onOpenVisit, user };
 }
 /** Every visit row in document order, as text. */

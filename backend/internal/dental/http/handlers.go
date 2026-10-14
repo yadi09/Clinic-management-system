@@ -31,7 +31,13 @@ func decode(c *gin.Context, prefix, raw string) (uuid.UUID, bool) {
 }
 
 func chartDTO(ch dental.Chart) gin.H {
-	h := gin.H{"teeth": ch.Teeth}
+	// The front desk's sealed chart (noChart) has no anatomy: send an empty one, so a
+	// client never has to tell "none" from "missing".
+	anatomy := ch.Anatomy
+	if anatomy == nil {
+		anatomy = map[string]dental.ToothAnatomy{}
+	}
+	h := gin.H{"teeth": ch.Teeth, "anatomy": anatomy}
 	if ch.UpdatedAt != nil {
 		h["updated_at"] = *ch.UpdatedAt
 	}
@@ -291,6 +297,53 @@ func (h *Handlers) SaveChart(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, chartDTO(*ch))
+}
+
+// SaveAnatomy takes the anatomical chart's changes: {"changes": {"11": {...}, "21": null}}.
+// A tooth is sent whole (its full record), and null clears it.
+func (h *Handlers) SaveAnatomy(c *gin.Context) {
+	pid, ok := decode(c, id.PrefixPatient, c.Param("id"))
+	if !ok {
+		return
+	}
+	var req struct {
+		Changes map[string]*dental.ToothAnatomy `json:"changes"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Changes == nil {
+		httpx.Fail(c, apperr.Validation("send the teeth that changed"))
+		return
+	}
+	ch, err := h.svc.SaveAnatomy(c.Request.Context(), pid, req.Changes)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, chartDTO(*ch))
+}
+
+// --- the clinic's dental settings ---
+
+func (h *Handlers) GetDentalSettings(c *gin.Context) {
+	st, err := h.svc.GetDentalSettings(c.Request.Context())
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, st)
+}
+
+func (h *Handlers) SaveDentalSettings(c *gin.Context) {
+	var req dental.DentalSettings
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("send chart_style"))
+		return
+	}
+	st, err := h.svc.SaveDentalSettings(c.Request.Context(), req)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, st)
 }
 
 // --- treatment plans ---

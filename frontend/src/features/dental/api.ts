@@ -7,9 +7,33 @@ import { apiFetch, sendFile } from "@/lib/api-client";
 export type ToothStatus = "healthy" | "decayed" | "filled" | "extracted" | "crown";
 
 export interface Chart {
+  /** The simple chart: Palmer code ("UR1") -> the clinic's own condition. */
   teeth: Record<string, string>;
+  /** The anatomical chart: FDI number ("11", "54") -> that tooth's record. Lives on
+   *  the same row as `teeth`, so switching charts never hides or loses anything.
+   *  Absent from a server that predates it. */
+  anatomy?: Record<string, ToothAnatomy>;
   updated_at?: string;
 }
+
+export type SurfaceKey = "O" | "M" | "D" | "B" | "L";
+export type SurfaceFinding = "caries" | "filling";
+
+/** One tooth on the anatomical chart. Angles in degrees, distances in mm. */
+export interface ToothAnatomy {
+  surfaces: Partial<Record<SurfaceKey, SurfaceFinding>>;
+  crown: boolean;
+  root_canal: boolean;
+  missing: boolean;
+  rotation: number; // -90..90, + = clockwise
+  tipping: number; // -30..30, + = mesial
+  buccal_lingual: number; // -3..3, + = buccal
+  vertical: number; // -3..3, + = extruded
+  gap_mesial: number; // 0..6
+}
+
+export type ChartStyle = "simple" | "anatomical";
+export interface DentalSettings { chart_style: ChartStyle }
 
 export interface Balance {
   owed: string;
@@ -176,6 +200,20 @@ export function dentalSummary(patientId: string) {
  *  the first's (audit D18). */
 export function saveChart(patientId: string, changes: Record<string, string>, opts?: { keepalive?: boolean }) {
   return apiFetch<Chart>(`/dental/patients/${patientId}/chart`, { method: "PUT", body: { changes }, keepalive: opts?.keepalive });
+}
+
+/** Saves the anatomical chart's changed teeth — each sent whole; null clears it —
+ *  and gets the merged chart back (both charts). */
+export function saveAnatomy(patientId: string, changes: Record<string, ToothAnatomy | null>, opts?: { keepalive?: boolean }) {
+  return apiFetch<Chart>(`/dental/patients/${patientId}/chart/anatomy`, { method: "PUT", body: { changes }, keepalive: opts?.keepalive });
+}
+
+/** Which tooth chart this clinic draws on. */
+export function getDentalSettings() {
+  return apiFetch<DentalSettings>("/dental/settings");
+}
+export function saveDentalSettings(body: DentalSettings) {
+  return apiFetch<DentalSettings>("/dental/settings", { method: "PUT", body });
 }
 
 /** The teeth that differ between two charts, as a save's changes ("" = cleared). */

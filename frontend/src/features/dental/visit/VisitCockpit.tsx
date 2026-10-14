@@ -39,6 +39,7 @@ import { feeResolved, feeStage, FeeStrip, VisitPaymentStep } from "@/features/de
 import { DepositCallout } from "@/features/dental/shared/Deposit";
 import { UnbilledCallout, coveredByCockpit, owedForPatient } from "@/features/dental/shared/UnbilledWork";
 import { VisitActions } from "@/features/dental/visit/VisitActions";
+import { useToothText } from "@/features/dental/toothNumbering";
 
 const todayISO = () => {
   const d = new Date();
@@ -416,10 +417,11 @@ export function VisitCockpit({
 /** "Root canal UR5, UR2 · since 24 Aug". The teeth and start date are what tell two
  *  treatments with the same name apart. */
 function TreatmentName({ plan, compact }: { plan: Plan; compact?: boolean }) {
+  const tt = useToothText();
   return (
     <span className="inline-flex items-center gap-1.5">
       <b className="font-semibold text-foreground">{plan.title}</b>
-      {plan.tooth && <span>{plan.tooth}</span>}
+      {plan.tooth && <span>{tt(plan.tooth)}</span>}
       <span className={cn("text-muted-foreground", compact && "max-sm:hidden")}>· since {shortDate(plan.start_date)}</span>
       {plan.status !== "active" && <span className="text-muted-foreground">({plan.status === "completed" ? "finished" : "cancelled"})</span>}
     </span>
@@ -603,7 +605,8 @@ function Facts({ plan }: { plan: Plan }) {
 
 /** What was recorded, read back. Short on purpose: the timeline holds the history. */
 function RecordedSummary({ session }: { session: { procedure?: string; tooth?: string; notes?: string } }) {
-  const said = [session.procedure, session.tooth].filter(Boolean).join(" · ");
+  const tt = useToothText();
+  const said = [session.procedure, tt(session.tooth)].filter(Boolean).join(" · ");
   if (!said && !session.notes) {
     return <p className="text-sm text-muted-foreground">Marked done with no clinical note.</p>;
   }
@@ -617,13 +620,14 @@ function RecordedSummary({ session }: { session: { procedure?: string; tooth?: s
 
 /** What happened last time in this treatment: the question a dentist sits down with. */
 function LastTime({ plan, before, onPick }: { plan: Plan; before: Session; onPick: (id: string) => void }) {
+  const tt = useToothText();
   // The latest visit done, in the card's own order (done visits by date), so "last
   // time" is the visit that actually happened last, whatever its number.
   const previous = liveVisits(plan).filter((s) => s.id !== before.id && s.status === "done").pop();
   if (!previous) {
     return <p className="rounded-lg border border-dashed px-3 py-2.5 text-sm text-muted-foreground">First visit of this treatment. Nothing recorded yet.</p>;
   }
-  const said = [previous.procedure, previous.tooth].filter(Boolean).join(" on ");
+  const said = [previous.procedure, tt(previous.tooth)].filter(Boolean).join(" on ");
   const n = visitPosition(plan, previous.id).position;
   return (
     <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border px-4 py-3">

@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { DualDate, dayDiff, relativeDay } from "@/components/DualDate";
 import { MONEY, birr, sessionMoneyState } from "@/features/dental/money";
 import type { Plan, Session } from "@/features/dental/api";
+import { useToothText } from "@/features/dental/toothNumbering";
 
 interface Entry {
   session: Session;
@@ -188,11 +189,12 @@ function SectionLabel({ children, tone }: { children: ReactNode; tone?: "brand" 
 }
 
 function Row({ e, todayISO, onOpen }: { e: Entry; todayISO: string; onOpen: (id: string) => void }) {
+  const tt = useToothText();
   const s = e.session;
   const m = mark(e, todayISO);
   const money = MONEY[sessionMoneyState(s)];
   const days = dayDiff(s.scheduled_date);
-  const said = [s.procedure, s.tooth].filter(Boolean).join(" · ");
+  const said = [s.procedure, tt(s.tooth)].filter(Boolean).join(" · ");
 
   return (
     <button

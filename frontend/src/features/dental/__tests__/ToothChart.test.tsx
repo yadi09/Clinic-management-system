@@ -4,7 +4,7 @@
 // teeth that differ, undo is saved like any edit, a failed save puts the chart back).
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { Toaster } from "sonner";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 const api = vi.hoisted(() => ({ listToothStatuses: vi.fn(), saveChart: vi.fn(), dentalSummary: vi.fn() }));
 vi.mock("@/features/dental/api", async (orig) => ({ ...(await orig<object>()), ...api }));
@@ -19,7 +19,8 @@ vi.mock("@/app/auth-context", () => ({
 import { ToothChart, type ToothChartProps } from "@/features/dental/ToothChart";
 import { DentalWorkspace } from "@/features/dental/DentalWorkspace";
 import type { Summary, ToothStatusDef } from "@/features/dental/api";
-import { renderUI } from "@/test/render";
+import { quietApiFetch, renderUI } from "@/test/render";
+import { apiFetch } from "@/lib/api-client";
 
 const STATUSES: ToothStatusDef[] = [
   { id: "1", code: "healthy", label: "Healthy", color: "#10b981", sort_order: 1, is_active: true },
@@ -533,5 +534,58 @@ describe("REG-FE-CHART saving the chart from the patient page", () => {
     fireEvent.keyDown(tooth("UR1"), { key: "z", ctrlKey: true });
     fireEvent.keyDown(tooth("UR1"), { key: "z", ctrlKey: true, shiftKey: true });
     expect(api.saveChart).not.toHaveBeenCalled();
+  });
+});
+
+describe("REG-FE-CHART the clinic's choice of chart", () => {
+  const withSettings = (impl: (path: string) => Promise<unknown>) =>
+    vi.mocked(apiFetch).mockImplementation(async (path: string) => impl(path));
+  const anatomySummary = (teeth: Record<string, string>, anatomy: Summary["chart"]["anatomy"]) =>
+    ({ ...summary(teeth), chart: { teeth, anatomy } }) as Summary;
+
+  beforeEach(() => {
+    Object.values(api).forEach((f) => f.mockReset());
+    api.listToothStatuses.mockResolvedValue(STATUSES);
+    api.saveChart.mockImplementation(async (_p: string, changes: Record<string, string>) => ({ teeth: changes }));
+  });
+  afterEach(() => vi.mocked(apiFetch).mockImplementation(quietApiFetch as never));
+
+  test("REG-FE-CHART-036 a clinic on the anatomical chart gets it, with the simple chart's marks shown on the teeth", async () => {
+    withSettings(async (p) => (p === "/dental/settings" ? { chart_style: "anatomical" } : quietApiFetch(p)));
+    api.dentalSummary.mockResolvedValue(anatomySummary({ UR6: "decayed" }, { 11: { surfaces: {}, crown: false, root_canal: false, missing: false, rotation: 20, tipping: 0, buccal_lingual: 0, vertical: 0, gap_mesial: 0 } }));
+    const { user } = renderUI(<><DentalWorkspace patientId="pat_1" /><Toaster /></>, { route: "/patients/pat_1" });
+    await user.click(await screen.findByRole("button", { name: /Tooth chart/ }));
+    expect(await screen.findByRole("radio", { name: "Adult (32)" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Conditions" })).not.toBeInTheDocument();
+    // The clinic's own name for the condition (this fixture's list calls it "decayed").
+    expect(await screen.findByRole("button", { name: "Tooth 16, Upper right first molar, decayed" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Tooth 11, Upper right central incisor: rotated 20° clockwise/ })).toBeInTheDocument();
+    // Removing the old mark goes through the simple chart's own save.
+    await user.click(screen.getByRole("button", { name: /^Tooth 16,/ }));
+    await user.click(screen.getByRole("button", { name: "Remove mark" }));
+    await waitFor(() => expect(api.saveChart).toHaveBeenCalled(), { timeout: 3000 });
+    expect(api.saveChart.mock.calls[0][1]).toEqual({ UR6: "" });
+  });
+
+  test("REG-FE-CHART-037 a clinic on the simple chart keeps its squares, and still sees what was recorded on the anatomical chart", async () => {
+    api.dentalSummary.mockResolvedValue(anatomySummary({ UR6: "decayed" }, {
+      11: { surfaces: {}, crown: false, root_canal: false, missing: false, rotation: 20, tipping: 0, buccal_lingual: 0, vertical: 0, gap_mesial: 2 },
+      54: { surfaces: { O: "caries" }, crown: false, root_canal: false, missing: false, rotation: 0, tipping: 0, buccal_lingual: 0, vertical: 0, gap_mesial: 0 },
+    }));
+    const { user } = renderUI(<><DentalWorkspace patientId="pat_1" /><Toaster /></>, { route: "/patients/pat_1" });
+    await user.click(await screen.findByRole("button", { name: /Tooth chart/ }));
+    await waitFor(() => expect(tooth("UR1")).toBeEnabled());
+    const note = screen.getByRole("region", { name: "Recorded on the anatomical chart" });
+    expect(note).toHaveTextContent("11 (UR1) Upper right central incisor: rotated 20° clockwise, 2mm gap on mesial side");
+    expect(note).toHaveTextContent("54 Upper right primary first molar: caries (occlusal)");
+  });
+
+  test("REG-FE-CHART-038 a setting that cannot be read falls back to the simple chart the clinic had", async () => {
+    withSettings(async (p) => { if (p === "/dental/settings") throw new Error("down"); return quietApiFetch(p); });
+    api.dentalSummary.mockResolvedValue(summary({}));
+    const { user } = renderUI(<><DentalWorkspace patientId="pat_1" /><Toaster /></>, { route: "/patients/pat_1" });
+    await user.click(await screen.findByRole("button", { name: /Tooth chart/ }));
+    await waitFor(() => expect(tooth("UR1")).toBeInTheDocument(), { timeout: 4000 });
+    expect(screen.queryByRole("radio", { name: "Adult (32)" })).not.toBeInTheDocument();
   });
 });

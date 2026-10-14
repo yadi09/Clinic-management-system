@@ -46,6 +46,7 @@ import { FollowupsView } from "@/features/scheduling/components/FollowupsView";
 import { getPatient } from "@/features/patients/api";
 import { listDentalSessions, type DentalSessionCal } from "@/features/dental/api";
 import { ETH_MONTHS, formatEthiopian, formatEthiopianRange, toEthiopian } from "@/lib/ethiopian";
+import { useToothText } from "@/features/dental/toothNumbering";
 
 type View = "day" | "week" | "month" | "followups";
 
@@ -847,10 +848,11 @@ function sessPayBadge(s: DentalSessionCal) {
 
 /** Day-view treatment-session card (mirrors ApptCard). */
 function SessionDayCard({ s, onOpen }: { s: DentalSessionCal; onOpen: (pid: string, sessionId?: string) => void }) {
+  const tt = useToothText();
   return (
     <div className={`rounded-lg border border-l-4 bg-background p-3 shadow-sm ${sessAccent(s).split(" ")[0]}`}>
       <button className="touch-hit block truncate font-medium text-brand hover:underline" onClick={() => onOpen(s.patient_id, s.session_id)}>{s.patient_name}</button>
-      <div className="truncate text-xs text-muted-foreground">{s.title} · session {s.seq}/{s.session_count}{s.procedure ? ` · ${s.procedure}` : ""}{s.tooth ? ` (${s.tooth})` : ""}</div>
+      <div className="truncate text-xs text-muted-foreground">{s.title} · session {s.seq}/{s.session_count}{s.procedure ? ` · ${s.procedure}` : ""}{s.tooth ? ` (${tt(s.tooth)})` : ""}</div>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <Badge variant="outline" className="capitalize">{s.status}</Badge>
         {sessPayBadge(s)}

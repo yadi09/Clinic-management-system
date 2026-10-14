@@ -31,6 +31,7 @@ import { MONEY, birr, num, sessionMoneyState } from "@/features/dental/money";
 import { DepositCallout, depositOutstanding } from "@/features/dental/shared/Deposit";
 import { UnbilledRows, owedOnPlan, owedTotal } from "@/features/dental/shared/UnbilledWork";
 import type { Plan } from "@/features/dental/api";
+import { useToothText } from "@/features/dental/toothNumbering";
 
 /** The visits that count as part of the course. A cancelled visit is not a step. */
 const liveSessions = (plan: Plan) => plan.sessions.filter((s) => s.status !== "cancelled");
@@ -200,6 +201,7 @@ export function TreatmentsPanel({ patientId, plans, todayISO, canCollect, onOpen
 
 /** How the course is going, without opening it. */
 function CourseCard({ plan, todayISO, onOpen }: { plan: Plan; todayISO: string; onOpen: () => void }) {
+  const tt = useToothText();
   const { done, total, next } = progressOf(plan, todayISO);
   const flags = flagsOf(plan, todayISO);
   const st = STATUS[plan.status];
@@ -214,7 +216,7 @@ function CourseCard({ plan, todayISO, onOpen }: { plan: Plan; todayISO: string; 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <span className="min-w-0 truncate font-semibold">{plan.title}</span>
-            {plan.tooth && <span className="font-mono text-xs text-muted-foreground">#{plan.tooth}</span>}
+            {plan.tooth && <span className="font-mono text-xs text-muted-foreground">#{tt(plan.tooth)}</span>}
             <Badge variant={st.variant} className="text-[10px]">{st.label}</Badge>
           </div>
           {plan.service_name && (
@@ -273,6 +275,7 @@ function CourseDetail({ patientId, plan, todayISO, canCollect, onBack, onOpenVis
   onBack: () => void;
   onOpenVisit: (sessionId: string) => void;
 }) {
+  const tt = useToothText();
   const live = liveSessions(plan).sort((a, b) => a.seq - b.seq);
   const flags = flagsOf(plan, todayISO);
   const st = STATUS[plan.status];
@@ -299,7 +302,7 @@ function CourseDetail({ patientId, plan, todayISO, canCollect, onBack, onOpenVis
           </button>
           <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <h3 className="text-base font-semibold">{plan.title}</h3>
-            {plan.tooth && <span className="font-mono text-xs text-muted-foreground">#{plan.tooth}</span>}
+            {plan.tooth && <span className="font-mono text-xs text-muted-foreground">#{tt(plan.tooth)}</span>}
             <Badge variant={st.variant} className="text-[10px]">{st.label}</Badge>
           </div>
         </div>
@@ -417,7 +420,7 @@ function CourseDetail({ patientId, plan, todayISO, canCollect, onBack, onOpenVis
                   {(s.procedure || s.service_name || s.tooth) && (
                     <span className="mt-0.5 block truncate text-xs text-muted-foreground">
                       {s.procedure || s.service_name}
-                      {s.tooth && <span className="font-mono"> · #{s.tooth}</span>}
+                      {s.tooth && <span className="font-mono"> · #{tt(s.tooth)}</span>}
                     </span>
                   )}
                   {/* What is attached, so nobody opens five visits to find the X-ray. */}
