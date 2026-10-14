@@ -5387,6 +5387,10 @@
    {
     "date": "2026-10-14",
     "note": "Full run: server 765/0 (94 known), screens 1,945/1,945, journeys 17/17, routes 280/280; the first run showed 11 timeline tests without the data provider, 3 timing-dependent anatomical tests and dental coverage 0.1–0.3 under its minimum — all fixed (tests, not thresholds) and the coverage gate re-run: PASS. Committed; NOT deployed — needs the owner's go (migration 00095)."
+   },
+   {
+    "date": "2026-10-14",
+    "note": "Deployed to app.clinicos.cc (commit 64d97de, pre-deploy backup taken, API ready, no errors). Migration 95 applied; all 13 clinics pinned to Simple; the 272 existing tooth marks on 12 patients are untouched (same count as before). Waiting for the owner to try Settings → Tooth chart → Anatomical."
    }
   ],
   "order": 602
