@@ -5451,6 +5451,10 @@
    {
     "date": "2026-10-15",
     "note": "Phase B (3D) built: the reference's 3D model ported to Three.js 0.169 (colour management and physical lights adjusted so it looks the same), lazy-loaded (131 KB gz, only when the 3D tab opens), presets Front/Open mouth/Upper/Lower/Side, Show roots, Numbers, tap to select, freed on close; plain messages when the 3D module cannot load or the device cannot draw 3D. Checked side by side with the reference's demo patient. Full run: server 774/0, screens 1,972 (after a test-only fake-server fix, re-run with coverage: all thresholds met), journeys 20/20, routes 282/282; finance/service 85.5 is the small-hours clock effect (01:49 Addis). Committed; not deployed."
+   },
+   {
+    "date": "2026-10-15",
+    "note": "Phase B deployed (commit db9aab5, pre-deploy backup taken, no errors, no migration). The 3D chunk is served on demand from the app's own server. Phase C (prices, start a treatment, bill today's work) next."
    }
   ]
  }
