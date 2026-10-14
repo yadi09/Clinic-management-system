@@ -5440,6 +5440,10 @@
    {
     "date": "2026-10-15",
     "note": "Phase A built. Found while checking: the server refused a bridge onto a filled tooth (the reference allows it) — fixed to refuse only new surface marks under a crown; the taller panel pushed the chart off screen — the chart now stays pinned beside it. Migration tested on the real production record (findings only). Full run: server 772/0, screens 1,961, journeys 19/19, routes 282/282; coverage: dental gaps closed with tests (dental/http 96.1%), finance/service 85.5 vs 86.0 is the known small-hours clock effect (00:37 Addis, no finance change). Committed; not deployed."
+   },
+   {
+    "date": "2026-10-15",
+    "note": "Deployed to app.clinicos.cc on the owner's instruction (commit 1d7491b, pre-deploy backup taken, no errors). Migration 96 applied; the production version 1 record became exactly the 10 items and 5 positions the migration test predicted; version 1's column (12 teeth) and the simple chart's 272 marks untouched. Phase B (3D) next."
    }
   ]
  }
