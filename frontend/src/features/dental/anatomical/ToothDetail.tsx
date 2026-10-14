@@ -46,7 +46,7 @@ export function ToothDetail({ n, a, mark, editable, tool, onSurface, onPosition,
   const surfaceTool = tool === "caries" || tool === "filling";
 
   return (
-    <div className="mt-3 rounded-xl border p-3" style={{ background: "var(--surface-2)", borderColor: "var(--border)" }}>
+    <div className="rounded-xl border p-3" style={{ background: "var(--surface-2)", borderColor: "var(--border)" }}>
       <div className="flex items-center gap-4">
         <div className="flex flex-col items-center gap-1.5">
           <svg viewBox="-12 -8 64 116" width={64} height={130} aria-hidden>
@@ -92,7 +92,7 @@ export function ToothDetail({ n, a, mark, editable, tool, onSurface, onPosition,
       <div className="mt-3 border-t pt-2" style={{ borderColor: "var(--border)" }}>
         <p className="mb-1 text-sm font-medium" style={{ color: "var(--text-primary)" }}>Tooth position</p>
         {SLIDERS.map((s) => (
-          <div key={s.k} className="my-1.5 grid grid-cols-[120px_minmax(0,1fr)_64px] items-center gap-2 text-[13px] max-sm:grid-cols-[96px_minmax(0,1fr)_64px]">
+          <div key={s.k} className="my-1.5 grid grid-cols-[104px_minmax(0,1fr)_64px] items-center gap-2 text-[13px]">
             <label htmlFor={`${uid}-${s.k}`} style={{ color: "var(--text-secondary)" }}>{s.label}</label>
             <input id={`${uid}-${s.k}`} type="range" min={s.min} max={s.max} step={s.step} value={q[s.k]} disabled={!editable}
               className="w-full touch-pan-y" style={{ accentColor: "var(--border-accent)" }}

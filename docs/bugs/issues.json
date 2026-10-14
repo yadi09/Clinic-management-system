@@ -5366,7 +5366,12 @@
    "REG-E2E-026",
    "TestREG_DENTAL_ANAT_008_ARequestOfTheWrongShapeIsRefused",
    "TestREG_DENTAL_ANAT_009_SavingWhatIsAlreadyThereChangesNothing",
-   "TestREG_DENTAL_ANAT_010_TheSimpleChartsReplyCarriesTheAnatomyOfAFreshPatient"
+   "TestREG_DENTAL_ANAT_010_TheSimpleChartsReplyCarriesTheAnatomyOfAFreshPatient",
+   "REG-FE-ANAT-054",
+   "REG-FE-ANAT-055",
+   "REG-FE-ANAT-056",
+   "REG-FE-ANAT-057",
+   "REG-E2E-027"
   ],
   "files": [
    "backend/db/migrations/00095_dental_anatomy.sql",
@@ -5391,6 +5396,10 @@
    {
     "date": "2026-10-14",
     "note": "Deployed to app.clinicos.cc (commit 64d97de, pre-deploy backup taken, API ready, no errors). Migration 95 applied; all 13 clinics pinned to Simple; the 272 existing tooth marks on 12 patients are untouched (same count as before). Waiting for the owner to try Settings → Tooth chart → Anatomical."
+   },
+   {
+    "date": "2026-10-14",
+    "note": "Owner: the chart did not fit — editing a slider, the tooth was off screen. Built: chart and tooth controls side by side on a wide screen with the chart's height capped to the screen; a Full screen editor (same state, one save loop) where the chart takes exactly the room left; on a phone a tooth tap opens it with the chart pinned above the controls. Verified in Chrome at 1366x768, 1920x1080 and 390x844 that the selected tooth and all five sliders are on screen together. Full run green: server 765/0, screens 1,949, journeys 18/18, routes 280/280, coverage."
    }
   ],
   "order": 602

@@ -442,13 +442,65 @@ test("REG-E2E-026 on a phone the anatomical chart fits the screen and a tooth is
   expect(slot.width).toBeGreaterThanOrEqual(16); // a fingertip, not a pixel
   // …and the page itself never scrolls sideways.
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
-  await anat(page, 28).click(); // the far end: scrolled to, then tapped
-  await expect(page.getByText("Tooth 28", { exact: true })).toBeVisible();
-  await anat(page, 36).click();
-  await expect(page.getByText("Tooth 36", { exact: true })).toBeVisible();
-  await page.locator(".tooth-anatomy").screenshot({ path: testInfo.outputPath("anatomical-phone.png") });
-  // Dark mode: the chart takes its colours from the app's theme.
-  await page.evaluate(() => document.documentElement.classList.add("dark"));
-  await page.locator(".tooth-anatomy").screenshot({ path: testInfo.outputPath("anatomical-phone-dark.png") });
+  await anat(page, 28).click(); // the far end: scrolled to, then tapped — opens the editor
+  const dlg = page.getByRole("dialog", { name: "Tooth chart" });
+  await expect(dlg.getByText("Tooth 28", { exact: true })).toBeVisible();
+  await dlg.getByRole("button", { name: /^Tooth 36,/ }).click();
+  await expect(dlg.getByText("Tooth 36", { exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("anatomical-phone.png") });
+  await chartStyle("simple");
+});
+
+test("REG-E2E-027 the chart and the selected tooth's controls are on screen together, on a laptop, a large monitor and in full screen", async ({ page }, testInfo) => {
+  await chartStyle("anatomical");
+  test.setTimeout(150_000); // two screen sizes and a phone, each with a save
+  const p = await newPatient();
+  await login(page, "doctor");
+  const inView = async (loc: import("@playwright/test").Locator) => {
+    const b = (await loc.boundingBox())!;
+    const vp = page.viewportSize()!;
+    return b.y >= 0 && b.y + b.height <= vp.height && b.x >= 0 && b.x + b.width <= vp.width;
+  };
+  for (const [w, h] of [[1366, 768], [1920, 1080]] as const) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.goto(`/patients/${p.id}`);
+    await page.getByRole("button", { name: /^Tooth chart/ }).click();
+    await anat(page, 12).click();
+    await page.getByRole("group", { name: "Adult tooth chart" }).scrollIntoViewIfNeeded();
+    await page.getByLabel("Rotation").fill("35");
+    // In the page: the tooth being moved and the slider moving it are both visible.
+    expect(await inView(anat(page, 12))).toBe(true);
+    expect(await inView(page.getByLabel("Rotation"))).toBe(true);
+    await page.locator(".tooth-anatomy").first().screenshot({ path: testInfo.outputPath(`page-${w}.png`) });
+
+    // Full screen: the whole chart AND every slider, with no scrolling at all.
+    await page.getByRole("button", { name: "Full screen" }).click();
+    const dlg = page.getByRole("dialog", { name: "Tooth chart" });
+    await expect(dlg).toBeVisible();
+    expect(await inView(dlg.getByRole("group", { name: "Adult tooth chart" }))).toBe(true);
+    for (const label of ["Rotation", "Tipping", "Buccal/lingual", "Vertical", "Gap (mesial)"]) expect(await inView(dlg.getByLabel(label)), label).toBe(true);
+    const s = page.waitForResponse((r) => r.url().includes(`/dental/patients/${p.id}/chart/anatomy`) && r.request().method() === "PUT");
+    const gap = w === 1366 ? "2" : "3"; // a new value each time, or nothing is saved
+    await dlg.getByLabel("Gap (mesial)").fill(gap);
+    expect((await s).ok()).toBe(true);
+    await expect(dlg.locator("svg text", { hasText: new RegExp(`^${gap}mm$`) })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`full-${w}.png`) });
+    await page.keyboard.press("Escape");
+    await expect(dlg).toBeHidden();
+    await expect(anatInfo(page)).toContainText("rotated 35° clockwise");
+    await expect(anatInfo(page)).toContainText(`${w === 1366 ? 2 : 3}mm gap on mesial side`);
+  }
+  // A phone: picking a tooth opens the full-screen editor; the chart stays at the top
+  // while the controls scroll under it.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/patients/${p.id}`);
+  await page.getByRole("button", { name: /^Tooth chart/ }).click();
+  await anat(page, 46).click();
+  const dlg = page.getByRole("dialog", { name: "Tooth chart" });
+  await expect(dlg.getByText("Tooth 46", { exact: true })).toBeVisible();
+  await dlg.getByLabel("Gap (mesial)").scrollIntoViewIfNeeded();
+  expect(await inView(dlg.getByLabel("Gap (mesial)"))).toBe(true);
+  expect(await inView(dlg.locator(".ta-chart-scroll"))).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("full-phone.png") });
   await chartStyle("simple");
 });

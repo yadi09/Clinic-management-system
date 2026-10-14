@@ -8,8 +8,10 @@
 // Sliders are debounced, so a drag is one save, not one per pixel.
 import { useEffect, useId, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Redo2, Undo2 } from "lucide-react";
+import { Maximize2, Redo2, Undo2 } from "lucide-react";
 
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { useIsLargeScreen } from "@/hooks/useMediaQuery";
 import { toast } from "@/components/ui/sonner";
 import { saveAnatomy, type SurfaceKey, type ToothAnatomy } from "@/features/dental/api";
 import { AppError } from "@/lib/api-client";
@@ -55,6 +57,8 @@ export function AnatomicalWorkspace({ patientId, server, editable, marks, onClea
   const [tool, setTool] = useState<Tool>("caries");
   const [anatomy, setAnatomy] = useState<Map>(() => normalise(server));
   const [failed, setFailed] = useState<false | "undone" | "unconfirmed">(false);
+  const [fullScreen, setFullScreen] = useState(false);
+  const large = useIsLargeScreen();
   const [, tick] = useState(0);
 
   const draft = useRef<Map>(anatomy);
@@ -193,8 +197,31 @@ export function AnatomicalWorkspace({ patientId, server, editable, marks, onClea
   const palmer = palmerOf(n);
   const mark = palmer && marks ? marks(palmer) : null;
 
-  return (
-    <div className="tooth-anatomy space-y-3" style={{ color: "var(--text-primary)" }}>
+  const statusLine = editable && (
+    failed ? (
+      <span role="status" className="mr-1 text-xs font-medium text-destructive">
+        {failed === "unconfirmed" ? "Not confirmed — reload to check what was saved" : "Not saved — changes undone"}
+      </span>
+    ) : edited && (
+      <span role="status" className="mr-1 text-xs" style={{ color: "var(--text-secondary)" }}>{saving ? "Saving…" : "✓ Saved"}</span>
+    )
+  );
+
+  const selectTooth = (t: number) => {
+    setSel((s) => ({ ...s, [mode]: t }));
+    // On a phone the page has no room for the chart AND the controls: picking a
+    // tooth opens the full-screen editor, where both are on screen together.
+    if (!fullScreen && editable && typeof window !== "undefined" && window.matchMedia?.("(max-width: 767px)").matches) setFullScreen(true);
+  };
+
+  /** The editor. Rendered once — in the page, or in the full-screen view — so there is
+   *  one record, one save and one undo history, whichever is showing. */
+  const body = (where: "page" | "full") => {
+    // Full screen on a wide screen: the chart takes exactly the room that is left, so
+    // it always fits — no estimated header height to get wrong.
+    const fill = where === "full" && large;
+    return (
+    <div className={`tooth-anatomy flex flex-col gap-3 ${where === "full" ? "ta-full h-full min-h-0" : ""}`} style={{ color: "var(--text-primary)" }}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="ta-seg" role="radiogroup" aria-label="Dentition">
           {(["adult", "child"] as Dentition[]).map((d) => (
@@ -203,19 +230,18 @@ export function AnatomicalWorkspace({ patientId, server, editable, marks, onClea
             </button>
           ))}
         </div>
-        {editable && (
-          <div className="flex items-center gap-1.5">
-            {failed ? (
-              <span role="status" className="mr-1 text-xs font-medium text-destructive">
-                {failed === "unconfirmed" ? "Not confirmed — reload to check what was saved" : "Not saved — changes undone"}
-              </span>
-            ) : edited && (
-              <span role="status" className="mr-1 text-xs" style={{ color: "var(--text-secondary)" }}>{saving ? "Saving…" : "✓ Saved"}</span>
-            )}
+        <div className="flex items-center gap-1.5">
+          {statusLine}
+          {editable && (<>
             <button type="button" className="ta-btn px-2 py-1" aria-label="Undo" disabled={undoStack.current.length === 0} onClick={undo}><Undo2 className="h-4 w-4" /></button>
             <button type="button" className="ta-btn px-2 py-1" aria-label="Redo" disabled={redoStack.current.length === 0} onClick={redo}><Redo2 className="h-4 w-4" /></button>
-          </div>
-        )}
+          </>)}
+          {where === "page" && (
+            <button type="button" className="ta-btn flex items-center gap-1.5 px-2.5 py-1 text-[13px]" onClick={() => setFullScreen(true)}>
+              <Maximize2 className="h-4 w-4" /> Full screen
+            </button>
+          )}
+        </div>
       </div>
 
       {editable && (
@@ -230,22 +256,47 @@ export function AnatomicalWorkspace({ patientId, server, editable, marks, onClea
         </div>
       )}
 
-      {/* On a phone the arches keep a size a fingertip can hit and scroll sideways in
-          their own box; the page itself never scrolls sideways. */}
-      <div className="ta-chart-scroll rounded-xl px-1.5 py-2" style={{ background: "var(--surface-1)" }}>
-        <AnatomicalChart dentition={mode} anatomy={anatomy} marks={marks} selected={n}
-          onSelect={(t) => setSel((s) => ({ ...s, [mode]: t }))} />
+      {/* The chart and the selected tooth side by side on a wide screen, so moving a
+          slider moves the tooth in plain sight. The chart's height is capped to what
+          the screen can show; its width follows, in the reference's proportions. */}
+      <div className={`grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(320px,380px)] ${where === "full" ? "min-h-0 flex-1 max-lg:grid-rows-[auto_minmax(0,1fr)]" : ""}`}>
+        <div className={`min-w-0 ${fill ? "flex min-h-0 flex-col" : ""} ${where === "full" ? "max-lg:sticky max-lg:top-0 max-lg:z-10" : ""}`}>
+          <div className={`ta-chart-scroll rounded-xl px-1.5 py-2 ${fill ? "min-h-0 flex-1" : ""}`} style={{ background: "var(--surface-1)" }}>
+            <AnatomicalChart dentition={mode} anatomy={anatomy} marks={marks} selected={n} onSelect={selectTooth}
+              fill={fill} maxHeight={where === "full" ? undefined : "min(62dvh, 34rem)"} />
+          </div>
+          <p className={`mt-1.5 shrink-0 text-xs ${where === "full" ? "max-md:hidden" : ""}`} style={{ color: "var(--text-muted)" }}>
+            {editable ? "Tap a tooth to select it. Caries and filling are marked on the surface diagram; crown, root canal and missing apply to the whole tooth." : "Tap a tooth to see its findings."}
+          </p>
+        </div>
+        <div className={where === "full" ? "min-h-0 overflow-y-auto lg:pr-1" : ""}>
+          <ToothDetail n={n} a={anatomy[key]} mark={mark} editable={editable} tool={tool} uid={uid}
+            onSurface={onSurface}
+            onPosition={(field, v) => write(key, { ...cur(), [field]: v }, `pos:${field}`)}
+            onResetPosition={() => write(key, { ...cur(), rotation: 0, tipping: 0, buccal_lingual: 0, vertical: 0, gap_mesial: 0 }, "reset")}
+            onClearMark={editable && palmer && mark && onClearMark ? () => onClearMark(palmer) : undefined} />
+        </div>
       </div>
-      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-        {editable ? "Tap a tooth to select it. Caries and filling are marked on the surface diagram; crown, root canal and missing apply to the whole tooth." : "Tap a tooth to see its findings."}
-      </p>
-
-      <ToothDetail n={n} a={anatomy[key]} mark={mark} editable={editable} tool={tool} uid={uid}
-        onSurface={onSurface}
-        onPosition={(field, v) => write(key, { ...cur(), [field]: v }, `pos:${field}`)}
-        onResetPosition={() => write(key, { ...cur(), rotation: 0, tipping: 0, buccal_lingual: 0, vertical: 0, gap_mesial: 0 }, "reset")}
-        onClearMark={editable && palmer && mark && onClearMark ? () => onClearMark(palmer) : undefined} />
     </div>
+    );
+  };
+
+  return (
+    <>
+      {fullScreen ? (
+        <div className="tooth-anatomy rounded-xl border p-4 text-sm" style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}>
+          The tooth chart is open in full screen.{" "}
+          <button type="button" className="font-medium underline" style={{ color: "var(--text-accent)" }} onClick={() => setFullScreen(true)}>Show it</button>
+        </div>
+      ) : body("page")}
+      <Dialog open={fullScreen} onOpenChange={setFullScreen}>
+        <DialogContent fullOnMobile aria-describedby={undefined}
+          className="flex flex-col gap-3 overflow-hidden p-3 sm:inset-0 sm:left-0 sm:top-0 sm:h-[100dvh] sm:max-h-[100dvh] sm:w-screen sm:max-w-none sm:translate-x-0 sm:translate-y-0 sm:rounded-none sm:p-5">
+          <DialogTitle className="pr-10 text-base">Tooth chart</DialogTitle>
+          <div className="min-h-0 flex-1">{body("full")}</div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

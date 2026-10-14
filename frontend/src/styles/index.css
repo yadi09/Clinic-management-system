@@ -179,4 +179,7 @@
   /* 32 teeth across a phone is ~9 px a tooth, too narrow to tap. */
   .tooth-anatomy .ta-chart-scroll { overflow-x: auto; overscroll-behavior-x: contain; }
   .tooth-anatomy .ta-chart-scroll > svg { min-width: 640px; }
+  /* Full screen on a phone: the chart is pinned above the controls, so it is kept a
+     little more compact to leave the controls room (a tooth is still ~16 px wide). */
+  .tooth-anatomy.ta-full .ta-chart-scroll > svg { min-width: 560px; }
 }

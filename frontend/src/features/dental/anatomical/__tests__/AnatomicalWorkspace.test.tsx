@@ -225,4 +225,56 @@ describe("REG-FE-ANAT workspace", () => {
     unmount();
     expect(api.saveAnatomy).toHaveBeenCalledWith("pat_1", { 17: { ...EMPTY, missing: true } }, { keepalive: true });
   });
+
+  test("REG-FE-ANAT-054 Full screen shows the same chart: an edit there is one save, and closing it comes back to the page with the edit on it", async () => {
+    const { user } = open();
+    await user.click(screen.getByRole("button", { name: "Full screen" }));
+    const dlg = await screen.findByRole("dialog", { name: "Tooth chart" });
+    expect(screen.getByText(/open in full screen/)).toBeInTheDocument();
+    await user.click(within(dlg).getByRole("button", { name: /^Tooth 26,/ }));
+    await user.click(within(dlg).getByRole("button", { name: /^Crown$/ }));
+    expect(within(dlg).getByTestId("tooth-info")).toHaveTextContent("Upper left first molar. crown");
+    await waitFor(() => expect(sent()).toEqual({ 26: { ...EMPTY, crown: true } }), { timeout: 8000 });
+    // Closing keeps everything: the page shows the same tooth, the same finding, and
+    // Undo still knows the step made in full screen.
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(info()).toHaveTextContent("Upper left first molar. crown");
+    expect(screen.getByRole("button", { name: "Undo" })).toBeEnabled();
+    expect(api.saveAnatomy).toHaveBeenCalledTimes(1);
+  });
+
+  test("REG-FE-ANAT-055 the page and the full-screen view never both show the chart (one chart, one set of ids)", async () => {
+    const { user } = open();
+    await user.click(screen.getByRole("button", { name: "Full screen" }));
+    await screen.findByRole("dialog", { name: "Tooth chart" });
+    expect(screen.getAllByRole("group", { name: "Adult tooth chart", hidden: true })).toHaveLength(1);
+    await user.click(within(screen.getByRole("dialog", { name: "Tooth chart" })).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getAllByRole("group", { name: "Adult tooth chart" })).toHaveLength(1);
+  });
+
+  test("REG-FE-ANAT-056 on a phone, picking a tooth opens the full-screen editor on that tooth; on a computer it does not", async () => {
+    const mm = vi.spyOn(window, "matchMedia").mockImplementation((q: string) => ({
+      matches: q.includes("max-width: 767px"), media: q, onchange: null, addListener: vi.fn(), removeListener: vi.fn(),
+      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
+    }) as unknown as MediaQueryList);
+    const { user } = open();
+    await user.click(tooth(36));
+    const dlg = await screen.findByRole("dialog", { name: "Tooth chart" });
+    expect(within(dlg).getByText("Tooth 36")).toBeInTheDocument();
+    mm.mockRestore();
+  });
+
+  test("REG-FE-ANAT-057 the chart's height is capped to fit the screen in the page; in full screen it takes the room left", async () => {
+    const { user } = open();
+    const svg = () => screen.getByRole("group", { name: "Adult tooth chart" }) as unknown as SVGElement;
+    expect(svg().style.maxHeight).toBe("min(62dvh, 34rem)");
+    await user.click(screen.getByRole("button", { name: "Full screen" }));
+    await screen.findByRole("dialog", { name: "Tooth chart" });
+    // In full screen it takes the room that is left (a wide screen fills it; jsdom is not
+    // a wide screen, so here it simply has no page-height cap).
+    expect(svg().style.maxHeight).toBe("");
+  });
 });
+

@@ -10,13 +10,18 @@ import { ToothSide, ToothTop } from "@/features/dental/anatomical/Tooth";
 
 export interface ClinicMark { code: string; label: string; color: string }
 
-export function AnatomicalChart({ dentition, anatomy, marks, selected, onSelect }: {
+export function AnatomicalChart({ dentition, anatomy, marks, selected, onSelect, maxHeight, fill }: {
   dentition: Dentition;
   anatomy: Record<string, ToothAnatomy>;
   /** The simple chart's mark on a tooth (the clinic's own condition), by Palmer code. */
   marks?: (palmer: string) => ClinicMark | null;
   selected: number;
   onSelect: (n: number) => void;
+  /** The tallest the drawing may be (CSS), so it always fits on screen; it then keeps
+   *  its proportions and is centred. */
+  maxHeight?: string;
+  /** Fill the parent's height (and width), keeping the proportions, centred. */
+  fill?: boolean;
 }) {
   // Unique per chart on the page, so two charts never share a clipPath id.
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
@@ -54,7 +59,7 @@ export function AnatomicalChart({ dentition, anatomy, marks, selected, onSelect 
   );
 
   return (
-    <svg viewBox={`0 0 ${VW} ${VH}`} width="100%" role="group" aria-label={`${dentition === "adult" ? "Adult" : "Child"} tooth chart`} style={{ display: "block", touchAction: "manipulation" }}>
+    <svg viewBox={`0 0 ${VW} ${VH}`} width="100%" role="group" aria-label={`${dentition === "adult" ? "Adult" : "Child"} tooth chart`} style={{ display: "block", touchAction: "manipulation", maxHeight, ...(fill ? { height: "100%" } : {}) }}>
       <line x1={6} y1={130} x2={VW - 6} y2={130} style={{ stroke: "var(--border)" }} />
       <line x1={ox + A.mid} y1={14} x2={ox + A.mid} y2={128} style={{ stroke: "var(--border-strong)" }} strokeDasharray="3 3" />
       <line x1={lx + B.mid} y1={132} x2={lx + B.mid} y2={246} style={{ stroke: "var(--border-strong)" }} strokeDasharray="3 3" />
