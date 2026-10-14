@@ -161,6 +161,16 @@
   --text-danger: #F09595;
   --text-success: #97C459;
 }
+/* The 3D model's floating tooth labels (the reference's .lb). */
+.tooth-anatomy .lb {
+  position: absolute; transform: translate(-50%, -50%); font-size: 11px; line-height: 1; padding: 2px 4px; border-radius: 4px;
+  background: var(--surface-2); color: var(--text-secondary); border: 0.5px solid var(--border); white-space: nowrap;
+}
+.tooth-anatomy .lb.pl { background: #FCEBEB; color: var(--text-danger); border-color: #E24B4A; }
+.tooth-anatomy .lb.dn { background: #EAF3DE; color: var(--text-success); border-color: #639922; }
+.tooth-anatomy .lb.sel { background: var(--bg-accent); color: var(--text-accent); border-color: var(--border-accent); }
+.dark .tooth-anatomy .lb.pl { background: #501313; }
+.dark .tooth-anatomy .lb.dn { background: #173404; }
 .tooth-anatomy .ta-cap { font-size: 13px; color: var(--text-secondary); min-width: 74px; }
 .tooth-anatomy .ta-help { font-size: 12px; color: var(--text-muted); margin: 0 0 8px; line-height: 1.5; }
 .tooth-anatomy .ta-btn {

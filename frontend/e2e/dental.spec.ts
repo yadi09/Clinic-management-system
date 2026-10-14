@@ -604,3 +604,73 @@ test("REG-E2E-027 whichever control the dentist is using, the tooth it moves sta
   await page.screenshot({ path: testInfo.outputPath("full-phone.png") });
   await chartStyle("simple");
 });
+
+test("REG-E2E-029 the 3D model loads on demand, shows the same chart as 2D, and a tap on a tooth selects it", async ({ page }, testInfo) => {
+  test.setTimeout(240_000);
+  await chartStyle("anatomical");
+  const p = await newPatient();
+  // The reference's demo patient, recorded through the API.
+  const doctor = await apiAs("doctor");
+  const teeth = {
+    16: [{ kind: "caries", surface: "O", status: "existing" }, { kind: "filling", surface: "O", material: "composite", status: "planned" }],
+    36: [{ kind: "filling", surface: "O", material: "amalgam", status: "existing" }, { kind: "filling", surface: "B", material: "amalgam", status: "existing" }],
+    26: [{ kind: "root_canal", status: "existing" }, { kind: "crown", material: "pfm", status: "existing" }],
+    46: [{ kind: "missing", status: "existing" }, { kind: "implant", material: "zirconia", status: "planned" }],
+    24: [{ kind: "caries", surface: "D", status: "existing" }],
+    14: [{ kind: "missing", status: "existing" }],
+    21: [{ kind: "crown", material: "zirconia", status: "planned" }, { kind: "root_canal", status: "done" }],
+    38: [{ kind: "extraction", status: "planned" }],
+    47: [{ kind: "filling", surface: "O", material: "composite", status: "done" }],
+    11: [{ kind: "filling", surface: "M", material: "composite", status: "existing" }],
+    13: [{ kind: "bridge", bridge_end: 15, material: "zirconia", status: "existing" }],
+  };
+  await doctor("PUT", `/dental/patients/${p.id}/chart/items`, { teeth: { 14: teeth[14] } });
+  await doctor("PUT", `/dental/patients/${p.id}/chart/items`, { teeth });
+  await doctor("PUT", `/dental/patients/${p.id}/chart/positions`, { changes: { 12: { rotation: 20, tipping: 0, buccal_lingual: 0, vertical: 0, gap_mesial: 0 }, 38: { rotation: 0, tipping: 25, buccal_lingual: 0, vertical: 0, gap_mesial: 0 } } });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  // Three.js is not part of the page until the 3D tab is opened.
+  const threeLoads: string[] = [];
+  page.on("response", (r) => { if (/Dental3D|three/i.test(r.url())) threeLoads.push(r.url()); });
+  await login(page, "doctor");
+  await page.goto(`/patients/${p.id}`);
+  await page.getByRole("button", { name: /^Tooth chart/ }).click();
+  await expect(page.getByRole("group", { name: "Adult tooth chart" })).toBeVisible();
+  expect(threeLoads).toEqual([]);
+  await page.getByRole("radio", { name: "3D model" }).click();
+  const stage = page.getByTestId("stage3d");
+  await expect(stage.locator("canvas")).toBeVisible({ timeout: 20_000 });
+  expect(threeLoads.length).toBeGreaterThan(0);
+  // From the front, the front teeth are labelled (the molars face sideways, as in the reference); 21 has planned work: red.
+  await expect(stage.locator(".lb", { hasText: /^21$/ })).toBeVisible();
+  await expect(stage.locator(".lb", { hasText: /^21$/ })).toHaveClass(/\bpl\b/);
+  await expect(page.getByText("Drag to rotate, scroll or pinch to zoom, tap a tooth to select it.")).toBeVisible();
+  await page.waitForTimeout(1500); // let the camera settle
+  await stage.screenshot({ path: testInfo.outputPath("3d-front.png") });
+  // A tap on the front teeth selects one; the panel follows.
+  const box = (await stage.boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.42);
+  await expect(page.getByTestId("tooth-info").first()).toBeVisible();
+  await expect(page.locator("p", { hasText: /^Tooth (11|21|12|22): Upper/ }).first()).toBeVisible();
+  // Each camera preset switches (screenshots of each are slow where 3D is drawn in software, so one is kept).
+  for (const v of ["Open mouth", "Upper jaw", "Lower jaw", "Side"]) {
+    const b = page.getByRole("toolbar", { name: "3D view" }).getByRole("button", { name: v });
+    await b.click();
+    await expect(b).toHaveAttribute("aria-pressed", "true");
+  }
+  // The lower jaw alone: the upper teeth's labels go.
+  await page.getByRole("toolbar", { name: "3D view" }).getByRole("button", { name: "Lower jaw" }).click();
+  await expect(stage.locator(".lb", { hasText: /^21$/ })).toBeHidden();
+  await page.getByRole("toolbar", { name: "3D view" }).getByRole("button", { name: "Front" }).click();
+  await page.getByRole("toolbar", { name: "3D view" }).getByRole("button", { name: "Show roots" }).click();
+  await page.waitForTimeout(1200);
+  await stage.screenshot({ path: testInfo.outputPath("3d-roots.png"), timeout: 60_000 });
+  // Numbers off hides the labels.
+  await page.getByRole("toolbar", { name: "3D view" }).getByRole("button", { name: "Numbers" }).click();
+  await expect(stage.locator(".lb", { hasText: /^21$/ })).toBeHidden();
+  // Back to 2D: the same chart, nothing lost; and the 3D view has let go of its canvas.
+  await page.getByRole("radio", { name: "2D chart" }).click();
+  await expect(stage).toHaveCount(0);
+  await expect(page.locator("[data-bridge='15-13']")).toHaveCount(1);
+  await chartStyle("simple");
+});

@@ -8,11 +8,12 @@
 // When the server refuses — its rules are the chart's rules — the chart goes back to
 // what the server holds and says why, in the server's own words. A change still
 // waiting when the page closes is sent anyway.
-import { useEffect, useId, useRef, useState } from "react";
+import { Component, Suspense, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Maximize2, Redo2, Undo2 } from "lucide-react";
 
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { lazyWithReload } from "@/app/chunkRecovery";
 import { useIsLargeScreen } from "@/hooks/useMediaQuery";
 import { toast } from "@/components/ui/sonner";
 import { saveChartItems, savePositions, type Chart, type CrownMaterial, type FillMaterial, type ItemInput, type Position, type SurfaceKey } from "@/features/dental/api";
@@ -24,6 +25,25 @@ import {
   NO_POS, changedTeeth, completeAction, confirmNote, fromItems, planAndDone, posEmpty, surfaceAction, toItems, toolAction, tryBridge,
   type ChartState, type Ctx, type Outcome, type Status, type Tool,
 } from "@/features/dental/anatomical/model";
+
+// Three.js is large: it is fetched only when someone opens the 3D tab.
+const Dental3D = lazyWithReload(() => import("@/features/dental/anatomical/three/Dental3D"));
+type View3D = "front" | "open" | "upper" | "lower" | "side" | "custom";
+const VIEWS3D: [Exclude<View3D, "custom">, string][] = [["front", "Front"], ["open", "Open mouth"], ["upper", "Upper jaw"], ["lower", "Lower jaw"], ["side", "Side"]];
+
+/** If the 3D module cannot be fetched (offline, a blocked download), say so and keep the 2D chart. */
+class ThreeBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    if (this.state.failed) {
+      return <p role="alert" className="rounded-xl p-6 text-sm" style={{ background: "var(--surface-1)", color: "var(--text-danger)" }}>
+        The 3D model could not be loaded. Check the internet connection, or use the 2D chart — it has everything.
+      </p>;
+    }
+    return this.props.children;
+  }
+}
 
 type Positions = Record<string, Position>;
 interface Snap { chart: ChartState; positions: Positions }
@@ -64,6 +84,10 @@ export function AnatomicalWorkspace({ patientId, server, editable, today, marks,
   const [msg, setMsg] = useState<{ text: string; err?: boolean }>({ text: "" });
   const [failed, setFailed] = useState<false | "undone" | "unconfirmed">(false);
   const [fullScreen, setFullScreen] = useState(false);
+  const [dim, setDim] = useState<"2d" | "3d">("2d");
+  const [view3d, setView3d] = useState<View3D>("front");
+  const [xray, setXray] = useState(false);
+  const [nums, setNums] = useState(true);
   const [chart, setChart] = useState<ChartState>(() => fromItems(server?.items));
   const [positions, setPositions] = useState<Positions>(() => cleanPositions(server?.positions));
   const [, tick] = useState(0);
@@ -222,8 +246,12 @@ export function AnatomicalWorkspace({ patientId, server, editable, today, marks,
   const pickTool = (t: Tool) => {
     setTool(t);
     setBridgeStart(null);
-    const o = toolAction(draft.current.chart, ctx({ tool: t }));
+    const in3d = dim === "3d";
+    const o = toolAction(draft.current.chart, ctx({ tool: t }), in3d && !xray);
     if (o.bridgeStart != null) setBridgeStart(o.bridgeStart);
+    // A root canal is inside the root: in 3D, turn the roots view on so it can be seen.
+    const rctAdded = t === "rct" && !o.err && !!o.state.teeth[n]?.rct;
+    if (rctAdded && in3d && !xray) { setXray(true); apply({ ...o, msg: "Roots view turned on so you can see the root canal." }, `tool:${t}`); return; }
     apply(o, `tool:${t}`);
   };
   const pickMode = (d: Dentition) => {
@@ -269,12 +297,19 @@ export function AnatomicalWorkspace({ patientId, server, editable, today, marks,
     return (
       <div className={`tooth-anatomy flex flex-col gap-3 ${where === "full" ? "ta-full h-full min-h-0" : ""}`} style={{ color: "var(--text-primary)" }}>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="ta-seg" role="radiogroup" aria-label="Dentition">
-            {(["adult", "child"] as Dentition[]).map((d) => (
-              <button key={d} type="button" role="radio" aria-checked={mode === d} className={mode === d ? "on" : ""} onClick={() => pickMode(d)}>
-                {SETS[d].label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="ta-seg" role="radiogroup" aria-label="Dentition">
+              {(["adult", "child"] as Dentition[]).map((d) => (
+                <button key={d} type="button" role="radio" aria-checked={mode === d} className={mode === d ? "on" : ""} onClick={() => pickMode(d)}>
+                  {SETS[d].label}
+                </button>
+              ))}
+            </div>
+            <div className="ta-seg" role="radiogroup" aria-label="View">
+              {([["2d", "2D chart"], ["3d", "3D model"]] as const).map(([d, l]) => (
+                <button key={d} type="button" role="radio" aria-checked={dim === d} className={dim === d ? "on" : ""} onClick={() => setDim(d)}>{l}</button>
+              ))}
+            </div>
           </div>
           <div className="flex items-center gap-1.5">
             {statusLine}
@@ -294,12 +329,31 @@ export function AnatomicalWorkspace({ patientId, server, editable, today, marks,
           {/* The chart stays in view while the controls beside it scroll: moving a
               slider far down the panel still moves a tooth you can see. */}
           <div className={`min-w-0 ${fill ? "flex min-h-0 flex-col" : ""} ${where === "full" ? "max-lg:sticky max-lg:top-0 max-lg:z-10" : "lg:sticky lg:top-20 lg:self-start"}`}>
-            <div className={`ta-chart-scroll rounded-xl px-1.5 py-2 ${fill ? "min-h-0 flex-1" : ""}`} style={{ background: "var(--surface-1)" }}>
-              <AnatomicalChart dentition={mode} state={chart} positions={positions} today={today} marks={marks} selected={n} onSelect={selectTooth}
-                fill={fill} maxHeight={where === "full" ? undefined : "min(62dvh, 34rem)"} />
-            </div>
+            {dim === "3d" && (
+              <div className="mb-2 flex flex-wrap gap-1.5" role="toolbar" aria-label="3D view">
+                {VIEWS3D.map(([v, l]) => (
+                  <button key={v} type="button" aria-pressed={view3d === v} className={`ta-btn ta-tool ${view3d === v ? "on" : ""}`} onClick={() => setView3d(v)}>{l}</button>
+                ))}
+                <button type="button" aria-pressed={xray} className={`ta-btn ta-tool ${xray ? "on" : ""}`} onClick={() => setXray((x) => !x)}>Show roots</button>
+                <button type="button" aria-pressed={nums} className={`ta-btn ta-tool ${nums ? "on" : ""}`} onClick={() => setNums((x) => !x)}>Numbers</button>
+              </div>
+            )}
+            {dim === "2d" ? (
+              <div className={`ta-chart-scroll rounded-xl px-1.5 py-2 ${fill ? "min-h-0 flex-1" : ""}`} style={{ background: "var(--surface-1)" }}>
+                <AnatomicalChart dentition={mode} state={chart} positions={positions} today={today} marks={marks} selected={n} onSelect={selectTooth}
+                  fill={fill} maxHeight={where === "full" ? undefined : "min(62dvh, 34rem)"} />
+              </div>
+            ) : (
+              <ThreeBoundary>
+                <Suspense fallback={<p className="rounded-xl p-6 text-sm" style={{ background: "var(--surface-1)", color: "var(--text-muted)" }}>Loading the 3D model…</p>}>
+                  <Dental3D state={chart} positions={positions} sel={n} today={today} mode={mode} xray={xray} nums={nums} view={view3d}
+                    onSelect={selectTooth} onCustomView={() => setView3d("custom")}
+                    height={fill ? "calc(100dvh - 15rem)" : where === "full" ? "min(60dvh, 30rem)" : "min(60dvh, 27.5rem)"} />
+                </Suspense>
+              </ThreeBoundary>
+            )}
             <p className={`mt-1.5 shrink-0 text-xs ${where === "full" ? "max-md:hidden" : ""}`} style={{ color: "var(--text-muted)" }}>
-              Tap a tooth to select it. Rows from top: upper side view, upper top view, lower top view, lower side view.
+              {dim === "3d" ? "Drag to rotate, scroll or pinch to zoom, tap a tooth to select it." : "Tap a tooth to select it. Rows from top: upper side view, upper top view, lower top view, lower side view."}
             </p>
             <p role="status" aria-live="polite" className="min-h-[1.25rem] shrink-0 text-[13px]" style={{ color: msg.err ? "var(--text-danger)" : "var(--text-accent)" }}>{msg.text}</p>
           </div>

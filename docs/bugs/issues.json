@@ -5424,7 +5424,10 @@
    "REG-E2E-025",
    "REG-E2E-026",
    "REG-E2E-027",
-   "REG-E2E-028"
+   "REG-E2E-028",
+   "REG-FE-ANAT3-001..012",
+   "REG-FE-ANAT2-035..037",
+   "REG-E2E-029"
   ],
   "files": [
    "backend/db/migrations/00096_dental_chart_items.sql",
@@ -5444,6 +5447,10 @@
    {
     "date": "2026-10-15",
     "note": "Deployed to app.clinicos.cc on the owner's instruction (commit 1d7491b, pre-deploy backup taken, no errors). Migration 96 applied; the production version 1 record became exactly the 10 items and 5 positions the migration test predicted; version 1's column (12 teeth) and the simple chart's 272 marks untouched. Phase B (3D) next."
+   },
+   {
+    "date": "2026-10-15",
+    "note": "Phase B (3D) built: the reference's 3D model ported to Three.js 0.169 (colour management and physical lights adjusted so it looks the same), lazy-loaded (131 KB gz, only when the 3D tab opens), presets Front/Open mouth/Upper/Lower/Side, Show roots, Numbers, tap to select, freed on close; plain messages when the 3D module cannot load or the device cannot draw 3D. Checked side by side with the reference's demo patient. Full run: server 774/0, screens 1,972 (after a test-only fake-server fix, re-run with coverage: all thresholds met), journeys 20/20, routes 282/282; finance/service 85.5 is the small-hours clock effect (01:49 Addis). Committed; not deployed."
    }
   ]
  }

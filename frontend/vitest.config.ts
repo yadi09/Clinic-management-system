@@ -40,6 +40,10 @@ export default defineConfig({
         "src/features/clinical/components/DictateButton.tsx",
         "src/features/clinical/components/PatientStory.tsx",
         "src/features/clinical/components/WorkSection.tsx",
+        // The 3D scene draws with WebGL, which the unit-test browser does not have; it
+        // is covered in a real browser by the e2e journey REG-E2E-029. Its tooth shapes
+        // (three/teeth.ts) and its React wrapper (three/Dental3D.tsx) are unit-tested.
+        "src/features/dental/anatomical/three/scene.ts",
       ],
       reporter: ["text-summary", "html"],
       reportsDirectory: "./coverage",

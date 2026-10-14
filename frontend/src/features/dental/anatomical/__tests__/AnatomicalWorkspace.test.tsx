@@ -12,6 +12,21 @@ vi.mock("@/features/dental/api", async (orig) => ({ ...(await orig<object>()), .
 const tst = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
 vi.mock("@/components/ui/sonner", async (orig) => ({ ...(await orig<object>()), toast: Object.assign(vi.fn(), tst) }));
 
+// The 3D view stands in for itself here (WebGL is not available to unit tests): it
+// shows what it was given and offers a tap; REG-E2E-029 drives the real one.
+const three = vi.hoisted(() => ({ fail: false }));
+vi.mock("@/features/dental/anatomical/three/Dental3D", () => ({
+  default: (p: { sel: number; xray: boolean; nums: boolean; view: string; mode: string; onSelect: (n: number) => void; onCustomView: () => void }) => {
+    if (three.fail) throw new Error("Failed to fetch dynamically imported module");
+    return (
+      <div data-testid="fake3d" data-sel={p.sel} data-xray={String(p.xray)} data-nums={String(p.nums)} data-view={p.view} data-mode={p.mode}>
+        <button type="button" onClick={() => p.onSelect(36)}>tap 36 in 3D</button>
+        <button type="button" onClick={p.onCustomView}>drag</button>
+      </div>
+    );
+  },
+}));
+
 import { AnatomicalWorkspace } from "@/features/dental/anatomical/AnatomicalWorkspace";
 import type { Chart, ChartItem, ItemInput, Position } from "@/features/dental/api";
 import { AppError } from "@/lib/api-client";
@@ -35,6 +50,9 @@ const chart = (): Chart => ({ teeth: {}, items: held, positions: heldPos });
 const sentTeeth = () => Object.assign({}, ...api.saveChartItems.mock.calls.map((c) => c[1])) as Record<string, ItemInput[]>;
 
 function open(server: Chart = { teeth: {}, items: [], positions: {} }, editable = true, extra: Partial<Parameters<typeof AnatomicalWorkspace>[0]> = {}) {
+  // The fake server holds what the patient already has, as the real one does.
+  held = [...(server.items ?? [])];
+  heldPos = { ...(server.positions ?? {}) };
   return renderUI(<AnatomicalWorkspace patientId="pat_1" server={server} editable={editable} today={TODAY} {...extra} />);
 }
 
@@ -243,4 +261,56 @@ describe("REG-FE-ANAT2 workspace", () => {
     expect(info()).toHaveTextContent(/Root canal \(done (\d+ Oct|Oct \d+)\)/);
     expect(within(screen.getAllByRole("region", { name: "Done today" })[0]).getByText("Nothing yet")).toBeInTheDocument();
   });
+
+  test("REG-FE-ANAT2-035 the 3D model: opened on demand, the presets, Show roots and Numbers, a tap selects, back to 2D keeps everything", async () => {
+    const { user } = open();
+    expect(screen.queryByTestId("fake3d")).not.toBeInTheDocument();
+    await user.click(screen.getAllByRole("radio", { name: "3D model" })[0]);
+    const v = await screen.findByTestId("fake3d");
+    expect(v).toHaveAttribute("data-view", "front");
+    expect(screen.getAllByText("Drag to rotate, scroll or pinch to zoom, tap a tooth to select it.")[0]).toBeInTheDocument();
+    const bar = within(screen.getAllByRole("toolbar", { name: "3D view" })[0]);
+    for (const [name, view] of [["Open mouth", "open"], ["Upper jaw", "upper"], ["Lower jaw", "lower"], ["Side", "side"], ["Front", "front"]] as const) {
+      await user.click(bar.getByRole("button", { name }));
+      expect(screen.getByTestId("fake3d")).toHaveAttribute("data-view", view);
+    }
+    await user.click(bar.getByRole("button", { name: "Show roots" }));
+    expect(screen.getByTestId("fake3d")).toHaveAttribute("data-xray", "true");
+    await user.click(bar.getByRole("button", { name: "Numbers" }));
+    expect(screen.getByTestId("fake3d")).toHaveAttribute("data-nums", "false");
+    await user.click(screen.getByRole("button", { name: "drag" }));
+    expect(screen.getByTestId("fake3d")).toHaveAttribute("data-view", "custom");
+    await user.click(screen.getByRole("button", { name: "tap 36 in 3D" }));
+    expect(screen.getAllByText("Tooth 36: Lower left first molar")[0]).toBeInTheDocument();
+    await user.click(add("Missing"));
+    await user.click(screen.getAllByRole("radio", { name: "2D chart" })[0]);
+    expect(screen.queryByTestId("fake3d")).not.toBeInTheDocument();
+    expect(info()).toHaveTextContent("Missing (already in mouth)");
+  });
+
+  test("REG-FE-ANAT2-036 in 3D a root canal turns the roots view on so it can be seen; an implant says how to see its screw", async () => {
+    const missing36: ChartItem = { id: "m", tooth: 36, kind: "missing", status: "existing" };
+    const { user } = open({ teeth: {}, items: [missing36], positions: {} });
+    await user.click(screen.getAllByRole("radio", { name: "3D model" })[0]);
+    await screen.findByTestId("fake3d");
+    await user.click(add("Root canal"));
+    expect(said()).toHaveTextContent("Roots view turned on so you can see the root canal.");
+    expect(screen.getByTestId("fake3d")).toHaveAttribute("data-xray", "true");
+    await user.click(within(screen.getAllByRole("toolbar", { name: "3D view" })[0]).getByRole("button", { name: "Show roots" }));
+    await user.click(screen.getByRole("button", { name: "tap 36 in 3D" }));
+    await user.click(add("Implant"));
+    expect(said()).toHaveTextContent("Implant added. Turn on Show roots to see the screw in the bone.");
+  });
+
+  test("REG-FE-ANAT2-037 if the 3D model cannot be loaded, the page says so and the 2D chart is still there", async () => {
+    three.fail = true;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { user } = open();
+    await user.click(screen.getAllByRole("radio", { name: "3D model" })[0]);
+    expect(await screen.findByRole("alert")).toHaveTextContent("The 3D model could not be loaded. Check the internet connection, or use the 2D chart");
+    await user.click(screen.getAllByRole("radio", { name: "2D chart" })[0]);
+    expect(screen.getAllByRole("group", { name: "Adult tooth chart" })[0]).toBeInTheDocument();
+    three.fail = false;
+  });
 });
+
