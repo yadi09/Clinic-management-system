@@ -36,7 +36,11 @@ function surfaces(d: ToothRec, R: Record<SurfaceKey, Rect>, clip: string): React
 }
 
 /** side2(n, id) */
-export function ToothSide({ n, S, p, clipId }: { n: number; S: TS; p?: Position; clipId: string }) {
+/** A bracket of braces on the tooth's front (cheek) face: its material, or red when planned. */
+export interface Bracket { m: "metal" | "ceramic"; planned: boolean }
+const bracketFill = (b: Bracket) => (b.planned ? C2.plan : C2[b.m]);
+
+export function ToothSide({ n, S, p, clipId, bracket }: { n: number; S: TS; p?: Position; clipId: string; bracket?: Bracket | null }) {
   const path = P[ty(n)], q = p ?? NO_POS, st = S.ghost ? GHOST : {};
   const a = S.ghost ? 0 : mir(n) ? -q.tipping : q.tipping, dy = S.ghost ? 0 : q.vertical * 3;
   const base = S.real && !S.allPlan ? crownColour(S.cr!.m) : "var(--surface-2)";
@@ -57,12 +61,13 @@ export function ToothSide({ n, S, p, clipId }: { n: number; S: TS; p?: Position;
       {S.real && !S.allPlan && S.cr!.m === "pfm" && <rect x={0} y={60} width={40} height={3} fill="#5f5c58" clipPath={`url(#${clipId})`} />}
       {planCover && <path d={path.c} fill={C2.plan} opacity={0.55} />}
       <path d={path.c} style={{ fill: "none", ...ST, ...st }} />
+      {bracket && <rect data-bracket={n} x={14} y={72} width={12} height={9} rx={1.5} fill={bracketFill(bracket)} opacity={bracket.planned ? 0.75 : 1} stroke="#6f757c" strokeWidth={0.8} />}
     </g>
   );
 }
 
 /** top2(n, id) */
-export function ToothTop({ n, S, p, clipId }: { n: number; S: TS; p?: Position; clipId: string }) {
+export function ToothTop({ n, S, p, clipId, bracket }: { n: number; S: TS; p?: Position; clipId: string; bracket?: Bracket | null }) {
   const path = TV[ty(n)], q = p ?? NO_POS, st = S.ghost ? GHOST : {};
   const dy = S.ghost ? 0 : (isUp(n) ? -1 : 1) * q.buccal_lingual * 2.5, r = S.ghost ? 0 : q.rotation, sx = W(n) / 36;
   const base = S.real && !S.allPlan ? crownColour(S.cr!.m) : "var(--surface-2)";
@@ -75,6 +80,8 @@ export function ToothTop({ n, S, p, clipId }: { n: number; S: TS; p?: Position; 
       {!S.ghost && !S.real && <path d={path.g} style={{ fill: "none", stroke: "var(--text-muted)", strokeWidth: 1.2, strokeLinecap: "round" }} />}
       {planCover && <path d={path.o} fill={C2.plan} opacity={0.55} />}
       <path d={path.o} style={{ fill: "none", ...ST, ...st }} />
+      {/* The bracket seen from above: on the cheek side (top for upper teeth, bottom for lower). */}
+      {bracket && <rect x={15} y={isUp(n) ? 2 : 32} width={10} height={6} rx={1.2} fill={bracketFill(bracket)} opacity={bracket.planned ? 0.75 : 1} stroke="#6f757c" strokeWidth={0.8} />}
     </g>
   );
 }

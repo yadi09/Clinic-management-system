@@ -7,7 +7,7 @@
 //
 // The server (internal/dental/service/chart_items.go) enforces the same rules on
 // every save; keep the two in step.
-import type { ChartItem, CrownMaterial, FillMaterial, ItemInput, ItemStatus, Position, SurfaceKey } from "@/features/dental/api";
+import type { BraceMaterial, ChartItem, CrownMaterial, FillMaterial, ItemInput, ItemStatus, Position, SurfaceKey } from "@/features/dental/api";
 import { SETS, isUp, type Dentition } from "@/features/dental/anatomical/geometry";
 
 export type Status = ItemStatus;
@@ -27,16 +27,18 @@ export interface ToothRec {
   notes?: Record<string, string>;
 }
 export interface Bridge { a: number; b: number; m: CrownMaterial; s: Status; on?: string; note?: string }
-export interface ChartState { teeth: Record<number, ToothRec>; bridges: Bridge[] }
+/** Braces: brackets on the teeth from `a` to `b` along one jaw, joined by a wire. */
+export interface Braces { a: number; b: number; m: BraceMaterial; s: Status; on?: string }
+export interface ChartState { teeth: Record<number, ToothRec>; bridges: Bridge[]; braces: Braces[] }
 
-export type Tool = "caries" | "filling" | "crown" | "rct" | "extract" | "missing" | "implant" | "bridge" | "clear";
-export interface Ctx { sel: number; tool: Tool; stat: Status; fillMat: FillMaterial; crownMat: CrownMaterial; dentition: Dentition }
-export interface Outcome { state: ChartState; msg: string; err?: boolean; bridgeStart?: number | null }
+export type Tool = "caries" | "filling" | "crown" | "rct" | "extract" | "missing" | "implant" | "bridge" | "braces" | "clear";
+export interface Ctx { sel: number; tool: Tool; stat: Status; fillMat: FillMaterial; crownMat: CrownMaterial; braceMat?: BraceMaterial; dentition: Dentition }
+export interface Outcome { state: ChartState; msg: string; err?: boolean; bridgeStart?: number | null; bracesStart?: number | null }
 
-export const EMPTY_STATE: ChartState = { teeth: {}, bridges: [] };
+export const EMPTY_STATE: ChartState = { teeth: {}, bridges: [], braces: [] };
 
 /* ---------- Words (the reference's ML, SN, SL) ---------- */
-export const ML: Record<string, string> = { composite: "composite", amalgam: "amalgam", zirconia: "zirconia", pfm: "porcelain-metal", gold: "gold", steel: "stainless steel" };
+export const ML: Record<string, string> = { composite: "composite", amalgam: "amalgam", zirconia: "zirconia", pfm: "porcelain-metal", gold: "gold", steel: "stainless steel", metal: "metal", ceramic: "ceramic" };
 export const SN: Record<SurfaceKey, string> = { O: "top", M: "front side", D: "back side", B: "cheek side", L: "tongue side" };
 export const SL: Record<Status, string> = { existing: "already in mouth", planned: "to be done", done: "done today" };
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
@@ -58,12 +60,26 @@ export function bridgeOf(s: ChartState, n: number): BridgeRole | null {
   return null;
 }
 
+export interface BracesRole { b: Braces; units: number[] }
+/** The braces a tooth is under, if any (its first and last teeth and every one between). */
+export function bracesOf(s: ChartState, n: number): BracesRole | null {
+  const dent = dentitionOf(n);
+  for (const b of s.braces ?? []) {
+    if (isUp(n) !== isUp(b.a) || dentitionOf(b.a) !== dent) continue;
+    const ar = arrOf(n, dent), i = ar.indexOf(b.a), j = ar.indexOf(b.b), k = ar.indexOf(n), lo = Math.min(i, j), hi = Math.max(i, j);
+    if (k >= lo && k <= hi) return { b, units: ar.slice(lo, hi + 1) };
+  }
+  return null;
+}
+/** A bracket is glued on a tooth that is there (not a missing one, unless it has an implant). */
+export const hasBracket = (s: ChartState, n: number) => { const d = toothOf(s, n); return !!bracesOf(s, n) && (!d.missing || !!d.implant); };
+
 /** Done in an earlier visit: it is now simply part of the mouth. */
 export const doneBefore = (r: { s: Status; on?: string } | undefined, today: string) => !!r && r.s === "done" && !!r.on && r.on !== today;
 /** The status as the screen shows it today: an earlier "done" reads as already in mouth. */
 export const shownStatus = (r: { s: Status; on?: string }, today: string): Status => (doneBefore(r, today) ? "existing" : r.s);
 
-export interface Line { t: string; s: Status; br?: true; on?: string; key: string }
+export interface Line { t: string; s: Status; br?: true; span?: true; on?: string; key: string }
 /** Everything recorded on a tooth, in words (the reference's items()). */
 export function items(s: ChartState, n: number, today: string): Line[] {
   const d = toothOf(s, n), br = bridgeOf(s, n), out: Line[] = [];
@@ -72,6 +88,8 @@ export function items(s: ChartState, n: number, today: string): Line[] {
     out.push({ t: `${ML[br.b.m]} bridge ${br.units[0]}–${br.units[br.units.length - 1]}${br.role === "pontic" ? ", replacement tooth" : ""}`, s: st(br.b), br: true, on: br.b.on, key: "bridge|" });
   if (br && br.role === "abut" && n !== br.units[0])
     out.push({ t: `bridge crown (part of bridge ${br.units[0]}–${br.units[br.units.length - 1]})`, s: st(br.b), br: true, on: br.b.on, key: "bridge|" });
+  const bc = bracesOf(s, n);
+  if (bc) out.push({ t: `${ML[bc.b.m]} braces ${bc.units[0]}–${bc.units[bc.units.length - 1]}`, s: st(bc.b), span: true, on: bc.b.on, key: "braces|" });
   if (d.implant) out.push({ t: `implant with ${ML[d.implant.m]} crown`, s: st(d.implant), on: d.implant.on, key: "implant|" });
   else if (d.missing && !(br && br.role === "pontic"))
     out.push({ t: d.missing.s === "done" ? "extracted" : "missing", s: st(d.missing), on: d.missing.on, key: "missing|" });
@@ -129,6 +147,28 @@ export function tryBridge(state: ChartState, a: number, b: number, ctx: Ctx): Ou
   return { state: s, msg: `Bridge ${units[0]}–${units[units.length - 1]} added.`, bridgeStart: null };
 }
 
+export function tryBraces(state: ChartState, a: number, b: number, ctx: Ctx): Outcome {
+  const s = clone(state);
+  const no = (msg: string): Outcome => ({ state, msg, err: true, bracesStart: null });
+  if (a === b) return no("Pick a different tooth for the other end of the braces.");
+  if (isUp(a) !== isUp(b) || dentitionOf(a) !== dentitionOf(b)) return no("Braces stay on one jaw. Pick the last tooth in the same jaw.");
+  for (const e of [a, b]) { const d = toothOf(s, e); if (d.missing && !d.implant) return no(`Tooth ${e} is missing. Start and end the braces on teeth that are there.`); }
+  const ar = arrOf(a, ctx.dentition), i = ar.indexOf(a), j = ar.indexOf(b), units = ar.slice(Math.min(i, j), Math.max(i, j) + 1);
+  if ((s.braces ?? []).some((x) => isUp(x.a) === isUp(a) && dentitionOf(x.a) === dentitionOf(a)))
+    return no("This jaw already has braces. Remove them first (tap Braces on one of their teeth).");
+  (s.braces ??= []).push({ a, b, m: ctx.braceMat ?? "metal", s: ctx.stat });
+  return { state: s, msg: `${cap(ML[ctx.braceMat ?? "metal"])} braces ${units[0]}–${units[units.length - 1]} added.`, bracesStart: null };
+}
+
+/** Braces on the whole jaw of the selected tooth: second molar to second molar
+ *  (all the baby teeth for a child), from the outermost teeth that are there. */
+export function wholeArchBraces(state: ChartState, ctx: Ctx): Outcome {
+  const ar = arrOf(ctx.sel, ctx.dentition).filter((n) => ctx.dentition === "child" || n % 10 !== 8);
+  const there = ar.filter((n) => { const d = toothOf(state, n); return !d.missing || d.implant; });
+  if (there.length < 2) return { state, msg: "This jaw does not have enough teeth for braces.", err: true, bracesStart: null };
+  return tryBraces(state, there[0], there[there.length - 1], ctx);
+}
+
 /** Pressing a tool for the selected tooth (the reference's toolAction()). */
 export function toolAction(state: ChartState, ctx: Ctx, view3d = false): Outcome {
   const s = clone(state), sel = ctx.sel, t = rec(s, sel), br = bridgeOf(s, sel);
@@ -144,7 +184,17 @@ export function toolAction(state: ChartState, ctx: Ctx, view3d = false): Outcome
   if (tool === "clear") {
     s.teeth[sel] = { surf: {} };
     if (br) s.bridges = s.bridges.filter((x) => !(x.a === br.b.a && x.b === br.b.b));
-    return ok(`Tooth ${sel} cleared.`);
+    // Braces belong to the whole jaw: clearing one tooth never takes them off by accident.
+    return ok(bracesOf(s, sel) ? `Tooth ${sel} cleared. The braces stay — tap Braces to remove them.` : `Tooth ${sel} cleared.`);
+  }
+  if (tool === "braces") {
+    const bc = bracesOf(s, sel);
+    if (bc) {
+      s.braces = s.braces.filter((x) => !(x.a === bc.b.a && x.b === bc.b.b));
+      return ok(`${cap(ML[bc.b.m])} braces ${bc.units[0]}–${bc.units[bc.units.length - 1]} removed.`);
+    }
+    if (t.missing && !t.implant) return no("Start the braces on a tooth that is there.");
+    return { state, msg: `Braces start at ${sel}. Now tap the last tooth of the braces, or tap Whole arch.`, bracesStart: sel };
   }
   if (tool === "missing") {
     if (br) return no("This tooth is part of a bridge. Use Clear tooth to remove the bridge first.");
@@ -228,12 +278,17 @@ export function completeAction(state: ChartState, sel: number): Outcome {
     const b = s.bridges.find((x) => x.a === br.b.a && x.b === br.b.b);
     if (b) b.s = "done";
   }
+  const bc = bracesOf(s, sel);
+  if (bc && bc.b.s === "planned") {
+    const b = s.braces.find((x) => x.a === bc.b.a && x.b === bc.b.b);
+    if (b) b.s = "done";
+  }
   return { state: s, msg: `Planned work on ${sel} marked as done.` };
 }
 
 /* ---------- To and from the server's rows ---------- */
 export function fromItems(rows: ChartItem[] | undefined): ChartState {
-  const s: ChartState = { teeth: {}, bridges: [] };
+  const s: ChartState = { teeth: {}, bridges: [], braces: [] };
   for (const r of rows ?? []) {
     const t = rec(s, r.tooth);
     const key = `${r.kind}|${r.surface ?? ""}`;
@@ -248,6 +303,7 @@ export function fromItems(rows: ChartItem[] | undefined): ChartState {
       case "extraction": t.ext = { s: "planned" }; break;
       case "missing": t.missing = st; break;
       case "bridge": s.bridges.push({ a: r.tooth, b: r.bridge_end!, m: r.material as CrownMaterial, ...st, ...(r.note ? { note: r.note } : {}) }); break;
+      case "braces": s.braces.push({ a: r.tooth, b: r.bridge_end!, m: r.material as BraceMaterial, ...st }); break;
     }
   }
   return s;
@@ -269,13 +325,14 @@ export function toItems(s: ChartState, n: number): ItemInput[] {
     if (t.missing) out.push({ kind: "missing", status: t.missing.s });
   }
   for (const b of s.bridges) if (b.a === n) out.push({ kind: "bridge", bridge_end: b.b, material: b.m, status: b.s });
+  for (const b of s.braces ?? []) if (b.a === n) out.push({ kind: "braces", bridge_end: b.b, material: b.m, status: b.s });
   return out;
 }
 
 /** The teeth whose stored items differ between two states. */
 export function changedTeeth(a: ChartState, b: ChartState): number[] {
   const all = new Set<number>([...Object.keys(a.teeth), ...Object.keys(b.teeth)].map(Number));
-  for (const x of [...a.bridges, ...b.bridges]) all.add(x.a);
+  for (const x of [...a.bridges, ...b.bridges, ...(a.braces ?? []), ...(b.braces ?? [])]) all.add(x.a);
   return [...all].filter((n) => JSON.stringify(toItems(a, n)) !== JSON.stringify(toItems(b, n))).sort((x, y) => x - y);
 }
 
@@ -297,6 +354,7 @@ export function planAndDone(s: ChartState, today: string, dentition: Dentition) 
     for (const i of items(s, n, today)) {
       const br = bridgeOf(s, n);
       if (i.br && br && (br.role === "pontic" || n !== br.units[0])) continue;
+      if (i.span && bracesOf(s, n)?.units[0] !== n) continue; // braces are listed once, on their first tooth
       const line = i.br ? i.t : `${n} · ${i.t}`;
       if (i.s === "planned") P.push(line);
       if (i.s === "done") D.push(line);

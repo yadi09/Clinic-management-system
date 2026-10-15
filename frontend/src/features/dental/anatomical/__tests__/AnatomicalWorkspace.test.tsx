@@ -318,5 +318,43 @@ describe("REG-FE-ANAT2 workspace", () => {
     expect(screen.getAllByRole("group", { name: "Adult tooth chart" })[0]).toBeInTheDocument();
     three.fail = false;
   });
+
+  test("REG-FE-ANAT2-038 braces from the panel: first tooth, Braces, material, last tooth; Whole arch; tapping Braces again removes them", async () => {
+    const { user } = open();
+    await user.click(tooth(15));
+    await user.click(as("To be done"));
+    await user.click(add("Braces"));
+    expect(screen.getAllByText(/Braces: brackets glued to the teeth and joined by a wire/)[0]).toBeInTheDocument();
+    expect(said()).toHaveTextContent("Braces start at 15. Now tap the last tooth of the braces, or tap Whole arch.");
+    await user.click(mat(/^Ceramic/));
+    await user.click(tooth(25));
+    expect(said()).toHaveTextContent("Ceramic braces 15–25 added.");
+    expect(document.querySelector("[data-braces='15-25']")).not.toBeNull();
+    expect(document.querySelectorAll("rect[data-bracket]").length).toBeGreaterThanOrEqual(10);
+    await waitFor(() => expect(sentTeeth()[15]).toEqual([{ kind: "braces", bridge_end: 25, material: "ceramic", status: "planned" }]), { timeout: 8000 });
+    expect(within(screen.getAllByRole("region", { name: "Treatment plan" })[0]).getByText("15 · ceramic braces 15–25")).toBeInTheDocument();
+    // Tapping Braces on a braced tooth takes them off.
+    await user.click(tooth(21));
+    await user.click(add("Braces"));
+    expect(said()).toHaveTextContent("Ceramic braces 15–25 removed.");
+    await waitFor(() => expect(sentTeeth()[15]).toEqual([]), { timeout: 8000 });
+    // Whole arch, on the lower jaw.
+    await user.click(tooth(36));
+    await user.click(add("Braces"));
+    await user.click(screen.getAllByRole("button", { name: "Whole arch" })[0]);
+    expect(said()).toHaveTextContent("Ceramic braces 47–37 added.");
+    await waitFor(() => expect(sentTeeth()[47]).toEqual([{ kind: "braces", bridge_end: 37, material: "ceramic", status: "planned" }]), { timeout: 8000 });
+  });
+
+  test("REG-FE-ANAT2-039 a refused braces end is said, and the next tap is an ordinary selection", async () => {
+    const { user } = open();
+    await user.click(tooth(16));
+    await user.click(add("Braces"));
+    await user.click(tooth(46));
+    expect(said()).toHaveTextContent("Braces stay on one jaw. Pick the last tooth in the same jaw.");
+    await user.click(tooth(26));
+    expect(screen.getAllByText("Tooth 26: Upper left first molar")[0]).toBeInTheDocument();
+    expect(api.saveChartItems).not.toHaveBeenCalled();
+  });
 });
 

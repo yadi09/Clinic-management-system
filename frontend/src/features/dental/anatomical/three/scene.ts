@@ -12,7 +12,7 @@ import * as THREE from "three";
 
 import type { Position } from "@/features/dental/api";
 import { SETS, isUp, type Dentition } from "@/features/dental/anatomical/geometry";
-import { NO_POS, bridgeOf, toothOf, tstat, type ChartState } from "@/features/dental/anatomical/model";
+import { NO_POS, bracesOf, bridgeOf, hasBracket, toothOf, tstat, type ChartState } from "@/features/dental/anatomical/model";
 import { crownGeo, dims, implantGeos, rootSpecs, type Dims, type RootSpec } from "@/features/dental/anatomical/three/teeth";
 
 export type View3D = "front" | "open" | "upper" | "lower" | "side" | "custom";
@@ -80,7 +80,14 @@ export function createScene(stage: HTMLElement, lbBox: HTMLElement, onSelect: (n
   const planM = new THREE.MeshBasicMaterial({ color: raw(0xe24b4a), transparent: true, opacity: 0.5, depthWrite: false });
   const planCanal = new THREE.MeshBasicMaterial({ color: raw(0xe24b4a) });
   const ghostM = new THREE.MeshBasicMaterial({ color: raw(0x378add), transparent: true, opacity: 0.14, depthWrite: false });
-  const shared: THREE.Material[] = [enamel, rootMat, gumMat, ...Object.values(CM), ...Object.values(FM), compEdge, collarM, tiM, cariesM, stainM, gpM, planM, planCanal, ghostM];
+  // Braces (not in the reference): metal brackets like steel, ceramic like porcelain, a steel wire.
+  const bracketM: Record<string, THREE.MeshStandardMaterial> = {
+    metal: new THREE.MeshStandardMaterial({ color: C(0xc4cad1), metalness: 0.9, roughness: 0.28 }),
+    ceramic: new THREE.MeshPhysicalMaterial({ color: C(0xefe8dc), roughness: 0.3, clearcoat: 0.8, clearcoatRoughness: 0.15 }),
+  };
+  const wireM = new THREE.MeshStandardMaterial({ color: C(0x9aa1a9), metalness: 1, roughness: 0.25 });
+  const bracketGeo = new THREE.BoxGeometry(1, 1, 1);
+  const shared: THREE.Material[] = [...Object.values(bracketM), wireM, enamel, rootMat, gumMat, ...Object.values(CM), ...Object.values(FM), compEdge, collarM, tiM, cariesM, stainM, gpM, planM, planCanal, ghostM];
 
   const lowerG = new THREE.Group(), upperPivot = new THREE.Group(), upperG = new THREE.Group();
   upperPivot.position.set(0, 0, -30); upperG.position.set(0, 0, 30); upperPivot.add(upperG); scene.add(lowerG, upperPivot);
@@ -124,6 +131,7 @@ export function createScene(stage: HTMLElement, lbBox: HTMLElement, onSelect: (n
   let picks: THREE.Mesh[] = [];
   let labels: { el: HTMLDivElement; obj: THREE.Object3D; loc: THREE.Vector3; up: boolean }[] = [];
   let ctr: Record<number, THREE.Vector3> = {};
+  let brackets: Record<number, THREE.Mesh> = {};
   const owned = new Set<THREE.Material>();
   const ownedGeo = new Set<THREE.BufferGeometry>();
   function clearG(g: THREE.Group) {
@@ -163,6 +171,18 @@ export function createScene(stage: HTMLElement, lbBox: HTMLElement, onSelect: (n
       t.rotation.x = Math.PI / 2; t.scale.set((w / 2) * 0.72, (dp / 2) * 0.72, 1); t.position.y = 0.35; inner.add(t);
     };
     const redShell = () => { const sh = new THREE.Mesh(G0.crown, planM); sh.scale.set(1.08, 1.04, 1.08); inner.add(sh); };
+    /** A bracket glued to the middle of the cheek-side face. */
+    const addBracket = () => {
+      if (!hasBracket(st, n)) return;
+      const bc = bracesOf(st, n)!.b, hit = surfPoint(G0, "B", ms);
+      if (!hit) return;
+      const m = new THREE.Mesh(bracketGeo, bc.s === "planned" ? planM : bracketM[bc.m]);
+      m.scale.set(Math.min(w, 6) * 0.42, h * 0.26, 0.9);
+      m.quaternion.setFromUnitVectors(V(0, 0, 1), hit.n);
+      m.position.copy(hit.p).addScaledVector(hit.n, 0.35);
+      inner.add(m);
+      brackets[n] = m;
+    };
     if (br && br.role === "pontic") {
       const pl = br.b.s === "planned";
       pick(new THREE.Mesh(G0.crown, pl ? planM : selE(own(CM[br.b.m]))));
@@ -174,6 +194,7 @@ export function createScene(stage: HTMLElement, lbBox: HTMLElement, onSelect: (n
       pick(new THREE.Mesh(G0.crown, pl ? planM : selE(own(CM[d.implant.m]))));
       if (!pl && d.implant.m === "pfm") collar(collarM);
       G0.imp.forEach((g) => pick(new THREE.Mesh(g, pl ? planM : tiM)));
+      addBracket();
       return;
     }
     if (d.missing) { const gm = own(ghostM); gm.opacity = isSel ? 0.35 : 0.12; pick(new THREE.Mesh(G0.crown, gm)); return; }
@@ -208,6 +229,7 @@ export function createScene(stage: HTMLElement, lbBox: HTMLElement, onSelect: (n
       if (o.car) { decal(inner, hit, r * 1.55, stainM, 0.22, 0.55); decal(inner, hit, r, cariesM, 0.35, 0.3); }
       if (o.fill) decal(inner, hit, r * 1.4, planM, 0.34, 0.25);
     }
+    addBracket();
   }
   function papilla(G: THREE.Group, curve: THREE.CatmullRomCurve3, len: number, s: number, sx: number, y: number, width: number, depth: number) {
     const a = onArch(curve, len, s); a.p.x *= sx; a.T.x *= sx;
@@ -224,7 +246,7 @@ export function createScene(stage: HTMLElement, lbBox: HTMLElement, onSelect: (n
     clearG(lowerG); clearG(upperG);
     owned.forEach((m) => m.dispose()); owned.clear();
     ownedGeo.forEach((g) => g.dispose()); ownedGeo.clear();
-    lbBox.innerHTML = ""; picks = []; labels = []; ctr = {};
+    lbBox.innerHTML = ""; picks = []; labels = []; ctr = {}; brackets = {};
     const set = SETS[p.mode], child = p.mode === "child";
     ([[set.up, true], [set.lo, false]] as const).forEach(([arr, up]) => {
       const curve = arch(up, child), len = curve.getLength(), G = up ? upperG : lowerG, half = arr.length / 2;
@@ -264,6 +286,16 @@ export function createScene(stage: HTMLElement, lbBox: HTMLElement, onSelect: (n
       ownedGeo.add(tg);
       G.add(new THREE.Mesh(tg, gumMat));
       [full[0], full[full.length - 1]].forEach((v) => { const cc = new THREE.Mesh(dGeo, gumMat); cc.scale.set(6.6, 10.2, 6.6); cc.position.copy(v); G.add(cc); });
+      // The wire: a thin tube through this jaw's brackets, in the jaw's own space.
+      (p.state.braces ?? []).filter((b) => isUp(b.a) === up && (set.up.includes(b.a) || set.lo.includes(b.a))).forEach((b) => {
+        const u = bracesOf(p.state, b.a)?.units ?? [];
+        scene.updateMatrixWorld();
+        const pts = u.filter((n) => brackets[n]).map((n) => G.worldToLocal(brackets[n].getWorldPosition(V(0, 0, 0))));
+        if (pts.length < 2) return;
+        const tube = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), Math.max(16, pts.length * 12), 0.22, 8, false);
+        ownedGeo.add(tube);
+        G.add(new THREE.Mesh(tube, b.s === "planned" ? planM : wireM));
+      });
       p.state.bridges.filter((b) => isUp(b.a) === up && (set.up.includes(b.a) || set.lo.includes(b.a))).forEach((b) => {
         const u = bridgeOf(p.state, b.a)?.units ?? [];
         for (let i = 0; i < u.length - 1; i++) {
@@ -462,7 +494,7 @@ export function createScene(stage: HTMLElement, lbBox: HTMLElement, onSelect: (n
       clearG(lowerG); clearG(upperG);
       owned.forEach((m) => m.dispose()); ownedGeo.forEach((g) => g.dispose());
       for (const g0 of Object.values(cache)) { g0.crown.dispose(); (g0.probe.material as THREE.Material).dispose(); g0.roots.forEach((r) => { r.geo.dispose(); r.cn.dispose(); }); g0.imp.forEach((g) => g.dispose()); }
-      dGeo.dispose();
+      dGeo.dispose(); bracketGeo.dispose();
       shared.forEach((m) => m.dispose());
       es.traverse((o) => { if (o instanceof THREE.Mesh) { o.geometry.dispose(); (o.material as THREE.Material).dispose(); } });
       envRT.dispose(); pm.dispose();

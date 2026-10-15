@@ -2,10 +2,10 @@
 // recorded on it in words; "Record as"; the tools; materials; surfaces; "Mark this
 // tooth's planned work as done"; the position sliders — each with the help line the
 // reference gives under it.
-import type { CrownMaterial, FillMaterial, Position, SurfaceKey } from "@/features/dental/api";
+import type { BraceMaterial, CrownMaterial, FillMaterial, Position, SurfaceKey } from "@/features/dental/api";
 import { FMT, SLIDERS, isUp, toothName } from "@/features/dental/anatomical/geometry";
 import { ToothSide, ToothTop } from "@/features/dental/anatomical/Tooth";
-import { SURFACES, SL, items, toothOf, toothState, type ChartState, type Status, type Tool } from "@/features/dental/anatomical/model";
+import { SURFACES, SL, bracesOf, hasBracket, items, toothOf, toothState, type ChartState, type Status, type Tool } from "@/features/dental/anatomical/model";
 import type { ClinicMark } from "@/features/dental/anatomical/AnatomicalChart";
 
 export const STATHELP: Record<Status, string> = {
@@ -22,28 +22,34 @@ export const TOOLHELP: Record<Tool, string> = {
   missing: "Missing: the tooth is not in the mouth (lost or removed in the past). Tap again to bring it back.",
   implant: "Implant: a titanium screw placed in the jaw bone to replace a missing tooth, with a crown on top. Only works on a tooth marked Missing.",
   bridge: "Bridge: fake teeth that fill a gap, held in place by crowns on the healthy teeth at both ends. Select one end tooth, tap Bridge, then tap the other end tooth. The teeth in between must be marked Missing.",
-  clear: "Clear tooth: removes everything recorded on the selected tooth, including any bridge it belongs to.",
+  braces: "Braces: brackets glued to the teeth and joined by a wire, to move the teeth into place. Select the first tooth, tap Braces, then tap the last tooth — or tap Whole arch. A missing tooth in between simply gets no bracket. Tap Braces on a braced tooth to remove them.",
+  clear: "Clear tooth: removes everything recorded on the selected tooth, including any bridge it belongs to. Braces stay: they belong to the whole jaw.",
 };
-const TOOLS: [Tool, string][] = [["caries", "Caries"], ["filling", "Filling"], ["crown", "Crown"], ["rct", "Root canal"], ["extract", "Extraction"], ["missing", "Missing"], ["implant", "Implant"], ["bridge", "Bridge"], ["clear", "Clear tooth"]];
+const TOOLS: [Tool, string][] = [["caries", "Caries"], ["filling", "Filling"], ["crown", "Crown"], ["rct", "Root canal"], ["extract", "Extraction"], ["missing", "Missing"], ["implant", "Implant"], ["bridge", "Bridge"], ["braces", "Braces"], ["clear", "Clear tooth"]];
 const STATS: [Status, string][] = [["existing", "Already in mouth"], ["planned", "To be done"], ["done", "Done today"]];
 const SURF_LABEL: Record<SurfaceKey, string> = { O: "Top (occlusal)", M: "Front side (mesial)", D: "Back side (distal)", B: "Cheek side (buccal)", L: "Tongue side (lingual)" };
 export const MATS = {
   filling: [["composite", "Composite (tooth-colored)"], ["amalgam", "Amalgam (silver)"]] as [FillMaterial, string][],
   crown: [["zirconia", "Zirconia"], ["pfm", "Porcelain-metal"], ["gold", "Gold"], ["steel", "Stainless steel"]] as [CrownMaterial, string][],
+  braces: [["metal", "Metal (silver brackets)"], ["ceramic", "Ceramic (tooth-colored brackets)"]] as [BraceMaterial, string][],
 };
 const day = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 
 export function ToothPanel(props: {
   n: number; state: ChartState; position?: Position; today: string; uid: string; editable: boolean;
-  tool: Tool; stat: Status; fillMat: FillMaterial; crownMat: CrownMaterial;
+  tool: Tool; stat: Status; fillMat: FillMaterial; crownMat: CrownMaterial; braceMat: BraceMaterial;
   mark?: ClinicMark | null;
   onStat: (s: Status) => void; onTool: (t: Tool) => void; onFillMat: (m: FillMaterial) => void; onCrownMat: (m: CrownMaterial) => void;
+  onBraceMat: (m: BraceMaterial) => void;
+  /** Braces on the selected tooth's whole jaw (offered while the Braces tool is on). */
+  onWholeArch: () => void;
   onSurface: (k: SurfaceKey) => void; onComplete: () => void;
   onPosition: (field: keyof Position, v: number) => void; onResetPosition: () => void;
   onClearMark?: () => void; onConfirmNote?: (key: string) => void;
 }) {
-  const { n, state, position, today, uid, editable, tool, stat, fillMat, crownMat, mark } = props;
+  const { n, state, position, today, uid, editable, tool, stat, fillMat, crownMat, braceMat, mark } = props;
   const it = items(state, n, today), d = toothOf(state, n), S = toothState(state, n);
+  const bracket = hasBracket(state, n) ? { m: bracesOf(state, n)!.b.m, planned: bracesOf(state, n)!.b.s === "planned" } : null;
   const words = it.map((i) => `${i.t} (${i.on && i.on !== today && i.s === "existing" ? `done ${day(i.on)}` : SL[i.s]})`);
   const q = position;
   if (q?.rotation) words.push(`rotated ${Math.abs(q.rotation)}° ${q.rotation > 0 ? "clockwise" : "counterclockwise"}`);
@@ -51,7 +57,7 @@ export function ToothPanel(props: {
   if (q?.buccal_lingual) words.push(`${Math.abs(q.buccal_lingual)}mm ${q.buccal_lingual > 0 ? "buccal" : "lingual"}`);
   if (q?.vertical) words.push(`${Math.abs(q.vertical)}mm ${q.vertical > 0 ? "extruded" : "intruded"}`);
   if (q?.gap_mesial) words.push(`${q.gap_mesial}mm gap on mesial side`);
-  const mk = tool === "filling" ? "filling" : tool === "crown" || tool === "implant" || tool === "bridge" ? "crown" : null;
+  const mk = tool === "filling" ? "filling" : tool === "crown" || tool === "implant" || tool === "bridge" ? "crown" : tool === "braces" ? "braces" : null;
   const notes = Object.entries(d.notes ?? {});
   const sliderVal = { rot: q?.rotation ?? 0, tilt: q?.tipping ?? 0, bl: q?.buccal_lingual ?? 0, vert: q?.vertical ?? 0, gap: q?.gap_mesial ?? 0 };
   const btn = (on: boolean) => `ta-btn ta-tool ${on ? "on" : ""}`;
@@ -61,10 +67,10 @@ export function ToothPanel(props: {
       <div className="flex items-start gap-3">
         <div className="flex shrink-0 flex-col items-center gap-1" aria-hidden>
           <svg viewBox="-12 -8 64 116" width={52} height={104}>
-            {isUp(n) ? <ToothSide n={n} S={S} p={q} clipId={`${uid}bigs`} />
-              : <g transform="translate(0,100) scale(1,-1)"><ToothSide n={n} S={S} p={q} clipId={`${uid}bigs`} /></g>}
+            {isUp(n) ? <ToothSide n={n} S={S} p={q} clipId={`${uid}bigs`} bracket={bracket} />
+              : <g transform="translate(0,100) scale(1,-1)"><ToothSide n={n} S={S} p={q} clipId={`${uid}bigs`} bracket={bracket} /></g>}
           </svg>
-          <svg viewBox="-8 -8 56 56" width={46} height={46}><ToothTop n={n} S={S} p={q} clipId={`${uid}bigt`} /></svg>
+          <svg viewBox="-8 -8 56 56" width={46} height={46}><ToothTop n={n} S={S} p={q} clipId={`${uid}bigt`} bracket={bracket} /></svg>
         </div>
         <div className="min-w-0 flex-1">
           <p className="mb-0.5 text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Tooth {n}: {toothName(n)}</p>
@@ -111,7 +117,15 @@ export function ToothPanel(props: {
             <span className="ta-cap">Material</span>
             {mk === "filling"
               ? MATS.filling.map(([k, l]) => <button key={k} type="button" role="radio" aria-checked={fillMat === k} className={btn(fillMat === k)} onClick={() => props.onFillMat(k)}>{l}</button>)
-              : MATS.crown.map(([k, l]) => <button key={k} type="button" role="radio" aria-checked={crownMat === k} className={btn(crownMat === k)} onClick={() => props.onCrownMat(k)}>{l}</button>)}
+              : mk === "braces"
+                ? MATS.braces.map(([k, l]) => <button key={k} type="button" role="radio" aria-checked={braceMat === k} className={btn(braceMat === k)} onClick={() => props.onBraceMat(k)}>{l}</button>)
+                : MATS.crown.map(([k, l]) => <button key={k} type="button" role="radio" aria-checked={crownMat === k} className={btn(crownMat === k)} onClick={() => props.onCrownMat(k)}>{l}</button>)}
+          </div>
+        )}
+        {tool === "braces" && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="ta-cap" />
+            <button type="button" className={btn(false)} onClick={props.onWholeArch}>Whole arch</button>
           </div>
         )}
         {(tool === "caries" || tool === "filling") && (

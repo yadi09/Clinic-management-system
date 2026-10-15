@@ -16,6 +16,8 @@ export const C = { caries: "#E24B4A", filling: "#378ADD", crown: "#EF9F27", rct:
 export const C2 = {
   caries: "#5a3a22", composite: "#efe3c4", amalgam: "#9aa0a8", zirconia: "#f4f1ea", pfm: "#efe5cf", gold: "#e2b85c", steel: "#c9ccd0",
   rct: "#e0703c", plan: "#E24B4A", ti: "#9da3aa", edge: "#378ADD", gap: "#1D9E75",
+  // Braces (not in the reference): silver metal, tooth-coloured ceramic, a steel wire.
+  metal: "#b8bec6", ceramic: "#efe8dc", wire: "#7d848c",
 } as const;
 export const S = 0.65; // drawing scale of a tooth in the chart
 export const MM = 4; // chart pixels per mm of gap (deliberately enlarged so gaps are visible)

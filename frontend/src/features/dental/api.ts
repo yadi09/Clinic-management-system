@@ -21,10 +21,11 @@ export interface Chart {
   updated_at?: string;
 }
 
-export type ItemKind = "caries" | "filling" | "crown" | "root_canal" | "extraction" | "missing" | "implant" | "bridge";
+export type ItemKind = "caries" | "filling" | "crown" | "root_canal" | "extraction" | "missing" | "implant" | "bridge" | "braces";
 export type ItemStatus = "existing" | "planned" | "done";
 export type FillMaterial = "composite" | "amalgam";
 export type CrownMaterial = "zirconia" | "pfm" | "gold" | "steel";
+export type BraceMaterial = "metal" | "ceramic";
 
 /** One thing recorded on a tooth, as the server keeps it. */
 export interface ChartItem {
@@ -32,8 +33,9 @@ export interface ChartItem {
   tooth: number;
   kind: ItemKind;
   surface?: SurfaceKey;
-  material?: FillMaterial | CrownMaterial;
+  material?: FillMaterial | CrownMaterial | BraceMaterial;
   status: ItemStatus;
+  /** The other end of a span (a bridge, braces). */
   bridge_end?: number;
   note?: string;
   done_on?: string;
@@ -47,7 +49,7 @@ export interface ChartItem {
 export interface ItemInput {
   kind: ItemKind;
   surface?: SurfaceKey;
-  material?: FillMaterial | CrownMaterial;
+  material?: FillMaterial | CrownMaterial | BraceMaterial;
   status: ItemStatus;
   bridge_end?: number;
   note?: string;

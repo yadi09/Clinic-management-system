@@ -5,7 +5,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  EMPTY_STATE, bridgeOf, changedTeeth, completeAction, confirmNote, fromItems, items, planAndDone, shownStatus,
+  EMPTY_STATE, bracesOf, hasBracket, tryBraces, wholeArchBraces, bridgeOf, changedTeeth, completeAction, confirmNote, fromItems, items, planAndDone, shownStatus,
   surfaceAction, toItems, toolAction, toothState, tryBridge, tstat, type ChartState, type Ctx, type Tool,
 } from "@/features/dental/anatomical/model";
 import type { ChartItem } from "@/features/dental/api";
@@ -15,7 +15,7 @@ const ctx = (over: Partial<Ctx> = {}): Ctx => ({ sel: 16, tool: "caries", stat: 
 const tool = (s: ChartState, t: Tool, over: Partial<Ctx> = {}) => toolAction(s, ctx({ tool: t, ...over }));
 const words = (s: ChartState, n: number) => items(s, n, T).map((i) => `${i.t} (${i.s})`);
 /** A mouth with the given teeth missing. */
-const gone = (...ns: number[]): ChartState => ({ teeth: Object.fromEntries(ns.map((n) => [n, { surf: {}, missing: { s: "existing" } }])), bridges: [] });
+const gone = (...ns: number[]): ChartState => ({ teeth: Object.fromEntries(ns.map((n) => [n, { surf: {}, missing: { s: "existing" } }])), bridges: [], braces: [] });
 
 describe("REG-FE-ANAT2 rules", () => {
   test("REG-FE-ANAT2-001 caries and fillings go on surfaces; an existing or done filling replaces the caries, a planned one does not", () => {
@@ -140,7 +140,7 @@ describe("REG-FE-ANAT2 rules", () => {
   test("REG-FE-ANAT2-009 the tooth number's colour: planned red, done today green; work done on an earlier day is simply in the mouth", () => {
     expect(tstat(tool(EMPTY_STATE, "rct", { stat: "planned" }).state, 16, T)).toBe("pl");
     expect(tstat(tool(EMPTY_STATE, "rct", { stat: "done" }).state, 16, T)).toBe("dn");
-    const earlier: ChartState = { teeth: { 16: { surf: {}, rct: { s: "done", on: "2026-10-01" } } }, bridges: [] };
+    const earlier: ChartState = { teeth: { 16: { surf: {}, rct: { s: "done", on: "2026-10-01" } } }, bridges: [], braces: [] };
     expect(tstat(earlier, 16, T)).toBe("");
     expect(shownStatus({ s: "done", on: "2026-10-01" }, T)).toBe("existing");
     expect(shownStatus({ s: "done", on: T }, T)).toBe("done");
@@ -179,7 +179,7 @@ describe("REG-FE-ANAT2 rules", () => {
     expect(toItems(s, 13)).toEqual([{ kind: "bridge", bridge_end: 15, material: "gold", status: "existing" }]);
     expect(toItems(s, 38)).toEqual([{ kind: "extraction", status: "planned" }]);
     expect(toItems(s, 26)).toEqual([{ kind: "crown", material: "pfm", status: "existing" }, { kind: "root_canal", status: "planned" }]);
-    expect(fromItems(undefined)).toEqual({ teeth: {}, bridges: [] });
+    expect(fromItems(undefined)).toEqual({ teeth: {}, bridges: [], braces: [] });
   });
 
   test("REG-FE-ANAT2-012 only the teeth that changed are sent; clearing a bridge's pontic sends the bridge's own tooth", () => {
@@ -187,7 +187,7 @@ describe("REG-FE-ANAT2 rules", () => {
     const cleared = tool(s, "clear", { sel: 15 }).state;
     expect(changedTeeth(s, cleared)).toEqual([13, 15]);
     expect(changedTeeth(s, s)).toEqual([]);
-    const c = confirmNote({ teeth: { 26: { surf: {}, notes: { "crown|": "x" } } }, bridges: [] }, 26, "crown|");
+    const c = confirmNote({ teeth: { 26: { surf: {}, notes: { "crown|": "x" } } }, bridges: [], braces: [] }, 26, "crown|");
     expect(c.teeth[26].notes).toBeUndefined();
   });
 
@@ -197,4 +197,56 @@ describe("REG-FE-ANAT2 rules", () => {
     expect(o.err).toBe(true);
     expect(o.state).toBe(s);
   });
+
+  test("REG-FE-ANAT2-014 braces: start on a tooth, end on another in the same jaw; metal or ceramic; with every status", () => {
+    const start = tool(EMPTY_STATE, "braces", { sel: 17 });
+    expect(start).toMatchObject({ msg: "Braces start at 17. Now tap the last tooth of the braces, or tap Whole arch.", bracesStart: 17 });
+    const b = tryBraces(EMPTY_STATE, 17, 27, ctx({ braceMat: "ceramic", stat: "planned" }));
+    expect(b.msg).toBe("Ceramic braces 17–27 added.");
+    expect(b.state.braces).toEqual([{ a: 17, b: 27, m: "ceramic", s: "planned" }]);
+    expect(bracesOf(b.state, 11)?.units).toEqual([17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27]);
+    expect(bracesOf(b.state, 18)).toBeNull();
+    expect(bracesOf(b.state, 41)).toBeNull();
+    expect(words(b.state, 11)).toEqual(["ceramic braces 17–27 (planned)"]);
+    expect(tstat(b.state, 22, T)).toBe("pl");
+    // Listed once in the plan.
+    expect(planAndDone(b.state, T, "adult").plan).toEqual(["17 · ceramic braces 17–27"]);
+    // Fitted today: "mark planned work as done" on any of its teeth.
+    const done = completeAction(b.state, 12).state;
+    expect(done.braces[0].s).toBe("done");
+    expect(planAndDone(done, T, "adult").done).toEqual(["17 · ceramic braces 17–27"]);
+  });
+
+  test("REG-FE-ANAT2-015 braces refusals in words; a missing tooth inside gets no bracket; Clear keeps them; Braces again removes them", () => {
+    const no = (a: number, b: number, s: ChartState = EMPTY_STATE) => tryBraces(s, a, b, ctx()).msg;
+    expect(no(17, 17)).toBe("Pick a different tooth for the other end of the braces.");
+    expect(no(17, 47)).toBe("Braces stay on one jaw. Pick the last tooth in the same jaw.");
+    expect(no(17, 27, gone(27))).toBe("Tooth 27 is missing. Start and end the braces on teeth that are there.");
+    expect(tool(gone(16), "braces").msg).toBe("Start the braces on a tooth that is there.");
+    const on = tryBraces(gone(12), 17, 27, ctx()).state;
+    expect(no(14, 24, on)).toBe("This jaw already has braces. Remove them first (tap Braces on one of their teeth).");
+    expect(hasBracket(on, 12)).toBe(false); // missing: no bracket
+    expect(hasBracket(on, 11)).toBe(true);
+    const cleared = tool(on, "clear", { sel: 11 });
+    expect(cleared.msg).toBe("Tooth 11 cleared. The braces stay — tap Braces to remove them.");
+    expect(cleared.state.braces).toHaveLength(1);
+    const off = tool(on, "braces", { sel: 23 });
+    expect(off.msg).toBe("Metal braces 17–27 removed.");
+    expect(off.state.braces).toEqual([]);
+    // A child's braces; changing only the braces sends only their first tooth.
+    const kid = tryBraces(EMPTY_STATE, 85, 75, ctx({ dentition: "child" }));
+    expect(kid.msg).toBe("Metal braces 85–75 added.");
+    expect(changedTeeth(EMPTY_STATE, kid.state)).toEqual([85]);
+    expect(toItems(kid.state, 85)).toEqual([{ kind: "braces", bridge_end: 75, material: "metal", status: "existing" }]);
+    expect(fromItems([{ id: "x", tooth: 85, kind: "braces", bridge_end: 75, material: "metal", status: "existing" }]).braces).toEqual([{ a: 85, b: 75, m: "metal", s: "existing" }]);
+  });
+
+  test("REG-FE-ANAT2-016 Whole arch: second molar to second molar from the teeth that are there; a child's whole jaw", () => {
+    expect(wholeArchBraces(EMPTY_STATE, ctx({ sel: 11 })).msg).toBe("Metal braces 17–27 added.");
+    expect(wholeArchBraces(gone(17, 37), ctx({ sel: 36 })).msg).toBe("Metal braces 47–36 added.");
+    expect(wholeArchBraces(EMPTY_STATE, ctx({ sel: 54, dentition: "child" })).msg).toBe("Metal braces 55–65 added.");
+    const all = gone(...[18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28].filter((n) => n !== 11));
+    expect(wholeArchBraces(all, ctx({ sel: 11 })).msg).toBe("This jaw does not have enough teeth for braces.");
+  });
 });
+

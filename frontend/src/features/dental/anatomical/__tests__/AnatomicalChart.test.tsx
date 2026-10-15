@@ -132,4 +132,20 @@ describe("REG-FE-ANAT2 drawing", () => {
     rerender(<AnatomicalChart dentition="adult" state={fromItems([])} positions={{}} today={TODAY} selected={11} onSelect={() => {}} fill />);
     expect(svg().style.height).toBe("100%");
   });
+
+  test("REG-FE-ANAT2-050 braces: a bracket on each tooth that is there (silver metal, tooth-coloured ceramic, red planned) and the wire", () => {
+    const { container } = draw(fromItems([
+      I({ tooth: 12, kind: "missing", status: "existing" }),
+      I({ tooth: 15, kind: "braces", bridge_end: 25, material: "metal", status: "existing" }),
+      I({ tooth: 45, kind: "braces", bridge_end: 35, material: "ceramic", status: "planned" }),
+    ]));
+    const upper = [...container.querySelectorAll("rect[data-bracket]")].map((r) => Number(r.getAttribute("data-bracket"))).filter((n) => n < 30);
+    expect(new Set(upper)).toEqual(new Set([15, 14, 13, 11, 21, 22, 23, 24, 25])); // not 12: missing
+    expect(container.querySelector("rect[data-bracket='14']")!.getAttribute("fill")).toBe("#b8bec6");
+    expect(container.querySelector("rect[data-bracket='41']")!.getAttribute("fill")).toBe("#E24B4A");
+    expect(container.querySelector("[data-braces='15-25']")!.getAttribute("stroke")).toBe("#7d848c");
+    expect(container.querySelector("[data-braces='45-35']")!.getAttribute("stroke")).toBe("#E24B4A");
+    expect(screen.getByRole("button", { name: /^Tooth 11, .*metal braces 15–25 \(already in mouth\)/ })).toBeInTheDocument();
+  });
 });
+

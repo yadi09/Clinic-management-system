@@ -7,7 +7,7 @@ import { useId, type KeyboardEvent } from "react";
 
 import type { Position } from "@/features/dental/api";
 import { C2, EXT, S, SETS, layout, ty, type Dentition } from "@/features/dental/anatomical/geometry";
-import { bridgeOf, items, posEmpty, toothOf, toothState, tstat, SL, type ChartState } from "@/features/dental/anatomical/model";
+import { bracesOf, bridgeOf, hasBracket, items, posEmpty, toothOf, toothState, tstat, SL, type ChartState } from "@/features/dental/anatomical/model";
 import { palmerOf, toothName } from "@/features/dental/anatomical/geometry";
 import { ToothSide, ToothTop } from "@/features/dental/anatomical/Tooth";
 
@@ -68,6 +68,11 @@ export function AnatomicalChart({ dentition, state, positions, today, marks, sel
       onKeyDown={(e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(n); } }} />
   );
   const cx: Record<number, number> = {};
+  const bracketOf = (n: number) => {
+    if (!hasBracket(state, n)) return null;
+    const b = bracesOf(state, n)!.b;
+    return { m: b.m, planned: b.s === "planned" };
+  };
 
   const upper = A.items.map(({ n, x, w }) => {
     const X = ox + x, lo = EXT[ty(n)][0], m = barOf(n), st = toothState(state, n);
@@ -75,8 +80,8 @@ export function AnatomicalChart({ dentition, state, positions, today, marks, sel
     return (
       <g key={n}>
         {n === selected && <rect x={X} y={14} width={w} height={114} rx={3} style={{ fill: "var(--bg-accent)" }} />}
-        <g transform={`translate(${X - lo * S},16) scale(${S})`}><ToothSide n={n} S={st} p={pos(n)} clipId={`${uid}us${n}`} /></g>
-        <g transform={`translate(${X + w / 2 - 20 * S},86) scale(${S})`}><ToothTop n={n} S={st} p={pos(n)} clipId={`${uid}ut${n}`} /></g>
+        <g transform={`translate(${X - lo * S},16) scale(${S})`}><ToothSide n={n} S={st} p={pos(n)} clipId={`${uid}us${n}`} bracket={bracketOf(n)} /></g>
+        <g transform={`translate(${X + w / 2 - 20 * S},86) scale(${S})`}><ToothTop n={n} S={st} p={pos(n)} clipId={`${uid}ut${n}`} bracket={bracketOf(n)} /></g>
         <text x={X + w / 2} y={124} textAnchor="middle" style={numStyle(n)}>{n}</text>
         {m && <rect data-mark={n} x={X + 2} y={125.5} width={w - 4} height={2.5} rx={1} fill={m.color}><title>{m.label}</title></rect>}
       </g>
@@ -90,8 +95,8 @@ export function AnatomicalChart({ dentition, state, positions, today, marks, sel
         {n === selected && <rect x={X} y={132} width={w} height={114} rx={3} style={{ fill: "var(--bg-accent)" }} />}
         <text x={X + w / 2} y={141} textAnchor="middle" style={numStyle(n)}>{n}</text>
         {m && <rect data-mark={n} x={X + 2} y={143} width={w - 4} height={2.5} rx={1} fill={m.color}><title>{m.label}</title></rect>}
-        <g transform={`translate(${X + w / 2 - 20 * S},147) scale(${S})`}><ToothTop n={n} S={st} p={pos(n)} clipId={`${uid}lt${n}`} /></g>
-        <g transform={`translate(${X - lo * S},243) scale(${S},-${S})`}><ToothSide n={n} S={st} p={pos(n)} clipId={`${uid}ls${n}`} /></g>
+        <g transform={`translate(${X + w / 2 - 20 * S},147) scale(${S})`}><ToothTop n={n} S={st} p={pos(n)} clipId={`${uid}lt${n}`} bracket={bracketOf(n)} /></g>
+        <g transform={`translate(${X - lo * S},243) scale(${S},-${S})`}><ToothSide n={n} S={st} p={pos(n)} clipId={`${uid}ls${n}`} bracket={bracketOf(n)} /></g>
       </g>
     );
   });
@@ -99,6 +104,14 @@ export function AnatomicalChart({ dentition, state, positions, today, marks, sel
     const u = bridgeOf(state, b.a)?.units ?? [b.a, b.b];
     const y = set.up.includes(b.a) ? 66 : 193, c = b.s === "planned" ? C2.plan : b.m === "gold" ? C2.gold : "#8d8a84";
     return <line key={`br${b.a}-${b.b}`} data-bridge={`${u[0]}-${u[u.length - 1]}`} x1={cx[u[0]]} y1={y} x2={cx[u[u.length - 1]]} y2={y} stroke={c} strokeWidth={3} strokeLinecap="round" opacity={0.9} />;
+  });
+
+  // The wire: through the brackets of the braces, at bracket height.
+  const wires = (state.braces ?? []).filter((b) => set.up.includes(b.a) || set.lo.includes(b.a)).map((b) => {
+    const u = bracesOf(state, b.a)?.units ?? [b.a, b.b];
+    const y = set.up.includes(b.a) ? 16 + 76.5 * S : 243 - 76.5 * S;
+    return <line key={`bc${b.a}-${b.b}`} data-braces={`${u[0]}-${u[u.length - 1]}`} x1={cx[u[0]]} y1={y} x2={cx[u[u.length - 1]]} y2={y}
+      stroke={b.s === "planned" ? C2.plan : C2.wire} strokeWidth={1.4} strokeLinecap="round" />;
   });
 
   return (
@@ -112,6 +125,7 @@ export function AnatomicalChart({ dentition, state, positions, today, marks, sel
       {upper}
       {lower}
       {bars}
+      {wires}
       {A.gaps.map((g, i) => pill(`ap${i}`, ox + g.x + g.w / 2, 7, g.g))}
       {B.gaps.map((g, i) => pill(`bp${i}`, lx + g.x + g.w / 2, 254, g.g))}
       {A.items.map(({ n, x, w }) => hit(n, ox + x, 14, w))}

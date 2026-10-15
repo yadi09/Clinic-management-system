@@ -738,3 +738,46 @@ test("REG-E2E-030 zoomed in, the dentist can move around the model: zoom toward 
   await stage.screenshot({ path: testInfo.outputPath("centred.png"), timeout: 60_000 });
   await chartStyle("simple");
 });
+
+test("REG-E2E-031 braces: whole upper arch in metal, a planned ceramic set on the lower jaw; they survive a reload and show in 3D", async ({ page }, testInfo) => {
+  test.setTimeout(240_000);
+  await chartStyle("anatomical");
+  const p = await newPatient();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page, "doctor");
+  await page.goto(`/patients/${p.id}`);
+  await page.getByRole("button", { name: /^Tooth chart/ }).click();
+  const saved = () => page.waitForResponse((r) => r.url().includes(`/dental/patients/${p.id}/chart/items`) && r.request().method() === "PUT");
+  // Upper: already in mouth, metal, the whole arch.
+  await anat(page, 11).click();
+  await anatTool(page, "Braces").click();
+  let s = saved();
+  await page.getByRole("button", { name: "Whole arch" }).click();
+  expect((await s).ok()).toBe(true);
+  await expect(anatSay(page)).toHaveText("Metal braces 17–27 added.");
+  // Lower: to be done, ceramic, 44 to 34.
+  await anat(page, 44).click();
+  await anatAs(page, "To be done").click();
+  await anatTool(page, "Braces").click();
+  await anatMat(page, /^Ceramic/).click();
+  s = saved();
+  await anat(page, 34).click();
+  expect((await s).ok()).toBe(true);
+  await expect(anatSay(page)).toHaveText("Ceramic braces 44–34 added.");
+  await page.reload();
+  await page.getByRole("button", { name: /^Tooth chart/ }).click();
+  await expect(page.locator("[data-braces='17-27']")).toHaveCount(1);
+  await expect(page.locator("[data-braces='44-34']")).toHaveCount(1);
+  await anat(page, 21).click();
+  await expect(anatInfo(page)).toHaveText("Metal braces 17–27 (already in mouth)");
+  await expect(page.getByRole("region", { name: "Treatment plan" }).first()).toContainText("44 · ceramic braces 44–34");
+  await page.locator(".tooth-anatomy").first().screenshot({ path: testInfo.outputPath("braces-2d.png") });
+  // 3D: the brackets and wire are drawn.
+  await page.getByRole("radio", { name: "3D model" }).click();
+  const stage = page.getByTestId("stage3d");
+  await expect(stage.locator("canvas")).toBeVisible({ timeout: 20_000 });
+  await stage.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(2500);
+  await stage.screenshot({ path: testInfo.outputPath("braces-3d.png"), timeout: 60_000 });
+  await chartStyle("simple");
+});

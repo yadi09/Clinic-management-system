@@ -313,3 +313,41 @@ func TestREG_DENTAL_ITEMS_007_PositionsHistoryAndAccess(t *testing.T) {
 		t.Fatalf("note after clearing = %+v", got)
 	}
 }
+
+// TestREG_DENTAL_ITEMS_008_BracesSpanOneJaw: braces are stored on their first tooth
+// and reach their last; metal or ceramic; on adults and children; refused across
+// jaws, between a child and an adult tooth, ending on a missing tooth, or as a second
+// set on a jaw; a missing tooth inside the span is fine; removed by an empty list.
+func TestREG_DENTAL_ITEMS_008_BracesSpanOneJaw(t *testing.T) {
+	p := denPatient(t, clinicA)
+	doc := srv.As(t, clinicA, "doctor")
+	put(t, doc, p.ID, map[string][]it{"12": {{"kind": "missing", "status": "existing"}}}).Expect(t, 200, "a gap inside the span")
+	put(t, doc, p.ID, map[string][]it{"17": {{"kind": "braces", "bridge_end": 27, "material": "metal", "status": "planned"}}}).Expect(t, 200, "upper braces 17–27")
+	put(t, doc, p.ID, map[string][]it{"75": {{"kind": "braces", "bridge_end": 85, "material": "ceramic", "status": "existing"}}}).Expect(t, 200, "a child's lower braces")
+	c := chartOf(t, doc, p.ID)
+	if b := find(c, 17, "braces", ""); b == nil || b.BridgeEnd != 27 || b.Material != "metal" || b.Status != "planned" {
+		t.Fatalf("upper braces = %+v", b)
+	}
+	if b := find(c, 75, "braces", ""); b == nil || b.Material != "ceramic" {
+		t.Fatalf("child braces = %+v", b)
+	}
+	refused(t, put(t, doc, p.ID, map[string][]it{"16": {{"kind": "braces", "bridge_end": 24, "material": "ceramic", "status": "planned"}}}), "This jaw already has braces")
+	refused(t, put(t, doc, p.ID, map[string][]it{"47": {{"kind": "braces", "bridge_end": 27, "material": "metal", "status": "planned"}}}), "Braces stay on one jaw")
+	refused(t, put(t, doc, p.ID, map[string][]it{"47": {{"kind": "braces", "bridge_end": 75, "material": "metal", "status": "planned"}}}), "Braces stay on one jaw")
+	refused(t, put(t, doc, p.ID, map[string][]it{"47": {{"kind": "braces", "bridge_end": 47, "material": "metal", "status": "planned"}}}), "different tooth")
+	refused(t, put(t, doc, p.ID, map[string][]it{"47": {{"kind": "braces", "bridge_end": 37, "material": "gold", "status": "planned"}}}), "metal or ceramic")
+	refused(t, put(t, doc, p.ID, map[string][]it{"47": {{"kind": "braces", "material": "metal", "status": "planned"}}}), "the last tooth they reach")
+	refused(t, put(t, doc, p.ID, map[string][]it{"47": {{"kind": "braces", "bridge_end": 99, "material": "metal", "status": "planned"}}}), "not a tooth on the chart")
+	put(t, doc, p.ID, map[string][]it{"37": {{"kind": "missing", "status": "existing"}}}).Expect(t, 200, "37 missing")
+	refused(t, put(t, doc, p.ID, map[string][]it{"47": {{"kind": "braces", "bridge_end": 37, "material": "metal", "status": "planned"}}}), "Tooth 37 is missing")
+	refused(t, put(t, doc, p.ID, map[string][]it{"17": {{"kind": "crown", "material": "gold", "status": "planned"}, {"kind": "caries", "surface": "O", "status": "existing"}, {"kind": "root_canal", "status": "planned"}, {"kind": "bridge", "bridge_end": 17, "material": "gold", "status": "planned"}}}), "Pick a different tooth for the other end of the bridge")
+	// Fitting it: the same item, now done today. Removing it.
+	put(t, doc, p.ID, map[string][]it{"17": {{"kind": "braces", "bridge_end": 27, "material": "metal", "status": "done"}}}).Expect(t, 200, "fitted")
+	if b := find(chartOf(t, doc, p.ID), 17, "braces", ""); b == nil || b.Status != "done" || b.DoneOn == "" {
+		t.Fatalf("fitted braces = %+v", b)
+	}
+	put(t, doc, p.ID, map[string][]it{"17": {}}).Expect(t, 200, "removed")
+	if find(chartOf(t, doc, p.ID), 17, "braces", "") != nil {
+		t.Fatal("removed braces are still there")
+	}
+}

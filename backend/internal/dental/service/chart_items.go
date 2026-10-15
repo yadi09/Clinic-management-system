@@ -24,14 +24,17 @@ import (
 )
 
 var (
-	itemKinds      = map[string]bool{"caries": true, "filling": true, "crown": true, "root_canal": true, "extraction": true, "missing": true, "implant": true, "bridge": true}
+	itemKinds      = map[string]bool{"caries": true, "filling": true, "crown": true, "root_canal": true, "extraction": true, "missing": true, "implant": true, "bridge": true, "braces": true}
+	braceMaterials = map[string]bool{"metal": true, "ceramic": true}
 	itemStatuses   = map[string]bool{"existing": true, "planned": true, "done": true}
 	fillMaterials  = map[string]bool{"composite": true, "amalgam": true}
 	crownMaterials = map[string]bool{"zirconia": true, "pfm": true, "gold": true, "steel": true}
 	surfaceWords   = map[string]string{"O": "top", "M": "front side", "D": "back side", "B": "cheek side", "L": "tongue side"}
-	kindWords      = map[string]string{"caries": "caries", "filling": "a filling", "crown": "a crown", "root_canal": "a root canal", "extraction": "an extraction", "implant": "an implant", "bridge": "a bridge"}
+	kindWords      = map[string]string{"caries": "caries", "filling": "a filling", "crown": "a crown", "root_canal": "a root canal", "extraction": "an extraction", "implant": "an implant", "bridge": "a bridge", "braces": "braces"}
 	archUpAdult    = []int{18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28}
 	archLoAdult    = []int{48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38}
+	archUpChild    = []int{55, 54, 53, 52, 51, 61, 62, 63, 64, 65}
+	archLoChild    = []int{85, 84, 83, 82, 81, 71, 72, 73, 74, 75}
 )
 
 func isUpper(t int) bool { q := t / 10; return q == 1 || q == 2 || q == 5 || q == 6 }
@@ -59,7 +62,12 @@ type span struct {
 }
 
 func archOf(t int) []int {
-	if isUpper(t) {
+	switch {
+	case isChild(t) && isUpper(t):
+		return archUpChild
+	case isChild(t):
+		return archLoChild
+	case isUpper(t):
 		return archUpAdult
 	}
 	return archLoAdult
@@ -74,11 +82,14 @@ func indexOf(a []int, t int) int {
 	return -1
 }
 
-func (m mouthItems) spans() []span {
+func (m mouthItems) spans() []span { return m.spansOf("bridge") }
+
+// spansOf returns every span of a kind (bridge or braces) along its arch.
+func (m mouthItems) spansOf(kind string) []span {
 	var out []span
 	for _, items := range m {
 		for _, it := range items {
-			if it.kind != "bridge" {
+			if it.kind != kind {
 				continue
 			}
 			ar := archOf(it.tooth)
@@ -123,6 +134,10 @@ func checkItem(t int, in dental.ItemInput) error {
 		if !crownMaterials[in.Material] {
 			return refuse("Tooth %d: pick the crown material (zirconia, porcelain-metal, gold or stainless steel).", t)
 		}
+	case "braces":
+		if !braceMaterials[in.Material] {
+			return refuse("Tooth %d: braces are metal or ceramic.", t)
+		}
 	default:
 		if in.Material != "" {
 			return refuse("Tooth %d: %s has no material.", t, kindWords[in.Kind])
@@ -148,8 +163,11 @@ func checkItem(t int, in dental.ItemInput) error {
 	if in.Kind == "bridge" && in.BridgeEnd == 0 {
 		return refuse("Tooth %d: a bridge needs the tooth at its other end.", t)
 	}
-	if in.Kind != "bridge" && in.BridgeEnd != 0 {
-		return refuse("Tooth %d: only a bridge names another tooth.", t)
+	if in.Kind == "braces" && in.BridgeEnd == 0 {
+		return refuse("Tooth %d: braces need the last tooth they reach.", t)
+	}
+	if in.Kind != "bridge" && in.Kind != "braces" && in.BridgeEnd != 0 {
+		return refuse("Tooth %d: only a bridge or braces name another tooth.", t)
 	}
 	if isChild(t) && (in.Kind == "implant" || in.Kind == "bridge") {
 		if in.Kind == "implant" {
@@ -245,6 +263,35 @@ func checkMouth(m mouthItems, touched map[int]bool, fresh map[string]bool) error
 						return refuse("Some of these teeth are already part of a bridge.")
 					}
 				}
+			}
+		}
+	}
+	// Braces: one jaw, both ends on teeth that are there, one set per jaw. Teeth under
+	// braces may be missing (they simply get no bracket).
+	braces := m.spansOf("braces")
+	for _, sp := range braces {
+		in := check[sp.item.tooth]
+		for _, u := range sp.units {
+			in = in || check[u]
+		}
+		if !in {
+			continue
+		}
+		a, b := sp.item.tooth, sp.item.bridgeEnd
+		if a == b {
+			return refuse("Pick a different tooth for the other end of the braces.")
+		}
+		if isUpper(a) != isUpper(b) || isChild(a) != isChild(b) || sp.units == nil {
+			return refuse("Braces stay on one jaw. Pick the last tooth in the same jaw.")
+		}
+		for _, e := range []int{a, b} {
+			if m.has(e, "missing") != nil && m.has(e, "implant") == nil {
+				return refuse("Tooth %d is missing. Start and end the braces on teeth that are there.", e)
+			}
+		}
+		for _, other := range braces {
+			if other.item != sp.item && isUpper(other.item.tooth) == isUpper(a) && isChild(other.item.tooth) == isChild(a) {
+				return refuse("This jaw already has braces. Remove them first (tap Braces on one of their teeth).")
 			}
 		}
 	}
@@ -409,8 +456,8 @@ func (s *Service) SaveChartItems(ctx context.Context, patientID uuid.UUID, teeth
 			if err := checkItem(t, in); err != nil {
 				return nil, err
 			}
-			if in.Kind == "bridge" && !validFDI(in.BridgeEnd) {
-				return nil, refuse("Tooth %d: the other end of the bridge is not a tooth on the chart.", t)
+			if (in.Kind == "bridge" || in.Kind == "braces") && !validFDI(in.BridgeEnd) {
+				return nil, refuse("Tooth %d: the other end of the %s is not a tooth on the chart.", t, in.Kind)
 			}
 			key := itemKey(in.Kind, in.Surface)
 			if _, dup := want[t][key]; dup {
@@ -473,7 +520,7 @@ func (s *Service) SaveChartItems(ctx context.Context, patientID uuid.UUID, teeth
 					return e
 				}
 				diff = append(diff, change{t, key, desc(l), nil})
-				if l.kind == "bridge" {
+				if l.kind == "bridge" || l.kind == "braces" {
 					touched[l.bridgeEnd] = true
 				}
 				delete(have, key)
@@ -515,7 +562,7 @@ func (s *Service) SaveChartItems(ctx context.Context, patientID uuid.UUID, teeth
 						tid, l.id, in.Material, in.Status, in.BridgeEnd, note, doneOn, actor); e != nil {
 						return e
 					}
-					if l.kind == "bridge" && l.bridgeEnd != in.BridgeEnd {
+					if (l.kind == "bridge" || l.kind == "braces") && l.bridgeEnd != in.BridgeEnd {
 						touched[l.bridgeEnd] = true
 					}
 					l.material, l.status, l.bridgeEnd, l.note, l.doneOn = in.Material, in.Status, in.BridgeEnd, note, doneOn
@@ -535,7 +582,7 @@ func (s *Service) SaveChartItems(ctx context.Context, patientID uuid.UUID, teeth
 				fresh[fmt.Sprintf("%d|%s", t, key)] = true
 			}
 			for _, l := range mouth[t] {
-				if l.kind == "bridge" {
+				if l.kind == "bridge" || l.kind == "braces" {
 					touched[l.bridgeEnd] = true
 				}
 			}

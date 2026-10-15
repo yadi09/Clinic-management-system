@@ -16,13 +16,13 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { lazyWithReload } from "@/app/chunkRecovery";
 import { useIsLargeScreen } from "@/hooks/useMediaQuery";
 import { toast } from "@/components/ui/sonner";
-import { saveChartItems, savePositions, type Chart, type CrownMaterial, type FillMaterial, type ItemInput, type Position, type SurfaceKey } from "@/features/dental/api";
+import { saveChartItems, savePositions, type BraceMaterial, type Chart, type CrownMaterial, type FillMaterial, type ItemInput, type Position, type SurfaceKey } from "@/features/dental/api";
 import { AppError } from "@/lib/api-client";
 import { AnatomicalChart, type ClinicMark } from "@/features/dental/anatomical/AnatomicalChart";
 import { ToothPanel } from "@/features/dental/anatomical/ToothPanel";
 import { SETS, palmerOf, type Dentition } from "@/features/dental/anatomical/geometry";
 import {
-  NO_POS, changedTeeth, completeAction, confirmNote, fromItems, planAndDone, posEmpty, surfaceAction, toItems, toolAction, tryBridge,
+  NO_POS, changedTeeth, completeAction, confirmNote, fromItems, planAndDone, posEmpty, surfaceAction, toItems, toolAction, tryBraces, tryBridge, wholeArchBraces,
   type ChartState, type Ctx, type Outcome, type Status, type Tool,
 } from "@/features/dental/anatomical/model";
 
@@ -80,7 +80,9 @@ export function AnatomicalWorkspace({ patientId, server, editable, today, marks,
   const [stat, setStat] = useState<Status>("existing");
   const [fillMat, setFillMat] = useState<FillMaterial>("composite");
   const [crownMat, setCrownMat] = useState<CrownMaterial>("zirconia");
+  const [braceMat, setBraceMat] = useState<BraceMaterial>("metal");
   const [bridgeStart, setBridgeStart] = useState<number | null>(null);
+  const [bracesStart, setBracesStart] = useState<number | null>(null);
   const [msg, setMsg] = useState<{ text: string; err?: boolean }>({ text: "" });
   const [failed, setFailed] = useState<false | "undone" | "unconfirmed">(false);
   const [fullScreen, setFullScreen] = useState(false);
@@ -229,7 +231,7 @@ export function AnatomicalWorkspace({ patientId, server, editable, today, marks,
   }, [patientId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const n = sel[mode];
-  const ctx = (over: Partial<Ctx> = {}): Ctx => ({ sel: n, tool, stat, fillMat, crownMat, dentition: mode, ...over });
+  const ctx = (over: Partial<Ctx> = {}): Ctx => ({ sel: n, tool, stat, fillMat, crownMat, braceMat, dentition: mode, ...over });
   const apply = (o: Outcome, key: string) => {
     if (!o.err && o.state !== draft.current.chart) commit({ ...draft.current, chart: o.state }, key);
     say(o.msg, o.err);
@@ -240,6 +242,9 @@ export function AnatomicalWorkspace({ patientId, server, editable, today, marks,
       const o = tryBridge(draft.current.chart, bridgeStart, t, ctx());
       apply(o, "bridge");
       setBridgeStart(null);
+    } else if (bracesStart != null && editable) {
+      apply(tryBraces(draft.current.chart, bracesStart, t, ctx()), "braces");
+      setBracesStart(null);
     } else say("");
     setSel((s) => ({ ...s, [mode]: t }));
     // On a phone the page has no room for the chart AND the controls.
@@ -248,9 +253,11 @@ export function AnatomicalWorkspace({ patientId, server, editable, today, marks,
   const pickTool = (t: Tool) => {
     setTool(t);
     setBridgeStart(null);
+    setBracesStart(null);
     const in3d = dim === "3d";
     const o = toolAction(draft.current.chart, ctx({ tool: t }), in3d && !xray);
     if (o.bridgeStart != null) setBridgeStart(o.bridgeStart);
+    if (o.bracesStart != null) setBracesStart(o.bracesStart);
     // A root canal is inside the root: in 3D, turn the roots view on so it can be seen.
     const rctAdded = t === "rct" && !o.err && !!o.state.teeth[n]?.rct;
     if (rctAdded && in3d && !xray) { setXray(true); apply({ ...o, msg: "Roots view turned on so you can see the root canal." }, `tool:${t}`); return; }
@@ -259,6 +266,7 @@ export function AnatomicalWorkspace({ patientId, server, editable, today, marks,
   const pickMode = (d: Dentition) => {
     setMode(d);
     setBridgeStart(null);
+    setBracesStart(null);
     say("");
     if (d === "child" && (tool === "implant" || tool === "bridge")) setTool("caries");
   };
@@ -364,8 +372,9 @@ export function AnatomicalWorkspace({ patientId, server, editable, today, marks,
           </div>
           <div className={`space-y-3 ${where === "full" ? "min-h-0 overflow-y-auto lg:pr-1" : ""}`}>
             <ToothPanel n={n} state={chart} position={positions[String(n)]} today={today} uid={uid} editable={editable}
-              tool={tool} stat={stat} fillMat={fillMat} crownMat={crownMat} mark={mark}
-              onStat={setStat} onTool={pickTool} onFillMat={setFillMat} onCrownMat={setCrownMat}
+              tool={tool} stat={stat} fillMat={fillMat} crownMat={crownMat} braceMat={braceMat} mark={mark}
+              onStat={setStat} onTool={pickTool} onFillMat={setFillMat} onCrownMat={setCrownMat} onBraceMat={setBraceMat}
+              onWholeArch={() => { setBracesStart(null); apply(wholeArchBraces(draft.current.chart, ctx()), "braces"); }}
               onSurface={(k: SurfaceKey) => apply(surfaceAction(draft.current.chart, ctx(), k), `surf:${n}:${k}`)}
               onComplete={() => apply(completeAction(draft.current.chart, n), `complete:${n}`)}
               onPosition={onPosition}
