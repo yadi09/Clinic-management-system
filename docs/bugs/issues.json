@@ -5460,6 +5460,10 @@
    {
     "date": "2026-10-15",
     "note": "Owner feedback: zoomed in, the 3D model could not be moved to see teeth at the edges (only rotated). Built: zoom toward the pointer (wheel and pinch), move the view (right-drag, Shift-drag, two fingers), double-tap a tooth to centre it, Re-centre to the last preset, limits so the model cannot be lost; upper/lower presets keep their jaw after moving. Found and fixed: a tap arriving before the next frame after a selection missed the newly drawn teeth. Full run all green: server 774/0, screens 1,972, journeys 21/21, routes 282/282, coverage ok. Committed; not deployed."
+   },
+   {
+    "date": "2026-10-15",
+    "note": "3D navigation deployed (commit 953bc87, pre-deploy backup taken, no errors, no migration). Waiting for the owner to try it."
    }
   ]
  }
