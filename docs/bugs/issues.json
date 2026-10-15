@@ -5427,7 +5427,8 @@
    "REG-E2E-028",
    "REG-FE-ANAT3-001..012",
    "REG-FE-ANAT2-035..037",
-   "REG-E2E-029"
+   "REG-E2E-029",
+   "REG-E2E-030"
   ],
   "files": [
    "backend/db/migrations/00096_dental_chart_items.sql",
@@ -5455,6 +5456,10 @@
    {
     "date": "2026-10-15",
     "note": "Phase B deployed (commit db9aab5, pre-deploy backup taken, no errors, no migration). The 3D chunk is served on demand from the app's own server. Phase C (prices, start a treatment, bill today's work) next."
+   },
+   {
+    "date": "2026-10-15",
+    "note": "Owner feedback: zoomed in, the 3D model could not be moved to see teeth at the edges (only rotated). Built: zoom toward the pointer (wheel and pinch), move the view (right-drag, Shift-drag, two fingers), double-tap a tooth to centre it, Re-centre to the last preset, limits so the model cannot be lost; upper/lower presets keep their jaw after moving. Found and fixed: a tap arriving before the next frame after a selection missed the newly drawn teeth. Full run all green: server 774/0, screens 1,972, journeys 21/21, routes 282/282, coverage ok. Committed; not deployed."
    }
   ]
  }

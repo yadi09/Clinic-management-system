@@ -17,7 +17,13 @@ import { crownGeo, dims, implantGeos, rootSpecs, type Dims, type RootSpec } from
 
 export type View3D = "front" | "open" | "upper" | "lower" | "side" | "custom";
 export interface BuildParams { state: ChartState; positions: Record<string, Position>; sel: number; today: string; mode: Dentition; xray: boolean; nums: boolean }
-export interface Scene3D { build(p: BuildParams): void; setView(v: View3D): void; dispose(): void }
+export interface Scene3D {
+  build(p: BuildParams): void;
+  setView(v: View3D): void;
+  /** Back to the current preset's position and zoom (after moving or zooming). */
+  recenter(): void;
+  dispose(): void;
+}
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 /** A colour the reference used without conversion (taken as linear). */
@@ -271,12 +277,29 @@ export function createScene(stage: HTMLElement, lbBox: HTMLElement, onSelect: (n
     gumMat.transparent = p.xray; gumMat.opacity = p.xray ? 0.22 : 1; gumMat.depthWrite = !p.xray; gumMat.needsUpdate = true;
   }
 
-  const VIEWS: Record<Exclude<View3D, "custom">, { phi: number; th: number; r: number; open: number }> = {
-    front: { phi: 1.42, th: 0, r: 125, open: 0 }, open: { phi: 1.1, th: 0, r: 140, open: 1 },
-    upper: { phi: Math.PI - 0.12, th: 0, r: 118, open: 0 }, lower: { phi: 0.12, th: 0, r: 118, open: 0 },
-    side: { phi: 1.45, th: 1.25, r: 125, open: 0 },
+  // tx/ty/tz move the point the camera looks at (pan); the reference had none, so a
+  // zoomed-in view could not reach the teeth at the edges.
+  type Cam = { phi: number; th: number; r: number; open: number; tx: number; ty: number; tz: number };
+  const Z = { tx: 0, ty: 0, tz: 0 };
+  const VIEWS: Record<Exclude<View3D, "custom">, Cam> = {
+    front: { phi: 1.42, th: 0, r: 125, open: 0, ...Z }, open: { phi: 1.1, th: 0, r: 140, open: 1, ...Z },
+    upper: { phi: Math.PI - 0.12, th: 0, r: 118, open: 0, ...Z }, lower: { phi: 0.12, th: 0, r: 118, open: 0, ...Z },
+    side: { phi: 1.45, th: 1.25, r: 125, open: 0, ...Z },
   };
-  const cur = { ...VIEWS.front }, tgt = { ...VIEWS.front };
+  const cur: Cam = { ...VIEWS.front }, tgt: Cam = { ...VIEWS.front };
+  let preset: Exclude<View3D, "custom"> = "front";
+  const R_MIN = 40, R_MAX = 260;
+  /** The point looked at (world), from the target offset. */
+  /** The preset in force: after rotating, moving or zooming, the jaw shown stays the preset's. */
+  const shown = () => (view3d === "custom" ? preset : view3d);
+  const lookY = () => (shown() === "upper" ? 6 : shown() === "lower" ? -4 : 0);
+  const target = (c: Cam) => V(c.tx, lookY() + c.ty, -6 + c.tz);
+  /** Keep the looked-at point over the mouth, so the model can never be lost off screen. */
+  const clampT = (c: Cam) => {
+    c.tx = Math.max(-38, Math.min(38, c.tx));
+    c.ty = Math.max(-30, Math.min(30, c.ty));
+    c.tz = Math.max(-45, Math.min(32, c.tz));
+  };
   const H3 = () => stage.clientHeight || 440;
   function rs() { const w = stage.clientWidth || 380; R.setSize(w, H3()); cam.aspect = w / H3(); cam.updateProjectionMatrix(); }
   const ro = new ResizeObserver(rs);
@@ -287,11 +310,11 @@ export function createScene(stage: HTMLElement, lbBox: HTMLElement, onSelect: (n
   const loop = () => {
     raf = requestAnimationFrame(loop);
     for (const k of Object.keys(cur) as (keyof typeof cur)[]) cur[k] += (tgt[k] - cur[k]) * 0.12;
-    const asp = cam.aspect < 1.25 ? 1.25 / cam.aspect : 1, r = cur.r * asp, tgY = view3d === "upper" ? 6 : view3d === "lower" ? -4 : 0;
-    cam.position.set(r * Math.sin(cur.phi) * Math.sin(cur.th), tgY + r * Math.cos(cur.phi), -6 + r * Math.sin(cur.phi) * Math.cos(cur.th));
-    cam.lookAt(0, tgY, -6);
+    const asp = cam.aspect < 1.25 ? 1.25 / cam.aspect : 1, r = cur.r * asp, T = target(cur);
+    cam.position.set(T.x + r * Math.sin(cur.phi) * Math.sin(cur.th), T.y + r * Math.cos(cur.phi), T.z + r * Math.sin(cur.phi) * Math.cos(cur.th));
+    cam.lookAt(T);
     upperPivot.rotation.x = -0.55 * cur.open; upperPivot.position.y = 7 * cur.open;
-    upperPivot.visible = view3d !== "lower"; lowerG.visible = view3d !== "upper";
+    upperPivot.visible = shown() !== "lower"; lowerG.visible = shown() !== "upper";
     scene.updateMatrixWorld();
     const W = stage.clientWidth, H = H3();
     labels.forEach((l) => {
@@ -299,7 +322,7 @@ export function createScene(stage: HTMLElement, lbBox: HTMLElement, onSelect: (n
       if (!vis) { l.el.style.display = "none"; return; }
       l.obj.localToWorld(tv.copy(l.loc));
       const out = V(tv.x, 0, tv.z + 6).normalize(), toC = cam.position.clone().sub(tv).normalize();
-      if (out.dot(toC) < 0.05 && view3d !== "upper" && view3d !== "lower") { l.el.style.display = "none"; return; }
+      if (out.dot(toC) < 0.05 && shown() !== "upper" && shown() !== "lower") { l.el.style.display = "none"; return; }
       tv.project(cam);
       if (tv.z > 1) { l.el.style.display = "none"; return; }
       l.el.style.display = ""; l.el.style.left = `${((tv.x + 1) / 2) * W}px`; l.el.style.top = `${((1 - tv.y) / 2) * H}px`;
@@ -308,53 +331,124 @@ export function createScene(stage: HTMLElement, lbBox: HTMLElement, onSelect: (n
   };
   loop();
 
-  // Drag to rotate, two fingers or the wheel to zoom, a tap to select.
+  // Drag to rotate; right-drag, Shift-drag or two fingers to move; the wheel or a
+  // pinch to zoom toward the pointer; a tap selects; a double tap centres a tooth.
   const ptrs = new Map<number, [number, number]>();
-  let downAt: [number, number] | null = null, pinch = 0;
+  let downAt: [number, number] | null = null, pinch = 0, mid: [number, number] | null = null;
+  let panning = false, lastTap: { t: number; x: number; y: number } | null = null;
   const el = R.domElement;
-  const onDown = (e: PointerEvent) => { el.setPointerCapture?.(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); downAt = [e.clientX, e.clientY]; stage.style.cursor = "grabbing"; };
+  const toCustom = () => { if (view3d !== "custom") { view3d = "custom"; onCustomView(); } };
+  /** World units per screen pixel at the looked-at point. */
+  const perPixel = () => (2 * cur.r * (cam.aspect < 1.25 ? 1.25 / cam.aspect : 1) * Math.tan(THREE.MathUtils.degToRad(cam.fov / 2))) / Math.max(1, H3());
+  /** Move the looked-at point by a screen drag (dx, dy in pixels). */
+  function pan(dx: number, dy: number) {
+    const k = perPixel(), right = V(0, 0, 0), up = V(0, 0, 0);
+    cam.updateMatrixWorld();
+    right.setFromMatrixColumn(cam.matrixWorld, 0);
+    up.setFromMatrixColumn(cam.matrixWorld, 1);
+    const d = right.multiplyScalar(-dx * k).add(up.multiplyScalar(dy * k));
+    for (const c of [cur, tgt]) { c.tx += d.x; c.ty += d.y; c.tz += d.z; clampT(c); }
+    toCustom();
+  }
+  /** Zoom by `f`, keeping the point under (px, py) where it is on screen. */
+  function zoomAt(f: number, px: number, py: number) {
+    const nr = Math.min(R_MAX, Math.max(R_MIN, cur.r * f));
+    const rect = el.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((px - rect.left) / rect.width) * 2 - 1, -((py - rect.top) / rect.height) * 2 + 1);
+    const ray = new THREE.Raycaster();
+    cam.updateMatrixWorld();
+    ray.setFromCamera(ndc, cam);
+    const T = target(cur), n = cam.getWorldDirection(V(0, 0, 0)), hit = V(0, 0, 0);
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(n, T);
+    if (ray.ray.intersectPlane(plane, hit)) {
+      const s = 1 - nr / cur.r; // the target moves toward the point by the share the distance shrinks
+      const d = hit.sub(T).multiplyScalar(s);
+      for (const c of [cur, tgt]) { c.tx += d.x; c.ty += d.y; c.tz += d.z; clampT(c); }
+    }
+    tgt.r = cur.r = nr;
+    toCustom();
+  }
+  function toothAt(px: number, py: number) {
+    const rect = el.getBoundingClientRect(), ndc = new THREE.Vector2(((px - rect.left) / rect.width) * 2 - 1, -((py - rect.top) / rect.height) * 2 + 1);
+    const ray = new THREE.Raycaster();
+    // A tap can arrive between a rebuild (a selection redraws the teeth) and the next
+    // frame: bring every piece's position up to date first, or the new teeth are missed.
+    scene.updateMatrixWorld();
+    ray.setFromCamera(ndc, cam);
+    return ray.intersectObjects(picks.filter((m) => (m.userData.up ? upperPivot.visible : lowerG.visible)))[0] ?? null;
+  }
+  /** Bring a point to the middle of the view and come closer to it. */
+  function centreOn(p: THREE.Vector3) {
+    const base = target({ ...tgt, tx: 0, ty: 0, tz: 0 });
+    tgt.tx = p.x - base.x; tgt.ty = p.y - base.y; tgt.tz = p.z - base.z;
+    clampT(tgt);
+    tgt.r = Math.min(tgt.r, 70);
+    toCustom();
+  }
+  const onDown = (e: PointerEvent) => {
+    el.setPointerCapture?.(e.pointerId);
+    ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+    downAt = [e.clientX, e.clientY];
+    panning = e.button === 2 || e.shiftKey;
+    if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; pinch = Math.hypot(a[0] - b[0], a[1] - b[1]); }
+    stage.style.cursor = panning ? "move" : "grabbing";
+  };
   const onMove = (e: PointerEvent) => {
     if (!ptrs.has(e.pointerId)) return;
     const pr = ptrs.get(e.pointerId)!;
     if (ptrs.size === 2) {
+      // Two fingers: pinch zooms toward them, and moving them together moves the view.
       ptrs.set(e.pointerId, [e.clientX, e.clientY]);
-      const [a, b] = [...ptrs.values()], dd = Math.hypot(a[0] - b[0], a[1] - b[1]);
-      if (pinch) tgt.r = cur.r = Math.min(260, Math.max(55, (cur.r * pinch) / dd));
-      pinch = dd;
+      const [a, b] = [...ptrs.values()], dd = Math.hypot(a[0] - b[0], a[1] - b[1]), m: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      if (pinch && dd > 0) zoomAt(pinch / dd, m[0], m[1]);
+      if (mid) pan(m[0] - mid[0], m[1] - mid[1]);
+      pinch = dd; mid = m;
+      downAt = null; // never a tap
       return;
     }
     const dx = e.clientX - pr[0], dy = e.clientY - pr[1];
     ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+    const moved = !!downAt && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 6;
+    if (panning || e.shiftKey) { if (moved || !downAt) pan(dx, dy); return; }
     tgt.th = cur.th = cur.th - dx * 0.008;
     tgt.phi = cur.phi = Math.min(Math.PI - 0.05, Math.max(0.05, cur.phi - dy * 0.008));
-    if (view3d !== "custom" && view3d !== "upper" && view3d !== "lower" && downAt && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 6) {
-      const ko = tgt.open; view3d = "custom"; tgt.open = ko; onCustomView();
-    }
+    if (moved) toCustom();
   };
   const onUp = (e: PointerEvent) => {
     const was = ptrs.has(e.pointerId);
     ptrs.delete(e.pointerId);
-    if (ptrs.size < 2) pinch = 0;
+    if (ptrs.size < 2) { pinch = 0; mid = null; }
     stage.style.cursor = "grab";
-    if (was && downAt && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) < 6 && ptrs.size === 0) {
-      const rect = el.getBoundingClientRect(), ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
-      const ray = new THREE.Raycaster();
-      ray.setFromCamera(ndc, cam);
-      const hits = ray.intersectObjects(picks.filter((m) => (m.userData.up ? upperPivot.visible : lowerG.visible)));
-      if (hits.length) onSelect(hits[0].object.userData.n as number);
+    if (was && downAt && !panning && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) < 6 && ptrs.size === 0) {
+      // The tap's own time, not when it was handled: the first tap redraws the model to
+      // show the selection, and on a slow device the second would otherwise arrive "late".
+      const hit = toothAt(e.clientX, e.clientY), now = e.timeStamp;
+      const double = !!lastTap && now - lastTap.t < 380 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 24;
+      if (hit) {
+        onSelect(hit.object.userData.n as number);
+        if (double) centreOn(hit.point.clone());
+      }
+      lastTap = double ? null : { t: now, x: e.clientX, y: e.clientY };
     }
+    if (ptrs.size === 0) panning = false;
     downAt = null;
   };
-  const onWheel = (e: WheelEvent) => { e.preventDefault(); tgt.r = cur.r = Math.min(260, Math.max(55, cur.r * (1 + e.deltaY * 0.001))); };
+  const onWheel = (e: WheelEvent) => { e.preventDefault(); zoomAt(1 + Math.max(-0.5, Math.min(0.5, e.deltaY * 0.001)), e.clientX, e.clientY); };
+  const onContext = (e: Event) => e.preventDefault(); // right-drag moves the view
+  // A mouse's double-click, as the browser reports it.
+  const onDbl = (e: MouseEvent) => { const hit = toothAt(e.clientX, e.clientY); if (hit) { onSelect(hit.object.userData.n as number); centreOn(hit.point.clone()); } };
   el.addEventListener("pointerdown", onDown);
   el.addEventListener("pointermove", onMove);
   el.addEventListener("pointerup", onUp);
   el.addEventListener("pointercancel", onUp);
   el.addEventListener("wheel", onWheel, { passive: false });
+  el.addEventListener("contextmenu", onContext);
+  el.addEventListener("dblclick", onDbl);
 
   return {
     build,
-    setView(v) { view3d = v; if (v !== "custom") Object.assign(tgt, VIEWS[v]); },
+    setView(v) { view3d = v; if (v !== "custom") { preset = v; Object.assign(tgt, VIEWS[v]); } },
+    recenter() { view3d = preset; Object.assign(tgt, VIEWS[preset]); },
     dispose() {
       cancelAnimationFrame(raf);
       ro.disconnect();
@@ -363,6 +457,8 @@ export function createScene(stage: HTMLElement, lbBox: HTMLElement, onSelect: (n
       el.removeEventListener("pointerup", onUp);
       el.removeEventListener("pointercancel", onUp);
       el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("contextmenu", onContext);
+      el.removeEventListener("dblclick", onDbl);
       clearG(lowerG); clearG(upperG);
       owned.forEach((m) => m.dispose()); ownedGeo.forEach((g) => g.dispose());
       for (const g0 of Object.values(cache)) { g0.crown.dispose(); (g0.probe.material as THREE.Material).dispose(); g0.roots.forEach((r) => { r.geo.dispose(); r.cn.dispose(); }); g0.imp.forEach((g) => g.dispose()); }

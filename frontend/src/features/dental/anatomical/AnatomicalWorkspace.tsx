@@ -86,6 +86,8 @@ export function AnatomicalWorkspace({ patientId, server, editable, today, marks,
   const [fullScreen, setFullScreen] = useState(false);
   const [dim, setDim] = useState<"2d" | "3d">("2d");
   const [view3d, setView3d] = useState<View3D>("front");
+  const [preset3d, setPreset3d] = useState<Exclude<View3D, "custom">>("front");
+  const [recenterToken, setRecenterToken] = useState(0);
   const [xray, setXray] = useState(false);
   const [nums, setNums] = useState(true);
   const [chart, setChart] = useState<ChartState>(() => fromItems(server?.items));
@@ -332,8 +334,11 @@ export function AnatomicalWorkspace({ patientId, server, editable, today, marks,
             {dim === "3d" && (
               <div className="mb-2 flex flex-wrap gap-1.5" role="toolbar" aria-label="3D view">
                 {VIEWS3D.map(([v, l]) => (
-                  <button key={v} type="button" aria-pressed={view3d === v} className={`ta-btn ta-tool ${view3d === v ? "on" : ""}`} onClick={() => setView3d(v)}>{l}</button>
+                  <button key={v} type="button" aria-pressed={view3d === v} className={`ta-btn ta-tool ${view3d === v ? "on" : ""}`}
+                    onClick={() => { setView3d(v); setPreset3d(v); setRecenterToken((t) => t + 1); }}>{l}</button>
                 ))}
+                <button type="button" className="ta-btn ta-tool" disabled={view3d !== "custom"} title="Back to the whole mouth"
+                  onClick={() => { setView3d(preset3d); setRecenterToken((t) => t + 1); }}>Re-centre</button>
                 <button type="button" aria-pressed={xray} className={`ta-btn ta-tool ${xray ? "on" : ""}`} onClick={() => setXray((x) => !x)}>Show roots</button>
                 <button type="button" aria-pressed={nums} className={`ta-btn ta-tool ${nums ? "on" : ""}`} onClick={() => setNums((x) => !x)}>Numbers</button>
               </div>
@@ -346,14 +351,14 @@ export function AnatomicalWorkspace({ patientId, server, editable, today, marks,
             ) : (
               <ThreeBoundary>
                 <Suspense fallback={<p className="rounded-xl p-6 text-sm" style={{ background: "var(--surface-1)", color: "var(--text-muted)" }}>Loading the 3D model…</p>}>
-                  <Dental3D state={chart} positions={positions} sel={n} today={today} mode={mode} xray={xray} nums={nums} view={view3d}
+                  <Dental3D state={chart} positions={positions} sel={n} today={today} mode={mode} xray={xray} nums={nums} view={view3d} recenterToken={recenterToken}
                     onSelect={selectTooth} onCustomView={() => setView3d("custom")}
                     height={fill ? "calc(100dvh - 15rem)" : where === "full" ? "min(60dvh, 30rem)" : "min(60dvh, 27.5rem)"} />
                 </Suspense>
               </ThreeBoundary>
             )}
             <p className={`mt-1.5 shrink-0 text-xs ${where === "full" ? "max-md:hidden" : ""}`} style={{ color: "var(--text-muted)" }}>
-              {dim === "3d" ? "Drag to rotate, scroll or pinch to zoom, tap a tooth to select it." : "Tap a tooth to select it. Rows from top: upper side view, upper top view, lower top view, lower side view."}
+              {dim === "3d" ? "Drag to rotate · Right-drag or Shift-drag (two fingers on a tablet) to move · Scroll or pinch to zoom where you point · Tap a tooth to select it, double-tap to bring it to the middle." : "Tap a tooth to select it. Rows from top: upper side view, upper top view, lower top view, lower side view."}
             </p>
             <p role="status" aria-live="polite" className="min-h-[1.25rem] shrink-0 text-[13px]" style={{ color: msg.err ? "var(--text-danger)" : "var(--text-accent)" }}>{msg.text}</p>
           </div>

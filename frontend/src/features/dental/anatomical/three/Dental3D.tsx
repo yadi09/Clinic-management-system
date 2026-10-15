@@ -19,9 +19,11 @@ function webglAvailable() {
   } catch { return false; }
 }
 
-export default function Dental3D({ state, positions, sel, today, mode, xray, nums, view, onSelect, onCustomView, height }: {
+export default function Dental3D({ state, positions, sel, today, mode, xray, nums, view, recenterToken = 0, onSelect, onCustomView, height }: {
   state: ChartState; positions: Record<string, Position>; sel: number; today: string; mode: Dentition;
   xray: boolean; nums: boolean; view: View3D;
+  /** Changes each time "Re-centre" is pressed. */
+  recenterToken?: number;
   onSelect: (n: number) => void; onCustomView: () => void;
   /** CSS height of the stage. */
   height: string;
@@ -47,6 +49,7 @@ export default function Dental3D({ state, positions, sel, today, mode, xray, num
 
   useEffect(() => { scene.current?.build({ state, positions, sel, today, mode, xray, nums }); }, [state, positions, sel, today, mode, xray, nums]);
   useEffect(() => { scene.current?.setView(view); }, [view]);
+  useEffect(() => { if (recenterToken) scene.current?.recenter(); }, [recenterToken]);
 
   if (failed) return <p role="alert" className="rounded-xl p-6 text-sm" style={{ background: "var(--surface-1)", color: "var(--text-danger)" }}>{failed}</p>;
   return (

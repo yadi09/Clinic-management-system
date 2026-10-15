@@ -268,7 +268,7 @@ describe("REG-FE-ANAT2 workspace", () => {
     await user.click(screen.getAllByRole("radio", { name: "3D model" })[0]);
     const v = await screen.findByTestId("fake3d");
     expect(v).toHaveAttribute("data-view", "front");
-    expect(screen.getAllByText("Drag to rotate, scroll or pinch to zoom, tap a tooth to select it.")[0]).toBeInTheDocument();
+    expect(screen.getAllByText(/Drag to rotate · Right-drag or Shift-drag \(two fingers on a tablet\) to move/)[0]).toBeInTheDocument();
     const bar = within(screen.getAllByRole("toolbar", { name: "3D view" })[0]);
     for (const [name, view] of [["Open mouth", "open"], ["Upper jaw", "upper"], ["Lower jaw", "lower"], ["Side", "side"], ["Front", "front"]] as const) {
       await user.click(bar.getByRole("button", { name }));
@@ -278,8 +278,14 @@ describe("REG-FE-ANAT2 workspace", () => {
     expect(screen.getByTestId("fake3d")).toHaveAttribute("data-xray", "true");
     await user.click(bar.getByRole("button", { name: "Numbers" }));
     expect(screen.getByTestId("fake3d")).toHaveAttribute("data-nums", "false");
+    const recentre = bar.getByRole("button", { name: "Re-centre" });
+    expect(recentre).toBeDisabled(); // nothing to undo while on a preset
     await user.click(screen.getByRole("button", { name: "drag" }));
     expect(screen.getByTestId("fake3d")).toHaveAttribute("data-view", "custom");
+    expect(recentre).toBeEnabled();
+    await user.click(recentre);
+    expect(screen.getByTestId("fake3d")).toHaveAttribute("data-view", "front"); // back to the last preset
+    await user.click(screen.getByRole("button", { name: "drag" }));
     await user.click(screen.getByRole("button", { name: "tap 36 in 3D" }));
     expect(screen.getAllByText("Tooth 36: Lower left first molar")[0]).toBeInTheDocument();
     await user.click(add("Missing"));

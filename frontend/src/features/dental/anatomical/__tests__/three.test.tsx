@@ -5,9 +5,9 @@
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-const scene = vi.hoisted(() => ({ build: vi.fn(), setView: vi.fn(), dispose: vi.fn(), create: vi.fn() }));
+const scene = vi.hoisted(() => ({ build: vi.fn(), setView: vi.fn(), recenter: vi.fn(), dispose: vi.fn(), create: vi.fn() }));
 vi.mock("@/features/dental/anatomical/three/scene", () => ({
-  createScene: (...a: unknown[]) => { scene.create(...a); return { build: scene.build, setView: scene.setView, dispose: scene.dispose }; },
+  createScene: (...a: unknown[]) => { scene.create(...a); return { build: scene.build, setView: scene.setView, recenter: scene.recenter, dispose: scene.dispose }; },
 }));
 
 import { crownGeo, dims, implantGeos, rootSpecs, sm } from "@/features/dental/anatomical/three/teeth";
@@ -90,6 +90,9 @@ describe("REG-FE-ANAT3 the 3D view", () => {
     expect(screen.getByTestId("stage3d")).toBeInTheDocument();
     expect(scene.build).toHaveBeenLastCalledWith(expect.objectContaining({ sel: 11, xray: false, nums: true, mode: "adult" }));
     expect(scene.setView).toHaveBeenLastCalledWith("front");
+    expect(scene.recenter).not.toHaveBeenCalled();
+    rerender(<Dental3D {...props} recenterToken={1} />);
+    expect(scene.recenter).toHaveBeenCalledTimes(1);
     rerender(<Dental3D {...props} sel={26} xray view="upper" />);
     expect(scene.build).toHaveBeenLastCalledWith(expect.objectContaining({ sel: 26, xray: true }));
     expect(scene.setView).toHaveBeenLastCalledWith("upper");

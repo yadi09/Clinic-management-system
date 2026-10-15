@@ -644,7 +644,7 @@ test("REG-E2E-029 the 3D model loads on demand, shows the same chart as 2D, and 
   // From the front, the front teeth are labelled (the molars face sideways, as in the reference); 21 has planned work: red.
   await expect(stage.locator(".lb", { hasText: /^21$/ })).toBeVisible();
   await expect(stage.locator(".lb", { hasText: /^21$/ })).toHaveClass(/\bpl\b/);
-  await expect(page.getByText("Drag to rotate, scroll or pinch to zoom, tap a tooth to select it.")).toBeVisible();
+  await expect(page.getByText(/Drag to rotate · Right-drag or Shift-drag/)).toBeVisible();
   await page.waitForTimeout(1500); // let the camera settle
   await stage.screenshot({ path: testInfo.outputPath("3d-front.png") });
   // A tap on the front teeth selects one; the panel follows.
@@ -672,5 +672,69 @@ test("REG-E2E-029 the 3D model loads on demand, shows the same chart as 2D, and 
   await page.getByRole("radio", { name: "2D chart" }).click();
   await expect(stage).toHaveCount(0);
   await expect(page.locator("[data-bridge='15-13']")).toHaveCount(1);
+  await chartStyle("simple");
+});
+
+test("REG-E2E-030 zoomed in, the dentist can move around the model: zoom toward a tooth, Shift-drag to move, double-tap to centre, Re-centre to see it all", async ({ page }, testInfo) => {
+  test.setTimeout(240_000);
+  await chartStyle("anatomical");
+  const p = await newPatient();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page, "doctor");
+  await page.goto(`/patients/${p.id}`);
+  await page.getByRole("button", { name: /^Tooth chart/ }).click();
+  await page.getByRole("radio", { name: "3D model" }).click();
+  const stage = page.getByTestId("stage3d");
+  await expect(stage.locator("canvas")).toBeVisible({ timeout: 20_000 });
+  const bar = page.getByRole("toolbar", { name: "3D view" });
+  await bar.getByRole("button", { name: "Upper jaw" }).click();
+  await stage.scrollIntoViewIfNeeded(); // the pointer works on what is on screen
+  await page.waitForTimeout(1500);
+  const box = (await stage.boundingBox())!;
+  const label = async (n: number) => {
+    const l = stage.locator(".lb", { hasText: new RegExp(`^${n}$`) });
+    if (!(await l.isVisible())) return null;
+    const b = (await l.boundingBox())!;
+    return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+  };
+  const inside = (pt: { x: number; y: number } | null) => !!pt && pt.x > box.x && pt.x < box.x + box.width && pt.y > box.y && pt.y < box.y + box.height;
+
+  // Zoom far in, pointing at 18: 18 stays on screen (zoom goes toward the pointer).
+  const t18 = (await label(18))!;
+  await page.mouse.move(t18.x, t18.y);
+  for (let i = 0; i < 12; i++) { await page.mouse.wheel(0, -300); await page.waitForTimeout(60); }
+  await page.waitForTimeout(800);
+  expect(inside(await label(18)), "18 still in view after zooming toward it").toBe(true);
+  await stage.screenshot({ path: testInfo.outputPath("zoom-18.png"), timeout: 60_000 });
+  await expect(bar.getByRole("button", { name: "Re-centre" })).toBeEnabled();
+
+  // Shift-drag 300 px to the left: the teeth move with the pointer.
+  const before = (await label(18))!;
+  await page.keyboard.down("Shift");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(box.x + box.width / 2 - 30 * i, box.y + box.height / 2);
+  await page.mouse.up();
+  await page.keyboard.up("Shift");
+  await page.waitForTimeout(500);
+  const after = await label(18);
+  expect(after === null || after.x < before.x - 150, `18 moved left (before ${before.x}, after ${after?.x})`).toBe(true);
+  await stage.screenshot({ path: testInfo.outputPath("moved.png"), timeout: 60_000 });
+
+  // Re-centre: the whole upper jaw again.
+  await bar.getByRole("button", { name: "Re-centre" }).click();
+  await page.waitForTimeout(1500);
+  for (const n of [18, 11, 28]) expect(inside(await label(n)), `${n} in view after Re-centre`).toBe(true);
+  await expect(bar.getByRole("button", { name: "Upper jaw" })).toHaveAttribute("aria-pressed", "true");
+
+  // Double-tap a tooth: it is selected and comes to the middle, closer.
+  const t26 = (await label(26))!;
+  const aim = { x: t26.x + (box.x + box.width / 2 - t26.x) * 0.12, y: t26.y }; // just inside the label, on the tooth
+  await page.mouse.dblclick(aim.x, aim.y);
+  await page.waitForTimeout(1500);
+  await expect(page.locator("p", { hasText: /^Tooth 2[5-7]: Upper left/ }).first()).toBeVisible();
+  const c = await label(26) ?? await label(25) ?? await label(27);
+  expect(c && Math.abs(c.x - (box.x + box.width / 2)) < box.width * 0.3, "the double-tapped tooth is near the middle").toBe(true);
+  await stage.screenshot({ path: testInfo.outputPath("centred.png"), timeout: 60_000 });
   await chartStyle("simple");
 });
