@@ -5480,5 +5480,39 @@
     "note": "Braces deployed (commit 0b8a0d2, pre-deploy backup taken, no errors). Migration 97 applied; the 24 live chart items and the simple chart's 272 marks untouched. Waiting for the owner to try it."
    }
   ]
+ },
+ {
+  "id": "FEAT-SESS-1",
+  "title": "Active sessions: every device signed in, with its facts, nameable, one sign-out each",
+  "severity": "medium",
+  "area": "Account & security",
+  "who": "Everyone who signs in; clinic owner",
+  "simple": "Settings → Account lists every device the account is signed in on: browser and system, original sign-in time, last active, real IP and country, an optional name, a Sign out per device, and this device marked and first.",
+  "example": "The owner sees an unknown Safari on iOS from another country, signs only that device out, and names her own PC 'Reception PC'.",
+  "why": "Staff leave themselves signed in on shared or lost devices; the old screen could only sign out everything.",
+  "fix": "sessions gains started_at/label/country (mig 00100, carried across renewals); GET/DELETE /auth/sessions, PUT /auth/sessions/:id/label; the visitor's real IP/country from Cloudflare's headers instead of the proxy's address.",
+  "effort": "M",
+  "decision": null,
+  "tests": [
+   "TestREG_AUTH_SESS_001..003",
+   "TestClientIPPrefersTheAddressTheProxyReports",
+   "REG-FE-SESS-001..007",
+   "REG-FE-SESS-010..011",
+   "REG-FE-SESS-020"
+  ],
+  "files": [
+   "backend/db/migrations/00100_session_devices.sql",
+   "backend/internal/identity/service/auth_service.go",
+   "frontend/src/features/auth/ActiveSessions.tsx"
+  ],
+  "tested": true,
+  "status": "fixed",
+  "order": 604,
+  "log": [
+   {
+    "date": "2026-10-16",
+    "note": "Built after the owner asked to list devices and point at the current one. Found: the IP stored was Cloudflare's, not the visitor's — fixed for new sign-ins. Full run: server 791/0, screens 1,996, journeys 22/22, routes 306/306; finance/service 85.5 vs 86.0 is the small-hours clock effect (no finance change). Deploying."
+   }
+  ]
  }
 ]

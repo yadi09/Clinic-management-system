@@ -77,6 +77,13 @@ type Service interface {
 	// RevokeOtherSessions signs the user out of all devices except currentRefresh
 	// (empty = everywhere). Returns how many sessions were revoked.
 	RevokeOtherSessions(ctx context.Context, tenantID, userID uuid.UUID, currentRefresh string) (int64, error)
+	// ListSessions is every live device of the user, newest activity first; Current is
+	// the one holding currentRefresh.
+	ListSessions(ctx context.Context, tenantID, userID uuid.UUID, currentRefresh string) ([]Device, error)
+	// RevokeSession signs one other device out (never the current one).
+	RevokeSession(ctx context.Context, tenantID, userID, sessionID uuid.UUID, currentRefresh string) error
+	// LabelSession names a device ("" removes the name).
+	LabelSession(ctx context.Context, tenantID, userID, sessionID uuid.UUID, label string) error
 	Me(ctx context.Context, tenantID, userID uuid.UUID, activeBranch *uuid.UUID) (*MeResult, error)
 	// SwitchBranch re-issues an access token for a different branch (target nil =
 	// consolidated "all branches" view, for tenant-wide users).
@@ -146,3 +153,27 @@ type UserAdmin interface {
 	AssignRoles(ctx context.Context, userID uuid.UUID, roleCodes []string, branchIDs []uuid.UUID) error
 	ListRoles(ctx context.Context) ([]RoleItem, error)
 }
+
+// Device is one place the user is signed in.
+type Device struct {
+	ID         uuid.UUID
+	UserAgent  string
+	IP         string
+	Country    string
+	Label      string
+	StartedAt  time.Time // first sign-in of this device (kept across renewals)
+	LastActive time.Time // the latest renewal
+	ExpiresAt  time.Time
+	Current    bool
+}
+
+type countryKey struct{}
+
+// WithClientCountry carries the visitor's country (from the proxy) to sign-in, so the
+// session can record it.
+func WithClientCountry(ctx context.Context, cc string) context.Context {
+	return context.WithValue(ctx, countryKey{}, cc)
+}
+
+// ClientCountry is the country put there by WithClientCountry, or "".
+func ClientCountry(ctx context.Context) string { s, _ := ctx.Value(countryKey{}).(string); return s }

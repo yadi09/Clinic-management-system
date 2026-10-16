@@ -75,3 +75,29 @@ export function changeEmailApi(body: { new_email: string; current_password: stri
 export function signOutOtherDevicesApi() {
   return apiFetch<{ revoked: number }>("/auth/sessions/logout-others", { method: "POST" });
 }
+
+/** One place this user is signed in. */
+export interface Device {
+  id: string;
+  user_agent: string;
+  ip: string;
+  country: string;
+  label: string;
+  /** When this device first signed in (kept across renewals). */
+  started_at: string;
+  /** The latest renewal of its sign-in. */
+  last_active: string;
+  expires_at: string;
+  current: boolean;
+}
+export function listSessionsApi() {
+  return apiFetch<Device[]>("/auth/sessions");
+}
+/** Sign one OTHER device out. */
+export function revokeSessionApi(id: string) {
+  return apiFetch<void>(`/auth/sessions/${id}`, { method: "DELETE" });
+}
+/** Name a device ("" removes the name). */
+export function labelSessionApi(id: string, label: string) {
+  return apiFetch<void>(`/auth/sessions/${id}/label`, { method: "PUT", body: { label } });
+}

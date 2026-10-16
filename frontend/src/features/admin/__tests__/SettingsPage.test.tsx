@@ -24,7 +24,7 @@ const dental = vi.hoisted(() => ({
   getDentalSettings: vi.fn(), saveDentalSettings: vi.fn(),
 }));
 vi.mock("@/features/dental/api", async (orig) => ({ ...(await orig<object>()), ...dental }));
-const auth = vi.hoisted(() => ({ changeEmailApi: vi.fn(), changePasswordApi: vi.fn(), signOutOtherDevicesApi: vi.fn() }));
+const auth = vi.hoisted(() => ({ changeEmailApi: vi.fn(), changePasswordApi: vi.fn(), signOutOtherDevicesApi: vi.fn(), listSessionsApi: vi.fn(), revokeSessionApi: vi.fn(), labelSessionApi: vi.fn() }));
 vi.mock("@/features/auth/api", async (orig) => ({ ...(await orig<object>()), ...auth }));
 const clin = vi.hoisted(() => ({
   getVitalFields: vi.fn(), saveVitalFields: vi.fn(), listAllergens: vi.fn(), deleteAllergen: vi.fn(), createAllergen: vi.fn(),
@@ -69,6 +69,11 @@ beforeEach(() => {
   admin.branchUsage.mockResolvedValue({ used: 0, limit: null });
   admin.getBranchModules.mockResolvedValue([]);
   auth.signOutOtherDevicesApi.mockResolvedValue({ revoked: 2 });
+  const at = new Date().toISOString();
+  auth.listSessionsApi.mockResolvedValue([
+    { id: "ses_a", user_agent: "Mozilla/5.0 (Windows NT 10.0) Chrome/155.0", ip: "196.1.1.1", country: "ET", label: "", started_at: at, last_active: at, expires_at: at, current: true },
+    { id: "ses_b", user_agent: "Mozilla/5.0 (iPhone) Safari/604.1", ip: "41.1.1.1", country: "KE", label: "", started_at: at, last_active: at, expires_at: at, current: false },
+  ]);
   dental.listProcedures.mockResolvedValue([
     { id: "p1", name: "Scaling", is_active: true, sort_order: 1 },
     { id: "p2", name: "Root canal", is_active: true, sort_order: 2 },
@@ -163,7 +168,7 @@ describe("REG-FE-SETTINGS account & security", () => {
 
   test("REG-FE-SETTINGS-012 sign out other devices: how many, none, or why not", async () => {
     const { user } = open();
-    const btn = screen.getByRole("button", { name: "Sign out all other devices" });
+    const btn = await screen.findByRole("button", { name: "Sign out all other devices" });
     await user.click(btn);
     await waitFor(() => expect(toastSpy.success).toHaveBeenCalledWith("Signed out 2 other devices"));
     auth.signOutOtherDevicesApi.mockResolvedValueOnce({ revoked: 1 });
@@ -204,7 +209,7 @@ describe("REG-FE-SETTINGS account & security", () => {
     await user.type(pw(1), "p");
     await user.type(pw(2), "12345678");
     await user.click(screen.getByRole("button", { name: "Update password" }));
-    await user.click(screen.getByRole("button", { name: "Sign out all other devices" }));
+    await user.click(await screen.findByRole("button", { name: "Sign out all other devices" }));
     await user.type(screen.getByPlaceholderText("my-clinic"), "x");
     await user.click(screen.getByRole("button", { name: "Update" }));
     await waitFor(() => expect(toastSpy.error.mock.calls.map((c) => c[0])).toEqual(expect.arrayContaining([

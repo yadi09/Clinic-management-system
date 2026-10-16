@@ -14,7 +14,8 @@ import { useAuth } from "@/app/auth-context";
 import { getDentalSettings, saveDentalSettings, type ChartStyle } from "@/features/dental/api";
 import { createProcedure, deleteProcedure, listProcedures, reorderProcedures, updateProcedure,
   createToothStatus, deleteToothStatus, listToothStatuses, reorderToothStatuses, updateToothStatus } from "@/features/dental/api";
-import { changeEmailApi, changePasswordApi, signOutOtherDevicesApi } from "@/features/auth/api";
+import { changeEmailApi, changePasswordApi } from "@/features/auth/api";
+import { ActiveSessions } from "@/features/auth/ActiveSessions";
 import {
   branchUsage,
   createBranch,
@@ -306,13 +307,6 @@ function AccountSecurityCard() {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Could not update the password"),
   });
 
-  // --- sign out other devices ---
-  const signOutMut = useMutation({
-    mutationFn: () => signOutOtherDevicesApi(),
-    onSuccess: (r) =>
-      toast.success(r.revoked > 0 ? `Signed out ${r.revoked} other device${r.revoked === 1 ? "" : "s"}` : "No other devices were signed in"),
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not sign out other devices"),
-  });
 
   // --- workspace ---
   const [slug, setSlug] = useState("");
@@ -389,12 +383,10 @@ function AccountSecurityCard() {
       <Card>
         <CardHeader>
           <CardTitle>Active sessions</CardTitle>
-          <CardDescription>Left yourself signed in on a shared or lost device? Sign out everywhere except here.</CardDescription>
+          <CardDescription>Every device signed in to your account. Left yourself signed in on a shared or lost device? Sign it out here.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Button variant="outline" onClick={() => signOutMut.mutate()} loading={signOutMut.isPending}>
-            Sign out all other devices
-          </Button>
+          <ActiveSessions />
         </CardContent>
       </Card>
 

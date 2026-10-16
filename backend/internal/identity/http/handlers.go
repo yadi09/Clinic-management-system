@@ -4,7 +4,10 @@
 package http
 
 import (
+	"context"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -46,7 +49,7 @@ func (h *Handlers) AcceptInvite(c *gin.Context) {
 		httpx.Fail(c, apperr.Validation("token and password are required"))
 		return
 	}
-	tokens, user, err := h.svc.AcceptInvite(c.Request.Context(), req.Token, req.Password, c.Request.UserAgent(), c.ClientIP())
+	tokens, user, err := h.svc.AcceptInvite(signInCtx(c), req.Token, req.Password, c.Request.UserAgent(), clientIP(c))
 	if err != nil {
 		httpx.Fail(c, err)
 		return
@@ -74,12 +77,12 @@ func (h *Handlers) Login(c *gin.Context) {
 		httpx.Fail(c, apperr.Validation("workspace, a valid email, and password are required"))
 		return
 	}
-	res, err := h.svc.Login(c.Request.Context(), identity.LoginInput{
+	res, err := h.svc.Login(signInCtx(c), identity.LoginInput{
 		Workspace: req.Workspace,
 		Email:     req.Email,
 		Password:  req.Password,
 		UserAgent: c.Request.UserAgent(),
-		IP:        c.ClientIP(),
+		IP:        clientIP(c),
 	})
 	if err != nil {
 		httpx.Fail(c, err)
@@ -105,7 +108,7 @@ func (h *Handlers) VerifyMFA(c *gin.Context) {
 		httpx.Fail(c, apperr.Validation("mfa_token and code are required"))
 		return
 	}
-	tokens, user, err := h.svc.VerifyMFA(c.Request.Context(), req.MFAToken, req.Code, c.Request.UserAgent(), c.ClientIP())
+	tokens, user, err := h.svc.VerifyMFA(signInCtx(c), req.MFAToken, req.Code, c.Request.UserAgent(), clientIP(c))
 	if err != nil {
 		httpx.Fail(c, err)
 		return
@@ -126,7 +129,7 @@ func (h *Handlers) Refresh(c *gin.Context) {
 		httpx.Fail(c, apperr.Unauthenticated("missing refresh token"))
 		return
 	}
-	tokens, err := h.svc.Refresh(c.Request.Context(), raw, c.Request.UserAgent(), c.ClientIP())
+	tokens, err := h.svc.Refresh(signInCtx(c), raw, c.Request.UserAgent(), clientIP(c))
 	if err != nil {
 		h.clearRefreshCookie(c)
 		httpx.Fail(c, err)
@@ -268,4 +271,92 @@ func (h *Handlers) setRefreshCookie(c *gin.Context, t *identity.TokenPair) {
 func (h *Handlers) clearRefreshCookie(c *gin.Context) {
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie(refreshCookieName, "", -1, h.opts.CookiePath, "", h.opts.SecureCookies, true)
+}
+
+// clientIP is the visitor's address. Behind Cloudflare the connection's own address is
+// Cloudflare's, so the address Cloudflare reports is preferred; it is only ever shown to
+// the account's own user as "where was I signed in from", never used to decide access.
+func clientIP(c *gin.Context) string {
+	if v := strings.TrimSpace(c.GetHeader("CF-Connecting-IP")); net.ParseIP(v) != nil {
+		return v
+	}
+	return c.ClientIP()
+}
+
+// signInCtx is the request context plus the visitor's country (Cloudflare's header).
+func signInCtx(c *gin.Context) context.Context {
+	cc := strings.ToUpper(strings.TrimSpace(c.GetHeader("CF-IPCountry")))
+	if len(cc) != 2 || cc == "XX" || cc == "T1" {
+		cc = ""
+	}
+	return identity.WithClientCountry(c.Request.Context(), cc)
+}
+
+// ListSessions handles GET /auth/sessions — the caller's live devices.
+func (h *Handlers) ListSessions(c *gin.Context) {
+	p, ok := httpx.PrincipalFrom(c)
+	if !ok {
+		httpx.Fail(c, apperr.Unauthenticated("authentication required"))
+		return
+	}
+	raw, _ := c.Cookie(refreshCookieName)
+	ds, err := h.svc.ListSessions(c.Request.Context(), p.TenantID, p.UserID, raw)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out := make([]gin.H, 0, len(ds))
+	for _, d := range ds {
+		out = append(out, gin.H{
+			"id": id.Encode(id.PrefixSession, d.ID), "user_agent": d.UserAgent, "ip": d.IP, "country": d.Country, "label": d.Label,
+			"started_at": d.StartedAt, "last_active": d.LastActive, "expires_at": d.ExpiresAt, "current": d.Current,
+		})
+	}
+	httpx.OK(c, out)
+}
+
+// RevokeSession handles DELETE /auth/sessions/:id — sign one other device out.
+func (h *Handlers) RevokeSession(c *gin.Context) {
+	p, ok := httpx.PrincipalFrom(c)
+	if !ok {
+		httpx.Fail(c, apperr.Unauthenticated("authentication required"))
+		return
+	}
+	sid, err := id.Decode(id.PrefixSession, c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("invalid device id"))
+		return
+	}
+	raw, _ := c.Cookie(refreshCookieName)
+	if err := h.svc.RevokeSession(c.Request.Context(), p.TenantID, p.UserID, sid, raw); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+// LabelSession handles PUT /auth/sessions/:id/label {"label": "Reception PC"}.
+func (h *Handlers) LabelSession(c *gin.Context) {
+	p, ok := httpx.PrincipalFrom(c)
+	if !ok {
+		httpx.Fail(c, apperr.Unauthenticated("authentication required"))
+		return
+	}
+	sid, err := id.Decode(id.PrefixSession, c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("invalid device id"))
+		return
+	}
+	var req struct {
+		Label string `json:"label"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("send the device name"))
+		return
+	}
+	if err := h.svc.LabelSession(c.Request.Context(), p.TenantID, p.UserID, sid, req.Label); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
 }

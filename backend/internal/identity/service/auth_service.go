@@ -714,7 +714,7 @@ func (s *AuthService) issueTokens(ctx context.Context, tenantID, userID uuid.UUI
 	}
 	refreshExp := time.Now().Add(s.cfg.RefreshTTL)
 	if err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
-		_, e := identitydb.New(tx).CreateSession(ctx, identitydb.CreateSessionParams{
+		sid, e := identitydb.New(tx).CreateSession(ctx, identitydb.CreateSessionParams{
 			TenantID:         tenantID,
 			UserID:           userID,
 			RefreshTokenHash: auth.HashToken(opaque),
@@ -724,6 +724,20 @@ func (s *AuthService) issueTokens(ctx context.Context, tenantID, userID uuid.UUI
 			RotatedFrom:      rotatedFrom,
 			ActiveBranchID:   active,
 		})
+		if e != nil {
+			return e
+		}
+		// The device's own facts: where the request came from, and — on a renewal —
+		// the original sign-in time and the name the user gave it.
+		if _, e := tx.Exec(ctx, `UPDATE sessions SET country = nullif($3, '') WHERE tenant_id = $1 AND id = $2`, tenantID, sid, identity.ClientCountry(ctx)); e != nil {
+			return e
+		}
+		if rotatedFrom != nil {
+			_, e = tx.Exec(ctx,
+				`UPDATE sessions n SET started_at = o.started_at, label = o.label
+				   FROM sessions o WHERE n.tenant_id = $1 AND n.id = $2 AND o.tenant_id = $1 AND o.id = $3`,
+				tenantID, sid, *rotatedFrom)
+		}
 		return e
 	}); err != nil {
 		return nil, nil, apperr.Internal(err)
@@ -844,4 +858,104 @@ func ptr(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// ListSessions lists the user's live devices.
+func (s *AuthService) ListSessions(ctx context.Context, tenantID, userID uuid.UUID, currentRefresh string) ([]identity.Device, error) {
+	ctx = tenancy.WithTenantID(ctx, tenantID)
+	cur := currentHash(tenantID, currentRefresh)
+	var out []identity.Device
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		rows, e := tx.Query(ctx,
+			`SELECT id, coalesce(user_agent,''), coalesce(ip,''), coalesce(country,''), coalesce(label,''),
+			        started_at, created_at, expires_at, refresh_token_hash
+			   FROM sessions
+			  WHERE tenant_id = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > now()
+			  ORDER BY created_at DESC`, tenantID, userID)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var d identity.Device
+			var hash string
+			if e := rows.Scan(&d.ID, &d.UserAgent, &d.IP, &d.Country, &d.Label, &d.StartedAt, &d.LastActive, &d.ExpiresAt, &hash); e != nil {
+				return e
+			}
+			d.Current = cur != "" && hash == cur
+			out = append(out, d)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return out, nil
+}
+
+// currentHash is the stored hash of the presented refresh token ("" if unusable).
+func currentHash(tenantID uuid.UUID, currentRefresh string) string {
+	if tid, opaque, err := splitRefresh(currentRefresh); err == nil && tid == tenantID {
+		return auth.HashToken(opaque)
+	}
+	return ""
+}
+
+// RevokeSession signs one of the user's OTHER devices out.
+func (s *AuthService) RevokeSession(ctx context.Context, tenantID, userID, sessionID uuid.UUID, currentRefresh string) error {
+	ctx = tenancy.WithTenantID(ctx, tenantID)
+	cur := currentHash(tenantID, currentRefresh)
+	var n int64
+	var isCurrent bool
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		var hash string
+		e := tx.QueryRow(ctx, `SELECT refresh_token_hash FROM sessions WHERE tenant_id = $1 AND user_id = $2 AND id = $3 AND revoked_at IS NULL`,
+			tenantID, userID, sessionID).Scan(&hash)
+		if errors.Is(e, pgx.ErrNoRows) {
+			return nil
+		}
+		if e != nil {
+			return e
+		}
+		if cur != "" && hash == cur {
+			isCurrent = true
+			return nil
+		}
+		tag, e := tx.Exec(ctx, `UPDATE sessions SET revoked_at = now() WHERE tenant_id = $1 AND user_id = $2 AND id = $3 AND revoked_at IS NULL`, tenantID, userID, sessionID)
+		n = tag.RowsAffected()
+		return e
+	})
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	if isCurrent {
+		return apperr.Validation("that is this device — use Sign out in the menu")
+	}
+	if n == 0 {
+		return apperr.NotFound("device", "that device is no longer signed in")
+	}
+	s.emit(ctx, tenantID, userID, "auth.user.session_revoked", map[string]any{"session_id": sessionID})
+	return nil
+}
+
+// LabelSession names (or unnames) one of the user's devices.
+func (s *AuthService) LabelSession(ctx context.Context, tenantID, userID, sessionID uuid.UUID, label string) error {
+	ctx = tenancy.WithTenantID(ctx, tenantID)
+	label = strings.TrimSpace(label)
+	if len([]rune(label)) > 60 {
+		return apperr.Validation("a device name is at most 60 characters")
+	}
+	var n int64
+	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
+		tag, e := tx.Exec(ctx, `UPDATE sessions SET label = nullif($4, '') WHERE tenant_id = $1 AND user_id = $2 AND id = $3 AND revoked_at IS NULL`, tenantID, userID, sessionID, label)
+		n = tag.RowsAffected()
+		return e
+	})
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	if n == 0 {
+		return apperr.NotFound("device", "that device is no longer signed in")
+	}
+	return nil
 }

@@ -27,6 +27,10 @@ func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	rg.POST("/auth/password", h.ChangePassword)
 	rg.POST("/auth/email", h.ChangeEmail)
 	rg.POST("/auth/sessions/logout-others", h.SignOutOtherDevices)
+	// The devices the user is signed in on: see them, name them, sign one out.
+	rg.GET("/auth/sessions", h.ListSessions)
+	rg.DELETE("/auth/sessions/:id", h.RevokeSession)
+	rg.PUT("/auth/sessions/:id/label", h.LabelSession)
 
 	rg.GET("/roles", httpx.RequirePermission("user.read"), h.ListRoles)
 	// Assignable clinicians for the triage/reception "assign doctor" pickers — usable
