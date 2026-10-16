@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/reicb/clinicsaas/internal/testkit"
 )
 
 // The dental supply marketplace (REG_MKT).
@@ -17,6 +19,7 @@ type mktSession struct {
 	Seller struct {
 		ID     string `json:"id"`
 		Status string `json:"status"`
+		Slug   string `json:"slug"`
 	} `json:"seller"`
 }
 
@@ -213,4 +216,110 @@ func TestREG_MKT_009_SellerPortalBasics(t *testing.T) {
 	c.Do("GET", "/marketplace/my/listings", nil).Expect(t, 200, "my listings")
 	// The test API has no storage configured, so signing says so plainly instead of failing.
 	c.Do("POST", "/marketplace/my/photos/sign", nil).Expect(t, 503, "sign photo without storage")
+}
+
+func mktAs(t *testing.T, s mktSession) *testkit.Client {
+	t.Helper()
+	c := srv.Anon(t)
+	c.Header = map[string]string{"X-Marketplace-Token": s.Token}
+	return c
+}
+
+func TestREG_MKT_010_StoreLinkIsMadeFromTheNameAndDuplicatesGetANumber(t *testing.T) {
+	name := "Zeta Dental " + strings.ToLower(uniq(""))
+	signup := func() mktSession {
+		var s mktSession
+		srv.Anon(t).Do("POST", "/marketplace/sellers/signup", map[string]any{
+			"kind": "supplier", "name": name, "phone": mktPhone(), "city": "Addis Ababa", "password": "secret123",
+		}).Expect(t, 201, "signup").Decode(t, &s)
+		return s
+	}
+	a, b := signup(), signup()
+	var ma, mb struct {
+		Slug string `json:"slug"`
+	}
+	mktAs(t, a).Do("GET", "/marketplace/me", nil).Expect(t, 200, "me").Decode(t, &ma)
+	mktAs(t, b).Do("GET", "/marketplace/me", nil).Expect(t, 200, "me").Decode(t, &mb)
+	if !strings.HasPrefix(ma.Slug, "zeta-dental-") || ma.Slug == mb.Slug || !strings.HasPrefix(mb.Slug, ma.Slug+"-") {
+		t.Fatalf("slugs = %q and %q", ma.Slug, mb.Slug)
+	}
+	// An Amharic name has no latin letters: it still gets a working link.
+	var s mktSession
+	srv.Anon(t).Do("POST", "/marketplace/sellers/signup", map[string]any{
+		"kind": "individual", "name": "አበበ", "phone": mktPhone(), "city": "Adama", "password": "secret123",
+	}).Expect(t, 201, "amharic signup").Decode(t, &s)
+	if !strings.HasPrefix(s.Seller.Slug, "seller") {
+		t.Fatalf("amharic name slug = %q", s.Seller.Slug)
+	}
+}
+
+func TestREG_MKT_011_StoreOnlyForApprovedSellersAndCountsVisits(t *testing.T) {
+	s, _ := mktSignUp(t, "supplier")
+	c := mktAs(t, s)
+	slug := s.Seller.Slug
+	if slug == "" {
+		t.Fatalf("signup returned no slug")
+	}
+	srv.Anon(t).Do("GET", "/marketplace/stores/"+slug, nil).Expect(t, 404, "pending seller has no store")
+
+	c.Do("POST", "/marketplace/my/listings", map[string]any{"title": "Burs " + uniq("b"), "category": "Instruments", "condition": "new"}).Expect(t, 201, "a")
+	c.Do("POST", "/marketplace/my/listings", map[string]any{"title": "Gloves " + uniq("g"), "category": "Consumables & PPE", "condition": "new"}).Expect(t, 201, "b")
+	c.Do("POST", "/marketplace/my/listings", map[string]any{"title": "Hidden " + uniq("h"), "category": "Equipment", "condition": "new", "status": "hidden"}).Expect(t, 201, "hidden")
+	mktSeller(t, s)
+
+	var st struct {
+		Total      int `json:"total"`
+		Categories []struct {
+			Category string `json:"category"`
+			Count    int    `json:"count"`
+		} `json:"categories"`
+		Seller struct {
+			Name string `json:"name"`
+		} `json:"seller"`
+	}
+	r := srv.Anon(t).Do("GET", "/marketplace/stores/"+strings.ToUpper(slug), nil).Expect(t, 200, "store (any case)")
+	r.Decode(t, &st)
+	if st.Total != 2 || len(st.Categories) != 2 {
+		t.Fatalf("store counts = %+v (hidden listings must not count)", st)
+	}
+	if strings.Contains(r.Raw, s.Seller.ID) == false {
+		t.Fatalf("store has no seller id: %s", r.Raw)
+	}
+	var visits int
+	one(t, `SELECT count(*) FROM mp_visits WHERE seller_id=$1`, &visits, s.Seller.ID)
+	if visits != 1 {
+		t.Fatalf("visits = %d, want 1", visits)
+	}
+	var stats struct {
+		Visits int `json:"visits_30d"`
+	}
+	c.Do("GET", "/marketplace/my/stats", nil).Expect(t, 200, "stats").Decode(t, &stats)
+	if stats.Visits != 1 {
+		t.Fatalf("seller stats visits = %d", stats.Visits)
+	}
+
+	// The store's own search is limited to this seller.
+	other, _ := mktSignUp(t, "supplier")
+	mktSeller(t, other)
+	mktAs(t, other).Do("POST", "/marketplace/my/listings", map[string]any{"title": "Burs elsewhere", "category": "Instruments", "condition": "new"}).Expect(t, 201, "other")
+	page := srv.Anon(t).Do("GET", "/marketplace/listings?seller="+slug+"&q=burs", nil).Expect(t, 200, "store search")
+	if strings.Contains(page.Raw, "Burs elsewhere") || !strings.Contains(page.Raw, "Burs ") {
+		t.Fatalf("store search not limited to the seller: %s", page.Raw)
+	}
+}
+
+func TestREG_MKT_012_StoreLinkCanBeChangedOnce(t *testing.T) {
+	a, _ := mktSignUp(t, "supplier")
+	b, _ := mktSignUp(t, "supplier")
+	ca := mktAs(t, a)
+	mine := "mine-" + strings.ToLower(uniq(""))
+	ca.Do("PUT", "/marketplace/my/slug", map[string]any{"slug": "Admin"}).Expect(t, 400, "reserved")
+	ca.Do("PUT", "/marketplace/my/slug", map[string]any{"slug": "-bad-"}).Expect(t, 400, "invalid")
+	ca.Do("PUT", "/marketplace/my/slug", map[string]any{"slug": "a--b"}).Expect(t, 400, "double hyphen")
+	ca.Do("PUT", "/marketplace/my/slug", map[string]any{"slug": b.Seller.Slug}).Expect(t, 409, "taken")
+	ca.Do("PUT", "/marketplace/my/slug", map[string]any{"slug": mine}).Expect(t, 200, "first change")
+	ca.Do("PUT", "/marketplace/my/slug", map[string]any{"slug": mine + "x"}).Expect(t, 409, "second change refused")
+	mktSeller(t, a)
+	srv.Anon(t).Do("GET", "/marketplace/stores/"+mine, nil).Expect(t, 200, "new link works")
+	srv.Anon(t).Do("GET", "/marketplace/stores/"+a.Seller.Slug, nil).Expect(t, 404, "old link stops working")
 }

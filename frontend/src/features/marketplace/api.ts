@@ -35,6 +35,7 @@ export interface SellerBrief {
   city: string;
   subcity?: string;
   about?: string;
+  slug: string;
   channels?: Channel[];
 }
 
@@ -66,6 +67,8 @@ export interface Seller {
   city: string;
   subcity?: string;
   about?: string;
+  slug: string;
+  slug_changed: boolean;
   status: SellerStatus;
   status_note?: string;
   created_at: string;
@@ -76,7 +79,8 @@ export interface Seller {
 export interface Session { token: string; seller: Seller }
 export interface ListingPage { items: Listing[]; total: number }
 export interface ContactLink { channel: Channel; href: string; phone?: string }
-export interface SellerStats { listings: number; active: number; contacts_30d: number }
+export interface SellerStats { listings: number; active: number; contacts_30d: number; visits_30d: number }
+export interface Store { seller: SellerBrief; total: number; categories: { category: string; count: number }[] }
 
 export interface ListingInput {
   title: string;
@@ -118,7 +122,7 @@ const mine = () => ({ auth: false as const, headers: { "X-Marketplace-Token": se
 const pub = { auth: false as const };
 
 // ---- public ------------------------------------------------------------------
-export interface Filters { q?: string; category?: string; condition?: string; city?: string; offset?: number }
+export interface Filters { q?: string; category?: string; condition?: string; city?: string; seller?: string; offset?: number }
 
 export function browse(f: Filters) {
   const p = new URLSearchParams();
@@ -126,9 +130,11 @@ export function browse(f: Filters) {
   if (f.category) p.set("category", f.category);
   if (f.condition) p.set("condition", f.condition);
   if (f.city) p.set("city", f.city);
+  if (f.seller) p.set("seller", f.seller);
   if (f.offset) p.set("offset", String(f.offset));
   return apiFetch<ListingPage>(`/marketplace/listings?${p}`, pub);
 }
+export const getStore = (slug: string) => apiFetch<Store>(`/marketplace/stores/${encodeURIComponent(slug)}`, pub);
 export const getListing = (id: string) => apiFetch<Listing>(`/marketplace/listings/${id}`, pub);
 export const contactSeller = (id: string, channel: Channel) =>
   apiFetch<ContactLink>(`/marketplace/listings/${id}/contact`, { ...pub, method: "POST", body: { channel } });
@@ -139,6 +145,7 @@ export const login = (phone: string, password: string) =>
   apiFetch<Session>("/marketplace/sellers/login", { ...pub, method: "POST", body: { phone, password } });
 export const getMe = () => apiFetch<Seller>("/marketplace/me", mine());
 export const updateMe = (b: Partial<SignupInput>) => apiFetch<Seller>("/marketplace/me", { ...mine(), method: "PUT", body: b });
+export const changeSlug = (slug: string) => apiFetch<Seller>("/marketplace/my/slug", { ...mine(), method: "PUT", body: { slug } });
 export const myStats = () => apiFetch<SellerStats>("/marketplace/my/stats", mine());
 export const myListings = () => apiFetch<Listing[]>("/marketplace/my/listings", mine());
 export const saveListing = (id: string | null, b: ListingInput) =>
@@ -165,3 +172,6 @@ export async function uploadPhoto(file: File): Promise<string> {
 }
 
 export const money = (n?: number | null) => (n == null ? null : `ETB ${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`);
+
+/** The full public address of a store, for copying and sharing. */
+export const storeUrl = (slug: string) => `${window.location.origin}/marketplace/s/${slug}`;

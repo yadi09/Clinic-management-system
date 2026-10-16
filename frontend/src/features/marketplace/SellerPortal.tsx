@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ImagePlus, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Copy, ImagePlus, Pencil, Plus, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import {
-  CATEGORIES, CONDITIONS, deleteListing, myListings, myStats, saveListing, updateMe, uploadPhoto,
+  CATEGORIES, CONDITIONS, changeSlug, deleteListing, myListings, myStats, saveListing, storeUrl, updateMe, uploadPhoto,
   type Listing, type ListingInput, type Seller,
 } from "@/features/marketplace/api";
 import { ConditionTag, KindTag, Photo, PriceLine } from "@/features/marketplace/parts";
@@ -67,6 +67,8 @@ export function SellerPortal({ seller, onSignOut }: { seller: Seller; onSignOut:
       </div>
       <StatusBanner s={seller} />
       {profile && <ProfileForm seller={seller} onDone={() => { setProfile(false); qc.invalidateQueries({ queryKey: ["market-me"] }); }} onCancel={() => setProfile(false)} />}
+
+      {seller.status === "approved" && <StorePanel seller={seller} visits={stats.data?.visits_30d} contacts={stats.data?.contacts_30d} />}
 
       <div className="grid grid-cols-3 gap-3">
         {[
@@ -292,5 +294,64 @@ function ProfileForm({ seller, onDone, onCancel }: { seller: Seller; onDone: () 
         <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
       </div>
     </form>
+  );
+}
+
+/** The seller's own store link, ready to copy or send. Shown once they are approved,
+ *  because before that the link says "not available". */
+function StorePanel({ seller, visits, contacts }: { seller: Seller; visits?: number; contacts?: number }) {
+  const qc = useQueryClient();
+  const url = storeUrl(seller.slug);
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState(seller.slug);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const text = `${seller.name} — dental supplies on ClinicOS Marketplace`;
+
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(url); toast.success("Link copied"); }
+    catch { toast.error("Could not copy — select the link and copy it by hand"); }
+  };
+  const save = async () => {
+    setBusy(true); setErr(null);
+    try {
+      await changeSlug(name.trim().toLowerCase());
+      toast.success("Store link changed");
+      setRenaming(false);
+      qc.invalidateQueries({ queryKey: ["market-me"] });
+    } catch (x) { setErr(x instanceof Error ? x.message : "Could not change the link"); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <section className="space-y-3 rounded-xl border bg-card p-4">
+      <h2 className="font-semibold">Your store link</h2>
+      <p className="text-sm text-muted-foreground">Send this to your customers. They see only your products and can search and filter them.</p>
+      <div className="flex gap-2">
+        <Input readOnly value={url} aria-label="Store link" onFocus={(e) => e.currentTarget.select()} />
+        <Button onClick={copy}><Copy /> Copy</Button>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" size="sm" asChild><a href={`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`} target="_blank" rel="noopener noreferrer">Share on Telegram</a></Button>
+        <Button variant="outline" size="sm" asChild><a href={`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`} target="_blank" rel="noopener noreferrer">Share on WhatsApp</a></Button>
+        {!seller.slug_changed && !renaming && <Button variant="ghost" size="sm" onClick={() => setRenaming(true)}>Change link name</Button>}
+      </div>
+      {renaming && (
+        <div className="space-y-2 rounded-lg bg-muted/50 p-3">
+          <Label htmlFor="sl">Link name</Label>
+          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+            <span className="shrink-0">…/marketplace/s/</span>
+            <Input id="sl" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} />
+          </div>
+          <p className="text-xs text-muted-foreground">You can change this once. Your old link stops working, so tell customers if you already sent it.</p>
+          {err && <p className="text-sm text-destructive">{err}</p>}
+          <div className="flex gap-2">
+            <Button size="sm" loading={busy} disabled={name.trim().length < 3} onClick={save}>Save new link</Button>
+            <Button size="sm" variant="outline" onClick={() => { setRenaming(false); setErr(null); setName(seller.slug); }}>Cancel</Button>
+          </div>
+        </div>
+      )}
+      <p className="text-sm"><b>Store visits (30 days):</b> {visits ?? "–"} &nbsp;·&nbsp; <b>Contacts:</b> {contacts ?? "–"}</p>
+    </section>
   );
 }

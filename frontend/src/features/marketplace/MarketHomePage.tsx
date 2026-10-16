@@ -5,7 +5,7 @@ import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { browse, CATEGORIES, type Listing } from "@/features/marketplace/api";
+import { browse, CATEGORIES, type Listing, type Store } from "@/features/marketplace/api";
 import { ListingCard } from "@/features/marketplace/parts";
 
 const CONDITION_FILTERS = [
@@ -18,7 +18,11 @@ const chip = (on: boolean) =>
   "whitespace-nowrap rounded-full border px-3 py-1.5 text-sm transition-colors " +
   (on ? "border-primary bg-primary/10 font-semibold text-primary" : "bg-card hover:bg-accent");
 
-export function MarketHomePage() {
+/** The marketplace home — and, with `store` set, one seller's storefront: the same
+ *  search and filters, limited to that seller's products. */
+export function MarketHomePage({ store }: { store?: Store } = {}) {
+  const seller = store?.seller.slug;
+  const categories = store ? store.categories.map((c) => c.category) : CATEGORIES;
   const [text, setText] = useState("");
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("");
@@ -33,12 +37,12 @@ export function MarketHomePage() {
   }, [text]);
   useEffect(() => { setExtra([]); }, [q, category, condition, city]);
 
-  const key = ["market", q, category, condition, city];
-  const res = useQuery({ queryKey: key, queryFn: () => browse({ q, category, condition, city }) });
+  const key = ["market", seller ?? "", q, category, condition, city];
+  const res = useQuery({ queryKey: key, queryFn: () => browse({ q, category, condition, city, seller }) });
   const more = useQuery({
     queryKey: [...key, "more", extra.length],
     queryFn: async () => {
-      const r = await browse({ q, category, condition, city, offset: (res.data?.items.length ?? 0) + extra.length });
+      const r = await browse({ q, category, condition, city, seller, offset: (res.data?.items.length ?? 0) + extra.length });
       setExtra((e) => [...e, ...r.items]);
       return r;
     },
@@ -50,17 +54,19 @@ export function MarketHomePage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold">Dental supplies from sellers near you</h1>
-        <p className="text-sm text-muted-foreground">Search for a product, see who sells it, and call them.</p>
-      </div>
+      {!store && (
+        <div>
+          <h1 className="text-2xl font-bold">Dental supplies from sellers near you</h1>
+          <p className="text-sm text-muted-foreground">Search for a product, see who sells it, and call them.</p>
+        </div>
+      )}
 
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Search products — composite, autoclave, apex locator…"
+          placeholder={store ? `Search ${store.seller.name}'s products` : "Search products — composite, autoclave, apex locator…"}
           className="h-12 pl-9 text-base"
           aria-label="Search products"
         />
@@ -68,7 +74,7 @@ export function MarketHomePage() {
 
       <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
         <button className={chip(category === "")} onClick={() => setCategory("")}>All</button>
-        {CATEGORIES.map((c) => (
+        {categories.map((c) => (
           <button key={c} className={chip(category === c)} onClick={() => setCategory(category === c ? "" : c)}>{c}</button>
         ))}
       </div>
@@ -77,7 +83,7 @@ export function MarketHomePage() {
         {CONDITION_FILTERS.map((f) => (
           <button key={f.id} className={chip(condition === f.id)} onClick={() => setCondition(f.id)}>{f.label}</button>
         ))}
-        <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" className="h-9 w-32" aria-label="City" />
+        {!store && <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" className="h-9 w-32" aria-label="City" />}
       </div>
 
       {res.isLoading ? (

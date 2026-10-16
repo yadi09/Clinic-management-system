@@ -8,6 +8,8 @@ import { MarketLayout } from "@/features/marketplace/parts";
 import { MarketHomePage } from "@/features/marketplace/MarketHomePage";
 import { MarketListingPage } from "@/features/marketplace/ListingPage";
 import { MarketSellPage } from "@/features/marketplace/SellPage";
+import { MarketStorePage } from "@/features/marketplace/StorefrontPage";
+import { SellerPortal } from "@/features/marketplace/SellerPortal";
 
 vi.mock("@/features/marketplace/api", async (orig) => ({
   ...(await orig<typeof import("@/features/marketplace/api")>()),
@@ -17,12 +19,16 @@ vi.mock("@/features/marketplace/api", async (orig) => ({
   signUp: vi.fn(),
   login: vi.fn(),
   getMe: vi.fn(),
+  getStore: vi.fn(),
+  myStats: vi.fn(),
+  myListings: vi.fn(),
+  changeSlug: vi.fn(),
 }));
 
 const listing = (over: Partial<api.Listing> = {}): api.Listing => ({
   id: "l1", title: "Filtek Z250 composite", brand: "3M", category: "Restorative", condition: "new",
   price_etb: 1200, negotiable: true, photos: [], status: "active", created_at: "2026-10-16T00:00:00Z",
-  seller: { id: "s1", kind: "supplier", name: "Habesha Dental", city: "Addis Ababa", channels: ["call", "telegram"] },
+  seller: { id: "s1", kind: "supplier", name: "Habesha Dental", slug: "habesha-dental", city: "Addis Ababa", channels: ["call", "telegram"] },
   ...over,
 });
 
@@ -32,6 +38,7 @@ function app(route: string) {
       <Route path="/marketplace" element={<MarketLayout />}>
         <Route index element={<MarketHomePage />} />
         <Route path="listing/:id" element={<MarketListingPage />} />
+        <Route path="s/:slug" element={<MarketStorePage />} />
         <Route path="sell" element={<MarketSellPage />} />
       </Route>
     </Routes>,
@@ -91,5 +98,58 @@ describe("marketplace", () => {
     expect(send).toBeDisabled();
     await user.type(screen.getByLabelText(/Choose a password/), "def");
     expect(send).toBeEnabled();
+  });
+
+  test("REG-FE-MKT-006 a storefront shows the seller and searches only that seller's products", async () => {
+    vi.mocked(api.getStore).mockResolvedValue({
+      total: 2,
+      seller: { id: "s1", kind: "supplier", name: "Habesha Dental", slug: "habesha-dental", city: "Addis Ababa", about: "Composites and burs", channels: ["call"] },
+      categories: [{ category: "Restorative", count: 1 }, { category: "Instruments", count: 1 }],
+    });
+    vi.mocked(api.browse).mockResolvedValue({ total: 1, items: [listing()] });
+    app("/marketplace/s/habesha-dental");
+    expect(await screen.findByRole("heading", { name: "Habesha Dental" })).toBeInTheDocument();
+    expect(await screen.findByText("Filtek Z250 composite")).toBeInTheDocument();
+    // Only this seller's categories are offered, and every search carries the seller.
+    expect(screen.getByRole("button", { name: "Instruments" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Implants" })).not.toBeInTheDocument();
+    expect(vi.mocked(api.browse).mock.calls.every(([f]) => f.seller === "habesha-dental")).toBe(true);
+    expect(screen.queryByLabelText("City")).not.toBeInTheDocument();
+  });
+
+  test("REG-FE-MKT-007 a store that is not approved says it is not available", async () => {
+    vi.mocked(api.getStore).mockRejectedValue(new Error("gone"));
+    app("/marketplace/s/nobody");
+    expect(await screen.findByText("This store is not available")).toBeInTheDocument();
+  });
+
+  test("REG-FE-MKT-008 the seller sees their store link only once approved, and can rename it once", async () => {
+    vi.mocked(api.myStats).mockResolvedValue({ listings: 0, active: 0, contacts_30d: 4, visits_30d: 61 });
+    vi.mocked(api.myListings).mockResolvedValue([]);
+    vi.mocked(api.changeSlug).mockResolvedValue({} as api.Seller);
+    const base: api.Seller = {
+      id: "s1", kind: "supplier", name: "Habesha Dental", phone: "0911000000", city: "Addis Ababa", slug: "habesha-dental",
+      slug_changed: false, status: "pending", created_at: "2026-10-16T00:00:00Z", listings: 0,
+    };
+    const first = renderUI(<SellerPortal seller={base} onSignOut={() => {}} />);
+    await screen.findByText("Waiting for our call");
+    expect(screen.queryByText("Your store link")).not.toBeInTheDocument();
+    first.unmount();
+
+    const { user } = renderUI(<SellerPortal seller={{ ...base, status: "approved" }} onSignOut={() => {}} />);
+    expect(await screen.findByText("Your store link")).toBeInTheDocument();
+    expect(screen.getByLabelText("Store link")).toHaveValue(`${window.location.origin}/marketplace/s/habesha-dental`);
+    expect(await screen.findByText((_, el) => el?.tagName === "P" && /Store visits \(30 days\):\s*61/.test(el.textContent ?? ""))).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Change link name" }));
+    const input = screen.getByLabelText("Link name");
+    await user.clear(input);
+    await user.type(input, "Habesha-Dental-Supply");
+    await user.click(screen.getByRole("button", { name: "Save new link" }));
+    await waitFor(() => expect(api.changeSlug).toHaveBeenCalledWith("habesha-dental-supply"));
+
+    // Once it has been changed the option is gone.
+    renderUI(<SellerPortal seller={{ ...base, status: "approved", slug_changed: true }} onSignOut={() => {}} />);
+    await screen.findAllByText("Your store link");
+    expect(screen.getAllByRole("button", { name: "Change link name" })).toHaveLength(1);
   });
 });

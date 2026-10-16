@@ -52,6 +52,7 @@ import { PlatformConsolePage } from "@/features/platform/pages/PlatformConsolePa
 import { MarketLayout } from "@/features/marketplace/parts";
 import { MarketHomePage } from "@/features/marketplace/MarketHomePage";
 import { MarketListingPage } from "@/features/marketplace/ListingPage";
+import { MarketStorePage } from "@/features/marketplace/StorefrontPage";
 import { MarketSellPage } from "@/features/marketplace/SellPage";
 import { CampaignPage } from "@/features/campaign/CampaignPage";
 import { CampaignRegisterPage } from "@/features/campaign/RegisterPage";
@@ -76,6 +77,7 @@ export function AppRoutes() {
       <Route path="/marketplace" element={<MarketLayout />}>
         <Route index element={<MarketHomePage />} />
         <Route path="listing/:id" element={<MarketListingPage />} />
+        <Route path="s/:slug" element={<MarketStorePage />} />
         <Route path="sell" element={<MarketSellPage />} />
       </Route>
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -45,13 +46,13 @@ func clip(s string, n int) string {
 // ---- sellers ---------------------------------------------------------------
 
 const sellerCols = `id, kind, name, phone, coalesce(telegram,''), city, coalesce(subcity,''),
-	coalesce(about,''), status, coalesce(status_note,''), created_at, approved_at,
+	coalesce(about,''), slug, slug_changed, status, coalesce(status_note,''), created_at, approved_at,
 	(SELECT count(*) FROM mp_listings l WHERE l.seller_id = mp_sellers.id)`
 
 func scanSeller(r pgx.Row) (marketplace.Seller, error) {
 	var s marketplace.Seller
 	err := r.Scan(&s.ID, &s.Kind, &s.Name, &s.Phone, &s.Telegram, &s.City, &s.Subcity,
-		&s.About, &s.Status, &s.StatusNote, &s.CreatedAt, &s.ApprovedAt, &s.Listings)
+		&s.About, &s.Slug, &s.SlugChanged, &s.Status, &s.StatusNote, &s.CreatedAt, &s.ApprovedAt, &s.Listings)
 	return s, err
 }
 
@@ -60,6 +61,42 @@ func cleanTelegram(t string) string {
 	t = strings.TrimPrefix(t, "https://t.me/")
 	t = strings.TrimPrefix(t, "t.me/")
 	return strings.TrimPrefix(t, "@")
+}
+
+var reservedSlugs = []string{"admin", "sell", "s", "listing", "listings", "platform", "api", "marketplace", "new", "www", "login", "signup", "me", "my", "store", "stores", "clinicos", "seller", "sellers"}
+
+var slugRE = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{1,38})[a-z0-9]$`)
+var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
+
+// slugBase turns a business name into a link name. A name with no latin letters or
+// digits (Amharic) falls back to "seller" and is made unique by a number.
+func slugBase(name string) string {
+	b := strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(name), "-"), "-")
+	if len(b) > 34 {
+		b = strings.Trim(b[:34], "-")
+	}
+	if len(b) < 3 || slices.Contains(reservedSlugs, b) {
+		b = "seller"
+	}
+	return b
+}
+
+// freeSlug finds a link name nobody has, starting from the readable one.
+func (s *Service) freeSlug(ctx context.Context, base string) (string, error) {
+	for i := 1; i < 500; i++ {
+		cand := base
+		if i > 1 {
+			cand = fmt.Sprintf("%s-%d", base, i)
+		}
+		var taken bool
+		if err := s.db.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM mp_sellers WHERE slug=$1)`, cand).Scan(&taken); err != nil {
+			return "", err
+		}
+		if !taken && !slices.Contains(reservedSlugs, cand) {
+			return cand, nil
+		}
+	}
+	return "", errors.New("no free store link")
 }
 
 func validateSeller(in marketplace.SellerSignup) (string, *apperr.Error) {
@@ -108,12 +145,24 @@ func (s *Service) SignUp(ctx context.Context, in marketplace.SellerSignup) (mark
 		return marketplace.Session{}, apperr.Internal(err)
 	}
 	var id uuid.UUID
-	err = s.db.Pool.QueryRow(ctx, `
-		INSERT INTO mp_sellers (kind, name, phone, telegram, city, subcity, about, password_hash)
-		VALUES ($1,$2,$3,nullif($4,''),$5,nullif($6,''),nullif($7,''),$8) RETURNING id`,
-		in.Kind, clip(in.Name, 120), tel, cleanTelegram(in.Telegram), clip(in.City, 80),
-		clip(in.Subcity, 80), clip(in.About, 1000), hash).Scan(&id)
 	var pgErr *pgconn.PgError
+	// Two people can claim the same link name at the same instant; the unique index
+	// decides, and the loser simply picks the next free one.
+	for attempt := 0; attempt < 5; attempt++ {
+		slug, serr := s.freeSlug(ctx, slugBase(in.Name))
+		if serr != nil {
+			return marketplace.Session{}, apperr.Internal(serr)
+		}
+		err = s.db.Pool.QueryRow(ctx, `
+			INSERT INTO mp_sellers (kind, name, phone, telegram, city, subcity, about, password_hash, slug)
+			VALUES ($1,$2,$3,nullif($4,''),$5,nullif($6,''),nullif($7,''),$8,$9) RETURNING id`,
+			in.Kind, clip(in.Name, 120), tel, cleanTelegram(in.Telegram), clip(in.City, 80),
+			clip(in.Subcity, 80), clip(in.About, 1000), hash, slug).Scan(&id)
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && strings.Contains(pgErr.ConstraintName, "slug") {
+			continue
+		}
+		break
+	}
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return marketplace.Session{}, apperr.Conflict("phone_taken", "this phone number already has a seller account — please sign in").WithField("phone", "taken")
 	}
@@ -198,7 +247,7 @@ func (s *Service) Authenticated(ctx context.Context, id uuid.UUID) (marketplace.
 const listingCols = `l.id, l.title, coalesce(l.brand,''), l.category, coalesce(l.description,''),
 	l.condition, l.price_etb::float8, l.negotiable, l.quantity, coalesce(l.expiry,''),
 	coalesce(l.warranty,''), l.photos, l.status, l.created_at,
-	s.id, s.kind, s.name, s.city, coalesce(s.subcity,''), coalesce(s.about,''),
+	s.id, s.kind, s.name, s.city, coalesce(s.subcity,''), coalesce(s.about,''), s.slug,
 	(s.phone <> '') , (s.telegram IS NOT NULL)`
 
 func (s *Service) scanListing(r pgx.Row, withKeys bool) (marketplace.Listing, error) {
@@ -208,7 +257,7 @@ func (s *Service) scanListing(r pgx.Row, withKeys bool) (marketplace.Listing, er
 	var hasPhone, hasTG bool
 	err := r.Scan(&l.ID, &l.Title, &l.Brand, &l.Category, &l.Description, &l.Condition, &l.PriceETB,
 		&l.Negotiable, &l.Quantity, &l.Expiry, &l.Warranty, &keys, &l.Status, &l.CreatedAt,
-		&b.ID, &b.Kind, &b.Name, &b.City, &b.Subcity, &b.About, &hasPhone, &hasTG)
+		&b.ID, &b.Kind, &b.Name, &b.City, &b.Subcity, &b.About, &b.Slug, &hasPhone, &hasTG)
 	if err != nil {
 		return l, err
 	}
@@ -271,6 +320,9 @@ func (s *Service) Browse(ctx context.Context, q marketplace.Query) (marketplace.
 	if q.City != "" {
 		add("lower(s.city) = lower(?)", q.City)
 	}
+	if q.SellerSlug != "" {
+		add("s.slug = ?", q.SellerSlug)
+	}
 	w := " WHERE " + strings.Join(where, " AND ")
 
 	var total int
@@ -296,7 +348,7 @@ func (s *Service) Browse(ctx context.Context, q marketplace.Query) (marketplace.
 		}
 		out.Items = append(out.Items, l)
 	}
-	if text != "" && q.Offset == 0 {
+	if text != "" && q.Offset == 0 && q.SellerSlug == "" {
 		// Best effort: what people look for and do not find tells us who to recruit.
 		_, _ = s.db.Pool.Exec(ctx, `INSERT INTO mp_searches (term, results) VALUES ($1,$2)`, clip(strings.ToLower(text), 80), total)
 	}
@@ -482,8 +534,9 @@ func (s *Service) MyStats(ctx context.Context, sellerID uuid.UUID) (marketplace.
 	err := s.db.Pool.QueryRow(ctx, `
 		SELECT (SELECT count(*) FROM mp_listings WHERE seller_id=$1),
 		       (SELECT count(*) FROM mp_listings WHERE seller_id=$1 AND status='active'),
-		       (SELECT count(*) FROM mp_contacts WHERE seller_id=$1 AND created_at > now() - interval '30 days')`,
-		sellerID).Scan(&st.Listings, &st.Active, &st.Contacts)
+		       (SELECT count(*) FROM mp_contacts WHERE seller_id=$1 AND created_at > now() - interval '30 days'),
+		       (SELECT count(*) FROM mp_visits WHERE seller_id=$1 AND created_at > now() - interval '30 days')`,
+		sellerID).Scan(&st.Listings, &st.Active, &st.Contacts, &st.Visits)
 	if err != nil {
 		return st, apperr.Internal(err)
 	}
@@ -595,4 +648,83 @@ func (s *Service) AdminStats(ctx context.Context) (marketplace.AdminStats, error
 		st.EmptySearches = append(st.EmptySearches, t)
 	}
 	return st, rows.Err()
+}
+
+// ---- storefronts -------------------------------------------------------------
+
+// Store returns a seller's public storefront and counts the visit. A seller who is
+// not approved has no store: the same "not available" as a missing one.
+func (s *Service) Store(ctx context.Context, slug string) (marketplace.Store, error) {
+	gone := apperr.NotFound("store_not_found", "this store is not available")
+	var st marketplace.Store
+	var hasPhone, hasTG bool
+	err := s.db.Pool.QueryRow(ctx, `
+		SELECT id, kind, name, city, coalesce(subcity,''), coalesce(about,''), slug, (phone <> ''), (telegram IS NOT NULL)
+		  FROM mp_sellers WHERE slug=$1 AND status='approved'`, strings.ToLower(strings.TrimSpace(slug))).
+		Scan(&st.Seller.ID, &st.Seller.Kind, &st.Seller.Name, &st.Seller.City, &st.Seller.Subcity,
+			&st.Seller.About, &st.Seller.Slug, &hasPhone, &hasTG)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return st, gone
+	}
+	if err != nil {
+		return st, apperr.Internal(err)
+	}
+	if hasPhone {
+		st.Seller.Channels = []string{"call", "whatsapp"}
+	}
+	if hasTG {
+		st.Seller.Channels = append(st.Seller.Channels, "telegram")
+	}
+	rows, err := s.db.Pool.Query(ctx, `
+		SELECT category, count(*) FROM mp_listings WHERE seller_id=$1 AND status='active'
+		 GROUP BY category ORDER BY count(*) DESC, category`, st.Seller.ID)
+	if err != nil {
+		return st, apperr.Internal(err)
+	}
+	defer rows.Close()
+	st.Categories = []marketplace.CategoryHit{}
+	for rows.Next() {
+		var c marketplace.CategoryHit
+		if err := rows.Scan(&c.Category, &c.Count); err != nil {
+			return st, apperr.Internal(err)
+		}
+		st.Total += c.Count
+		st.Categories = append(st.Categories, c)
+	}
+	if err := rows.Err(); err != nil {
+		return st, apperr.Internal(err)
+	}
+	_, _ = s.db.Pool.Exec(ctx, `INSERT INTO mp_visits (seller_id) VALUES ($1)`, st.Seller.ID)
+	return st, nil
+}
+
+// ChangeSlug lets a seller rename their store link, once.
+func (s *Service) ChangeSlug(ctx context.Context, sellerID uuid.UUID, slug string) (marketplace.Seller, error) {
+	slug = strings.ToLower(strings.TrimSpace(slug))
+	if !slugRE.MatchString(slug) || strings.Contains(slug, "--") {
+		return marketplace.Seller{}, apperr.Validation("use 3–40 letters, numbers and single hyphens").WithField("slug", "invalid")
+	}
+	if slices.Contains(reservedSlugs, slug) {
+		return marketplace.Seller{}, apperr.Validation("that name is reserved — please choose another").WithField("slug", "reserved")
+	}
+	var changed bool
+	var current string
+	if err := s.db.Pool.QueryRow(ctx, `SELECT slug_changed, slug FROM mp_sellers WHERE id=$1`, sellerID).Scan(&changed, &current); err != nil {
+		return marketplace.Seller{}, apperr.Internal(err)
+	}
+	if slug == current {
+		return s.Authenticated(ctx, sellerID)
+	}
+	if changed {
+		return marketplace.Seller{}, apperr.Conflict("slug_locked", "your store link has already been changed once").WithField("slug", "locked")
+	}
+	_, err := s.db.Pool.Exec(ctx, `UPDATE mp_sellers SET slug=$2, slug_changed=true, updated_at=now() WHERE id=$1`, sellerID, slug)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return marketplace.Seller{}, apperr.Conflict("slug_taken", "that link name is taken — please choose another").WithField("slug", "taken")
+	}
+	if err != nil {
+		return marketplace.Seller{}, apperr.Internal(err)
+	}
+	return s.Authenticated(ctx, sellerID)
 }

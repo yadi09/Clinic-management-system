@@ -40,19 +40,21 @@ type SellerSignup struct {
 
 // Seller is a seller as the seller themselves, and the vendor console, see them.
 type Seller struct {
-	ID         uuid.UUID  `json:"id"`
-	Kind       string     `json:"kind"`
-	Name       string     `json:"name"`
-	Phone      string     `json:"phone"`
-	Telegram   string     `json:"telegram,omitempty"`
-	City       string     `json:"city"`
-	Subcity    string     `json:"subcity,omitempty"`
-	About      string     `json:"about,omitempty"`
-	Status     string     `json:"status"`
-	StatusNote string     `json:"status_note,omitempty"`
-	CreatedAt  time.Time  `json:"created_at"`
-	ApprovedAt *time.Time `json:"approved_at,omitempty"`
-	Listings   int        `json:"listings"`
+	ID          uuid.UUID  `json:"id"`
+	Kind        string     `json:"kind"`
+	Name        string     `json:"name"`
+	Phone       string     `json:"phone"`
+	Telegram    string     `json:"telegram,omitempty"`
+	City        string     `json:"city"`
+	Subcity     string     `json:"subcity,omitempty"`
+	About       string     `json:"about,omitempty"`
+	Slug        string     `json:"slug"`
+	SlugChanged bool       `json:"slug_changed"`
+	Status      string     `json:"status"`
+	StatusNote  string     `json:"status_note,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	ApprovedAt  *time.Time `json:"approved_at,omitempty"`
+	Listings    int        `json:"listings"`
 }
 
 // Session is returned by signup and login.
@@ -69,6 +71,7 @@ type SellerBrief struct {
 	City    string    `json:"city"`
 	Subcity string    `json:"subcity,omitempty"`
 	About   string    `json:"about,omitempty"`
+	Slug    string    `json:"slug"`
 	// Channels says which contact buttons to show, without giving the number away.
 	Channels []string `json:"channels,omitempty"`
 }
@@ -111,12 +114,13 @@ type ListingInput struct {
 
 // Query is the public browse/search filter.
 type Query struct {
-	Text      string
-	Category  string
-	Condition string // "", a condition, or "used" for any used one
-	City      string
-	Limit     int
-	Offset    int
+	Text       string
+	Category   string
+	Condition  string // "", a condition, or "used" for any used one
+	City       string
+	SellerSlug string // only this seller's products (a storefront)
+	Limit      int
+	Offset     int
 }
 
 // Page is one page of listings.
@@ -137,6 +141,20 @@ type Stats struct {
 	Listings int `json:"listings"`
 	Active   int `json:"active"`
 	Contacts int `json:"contacts_30d"`
+	Visits   int `json:"visits_30d"`
+}
+
+// Store is a seller's public storefront: who they are and what they sell, by category.
+type Store struct {
+	Seller     SellerBrief   `json:"seller"`
+	Total      int           `json:"total"`
+	Categories []CategoryHit `json:"categories"`
+}
+
+// CategoryHit counts a seller's live products in one category.
+type CategoryHit struct {
+	Category string `json:"category"`
+	Count    int    `json:"count"`
 }
 
 // AdminStats is the vendor's view of the marketplace.
@@ -160,12 +178,14 @@ type Service interface {
 	Browse(ctx context.Context, q Query) (Page, error)
 	Get(ctx context.Context, id uuid.UUID) (Listing, error)
 	Contact(ctx context.Context, id uuid.UUID, channel string) (ContactLink, error)
+	Store(ctx context.Context, slug string) (Store, error)
 	SignUp(ctx context.Context, in SellerSignup) (Session, error)
 	Login(ctx context.Context, phone, password string) (Session, error)
 
 	// Seller (identified by session token).
 	Authenticate(ctx context.Context, token string) (Seller, error)
 	UpdateProfile(ctx context.Context, sellerID uuid.UUID, in SellerSignup) (Seller, error)
+	ChangeSlug(ctx context.Context, sellerID uuid.UUID, slug string) (Seller, error)
 	MyListings(ctx context.Context, sellerID uuid.UUID) ([]Listing, error)
 	SaveListing(ctx context.Context, sellerID uuid.UUID, id *uuid.UUID, in ListingInput) (Listing, error)
 	DeleteListing(ctx context.Context, sellerID, id uuid.UUID) error

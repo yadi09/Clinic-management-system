@@ -89,6 +89,7 @@ export function MarketListingPage() {
             <MapPin className="h-3.5 w-3.5" /> {[s.subcity, s.city].filter(Boolean).join(", ")}
           </p>
           {s.about && <p className="mt-2 text-sm">{s.about}</p>}
+          <Link to={`/marketplace/s/${s.slug}`} className="mt-2 inline-block text-sm text-primary underline">See all products from {s.name}</Link>
           <div className="mt-3 flex flex-wrap gap-2">
             {CHANNELS.filter((c) => s.channels?.includes(c.id)).map((c) => (
               <Button key={c.id} variant={c.id === "call" ? "default" : "outline"} loading={contact.isPending && contact.variables === c.id} onClick={() => contact.mutate(c.id)}>

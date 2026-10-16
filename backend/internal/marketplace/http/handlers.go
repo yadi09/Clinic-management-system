@@ -63,7 +63,7 @@ func (h *Handlers) Browse(c *gin.Context) {
 	offset, _ := strconv.Atoi(c.Query("offset"))
 	out, err := h.svc.Browse(c.Request.Context(), marketplace.Query{
 		Text: c.Query("q"), Category: c.Query("category"), Condition: c.Query("condition"),
-		City: c.Query("city"), Limit: limit, Offset: offset,
+		City: c.Query("city"), SellerSlug: c.Query("seller"), Limit: limit, Offset: offset,
 	})
 	if err != nil {
 		httpx.Fail(c, err)
@@ -79,6 +79,33 @@ func (h *Handlers) Get(c *gin.Context) {
 		return
 	}
 	out, err := h.svc.Get(c.Request.Context(), id)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// Store handles GET /marketplace/stores/:slug.
+func (h *Handlers) Store(c *gin.Context) {
+	out, err := h.svc.Store(c.Request.Context(), c.Param("slug"))
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// ChangeSlug handles PUT /marketplace/my/slug.
+func (h *Handlers) ChangeSlug(c *gin.Context) {
+	var req struct {
+		Slug string `json:"slug"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("enter a link name"))
+		return
+	}
+	out, err := h.svc.ChangeSlug(c.Request.Context(), seller(c).ID, req.Slug)
 	if err != nil {
 		httpx.Fail(c, err)
 		return
