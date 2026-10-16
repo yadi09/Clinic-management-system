@@ -35,6 +35,20 @@ tr:last-child td{border-bottom:0}
 .note{margin-top:16px;padding:14px 16px;border-left:4px solid var(--teal);background:#F2FBF8;font-size:14.5px}
 .note.warn{border-color:#B9822B;background:#FDF8EE}
 footer{color:var(--muted);font-size:13px;text-align:center;padding:36px 0 46px}
+.calc{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-top:16px}
+.crow{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)}
+.crow:last-child{border-bottom:0}
+.crow small{display:block;color:var(--muted);font-size:13px}
+.step{display:flex;align-items:center;gap:10px;white-space:nowrap}
+.step button,.tog{border:1px solid var(--line);background:#fff;border-radius:8px;width:36px;height:36px;font-size:20px;cursor:pointer;font-family:inherit}
+.tog{width:auto;padding:0 14px;font-size:14px;font-weight:600}
+.tog.on{background:var(--teal);color:#fff;border-color:var(--teal)}
+.step b{min-width:64px;text-align:center}
+.sum{background:#0E2233;color:#DCE8F1;border-radius:16px;padding:22px;align-self:start}
+.sum .big{font-size:34px;font-weight:700;color:#fff}
+.sum .lbl{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#A9C1D4;margin-top:14px}
+.sum .lbl:first-child{margin-top:0}
+@media(max-width:760px){.calc{grid-template-columns:1fr}}
 @media(max-width:760px){.grid{grid-template-columns:1fr}}
 </style>
 </head>
@@ -79,6 +93,20 @@ footer{color:var(--muted);font-size:13px;text-align:center;padding:36px 0 46px}
     <p data-en="Starts small with a limited patient number and grows with you. Agreed clinic by clinic." data-am="በትንሹ ይጀምራል፣ የታካሚ ቁጥር ውስን ሲሆን አብሮዎ ያድጋል። ከእያንዳንዱ ክሊኒክ ጋር ይስማማል።"></p>
   </div>
 </div>
+<h2 data-en="Build your own plan" data-am="የራስዎን ፓኬጅ ይገንቡ"></h2>
+<p class="sub" data-en="One-time setup of 35,000 ETB, then 2,000 ETB / month with 3,000 patients, 5 GB, 1 branch and SMS. Add what you need and see your price." data-am="የአንድ ጊዜ ክፍያ 35,000 ብር፣ ከዚያ በወር 2,000 ብር — 3,000 ታካሚ፣ 5 GB፣ 1 ቅርንጫፍ እና SMS ጋር። የሚፈልጉትን ያክሉ፣ ዋጋዎን ይመልከቱ።"></p>
+<div class="calc"><div class="card" style="padding-top:8px;padding-bottom:8px">
+<div class="crow"><div><span data-en="Patients" data-am="ታካሚዎች"></span><small data-en="3,000 included · +1,000 for 600 ETB / month" data-am="3,000 ተካትቷል · +1,000 በወር 600 ብር"></small></div><div class="step"><button data-k="p" data-d="-1" aria-label="-">−</button><b id="v-p"></b><button data-k="p" data-d="1" aria-label="+">+</button></div></div>
+<div class="crow"><div><span data-en="Storage" data-am="ማከማቻ"></span><small data-en="5 GB included · +5 GB for 400 ETB / month" data-am="5 GB ተካትቷል · +5 GB በወር 400 ብር"></small></div><div class="step"><button data-k="s" data-d="-1" aria-label="-">−</button><b id="v-s"></b><button data-k="s" data-d="1" aria-label="+">+</button></div></div>
+<div class="crow"><div><span data-en="Branches" data-am="ቅርንጫፎች"></span><small data-en="1 included · +1 branch for 1,500 ETB / month" data-am="1 ተካትቷል · +1 ቅርንጫፍ በወር 1,500 ብር"></small></div><div class="step"><button data-k="b" data-d="-1" aria-label="-">−</button><b id="v-b"></b><button data-k="b" data-d="1" aria-label="+">+</button></div></div>
+<div class="crow"><div><span data-en="Payment verification" data-am="የክፍያ ማረጋገጫ"></span><small data-en="Not included · 500 ETB / month" data-am="አልተካተተም · በወር 500 ብር"></small></div><button class="tog" id="tv"></button></div>
+<div class="crow"><div><span data-en="SMS feature" data-am="የSMS አገልግሎት"></span><small data-en="Included (message costs are separate)" data-am="ተካትቷል (የመልዕክት ወጪ በተናጠል)"></small></div><span data-en="Included" data-am="ተካትቷል" style="color:var(--teal);font-weight:600"></span></div>
+</div>
+<div class="sum">
+  <div class="lbl" data-en="Pay once" data-am="አንድ ጊዜ ይክፈሉ"></div><div class="big"><span id="t-once">35,000</span> <small style="font-size:14px" data-en="ETB" data-am="ብር"></small></div>
+  <div class="lbl" data-en="Then every month" data-am="ከዚያ በየወሩ"></div><div class="big"><span id="t-mo"></span> <small style="font-size:14px" data-en="ETB / month" data-am="ብር / በወር"></small></div>
+  <div class="lbl" data-en="Your plan" data-am="ፓኬጅዎ"></div><div id="t-sum" style="font-size:14px;line-height:1.7"></div>
+</div></div>
 <h2 data-en="Limits on every package" data-am="በሁሉም ፓኬጅ ያሉ ገደቦች"></h2>
 <div class="scroll"><table><thead><tr><th data-en="What" data-am="ምን"></th><th class="r" data-en="Included" data-am="የተካተተ"></th><th class="r" data-en="Add more" data-am="ተጨማሪ"></th></tr></thead><tbody>
 <tr><td data-en="Patients" data-am="ታካሚዎች"></td><td class="r">5,000</td><td class="r" data-en="+1,000 for 500 ETB / month" data-am="+1,000 በወር 500 ብር"></td></tr>
@@ -116,9 +144,26 @@ function setLang(l){
   document.getElementById('b-en').classList.toggle('on',l==='en');
   document.getElementById('b-am').classList.toggle('on',l==='am');
   try{localStorage.setItem('lang',l)}catch(x){}
+  calc();
 }
 document.getElementById('b-en').onclick=function(){setLang('en')};
 document.getElementById('b-am').onclick=function(){setLang('am')};
+
+var C={p:0,s:0,b:0,v:0};
+function fmt(n){return n.toLocaleString('en-US')}
+function calc(){
+  var l=document.documentElement.lang;
+  var mo=2000+C.p*600+C.s*400+C.b*1500+C.v*500;
+  document.getElementById('v-p').textContent=fmt(3000+C.p*1000);
+  document.getElementById('v-s').textContent=(5+C.s*5)+' GB';
+  document.getElementById('v-b').textContent=1+C.b;
+  var t=document.getElementById('tv');t.classList.toggle('on',!!C.v);
+  t.textContent=C.v?(l==='am'?'ተካትቷል ✓':'Added ✓'):(l==='am'?'ጨምር':'Add');
+  document.getElementById('t-mo').textContent=fmt(mo);
+  document.getElementById('t-sum').textContent=fmt(3000+C.p*1000)+(l==='am'?' ታካሚ · ':' patients · ')+(5+C.s*5)+' GB · '+(1+C.b)+(l==='am'?' ቅርንጫፍ · SMS':' branch(es) · SMS')+(C.v?(l==='am'?' · የክፍያ ማረጋገጫ':' · payment verification'):'');
+}
+document.querySelectorAll('.step button').forEach(function(b){b.onclick=function(){var k=b.dataset.k;C[k]=Math.max(0,C[k]+ +b.dataset.d);calc()}});
+document.getElementById('tv').onclick=function(){C.v=C.v?0:1;calc()};
 var s='en';try{s=localStorage.getItem('lang')||'en'}catch(x){}
 setLang(s);
 </script>
