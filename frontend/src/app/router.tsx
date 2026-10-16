@@ -49,6 +49,10 @@ import { FinancePage } from "@/features/billing/pages/FinancePage";
 import { NotFoundPage } from "@/features/misc/NotFoundPage";
 import { PlatformLoginPage } from "@/features/platform/pages/PlatformLoginPage";
 import { PlatformConsolePage } from "@/features/platform/pages/PlatformConsolePage";
+import { MarketLayout } from "@/features/marketplace/parts";
+import { MarketHomePage } from "@/features/marketplace/MarketHomePage";
+import { MarketListingPage } from "@/features/marketplace/ListingPage";
+import { MarketSellPage } from "@/features/marketplace/SellPage";
 import { CampaignPage } from "@/features/campaign/CampaignPage";
 import { CampaignRegisterPage } from "@/features/campaign/RegisterPage";
 import { VerifyPage } from "@/features/verify/VerifyPage";
@@ -67,6 +71,13 @@ export function AppRoutes() {
       <Route path="/v/:slug/:key" element={<VerifyPage />} />
       {/* The wide net: sent to every clinic, before anyone is invited to play. */}
       <Route path="/c/:code/register" element={<CampaignRegisterPage />} />
+
+      {/* The marketplace: public to browse, its own seller sign-in, outside the clinic shell. */}
+      <Route path="/marketplace" element={<MarketLayout />}>
+        <Route index element={<MarketHomePage />} />
+        <Route path="listing/:id" element={<MarketListingPage />} />
+        <Route path="sell" element={<MarketSellPage />} />
+      </Route>
 
       <Route path="/platform/login" element={<PlatformLoginPage />} />
       <Route path="/platform" element={<PlatformConsolePage />} />

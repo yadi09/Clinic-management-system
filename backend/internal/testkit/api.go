@@ -150,7 +150,10 @@ type Client struct {
 	t     testing.TB
 	base  string
 	Token string
-	http  *http.Client
+	// Header adds fixed request headers, for surfaces that do not use a bearer token
+	// (the marketplace seller portal sends its own session header).
+	Header map[string]string
+	http   *http.Client
 }
 
 // Resp is a decoded API response. Data is the "data" envelope; Code/Message come
@@ -222,6 +225,9 @@ func (c *Client) Do(method, path string, body any) Resp {
 	}
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+	for k, v := range c.Header {
+		req.Header.Set(k, v)
 	}
 	res, err := c.http.Do(req)
 	if err != nil {

@@ -36,6 +36,8 @@ export default defineConfig({
         "src/features/lab/**", "src/features/pharmacy/**", "src/features/inpatient/**",
         "src/features/maternity/**", "src/features/reporting/**", "src/features/campaign/**",
         "src/features/platform/campaign/**", "src/features/platform/crm/**",
+        // The supply marketplace is a public vendor surface, not a clinic screen.
+        "src/features/marketplace/**", "src/features/platform/marketplace/**", "src/features/platform/marketplace.ts",
         "src/features/clinical/pages/EncounterWorkspacePage.tsx",
         "src/features/clinical/components/DictateButton.tsx",
         "src/features/clinical/components/PatientStory.tsx",

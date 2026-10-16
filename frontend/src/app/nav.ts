@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, UserCog, Settings, Settings2, CalendarDays, ListChecks, ClipboardCheck, Activity, Stethoscope, Pill, Boxes, BookOpen, ShoppingCart, Gauge, Tags, Truck, ClipboardList, BarChart3, FlaskConical, TestTubes, Inbox, LifeBuoy, BadgeDollarSign, Wallet, ReceiptText, Landmark, BedDouble, Armchair, MessageSquare, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Users, UserCog, Settings, Settings2, CalendarDays, ListChecks, ClipboardCheck, Activity, Stethoscope, Pill, Boxes, BookOpen, ShoppingCart, Gauge, Tags, Truck, ClipboardList, BarChart3, FlaskConical, TestTubes, Inbox, LifeBuoy, BadgeDollarSign, Wallet, ReceiptText, Landmark, BedDouble, Armchair, MessageSquare, Store, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   to: string;
@@ -107,7 +107,10 @@ export const navSections: NavSection[] = [
     ],
   },
   {
-    items: [{ to: "/help", label: "Help center", icon: LifeBuoy }],
+    items: [
+      { to: "/marketplace", label: "Marketplace", icon: Store },
+      { to: "/help", label: "Help center", icon: LifeBuoy },
+    ],
   },
 ];
 

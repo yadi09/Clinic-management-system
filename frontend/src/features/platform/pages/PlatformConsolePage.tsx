@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Copy, Gift, KeyRound, LogOut, Plus, ShieldCheck, Handshake, CreditCard, Pencil, Target, Contact, Users, Sunrise } from "lucide-react";
+import { Building2, Copy, Gift, KeyRound, LogOut, Plus, ShieldCheck, Handshake, CreditCard, Pencil, Target, Contact, Users, Sunrise, Store } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
@@ -25,6 +25,7 @@ import {
 } from "@/features/platform/api";
 import { PipelineView, ProspectsView, TeamView, TodayView } from "@/features/platform/crm/CrmViews";
 import { CampaignAdmin } from "@/features/platform/campaign/CampaignAdmin";
+import { MarketplaceAdmin } from "@/features/platform/marketplace/MarketplaceAdmin";
 
 const MODULES = [
   { key: "laboratory", label: "Laboratory" },
@@ -146,10 +147,12 @@ export function PlatformConsolePage() {
           {!isRep && <button onClick={() => setTab("plans")} className={"flex items-center gap-2 rounded-md px-3 py-1.5 text-sm " + (tab === "plans" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200")}><CreditCard className="h-4 w-4" /> Plans</button>}
           {!isRep && <button onClick={() => setTab("leads")} className={"flex items-center gap-2 rounded-md px-3 py-1.5 text-sm " + (tab === "leads" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200")}><Handshake className="h-4 w-4" /> Partner leads</button>}
           {!isRep && <button onClick={() => setTab("promos")} className={"flex items-center gap-2 rounded-md px-3 py-1.5 text-sm " + (tab === "promos" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200")}><Gift className="h-4 w-4" /> Campaign</button>}
+          {!isRep && <button onClick={() => setTab("market")} className={"flex items-center gap-2 rounded-md px-3 py-1.5 text-sm " + (tab === "market" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200")}><Store className="h-4 w-4" /> Marketplace</button>}
           {!isRep && <button onClick={() => setTab("integrations")} className={"flex items-center gap-2 rounded-md px-3 py-1.5 text-sm " + (tab === "integrations" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200")}><KeyRound className="h-4 w-4" /> Integrations</button>}
         </div>
 
         {tab === "promos" && <CampaignAdmin />}
+        {tab === "market" && !isRep && <MarketplaceAdmin />}
         {tab === "today" && <TodayView canAdmin={!isRep} />}
         {tab === "pipeline" && <PipelineView canAdmin={!isRep} />}
         {tab === "prospects" && <ProspectsView canAdmin={!isRep} />}
@@ -905,7 +908,7 @@ function IntegrationsView() {
   );
 }
 
-type Tab = "today" | "pipeline" | "prospects" | "team" | "clinics" | "plans" | "leads" | "promos" | "integrations";
+type Tab = "market" | "today" | "pipeline" | "prospects" | "team" | "clinics" | "plans" | "leads" | "promos" | "integrations";
 
 function TabBtn({ id, tab, set, icon: Icon, children }: {
   id: Tab; tab: Tab; set: (t: Tab) => void; icon: typeof Target; children: React.ReactNode;

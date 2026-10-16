@@ -40,7 +40,7 @@ describe("REG-FE-NAV menu filtering", () => {
 
   test("REG-FE-NAV-004 permissions are any-of, and a section with nothing left disappears", () => {
     const sections = visibleNav(navSections, (p) => p === "payment.charge", (f) => f === "dental");
-    expect(sections.flatMap((s) => s.items.map((i) => i.to))).toEqual(["/", "/dental/unbilled", "/help"]);
+    expect(sections.flatMap((s) => s.items.map((i) => i.to))).toEqual(["/", "/dental/unbilled", "/marketplace", "/help"]);
     expect(sections.map((s) => s.heading)).toEqual([undefined, "Clinical", undefined]);
   });
 

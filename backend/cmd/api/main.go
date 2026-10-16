@@ -50,6 +50,8 @@ import (
 	inpatientservice "github.com/reicb/clinicsaas/internal/inpatient/service"
 	labhttp "github.com/reicb/clinicsaas/internal/lab/http"
 	labservice "github.com/reicb/clinicsaas/internal/lab/service"
+	marketplacehttp "github.com/reicb/clinicsaas/internal/marketplace/http"
+	marketplaceservice "github.com/reicb/clinicsaas/internal/marketplace/service"
 	maternityhttp "github.com/reicb/clinicsaas/internal/maternity/http"
 	maternityservice "github.com/reicb/clinicsaas/internal/maternity/service"
 	"github.com/reicb/clinicsaas/internal/messaging"
@@ -187,6 +189,7 @@ func main() {
 	}
 
 	campaignHandlers := campaignhttp.New(campaignservice.New(db))
+	marketplaceHandlers := marketplacehttp.New(marketplaceservice.New(db, store))
 	// A paper's check: tokens are derived from the prescription and the server secret,
 	// so a reprint carries the same QR. Typing a short code by hand is rate limited
 	// separately from the rest of the API (a person needs a few tries, not hundreds).
@@ -194,7 +197,7 @@ func main() {
 		verificationservice.New(db, cfg.JWTSecret), ratelimit.NewInProcess(0.2, 8))
 	notificationHandlers := notificationhttp.NewHandlers(notificationservice.NewService(db))
 
-	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, reportingHandlers, dashboardHandlers, maternityHandlers, inpatientHandlers, dentalHandlers, messagingHandlers, pharmacyHandlers, labHandlers, financeHandlers, platformHandlers, crmHandlers, campaignHandlers, notificationHandlers, verificationHandlers)
+	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, reportingHandlers, dashboardHandlers, maternityHandlers, inpatientHandlers, dentalHandlers, messagingHandlers, pharmacyHandlers, labHandlers, financeHandlers, platformHandlers, crmHandlers, campaignHandlers, marketplaceHandlers, notificationHandlers, verificationHandlers)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -243,6 +246,7 @@ func newRouter(
 	platformHandlers *platformhttp.Handlers,
 	crmHandlers *crmhttp.Handlers,
 	campaignHandlers *campaignhttp.Handlers,
+	marketplaceHandlers *marketplacehttp.Handlers,
 	notificationHandlers *notificationhttp.Handlers,
 	verificationHandlers *verificationhttp.Handlers,
 ) *gin.Engine {
@@ -278,8 +282,9 @@ func newRouter(
 	if platformHandlers != nil {
 		platformHandlers.Register(v1, tokens) // /platform/auth/login (public) + /platform/clinics (platform.admin)
 	}
-	campaignHandlers.Register(v1, tokens)   // public /campaigns/:code/... + /platform/campaigns/...
-	verificationHandlers.RegisterPublic(v1) // public /verify/t|c|logo/...: check a printed paper
+	marketplaceHandlers.Register(v1, tokens) // public /marketplace/... + seller portal + /platform/marketplace/...
+	campaignHandlers.Register(v1, tokens)    // public /campaigns/:code/... + /platform/campaigns/...
+	verificationHandlers.RegisterPublic(v1)  // public /verify/t|c|logo/...: check a printed paper
 	if crmHandlers != nil {
 		crmHandlers.Register(v1, tokens) // /platform/crm/... (crm.work; campaigns + accounts need platform.admin)
 	}
