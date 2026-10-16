@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import {
-  CATEGORIES, CONDITIONS, deleteListing, myListings, myStats, saveListing, uploadPhoto,
+  CATEGORIES, CONDITIONS, deleteListing, myListings, myStats, saveListing, updateMe, uploadPhoto,
   type Listing, type ListingInput, type Seller,
 } from "@/features/marketplace/api";
 import { ConditionTag, KindTag, Photo, PriceLine } from "@/features/marketplace/parts";
@@ -41,6 +41,7 @@ export function SellerPortal({ seller, onSignOut }: { seller: Seller; onSignOut:
   const qc = useQueryClient();
   const { ask, dialog } = useConfirmDialog();
   const [editing, setEditing] = useState<Listing | "new" | null>(null);
+  const [profile, setProfile] = useState(false);
   const stats = useQuery({ queryKey: ["market-my", "stats"], queryFn: myStats });
   const list = useQuery({ queryKey: ["market-my", "listings"], queryFn: myListings });
   const refresh = () => qc.invalidateQueries({ queryKey: ["market-my"] });
@@ -59,9 +60,13 @@ export function SellerPortal({ seller, onSignOut }: { seller: Seller; onSignOut:
           <h1 className="text-2xl font-bold">{seller.name}</h1>
           <p className="flex items-center gap-2 text-sm text-muted-foreground"><KindTag k={seller.kind} /> {seller.phone} · {seller.city}</p>
         </div>
-        <Button variant="outline" size="sm" onClick={onSignOut}>Sign out</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setProfile((p) => !p)}>Edit profile</Button>
+          <Button variant="outline" size="sm" onClick={onSignOut}>Sign out</Button>
+        </div>
       </div>
       <StatusBanner s={seller} />
+      {profile && <ProfileForm seller={seller} onDone={() => { setProfile(false); qc.invalidateQueries({ queryKey: ["market-me"] }); }} onCancel={() => setProfile(false)} />}
 
       <div className="grid grid-cols-3 gap-3">
         {[
@@ -246,6 +251,44 @@ function ListingForm({ initial, onDone, onCancel }: { initial: Listing | null; o
       {err && <p className="text-sm text-destructive">{err}</p>}
       <div className="flex gap-2">
         <Button type="submit" loading={busy} disabled={!ok || uploading}>{initial ? "Save changes" : "Publish"}</Button>
+        <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
+      </div>
+    </form>
+  );
+}
+
+/** The seller's own details. The phone is the login, so it is shown but not editable. */
+function ProfileForm({ seller, onDone, onCancel }: { seller: Seller; onDone: () => void; onCancel: () => void }) {
+  const [f, setF] = useState({
+    name: seller.name, telegram: seller.telegram ?? "", city: seller.city, subcity: seller.subcity ?? "", about: seller.about ?? "",
+  });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const set = (k: keyof typeof f, v: string) => setF((s) => ({ ...s, [k]: v }));
+  return (
+    <form
+      className="space-y-3 rounded-xl border bg-card p-4"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true); setErr(null);
+        try { await updateMe(f); toast.success("Profile updated"); onDone(); }
+        catch (x) { setErr(x instanceof Error ? x.message : "Could not save"); }
+        finally { setBusy(false); }
+      }}
+    >
+      <h2 className="text-lg font-semibold">Edit profile</h2>
+      <div><Label htmlFor="pn">Name or business name *</Label><Input id="pn" value={f.name} onChange={(e) => set("name", e.target.value)} /></div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div><Label>Phone (your login)</Label><Input value={seller.phone} disabled /></div>
+        <div><Label htmlFor="pt">Telegram</Label><Input id="pt" value={f.telegram} onChange={(e) => set("telegram", e.target.value)} placeholder="@username" /></div>
+        <div><Label htmlFor="pc">City *</Label><Input id="pc" value={f.city} onChange={(e) => set("city", e.target.value)} /></div>
+        <div><Label htmlFor="ps">Sub-city / area</Label><Input id="ps" value={f.subcity} onChange={(e) => set("subcity", e.target.value)} /></div>
+      </div>
+      <div><Label htmlFor="pa">About</Label><Textarea id="pa" rows={2} value={f.about} onChange={(e) => set("about", e.target.value)} /></div>
+      <p className="text-xs text-muted-foreground">To change your phone number, contact us — it is how we know it is you.</p>
+      {err && <p className="text-sm text-destructive">{err}</p>}
+      <div className="flex gap-2">
+        <Button type="submit" loading={busy} disabled={!f.name.trim() || !f.city.trim()}>Save</Button>
         <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
       </div>
     </form>
