@@ -372,3 +372,29 @@ func TestREG_PORTAL_PAY_008_CashierPermissionsApply(t *testing.T) {
 		t.Fatalf("a made-up id = %d", r.Status)
 	}
 }
+
+// REG_PORTAL_PAY_009: treatment the patient has had and not paid for (no bill raised, often a
+// promise to pay later) is owed — so it can be paid from home, listed first, and paying it
+// raises the bill and settles it in one go.
+func TestREG_PORTAL_PAY_009_DoneButUnbilledTreatmentCanBePaid(t *testing.T) {
+	w := portalPayWorld(t, true)
+	w.doc.Do("PUT", "/dental/patients/"+w.patient.ID+"/sessions/"+w.plan.Sessions[0].ID, map[string]any{"status": "done"}).Expect(t, 204, "visit 1 done")
+	o, r := w.options(t)
+	r.Expect(t, 200, "options")
+	if len(o.Items) < 2 || !strings.Contains(o.Items[0].Label, "visit 1") || !o.Items[0].Payable || o.Items[0].Upcoming || o.Items[0].Amount != "1500.00" {
+		t.Fatalf("the done visit is not first and payable: %+v", o.Items)
+	}
+	me, _ := portalMeOf(t, w.c.Slug, w.token)
+	if me.Money == nil || me.Money.Unbilled == nil || *me.Money.Unbilled != "1500.00" {
+		t.Fatalf("before: %+v", me.Money)
+	}
+	st, r := w.pay(t, ref("OK1500-"), o.Items[0].Key)
+	r.Expect(t, 200, "pay the done visit")
+	if st.State != "paid" || st.ReceiptNo == nil {
+		t.Fatalf("status = %+v", st)
+	}
+	me, _ = portalMeOf(t, w.c.Slug, w.token)
+	if me.Money.Paid != "1500.00" || *me.Money.Unbilled != "0.00" {
+		t.Fatalf("after: paid %s, still unbilled %s", me.Money.Paid, *me.Money.Unbilled)
+	}
+}

@@ -112,7 +112,7 @@ describe("REG-FE-PORTAL the patient's page", () => {
     await userEvent.click(screen.getByRole("tab", { name: "Payments" }));
     expect(screen.getByText("Paid toward your treatment")).toBeInTheDocument();
     expect(screen.getByText("To pay now")).toBeInTheDocument();
-    expect(screen.getByText(/Includes 800 ETB for treatment already done/)).toBeInTheDocument();
+    expect(screen.getByText(/Includes 800 ETB for treatment you have already had/)).toBeInTheDocument();
     expect(screen.getByText("Left on your treatment")).toBeInTheDocument();
     expect(screen.getByText("1,500 ETB")).toBeInTheDocument(); // 4,500 planned − 3,000 collected
     expect(screen.getByText(/RCP-000212/)).toBeInTheDocument();
@@ -178,7 +178,7 @@ describe("REG-FE-PORTAL the patient's page", () => {
     const sum = screen.getByText("Summary").closest("div")!;
     expect(sum).toHaveTextContent("Paid toward your treatment10,000");
     expect(sum).toHaveTextContent("To pay now5,000");
-    expect(sum).toHaveTextContent("Includes 5,000 ETB for treatment already done");
+    expect(sum).toHaveTextContent("Includes 5,000 ETB for treatment you have already had and not paid for yet.");
     expect(sum).toHaveTextContent("Left on your treatment20,000 ETB");
   });
 

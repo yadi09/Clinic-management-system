@@ -110,7 +110,31 @@ func payables(ctx context.Context, tx pgx.Tx, tid, pid uuid.UUID, loc *time.Loca
 		add("charge", cid, label, amt, "Waiting for payment", true, false)
 	}
 	rows.Close()
-	// 2. Down payments not billed yet (owed from the day the course was agreed), and the
+	// 2. Treatment the patient has had and not paid for: the visit is done, its price was
+	//    agreed with the course, and no bill was raised yet (often a promise to pay later).
+	//    It is owed, so it can be paid — the payment raises the bill and settles it, the
+	//    same way paying a visit ahead does. Listed before anything paid ahead: debt first.
+	rows, err = tx.Query(ctx, `
+		SELECT se.id, pl.title, se.seq, se.amount_due::text
+		  FROM treatment_sessions se JOIN treatment_plans pl ON pl.id = se.plan_id AND pl.tenant_id = se.tenant_id
+		 WHERE se.tenant_id = $1 AND se.patient_id = $2 AND se.kind = 'visit' AND se.status = 'done'
+		   AND pl.status <> 'cancelled' AND se.charge_id IS NULL AND se.amount_due > 0
+		 ORDER BY se.scheduled_date, se.seq`, tid, pid)
+	if err != nil {
+		return nil, nil, err
+	}
+	for rows.Next() {
+		var sid uuid.UUID
+		var title, amt string
+		var seq int
+		if err := rows.Scan(&sid, &title, &seq, &amt); err != nil {
+			rows.Close()
+			return nil, nil, err
+		}
+		add("session", sid, fmt.Sprintf("%s · visit %d", title, seq), amt, "Treatment done — not paid yet", true, false)
+	}
+	rows.Close()
+	// 3. Down payments not billed yet (owed from the day the course was agreed), and the
 	//    NEXT visit of each course, so it can be paid ahead.
 	rows, err = tx.Query(ctx, `
 		SELECT * FROM (
@@ -143,28 +167,6 @@ func payables(ctx context.Context, tx pgx.Tx, tid, pid uuid.UUID, loc *time.Loca
 		} else {
 			add("session", sid, fmt.Sprintf("%s · visit %d", title, seq), amt, "Next visit on "+dayLabel(date)+" — pay ahead", true, true)
 		}
-	}
-	rows.Close()
-	// 3. Treatment that is done but not billed. Shown so the patient knows it exists, but
-	//    not payable: the clinic sends the bill first, and the patient is told the amount.
-	rows, err = tx.Query(ctx, `
-		SELECT se.id, pl.title, se.seq, se.amount_due::text
-		  FROM treatment_sessions se JOIN treatment_plans pl ON pl.id = se.plan_id AND pl.tenant_id = se.tenant_id
-		 WHERE se.tenant_id = $1 AND se.patient_id = $2 AND se.kind = 'visit' AND se.status = 'done'
-		   AND pl.status <> 'cancelled' AND se.charge_id IS NULL AND se.amount_due > 0
-		 ORDER BY se.scheduled_date, se.seq`, tid, pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	for rows.Next() {
-		var sid uuid.UUID
-		var title, amt string
-		var seq int
-		if err := rows.Scan(&sid, &title, &seq, &amt); err != nil {
-			rows.Close()
-			return nil, nil, err
-		}
-		add("session", sid, fmt.Sprintf("%s · visit %d", title, seq), amt, "Done, not billed yet — the clinic will send the bill", false, false)
 	}
 	rows.Close()
 	return out, byKey, nil

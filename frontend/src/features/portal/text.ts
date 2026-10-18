@@ -30,7 +30,7 @@ const en = {
   vFront: "Closed", vOpen: "Open mouth", vUpper: "Upper teeth", vLower: "Lower teeth", vSide: "Side", recenter: "Re-centre", roots: "Show roots", numbers: "Numbers",
   rotateHint: "Drag to turn · scroll or pinch to zoom · tap a tooth to select it.", inThisView: "In this view", selectedTooth: "Selected tooth", nothingOnTooth: "Nothing here in this view.",
   badgePlanned: "Planned", badgeNow: "In your mouth", badgeDone: "Done", loading3d: "Loading the 3D model…",
-  paidTreat: "Paid toward your treatment", toPayNow: "To pay now", ofWhichUnbilled: "Includes {n} ETB for treatment already done — the clinic will send the bill.",
+  paidTreat: "Paid toward your treatment", toPayNow: "To pay now", ofWhichUnbilled: "Includes {n} ETB for treatment you have already had and not paid for yet.",
   leftOn: "Left on your treatment", leftOnHelp: "Includes visits still to come. You pay visit by visit.", showAll: "Show all", showLess: "Show less",
   tapTooth: "Tap a tooth", tapHelp: "to see what it has and what is planned.", tooth: "Tooth", healthy: "Healthy. Nothing recorded.",
 };
@@ -63,7 +63,7 @@ const am: typeof en = {
   vFront: "የተዘጋ", vOpen: "የተከፈተ አፍ", vUpper: "የላይኛው ጥርሶች", vLower: "የታችኛው ጥርሶች", vSide: "ጎን", recenter: "መሃል አድርግ", roots: "ሥሮችን አሳይ", numbers: "ቁጥሮች",
   rotateHint: "ለማዞር ይጎትቱ · ለማጉላት ያሸብልሉ ወይም ይቆንጥጡ · ጥርስ ለመምረጥ ይንኩ።", inThisView: "በዚህ እይታ", selectedTooth: "የተመረጠ ጥርስ", nothingOnTooth: "በዚህ እይታ እዚህ ምንም የለም።",
   badgePlanned: "የታቀደ", badgeNow: "በአፍዎ ውስጥ", badgeDone: "ተሠርቷል", loading3d: "3D ሞዴሉ እየመጣ ነው…",
-  paidTreat: "ለህክምናዎ የከፈሉት", toPayNow: "አሁን የሚከፈል", ofWhichUnbilled: "ሥራው ለተሠራ ህክምና {n} ብር ይጨምራል — ክሊኒኩ ደረሰኝ ይልካል።",
+  paidTreat: "ለህክምናዎ የከፈሉት", toPayNow: "አሁን የሚከፈል", ofWhichUnbilled: "ተሠርቶልዎት ገና ያልከፈሉበት ህክምና {n} ብር ይጨምራል።",
   leftOn: "ከህክምናዎ የቀረው", leftOnHelp: "ገና የሚመጡ ጉብኝቶችን ያካትታል። በየጉብኝቱ ይከፍላሉ።", showAll: "ሁሉንም አሳይ", showLess: "አሳንስ",
   tapTooth: "ጥርስ ይንኩ", tapHelp: "ምን እንዳለው እና ምን እንደታቀደ ለማየት።", tooth: "ጥርስ", healthy: "ጤናማ። ምንም አልተመዘገበም።",
 };
