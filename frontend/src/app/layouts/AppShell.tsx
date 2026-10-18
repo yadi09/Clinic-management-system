@@ -6,6 +6,8 @@ import { useAuth } from "@/app/auth-context";
 import { navSections, visibleNav } from "@/app/nav";
 import { inboxCount } from "@/features/lab/api";
 import { PageHelp } from "@/features/help/PageHelp";
+import { listWorkspacesApi } from "@/features/auth/api";
+import { WorkspaceItems, WorkspaceSwitcher, useSwitchWorkspace } from "@/features/auth/WorkspaceSwitcher";
 import { NotificationBell } from "@/features/notifications/NotificationBell";
 import { SignInNotifications } from "@/features/notifications/SignInNotifications";
 import { PrintProvider } from "@/features/printing/PrintProvider";
@@ -50,6 +52,12 @@ export function AppShell() {
     }
   };
 
+  // The clinic's branches, when this person may move between them (the owner and
+  // branch admins). Each is a workspace of its own; staff of one branch get none.
+  const workspaces = useQuery({ queryKey: ["workspaces"], queryFn: listWorkspacesApi, staleTime: 5 * 60_000 });
+  const branchWorkspaces = workspaces.data ?? [];
+  const moveBranch = useSwitchWorkspace();
+
   const sections = visibleNav(navSections, can, flagOn);
 
   // Live alert badge for the doctor's results inbox (unacknowledged criticals).
@@ -72,7 +80,9 @@ export function AppShell() {
           <span className="text-base font-bold tracking-tight sm:text-lg">ClinicOS</span>
         </div>
         <div className="flex min-w-0 flex-1 items-center gap-1.5 px-2 sm:gap-3 sm:px-5">
-          {showSwitcher ? (
+          {branchWorkspaces.length > 1 ? (
+            <WorkspaceSwitcher items={branchWorkspaces} role={primaryRole} />
+          ) : showSwitcher ? (
             <DropdownMenu>
               <DropdownMenuTrigger className="hidden items-center gap-2 rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium hover:bg-white/15 focus:outline-none md:flex">
                 <Building2 className="h-4 w-4" />
@@ -141,7 +151,14 @@ export function AppShell() {
               <DropdownMenuSeparator />
               {/* On phones the header switcher is hidden, so this menu is the one
                   place a multi-branch user can still change branch. */}
-              {showSwitcher && (
+              {branchWorkspaces.length > 1 && (
+                <div className="md:hidden">
+                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Your branches</DropdownMenuLabel>
+                  <WorkspaceItems items={branchWorkspaces} busy={moveBranch.busy} go={(w) => void moveBranch.go(w)} />
+                  <DropdownMenuSeparator />
+                </div>
+              )}
+              {showSwitcher && branchWorkspaces.length <= 1 && (
                 <div className="md:hidden">
                   <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
                     Branch · {branchLabel}

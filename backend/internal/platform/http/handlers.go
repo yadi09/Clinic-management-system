@@ -503,3 +503,41 @@ func (h *Handlers) SetClinicEntitlement(c *gin.Context) {
 	}
 	httpx.NoContent(c)
 }
+
+// ListBranches handles GET /platform/clinics/:id/branches.
+func (h *Handlers) ListBranches(c *gin.Context) {
+	tid, err := id.Decode(id.PrefixTenant, c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("invalid clinic id"))
+		return
+	}
+	out, err := h.svc.ListBranches(c.Request.Context(), tid)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// CreateBranch handles POST /platform/clinics/:id/branches {name, slug}.
+func (h *Handlers) CreateBranch(c *gin.Context) {
+	tid, err := id.Decode(id.PrefixTenant, c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("invalid clinic id"))
+		return
+	}
+	var req struct {
+		Name string `json:"name"`
+		Slug string `json:"slug"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("the branch needs a name and its own workspace name"))
+		return
+	}
+	out, err := h.svc.CreateBranch(c.Request.Context(), tid, platform.BranchInput{Name: req.Name, Slug: req.Slug})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.Created(c, out)
+}

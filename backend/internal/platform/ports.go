@@ -16,7 +16,7 @@ type ProvisionInput struct {
 	Slug          string
 	OwnerEmail    string
 	OwnerName     string
-	OwnerPhone    string // optional; the number the owner is reachable on
+	OwnerPhone    string          // optional; the number the owner is reachable on
 	OwnerPassword string          // optional; a temp password is generated when empty
 	ClinicType    string          // "general" (default) | "dental" — applies a flag preset
 	PlanCode      string          // subscription plan code (default "business")
@@ -139,6 +139,33 @@ var RolePolicies = []struct{ Key, Label, Help string }{
 }
 
 // ClinicSummary is one clinic on the platform roster.
+// BranchInput adds a branch to a clinic: a new workspace of its own.
+type BranchInput struct {
+	Name string // shown everywhere, e.g. "Cure Dental — Bole"
+	Slug string // the branch's own workspace name, used to sign in
+}
+
+// Branch is one workspace in a clinic's organization.
+type Branch struct {
+	TenantID  uuid.UUID `json:"-"`
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Slug      string    `json:"slug"`
+	Status    string    `json:"status"`
+	Main      bool      `json:"main"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// BranchResult is what the console is told after adding a branch.
+type BranchResult struct {
+	Branch Branch `json:"branch"`
+	// The people who can move between the clinic's branches and now have an
+	// account here too (same email, same password).
+	Admins []string `json:"admins"`
+	// Settings tables copied from the clinic's main workspace.
+	Copied []string `json:"copied"`
+}
+
 type ClinicSummary struct {
 	TenantID   uuid.UUID `json:"-"`
 	Name       string    `json:"name"`
@@ -228,6 +255,9 @@ type Service interface {
 	GetClinicPolicies(ctx context.Context, tenantID uuid.UUID) (map[string]bool, error)
 	SetClinicPolicies(ctx context.Context, tenantID uuid.UUID, policies map[string]bool) error
 	ImpersonateOwner(ctx context.Context, tenantID uuid.UUID) (*Impersonation, error)
+	// Branches: a clinic's other workspaces, and adding one.
+	ListBranches(ctx context.Context, tenantID uuid.UUID) ([]Branch, error)
+	CreateBranch(ctx context.Context, tenantID uuid.UUID, in BranchInput) (*BranchResult, error)
 	// Subscription plans (super-admin only, privileged connection).
 	ListPlans(ctx context.Context) ([]Plan, error)
 	CreatePlan(ctx context.Context, in PlanInput) (*Plan, error)

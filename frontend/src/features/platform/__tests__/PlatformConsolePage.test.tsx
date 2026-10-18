@@ -13,6 +13,7 @@ const m = vi.hoisted(() => ({
   setClinicPlan: vi.fn(), listPartnerLeads: vi.fn(), setLeadStatus: vi.fn(), getVerifyETKey: vi.fn(),
   setVerifyETKey: vi.fn(), clearVerifyETKey: vi.fn(), listFeatures: vi.fn(), planFeatures: vi.fn(),
   setPlanFeatures: vi.fn(), clinicEntitlements: vi.fn(), setClinicEntitlement: vi.fn(),
+  listClinicBranches: vi.fn(), createClinicBranch: vi.fn(),
 }));
 vi.mock("@/features/platform/api", async (orig) => ({ ...(await orig<object>()), ...m }));
 vi.mock("@/app/auth-context", async () => (await import("@/test/admin")).authModule);
@@ -814,5 +815,53 @@ describe("REG-FE-PLAT the Verify.ET key", () => {
     await user.click(await screen.findByRole("button", { name: "Remove" }));
     await waitFor(() => expect(m.clearVerifyETKey).toHaveBeenCalled());
     await waitFor(() => expect(toastSpy.error.mock.calls.length + screen.queryAllByText(/could not remove|failed/i).length).toBeGreaterThan(0), { timeout: 1000 });
+  });
+});
+
+describe("REG-FE-PLAT-BR a clinic's branches", () => {
+  test("REG-FE-PLAT-BR-001 Branches lists the clinic's workspaces, main first; adding one sends its name and workspace name and says where to sign in", async () => {
+    m.listClinicBranches.mockResolvedValue([{ id: "ten_1", name: "Bole Dental", slug: "bole-dental", status: "active", main: true, created_at: "2026-10-01" }]);
+    m.createClinicBranch.mockResolvedValue({ branch: { id: "ten_9", name: "Bole Dental — Piassa", slug: "bole-dental-piassa" }, admins: ["owner@bole.et"], copied: ["payment_rails", "dental_procedures"] });
+    signIn();
+    const { user } = renderConsole();
+    await screen.findByText("Bole Dental");
+    await user.click(within(row("Bole Dental")).getByRole("button", { name: "Branches" }));
+    const dlg = await screen.findByRole("dialog");
+    expect(await within(dlg).findByText("bole-dental")).toBeInTheDocument();
+    expect(within(dlg).getByText("main")).toBeInTheDocument();
+    expect(within(dlg).getByRole("button", { name: "Add branch" })).toBeDisabled();
+    await user.type(within(dlg).getByLabelText("Branch name"), "Bole Dental — Piassa");
+    await user.type(within(dlg).getByLabelText("Workspace name"), "Bole-Dental-Piassa");
+    await user.click(within(dlg).getByRole("button", { name: "Add branch" }));
+    await waitFor(() => expect(m.createClinicBranch).toHaveBeenCalledWith("ten_1", { name: "Bole Dental — Piassa", slug: "bole-dental-piassa" }));
+    expect(await within(dlg).findByRole("status")).toHaveTextContent("owner@bole.et");
+  });
+
+  test("REG-FE-PLAT-BR-002 a refused branch (over the plan's limit) says why", async () => {
+    m.listClinicBranches.mockResolvedValue([]);
+    m.createClinicBranch.mockRejectedValue(new Error("this clinic's plan allows 1 branch(es)"));
+    signIn();
+    const { user } = renderConsole();
+    await screen.findByText("Bole Dental");
+    await user.click(within(row("Bole Dental")).getByRole("button", { name: "Branches" }));
+    const dlg = await screen.findByRole("dialog");
+    await user.type(within(dlg).getByLabelText("Branch name"), "Second");
+    await user.type(within(dlg).getByLabelText("Workspace name"), "second");
+    await user.click(within(dlg).getByRole("button", { name: "Add branch" }));
+    await waitFor(() => expect(toastSpy.error).toHaveBeenCalledWith("this clinic's plan allows 1 branch(es)"));
+  });
+
+  test("REG-FE-PLAT-BR-003 Done closes the branches window and clears what was typed", async () => {
+    m.listClinicBranches.mockResolvedValue([]);
+    signIn();
+    const { user } = renderConsole();
+    await screen.findByText("Bole Dental");
+    await user.click(within(row("Bole Dental")).getByRole("button", { name: "Branches" }));
+    const dlg = await screen.findByRole("dialog");
+    await user.type(within(dlg).getByLabelText("Branch name"), "Half typed");
+    await user.click(within(dlg).getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await user.click(within(row("Bole Dental")).getByRole("button", { name: "Branches" }));
+    expect(within(await screen.findByRole("dialog")).getByLabelText("Branch name")).toHaveValue("");
   });
 });

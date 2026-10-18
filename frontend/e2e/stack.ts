@@ -15,6 +15,7 @@ export interface Stack {
   ownerEmail: string;
   staff: Record<string, string>; // receptionist, doctor, nurse, cashier, branch_manager
   password: string;
+  platformEmail: string; // a super-admin, for specs that need the vendor console
 }
 
 export function stack(): Stack {
@@ -68,6 +69,27 @@ export async function apiAs(role: string) {
     const res = await fetch(`${s.apiBase}${p}`, {
       method,
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const out = (await res.json().catch(() => ({}))) as { data?: T };
+    if (!res.ok) throw new Error(`${method} ${p}: ${res.status} ${JSON.stringify(out)}`);
+    return out.data as T;
+  };
+}
+
+/** A signed-in vendor (super-admin) API call, for arranging what only the console can. */
+export async function platformApi() {
+  const s = stack();
+  const r = await fetch(`${s.apiBase}/platform/auth/login`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: s.platformEmail, password: s.password }),
+  });
+  const j = (await r.json()) as { data?: { access_token?: string } };
+  const token = j.data?.access_token;
+  if (!r.ok || !token) throw new Error(`platform login: ${r.status} ${JSON.stringify(j)}`);
+  return async <T = unknown>(method: string, p: string, body?: unknown): Promise<T> => {
+    const res = await fetch(`${s.apiBase}${p}`, {
+      method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const out = (await res.json().catch(() => ({}))) as { data?: T };

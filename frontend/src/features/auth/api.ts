@@ -46,6 +46,20 @@ export function switchBranchApi(branchId: string) {
   return apiFetch<TokenResponse>("/auth/switch-branch", { method: "POST", body: { branch_id: branchId }, retry: false });
 }
 
+/** One of the clinic's branches this person may move to. Each branch is a workspace of its own. */
+export interface Workspace { id: string; name: string; slug: string; current: boolean }
+
+/** The clinic's branches this person may enter (empty for someone who works in one branch). */
+export function listWorkspacesApi() {
+  return apiFetch<Workspace[]>("/auth/workspaces");
+}
+
+/** Sign in to another branch of the clinic. The server moves the browser's session
+ *  (refresh cookie) to that branch; the caller reloads the app to start clean there. */
+export function switchWorkspaceApi(workspaceId: string) {
+  return apiFetch<TokenResponse>("/auth/switch-workspace", { method: "POST", body: { workspace_id: workspaceId }, retry: false });
+}
+
 export function loginApi(body: { workspace: string; email: string; password: string }) {
   return apiFetch<LoginResponse>("/auth/login", { method: "POST", body, auth: false, retry: false });
 }

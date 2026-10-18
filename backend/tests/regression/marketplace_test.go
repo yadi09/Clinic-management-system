@@ -194,6 +194,10 @@ func TestREG_MKT_007_VendorApprovalAndSuspension(t *testing.T) {
 
 func TestREG_MKT_008_EmptySearchesAreRecorded(t *testing.T) {
 	adm, _, _ := platAdmin(t)
+	// The vendor sees the 20 most-searched empty terms. Earlier runs against the same test
+	// database leave their own unique test terms behind, and enough of them crowd a new one
+	// out of the 20; clear those leftovers so this checks the recording, not the history.
+	exec(t, `DELETE FROM mp_searches WHERE term LIKE 'zorbex%' OR term LIKE 'nothingmatches%'`)
 	term := "nothingmatches" + strings.ToLower(uniq(""))
 	srv.Anon(t).Do("GET", "/marketplace/listings?q="+term, nil).Expect(t, 200, "empty search")
 	r := adm.Do("GET", "/platform/marketplace/stats", nil).Expect(t, 200, "stats")

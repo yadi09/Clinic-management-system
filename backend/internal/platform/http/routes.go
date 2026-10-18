@@ -28,6 +28,9 @@ func (h *Handlers) Register(v1 *gin.RouterGroup, tokens *auth.TokenService) {
 	admin.GET("/clinics/:id/usage", h.GetClinicUsage)
 	admin.POST("/clinics/:id/plan", h.SetClinicPlan)
 	admin.POST("/clinics/:id/impersonate", h.ImpersonateOwner)
+	// A clinic's branches: each one a workspace of its own.
+	admin.GET("/clinics/:id/branches", h.ListBranches)
+	admin.POST("/clinics/:id/branches", h.CreateBranch)
 	admin.GET("/plans", h.ListPlans)
 	admin.POST("/plans", h.CreatePlan)
 	admin.PUT("/plans/:id", h.UpdatePlan)

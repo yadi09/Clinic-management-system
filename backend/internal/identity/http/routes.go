@@ -22,6 +22,9 @@ func (h *Handlers) RegisterPublic(rg *gin.RouterGroup) {
 func (h *Handlers) RegisterProtected(rg *gin.RouterGroup) {
 	rg.GET("/auth/me", h.Me)
 	rg.POST("/auth/switch-branch", h.SwitchBranch)
+	// A clinic's branches are workspaces of their own; the owner and branch admins move between them.
+	rg.GET("/auth/workspaces", h.ListWorkspaces)
+	rg.POST("/auth/switch-workspace", h.SwitchWorkspace)
 	// Self-service account changes for the signed-in user (no admin permission;
 	// both confirm the current password server-side).
 	rg.POST("/auth/password", h.ChangePassword)

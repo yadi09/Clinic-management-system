@@ -23,6 +23,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/reicb/clinicsaas/internal/kernel/auth"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
 	"github.com/reicb/clinicsaas/internal/testkit"
 )
@@ -34,6 +35,9 @@ type Stack struct {
 	OwnerEmail string            `json:"ownerEmail"`
 	Staff      map[string]string `json:"staff"` // role code -> email
 	Password   string            `json:"password"`
+	// A vendor (super-admin) account, for specs that need the console: adding a
+	// branch, provisioning a clinic of their own. Same password as the staff.
+	PlatformEmail string `json:"platformEmail"`
 }
 
 func main() {
@@ -72,6 +76,18 @@ func main() {
 		Staff: map[string]string{}, Password: testkit.StaffPassword}
 	for role, s := range clinic.Staff {
 		st.Staff[role] = s.Email
+	}
+	hash, err := auth.HashPassword(testkit.StaffPassword)
+	if err != nil {
+		srv.Stop()
+		fail("hash: %v", err)
+	}
+	st.PlatformEmail = "vendor-" + clinic.Slug + "@platform.test"
+	if _, err := super.Pool.Exec(context.Background(),
+		`INSERT INTO platform_admins (email, password_hash, full_name, role) VALUES ($1,$2,'E2E vendor','admin')`,
+		st.PlatformEmail, hash); err != nil {
+		srv.Stop()
+		fail("platform admin: %v", err)
 	}
 	b, _ := json.MarshalIndent(st, "", "  ")
 	if err := os.WriteFile(*out, b, 0o600); err != nil {

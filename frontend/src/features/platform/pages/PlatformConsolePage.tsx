@@ -15,9 +15,9 @@ import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/app/auth-context";
 import {
   clinicUsage, createPlan, getClinicModules, getClinicPolicies, setClinicPolicies,
-  impersonateOwner, listClinics, listPartnerLeads, listPlans, platformRole, platformToken,
+  impersonateOwner, listClinics, listClinicBranches, createClinicBranch, listPartnerLeads, listPlans, platformRole, platformToken,
   provisionClinic, reactivateClinic, setClinicModules, setClinicPlan, setLeadStatus, suspendClinic, updatePlan,
-  type Clinic, type PartnerLead, type Plan, type UsageLine, type ProvisionResult,
+  type BranchCreated, type Clinic, type PartnerLead, type Plan, type UsageLine, type ProvisionResult,
   getVerifyETKey,
   setVerifyETKey,
   clearVerifyETKey,
@@ -70,6 +70,7 @@ export function PlatformConsolePage() {
   const [result, setResult] = useState<ProvisionResult | null>(null);
   const [modulesFor, setModulesFor] = useState<Clinic | null>(null);
   const [planFor, setPlanFor] = useState<Clinic | null>(null);
+  const [branchesFor, setBranchesFor] = useState<Clinic | null>(null);
   // A marketing account holds crm.work and nothing else, so the tenant tabs would
   // refuse it anyway. Landing them on the pipeline is the difference between a tool
   // and a console full of doors that do not open.
@@ -191,6 +192,7 @@ export function PlatformConsolePage() {
                       <div className="flex items-center justify-end gap-3">
                         <button className="text-xs text-emerald-300 hover:underline" onClick={() => impersonate(c)}>Sign in as owner</button>
                         <button className="text-xs text-sky-300 hover:underline" onClick={() => setPlanFor(c)}>Plan</button>
+                        <button className="text-xs text-amber-300 hover:underline" onClick={() => setBranchesFor(c)}>Branches</button>
                         <button className="text-xs text-zinc-300 hover:underline" onClick={() => setModulesFor(c)}>Modules</button>
                         {c.status === "active" ? (
                           <button className="text-xs text-rose-400 hover:underline" onClick={() => setStatus.mutate({ id: c.id, action: "suspend" })}>Suspend</button>
@@ -217,6 +219,7 @@ export function PlatformConsolePage() {
       />
       <CredentialsDialog result={result} onClose={() => setResult(null)} />
       <ModulesDialog clinic={modulesFor} onClose={() => setModulesFor(null)} />
+      <BranchesDialog clinic={branchesFor} onClose={() => setBranchesFor(null)} onAdded={() => qc.invalidateQueries({ queryKey: ["platform-clinics"] })} />
       <ClinicPlanDialog clinic={planFor} onClose={() => setPlanFor(null)} onSaved={() => { setPlanFor(null); qc.invalidateQueries({ queryKey: ["platform-clinics"] }); }} />
     </div>
   );
@@ -279,6 +282,60 @@ function PartnerLeadsView() {
         {q.isLoading && <p className="p-8 text-center text-sm text-zinc-500">Loading…</p>}
       </div>
     </>
+  );
+}
+
+/** A clinic's branches. Each branch is a workspace of its own — its own patients, notes,
+ *  money, stock and staff — that starts with a copy of the main branch's settings. The
+ *  owner moves between them; staff sign in to their own branch's workspace name. */
+function BranchesDialog({ clinic, onClose, onAdded }: { clinic: Clinic | null; onClose: () => void; onAdded: () => void }) {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["clinic-branches", clinic?.id], queryFn: () => listClinicBranches(clinic!.id), enabled: !!clinic });
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [made, setMade] = useState<BranchCreated | null>(null);
+  const reset = () => { setName(""); setSlug(""); setMade(null); };
+  const add = useMutation({
+    mutationFn: () => createClinicBranch(clinic!.id, { name: name.trim(), slug: slug.trim() }),
+    onSuccess: (r) => {
+      setMade(r); setName(""); setSlug("");
+      toast.success(`Branch added — sign in at “${r.branch.slug}”`);
+      qc.invalidateQueries({ queryKey: ["clinic-branches", clinic?.id] });
+      onAdded();
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not add the branch"),
+  });
+  const close = () => { reset(); onClose(); };
+  return (
+    <Dialog open={!!clinic} onOpenChange={(o) => { if (!o) close(); }}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Branches — {clinic?.name}</DialogTitle></DialogHeader>
+        <p className="text-sm text-muted-foreground">Each branch is fully separate: its own patients, notes, bills, stock and staff, and its own workspace name to sign in with. A new branch starts with a copy of the main branch's settings (prices, procedures, payment methods, printing) and no patients. The owner can move between branches.</p>
+        <ul className="divide-y rounded-md border text-sm">
+          {(q.data ?? []).map((b) => (
+            <li key={b.id} className="flex items-center justify-between gap-3 p-2.5">
+              <span className="min-w-0"><span className="font-medium">{b.name}</span>{b.main && <Badge variant="outline" className="ml-2">main</Badge>}
+                <span className="block font-mono text-xs text-muted-foreground">{b.slug}</span></span>
+              <Badge variant={b.status === "active" ? "success" : "destructive"}>{b.status}</Badge>
+            </li>
+          ))}
+          {q.isLoading && <li className="p-2.5 text-muted-foreground">Loading…</li>}
+        </ul>
+        <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); add.mutate(); }}>
+          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Add a branch</div>
+          <Input aria-label="Branch name" placeholder="Branch name, e.g. Cure Dental — Bole" value={name} onChange={(e) => setName(e.target.value)} />
+          <Input aria-label="Workspace name" placeholder="Workspace name staff sign in with, e.g. cure-dental-bole" value={slug} onChange={(e) => setSlug(e.target.value.toLowerCase())} />
+          <Button type="submit" loading={add.isPending} disabled={!name.trim() || !slug.trim()}>Add branch</Button>
+        </form>
+        {made && (
+          <div role="status" className="rounded-md border border-emerald-700/50 bg-emerald-500/10 p-3 text-sm">
+            <b>{made.branch.name}</b> is ready at workspace <span className="font-mono">{made.branch.slug}</span>.
+            <div className="mt-1 text-muted-foreground">Can switch to it: {made.admins.join(", ")} (same password as now). Settings copied: {made.copied.length} kinds.</div>
+          </div>
+        )}
+        <DialogFooter><Button variant="outline" onClick={close}>Done</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

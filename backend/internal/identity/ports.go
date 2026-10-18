@@ -68,6 +68,16 @@ type SwitchResult struct {
 	AccessExpiresAt time.Time
 }
 
+// Workspace is one of the clinic's branches the signed-in person may move to. Each
+// branch is a workspace of its own; Current is the one this session is in.
+type Workspace struct {
+	TenantID uuid.UUID `json:"-"`
+	ID       string    `json:"id"`
+	Name     string    `json:"name"`
+	Slug     string    `json:"slug"`
+	Current  bool      `json:"current"`
+}
+
 // Service is the identity module's authentication API.
 type Service interface {
 	Login(ctx context.Context, in LoginInput) (*LoginResult, error)
@@ -88,6 +98,10 @@ type Service interface {
 	// SwitchBranch re-issues an access token for a different branch (target nil =
 	// consolidated "all branches" view, for tenant-wide users).
 	SwitchBranch(ctx context.Context, tenantID, userID uuid.UUID, target *uuid.UUID, refreshToken string) (*SwitchResult, error)
+	// The clinic's branches this person may enter, and moving into one. Moving signs
+	// the person into that branch's own workspace: a new session there, the old one ended.
+	ListWorkspaces(ctx context.Context, tenantID, userID uuid.UUID) ([]Workspace, error)
+	SwitchWorkspace(ctx context.Context, tenantID, userID, target uuid.UUID, refreshToken, userAgent, ip string) (*TokenPair, UserProfile, error)
 	AcceptInvite(ctx context.Context, token, password, userAgent, ip string) (*TokenPair, UserProfile, error)
 	ChangePassword(ctx context.Context, tenantID, userID uuid.UUID, currentPassword, newPassword string) error
 	ChangeEmail(ctx context.Context, tenantID, userID uuid.UUID, newEmail, currentPassword string) error

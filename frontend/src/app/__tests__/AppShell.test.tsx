@@ -10,6 +10,8 @@ vi.setConfig({ testTimeout: 60_000 });
 
 vi.mock("@/app/auth-context", async () => (await import("@/test/admin")).authModule);
 vi.mock("@/components/ui/sonner", async (orig) => ({ ...(await orig<object>()), toast: (await import("@/test/admin")).toastSpy }));
+const ws = vi.hoisted(() => ({ listWorkspacesApi: vi.fn(), switchWorkspaceApi: vi.fn() }));
+vi.mock("@/features/auth/api", async (orig) => ({ ...(await orig<object>()), ...ws }));
 const lab = vi.hoisted(() => ({ inboxCount: vi.fn() }));
 vi.mock("@/features/lab/api", () => lab);
 const patients = vi.hoisted(() => ({ searchPatients: vi.fn() }));
@@ -44,6 +46,7 @@ const sidebar = () => screen.getByText("v3 · Tenant").closest("aside")!;
 const tabBar = () => screen.getByRole("navigation", { name: "Primary" });
 
 beforeEach(() => {
+  ws.listWorkspacesApi.mockReset().mockResolvedValue([]);
   setAuth();
   resetToasts();
   act(() => setLink("ok")); // another test's unanswered request must not leave the banner up
@@ -275,5 +278,42 @@ describe("REG-FE-PALETTE command palette", () => {
     act(() => { window.dispatchEvent(new CustomEvent("open-command")); });
     await user.click(within(await screen.findByRole("dialog")).getByRole("option", { name: /Register patient/ }));
     expect(currentLocation()).toBe("/patients/new");
+  });
+});
+
+describe("REG-FE-SHELL-BRWS the clinic's branches in the top bar", () => {
+  test("REG-FE-SHELL-BRWS-001 someone who may move between branches sees them in the bar; someone who works in one does not", async () => {
+    ws.listWorkspacesApi.mockResolvedValue([
+      { id: "ten_main", name: "Cure Dental", slug: "cure-dental", current: true },
+      { id: "ten_bole", name: "Cure Dental — Bole", slug: "cure-dental-bole", current: false },
+    ]);
+    renderUI(<Routes><Route path="/" element={<AppShell />}><Route index element={<div>home</div>} /></Route></Routes>);
+    expect(await screen.findByRole("button", { name: "Switch branch" })).toHaveTextContent("Cure Dental");
+  });
+
+  test("REG-FE-SHELL-BRWS-002 with no other branch there is no branch switcher", async () => {
+    renderUI(<Routes><Route path="/" element={<AppShell />}><Route index element={<div>home</div>} /></Route></Routes>);
+    await screen.findByText("home");
+    await waitFor(() => expect(ws.listWorkspacesApi).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: "Switch branch" })).not.toBeInTheDocument();
+  });
+
+  test("REG-FE-SHELL-BRWS-003 on a phone the account menu lists the branches too, and choosing one moves there", async () => {
+    const { nav } = await import("@/features/auth/WorkspaceSwitcher");
+    const reload = vi.spyOn(nav, "reloadHome").mockImplementation(() => undefined);
+    ws.listWorkspacesApi.mockResolvedValue([
+      { id: "ten_main", name: "Cure Dental", slug: "cure-dental", current: true },
+      { id: "ten_bole", name: "Cure Dental — Bole", slug: "cure-dental-bole", current: false },
+    ]);
+    ws.switchWorkspaceApi.mockResolvedValue({ access_token: "t", token_type: "Bearer", expires_in: 900 });
+    const { user } = renderUI(<Routes><Route path="/" element={<AppShell />}><Route index element={<div>home</div>} /></Route></Routes>);
+    await screen.findByRole("button", { name: "Switch branch" });
+    const avatar = screen.getAllByRole("button").find((b) => b.textContent?.match(/^[A-Z?]{1,2}$/));
+    await user.click(avatar!);
+    expect(await screen.findByText("Your branches")).toBeInTheDocument();
+    await user.click(screen.getAllByRole("menuitem", { name: /Bole/ }).at(-1)!);
+    await waitFor(() => expect(reload).toHaveBeenCalled());
+    expect(ws.switchWorkspaceApi).toHaveBeenCalledWith("ten_bole");
+    reload.mockRestore();
   });
 });

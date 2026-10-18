@@ -473,6 +473,7 @@ func (s *AuthService) AcceptInvite(ctx context.Context, token, password, userAge
 			return identitydb.New(tx).RevokeAllUserSessions(ctx,
 				identitydb.RevokeAllUserSessionsParams{TenantID: tenantID, UserID: userID})
 		})
+		s.syncLinkedPassword(ctx, tenantID, userID, hash)
 		s.emit(ctx, tenantID, userID, "auth.user.password_reset", nil)
 		return nil, identity.UserProfile{ID: userID, TenantID: tenantID, Email: email, FullName: fullName}, nil
 	}
@@ -491,6 +492,7 @@ func (s *AuthService) ChangePassword(ctx context.Context, tenantID, userID uuid.
 	if len(next) < 8 {
 		return apperr.Validation("the new password must be at least 8 characters")
 	}
+	var newHash string
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		q := identitydb.New(tx)
 		cred, e := q.GetUserCredentials(ctx, identitydb.GetUserCredentialsParams{TenantID: tenantID, ID: userID})
@@ -507,6 +509,7 @@ func (s *AuthService) ChangePassword(ctx context.Context, tenantID, userID uuid.
 		if e != nil {
 			return e
 		}
+		newHash = hash
 		return q.UpdateUserPassword(ctx, identitydb.UpdateUserPasswordParams{TenantID: tenantID, ID: userID, PasswordHash: &hash})
 	})
 	if err != nil {
@@ -518,6 +521,8 @@ func (s *AuthService) ChangePassword(ctx context.Context, tenantID, userID uuid.
 		}
 		return apperr.Internal(err)
 	}
+	// The same person in the clinic's other branches keeps the same password.
+	s.syncLinkedPassword(ctx, tenantID, userID, newHash)
 	s.emit(ctx, tenantID, userID, "auth.user.password_changed", nil)
 	return nil
 }

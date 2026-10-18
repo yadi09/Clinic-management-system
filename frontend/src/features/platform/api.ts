@@ -187,6 +187,16 @@ export function setClinicPolicies(id: string, policies: Record<string, boolean>)
   return pfetch<void>(`/clinics/${id}/policies`, { method: "PUT", body: { policies } });
 }
 
+// A clinic's branches. Each is a workspace of its own: its own patients, money and staff.
+export interface ClinicBranch { id: string; name: string; slug: string; status: string; main: boolean; created_at: string }
+export interface BranchCreated { branch: { id: string; name: string; slug: string }; admins: string[]; copied: string[] }
+export function listClinicBranches(id: string) {
+  return pfetch<ClinicBranch[]>(`/clinics/${id}/branches`);
+}
+export function createClinicBranch(id: string, body: { name: string; slug: string }) {
+  return pfetch<BranchCreated>(`/clinics/${id}/branches`, { method: "POST", body });
+}
+
 // Sign in as a clinic's owner — returns a ready-to-use tenant access token.
 export interface Impersonation {
   access_token: string;

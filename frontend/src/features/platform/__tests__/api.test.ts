@@ -178,4 +178,14 @@ describe("REG-FE-PLAT platform API client", () => {
       expect(last().body).toEqual(body);
     }
   });
+  test("REG-FE-PLAT-BR-010 a clinic's branches: list, and add one with its name and workspace name", async () => {
+    reply = { ok: true, status: 200, json: async () => ({ data: [] }) };
+    await api.listClinicBranches("ten_1");
+    expect(pathOf(last().url)).toBe("/clinics/ten_1/branches");
+    expect(last().method).toBe("GET");
+    await api.createClinicBranch("ten_1", { name: "Bole", slug: "x-bole" });
+    expect(pathOf(last().url)).toBe("/clinics/ten_1/branches");
+    expect(last().method).toBe("POST");
+    expect(last().body).toEqual({ name: "Bole", slug: "x-bole" });
+  });
 });

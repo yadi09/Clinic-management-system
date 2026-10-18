@@ -202,6 +202,56 @@ func (h *Handlers) SwitchBranch(c *gin.Context) {
 	})
 }
 
+// ListWorkspaces handles GET /auth/workspaces — the clinic's branches this person may move to.
+func (h *Handlers) ListWorkspaces(c *gin.Context) {
+	p, ok := httpx.PrincipalFrom(c)
+	if !ok {
+		httpx.Fail(c, apperr.Unauthenticated("authentication required"))
+		return
+	}
+	out, err := h.svc.ListWorkspaces(c.Request.Context(), p.TenantID, p.UserID)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// SwitchWorkspace handles POST /auth/switch-workspace {workspace_id}: sign in to another
+// branch of the clinic. The browser's session moves with it (a new refresh cookie).
+func (h *Handlers) SwitchWorkspace(c *gin.Context) {
+	p, ok := httpx.PrincipalFrom(c)
+	if !ok {
+		httpx.Fail(c, apperr.Unauthenticated("authentication required"))
+		return
+	}
+	var req struct {
+		WorkspaceID string `json:"workspace_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, apperr.Validation("choose a branch"))
+		return
+	}
+	target, err := id.Decode(id.PrefixTenant, req.WorkspaceID)
+	if err != nil {
+		httpx.Fail(c, apperr.Validation("choose a branch"))
+		return
+	}
+	raw, _ := c.Cookie(refreshCookieName)
+	tokens, user, err := h.svc.SwitchWorkspace(signInCtx(c), p.TenantID, p.UserID, target, raw, c.Request.UserAgent(), clientIP(c))
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	h.setRefreshCookie(c, tokens)
+	httpx.OK(c, tokenResponse{
+		AccessToken: tokens.AccessToken,
+		TokenType:   "Bearer",
+		ExpiresIn:   int(time.Until(tokens.AccessExpiresAt).Seconds()),
+		User:        toUserDTO(user),
+	})
+}
+
 // ChangePassword handles POST /auth/password for the signed-in user.
 func (h *Handlers) ChangePassword(c *gin.Context) {
 	p, ok := httpx.PrincipalFrom(c)
