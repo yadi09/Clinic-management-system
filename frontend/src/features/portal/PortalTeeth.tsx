@@ -83,7 +83,7 @@ export function PortalTeeth({ me, t }: { me: PortalMe; t: Words }) {
           </div>
         )}
 
-        <div className="rounded-2xl bg-white p-2 ring-1 ring-[#dbe5ee] md:p-3">
+        <div data-no-swipe className="rounded-2xl bg-white p-2 ring-1 ring-[#dbe5ee] md:p-3">
           {dim === "2d" || !show3d ? (
             <div className="ta-chart-scroll"><AnatomicalChart dentition={mode} state={state} positions={positions} today={me.today} selected={n} onSelect={setN} maxHeight="min(70dvh, 38rem)" /></div>
           ) : (

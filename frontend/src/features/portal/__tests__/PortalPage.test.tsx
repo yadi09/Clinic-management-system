@@ -1,6 +1,6 @@
 // The patient's own page: signing in with the card number, the four sections, the
 // language switch, and what the clinic hides.
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { Route, Routes } from "react-router-dom";
@@ -62,7 +62,8 @@ describe("REG-FE-PORTAL the patient's page", () => {
     expect(screen.getByText("Root canal")).toBeInTheDocument();
     expect(screen.getByText(/visit 3 \/ 3/)).toBeInTheDocument();
     expect(screen.getByText("2 / 3 visits done")).toBeInTheDocument();
-    expect(screen.getByText("3,500 ETB")).toBeInTheDocument();
+    // To pay now = the bill waiting (3,500) + treatment already done with no bill yet (800).
+    expect(screen.getByText("4,300 ETB")).toBeInTheDocument();
     expect(screen.getByText("Brush gently around the new crown.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Call the clinic" })).toHaveAttribute("href", "tel:0911000000");
   });
@@ -109,8 +110,11 @@ describe("REG-FE-PORTAL the patient's page", () => {
     expect(screen.getByText("Crown fitted")).toBeInTheDocument();
     expect(screen.getByText(/Canals sealed — done/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: "Payments" }));
-    expect(screen.getByText("Treatment done — bill not issued yet")).toBeInTheDocument();
-    expect(screen.getByText("800 ETB")).toBeInTheDocument();
+    expect(screen.getByText("Paid toward your treatment")).toBeInTheDocument();
+    expect(screen.getByText("To pay now")).toBeInTheDocument();
+    expect(screen.getByText(/Includes 800 ETB for treatment already done/)).toBeInTheDocument();
+    expect(screen.getByText("Left on your treatment")).toBeInTheDocument();
+    expect(screen.getByText("1,500 ETB")).toBeInTheDocument(); // 4,500 planned − 3,000 collected
     expect(screen.getByText(/RCP-000212/)).toBeInTheDocument();
     expect(screen.getByText(/Root canal visit 2 · telebirr/)).toBeInTheDocument();
   });
@@ -161,5 +165,67 @@ describe("REG-FE-PORTAL the patient's page", () => {
     serve(ME({ treatments: [], next: undefined, money: { paid: "0", to_pay: "0" }, receipts: [] }));
     await signIn();
     expect(screen.getAllByText(/No treatment yet/).length).toBeGreaterThan(0);
+  });
+
+  // The real course from a clinic: down payment 10,000 paid, visit 1 done for 5,000 on a promise
+  // to pay later (no bill yet), 30,000 in all. "Still to pay 0" above a 5,000 debt read as an error.
+  test("REG-FE-PORTAL-011 the summary tells one story: paid, what is owed now (including done-but-unbilled work), and what is left on the course", async () => {
+    serve(ME({ money: { paid: "10000.00", to_pay: "0.00", unbilled: "5000.00" },
+      treatments: [{ title: "Brace", status: "active", done: 1, of: 12, planned: "30000.00", collected: "10000.00", visits: [] }] }));
+    await signIn();
+    expect(screen.getByText("5,000 ETB")).toBeInTheDocument(); // Home says the same as Payments
+    await userEvent.click(screen.getByRole("tab", { name: "Payments" }));
+    const sum = screen.getByText("Summary").closest("div")!;
+    expect(sum).toHaveTextContent("Paid toward your treatment10,000");
+    expect(sum).toHaveTextContent("To pay now5,000");
+    expect(sum).toHaveTextContent("Includes 5,000 ETB for treatment already done");
+    expect(sum).toHaveTextContent("Left on your treatment20,000 ETB");
+  });
+
+  test("REG-FE-PORTAL-012 when the clinic hides not-billed work, To pay now is only what has been billed and there is no note about it", async () => {
+    serve(ME({ money: { paid: "10000.00", to_pay: "1300.00" }, treatments: [] }, { show_unbilled: false }));
+    await signIn();
+    await userEvent.click(screen.getByRole("tab", { name: "Payments" }));
+    const sum = screen.getByText("Summary").closest("div")!;
+    expect(sum).toHaveTextContent("To pay now1,300");
+    expect(sum).not.toHaveTextContent("already done");
+    expect(sum).not.toHaveTextContent("Left on your treatment");
+  });
+
+  test("REG-FE-PORTAL-013 a course that names 32 teeth shows the first four and a … that opens the rest and folds them again", async () => {
+    const teeth = ["UR8", "UR7", "UR6", "UR5", "UR4", "UR3", "UR2", "UR1", "UL1", "UL2", "UL3", "UL4"].join(", ");
+    serve(ME({ treatments: [{ title: "Brace", tooth: teeth, status: "active", done: 1, of: 12, visits: [{ seq: 1, date: "2026-10-18", status: "done", what: "Brace" }] }] }));
+    await signIn();
+    const heading = screen.getAllByText(/UR8, UR7, UR6, UR5/)[0]!.closest("b")!;
+    expect(heading).not.toHaveTextContent("UR4");
+    await userEvent.click(within(heading).getByRole("button", { name: /Show all \(12\)/ }));
+    expect(heading).toHaveTextContent("UL4");
+    await userEvent.click(within(heading).getByRole("button", { name: "Show less" }));
+    expect(heading).not.toHaveTextContent("UL4");
+  });
+
+  test("REG-FE-PORTAL-014 a short list of teeth is shown whole, with no …", async () => {
+    serve(ME({ treatments: [{ title: "Crown", tooth: "UR6, UR7", status: "active", done: 0, of: 1, visits: [] }] }));
+    await signIn();
+    expect(screen.getAllByText(/UR6, UR7/)[0]).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Show all/ })).not.toBeInTheDocument();
+  });
+
+  test("REG-FE-PORTAL-015 swiping sideways moves between sections — but not when the finger starts on the 3D model or chart, where it turns or scrolls that", async () => {
+    serve(ME());
+    await signIn();
+    const swipe = (el: Element, dx: number) => {
+      fireEvent.touchStart(el, { touches: [{ clientX: 300, clientY: 200 }] });
+      fireEvent.touchEnd(el, { changedTouches: [{ clientX: 300 + dx, clientY: 205 }] });
+    };
+    swipe(screen.getByRole("tabpanel"), -150);
+    expect(screen.getByRole("tab", { name: "Treatment" })).toHaveAttribute("aria-selected", "true");
+    swipe(screen.getByRole("tabpanel"), 150);
+    expect(screen.getByRole("tab", { name: "Home" })).toHaveAttribute("aria-selected", "true");
+    await userEvent.click(screen.getByRole("tab", { name: "My teeth" }));
+    const guarded = document.querySelector("[data-no-swipe]")!;
+    expect(guarded).toBeTruthy();
+    swipe(guarded, 200);
+    expect(screen.getByRole("tab", { name: "My teeth" })).toHaveAttribute("aria-selected", "true");
   });
 });

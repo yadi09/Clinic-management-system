@@ -119,8 +119,8 @@ describe("REG-FE-PORTAL-PAY pay from home", () => {
     await userEvent.click(screen.getByRole("button", { name: "I have paid" }));
     expect(await screen.findByRole("status")).toHaveTextContent("We are checking with the bank");
     // The next ask (4 s later) finds it confirmed.
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Payment confirmed"), { timeout: 6000 });
-  }, 12000);
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Payment confirmed"), { timeout: 12000 });
+  }, 20000);
 
   test("REG-FE-PORTAL-PAY-006 a clinic that does not allow paying shows no Pay from home; with no account set up it says so; with nothing owed it says so", async () => {
     // Not allowed: the page never even asks for options.

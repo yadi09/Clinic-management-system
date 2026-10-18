@@ -11,6 +11,7 @@ import { AppError } from "@/lib/api-client";
 import { portalLogin, portalLogo, portalMe, portalPayOptions, type PayOptions, type PortalMe, type PortalTreatment } from "@/features/portal/api";
 import { PayFromHome } from "@/features/portal/PayFromHome";
 import { PortalTeeth } from "@/features/portal/PortalTeeth";
+import { Short } from "@/features/portal/Short";
 import { T, type Lang } from "@/features/portal/text";
 
 
@@ -150,7 +151,12 @@ function App({ me, slug, token, lang, setLang, onSignOut, onReload }: { me: Port
   const go = (i: number) => setIdx(Math.max(0, Math.min(tabs.length - 1, i)));
   // On a phone the sections also slide: swipe left or right to move between them.
   const [touch, setTouch] = useState<{ x: number; y: number } | null>(null);
-  const onStart = (e: TouchEvent) => setTouch({ x: e.touches[0]!.clientX, y: e.touches[0]!.clientY });
+  // Not when the finger starts on the 3D model or the wide chart: there a sideways drag turns the
+  // model or scrolls the chart, and must never also change the section.
+  const onStart = (e: TouchEvent) => {
+    if ((e.target as Element).closest?.("[data-no-swipe]")) { setTouch(null); return; }
+    setTouch({ x: e.touches[0]!.clientX, y: e.touches[0]!.clientY });
+  };
   const onEnd = (e: TouchEvent) => {
     if (!touch) return;
     const dx = e.changedTouches[0]!.clientX - touch.x, dy = e.changedTouches[0]!.clientY - touch.y;
@@ -199,6 +205,11 @@ function Bar({ pct }: { pct: number }) {
   return <div className="my-2 h-2 overflow-hidden rounded-full bg-[#e6eef5]"><i className="block h-full rounded-full bg-[#148F77]" style={{ width: `${Math.min(100, pct)}%` }} /></div>;
 }
 
+/** What the patient owes today: bills already raised, plus treatment already done that has no bill
+ *  yet (when the clinic shows it). One number, so "Still to pay 0" never sits above a real debt. */
+const owedNow = (m: NonNullable<PortalMe["money"]>) => Number(m.to_pay) + Number(m.unbilled ?? 0);
+/** What is left on the treatment courses still running, visits to come included. */
+const leftOn = (me: PortalMe) => me.treatments.filter((x) => x.status !== "completed").reduce((s, x) => s + Math.max(0, Number(x.planned ?? 0) - Number(x.collected ?? 0)), 0);
 const current = (me: PortalMe) => me.treatments.find((x) => x.status === "active") ?? me.treatments[0];
 const pct = (x: PortalTreatment) => (x.of ? (x.done / x.of) * 100 : 0);
 
@@ -215,14 +226,14 @@ function Home({ me, t }: { me: PortalMe; t: (typeof T)[Lang] }) {
             <div className="min-w-[62px] rounded-xl bg-[#F2F7FB] px-3 py-2 text-center">
               <b className="block text-[22px] leading-none text-[#1F4E79]">{day(me.next.date, { day: "numeric" })}</b>
               <span className="text-[11px] text-[#617085]">{day(me.next.date, { month: "short" })}</span></div>
-            <div><b className="text-[15px]">{me.next.title}</b><div className="text-[13px] text-[#617085]">{t.visit} {me.next.seq}{me.next.of ? ` / ${me.next.of}` : ""} · {day(me.next.date, { weekday: "long" })}</div></div>
+            <div><b className="text-[15px]"><Short text={me.next.title} showAll={t.showAll} showLess={t.showLess} /></b><div className="text-[13px] text-[#617085]">{t.visit} {me.next.seq}{me.next.of ? ` / ${me.next.of}` : ""} · {day(me.next.date, { weekday: "long" })}</div></div>
           </div>
           {me.clinic.phone && <a href={`tel:${me.clinic.phone.replace(/\s/g, "")}`} className="mt-3 block rounded-xl bg-[#148F77] p-3 text-center text-sm font-bold text-white">{t.call}</a>}
         </Card>
       )}
       {cur && (
         <Card title={t.yourTreat}>
-          <div className="flex justify-between text-sm"><b>{cur.title}{cur.tooth ? ` · ${cur.tooth}` : ""}</b>
+          <div className="flex justify-between gap-2 text-sm"><b className="min-w-0">{cur.title}{cur.tooth ? <> · <Short text={cur.tooth} showAll={t.showAll} showLess={t.showLess} /></> : null}</b>
             <span className="rounded-full bg-[#E6F1FB] px-2.5 py-0.5 text-[11px] font-bold text-[#185FA5]">{cur.status === "completed" ? t.finished : t.inprog}</span></div>
           <Bar pct={pct(cur)} /><div className="text-xs text-[#617085]">{cur.done} / {cur.of} {t.visitsDone}</div>
         </Card>
@@ -230,8 +241,8 @@ function Home({ me, t }: { me: PortalMe; t: (typeof T)[Lang] }) {
       {!cur && <Card><p className="text-sm text-[#617085]">{t.noTreat}</p></Card>}
       {m && (
         <Card title={t.yourPay}>
-          <Row a={t.paid} b={`${money(m.paid)} ETB`} />
-          <Row a={t.toPay} b={`${money(m.to_pay)} ETB`} bad={Number(m.to_pay) > 0} />
+          <Row a={t.paidTreat} b={`${money(m.paid)} ETB`} />
+          <Row a={t.toPayNow} b={`${money(String(owedNow(m)))} ETB`} bad={owedNow(m) > 0} />
         </Card>
       )}
       {me.settings.welcome_note && <Card title={t.fromClinic}><p className="text-sm">{me.settings.welcome_note}</p></Card>}
@@ -251,14 +262,14 @@ function Treatment({ me, t }: { me: PortalMe; t: (typeof T)[Lang] }) {
     <div className="grid items-start gap-4 lg:grid-cols-2">
       {me.treatments.map((x, i) => (
         <Card key={`${x.title}-${i}`}>
-          <div className="flex items-center justify-between"><b>{x.title}{x.tooth ? ` · ${x.tooth}` : ""}</b>
+          <div className="flex items-center justify-between gap-2"><b className="min-w-0">{x.title}{x.tooth ? <> · <Short text={x.tooth} showAll={t.showAll} showLess={t.showLess} /></> : null}</b>
             <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${x.status === "completed" ? "bg-[#EAF3DE] text-[#3B6D11]" : "bg-[#E6F1FB] text-[#185FA5]"}`}>{x.status === "completed" ? t.finished : t.inprog}</span></div>
           <Bar pct={pct(x)} />
           <ul>
             {x.visits.map((v) => (
               <li key={v.seq} className="flex gap-2.5 border-b border-dashed border-[#dbe5ee] py-2 text-[13.5px] last:border-0">
                 <i aria-hidden className={`mt-1 h-3 w-3 shrink-0 rounded-full border-2 ${v.status === "done" ? "border-[#3B6D11] bg-[#3B6D11]" : "border-[#b9c6d4]"}`} />
-                <div><b>{t.visit} {v.seq} · {day(v.date, { day: "numeric", month: "short" })}</b><br /><span className="text-[#617085]">{v.what}{v.status === "done" ? ` — ${t.done}` : ""}</span></div>
+                <div><b>{t.visit} {v.seq} · {day(v.date, { day: "numeric", month: "short" })}</b><br /><span className="text-[#617085]"><Short text={v.what} showAll={t.showAll} showLess={t.showLess} />{v.status === "done" ? ` — ${t.done}` : ""}</span></div>
               </li>
             ))}
           </ul>
@@ -292,11 +303,14 @@ function Payments({ me, t, opts, onPay }: { me: PortalMe; t: (typeof T)[Lang]; o
       )}
       <Card title={t.summary}>
         <div className="grid grid-cols-2 gap-2.5">
-          {tile("#EAF3DE", t.paid, m.paid)}
-          {tile("#FCEBEB", t.toPay, m.to_pay, "#A32D2D")}
+          {tile("#EAF3DE", t.paidTreat, m.paid)}
+          {tile("#FCEBEB", t.toPayNow, String(owedNow(m)), "#A32D2D")}
           {m.unbilled != null && Number(m.unbilled) > 0 && (
-            <div className="col-span-2 rounded-2xl bg-[#FFF3E0] p-3"><small className="block text-[11px] text-[#617085]">{t.unbilled}</small><b className="text-xl">{money(m.unbilled)} ETB</b>
-              <div className="mt-1 text-xs text-[#617085]">{t.unbilledHelp}</div></div>
+            <p className="col-span-2 -mt-0.5 text-xs text-[#617085]">{t.ofWhichUnbilled.replace("{n}", money(m.unbilled))}</p>
+          )}
+          {leftOn(me) > 0 && (
+            <div className="col-span-2 rounded-2xl bg-[#E6F1FB] p-3"><small className="block text-[11px] text-[#617085]">{t.leftOn}</small><b className="text-xl">{money(String(leftOn(me)))} ETB</b>
+              <div className="mt-1 text-xs text-[#617085]">{t.leftOnHelp}</div></div>
           )}
         </div>
       </Card>

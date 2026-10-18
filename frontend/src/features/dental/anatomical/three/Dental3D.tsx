@@ -47,13 +47,24 @@ export default function Dental3D({ state, positions, sel, today, mode, xray, num
     return () => { scene.current?.dispose(); scene.current = null; };
   }, []);
 
+  // A finger dragging the model must turn it, never scroll the page behind it. `touch-action: none`
+  // says so, but not every phone browser honours it for a drag that starts on a canvas, so the
+  // touch itself is also claimed (this listener cannot be passive, or it could not do that).
+  useEffect(() => {
+    const el = stage.current;
+    if (!el) return;
+    const hold = (e: TouchEvent) => { if (e.cancelable) e.preventDefault(); };
+    el.addEventListener("touchmove", hold, { passive: false });
+    return () => el.removeEventListener("touchmove", hold);
+  }, [failed]);
+
   useEffect(() => { scene.current?.build({ state, positions, sel, today, mode, xray, nums }); }, [state, positions, sel, today, mode, xray, nums]);
   useEffect(() => { scene.current?.setView(view); }, [view]);
   useEffect(() => { if (recenterToken) scene.current?.recenter(); }, [recenterToken]);
 
   if (failed) return <p role="alert" className="rounded-xl p-6 text-sm" style={{ background: "var(--surface-1)", color: "var(--text-danger)" }}>{failed}</p>;
   return (
-    <div ref={stage} data-testid="stage3d" className="ta-stage3d relative overflow-hidden rounded-xl" style={{ height, background: "var(--surface-1)", touchAction: "none", cursor: "grab" }}>
+    <div ref={stage} data-testid="stage3d" className="ta-stage3d relative overflow-hidden rounded-xl" style={{ height, background: "var(--surface-1)", touchAction: "none", overscrollBehavior: "contain", cursor: "grab" }}>
       <div ref={labels} className="pointer-events-none absolute inset-0 overflow-hidden" />
     </div>
   );
