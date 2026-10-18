@@ -88,8 +88,8 @@ func TestREG_PORTAL_001_CardNumberOpensOwnRecord(t *testing.T) {
 	createPlan(t, doc, p.ID, "4500", 3, "")
 	put(t, doc, p.ID, map[string][]it{"36": {{"kind": "root_canal", "status": "planned"}}}).Expect(t, 200, "chart")
 
-	if _, r := portalSignIn(t, c.Slug, p.MRN); r.Status != 401 {
-		t.Fatalf("portal is off by default, sign in = %d", r.Status)
+	if _, r := portalSignIn(t, c.Slug, p.MRN); r.Status != 403 || r.Code != "PORTAL_OFF" {
+		t.Fatalf("portal is off by default, sign in = %d %s", r.Status, r.Code)
 	}
 	portalOn(t, c, nil)
 	tok, r := portalSignIn(t, c.Slug, " "+strings.ToLower(p.MRN)+" ")

@@ -34,6 +34,10 @@ var (
 	// able to tell "this clinic has no portal" from "this card does not exist".
 	errLogin   = apperr.New(401, "PORTAL_LOGIN_FAILED", "We could not find that card number. Check it against your patient card.")
 	errSession = apperr.New(401, "PORTAL_SESSION", "Please sign in again.")
+	// A clinic that has not opened its patient page yet. Said plainly, because "card not
+	// found" sends the patient hunting for a mistake they did not make. Clinic addresses are
+	// public, so this reveals nothing a patient could not already see.
+	errOff = apperr.New(403, "PORTAL_OFF", "This clinic's patient page is not open yet. Please ask the clinic.")
 )
 
 // Service implements portal.Service.
@@ -138,7 +142,7 @@ func (s *Service) Login(ctx context.Context, slug, card, ip string) (*portal.Ses
 			return e
 		}
 		if !st.Enabled {
-			return pgx.ErrNoRows
+			return errOff
 		}
 		e = tx.QueryRow(ctx,
 			`SELECT id FROM patients
@@ -151,6 +155,9 @@ func (s *Service) Login(ctx context.Context, slug, card, ip string) (*portal.Ses
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, errLogin
+	}
+	if ae, ok := apperr.As(err); ok {
+		return nil, ae
 	}
 	if err != nil {
 		return nil, apperr.Internal(err)

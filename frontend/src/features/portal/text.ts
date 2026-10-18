@@ -4,6 +4,7 @@ export type Lang = "en" | "am";
 const en = {
   welcome: "Your treatment, in your pocket", cardno: "Card number", see: "See my treatment", findcard: "Your card number is printed on your patient card.",
   typeCard: "Please type your card number.", noCard: "We could not find that card number. Check it against your patient card.",
+  notOpen: "This clinic's patient page is not open yet. Please ask the clinic.",
   slow: "Too many tries. Please wait a minute and try again.", offline: "We could not reach the clinic's page. Check your connection.", retry: "Try again", wait: "Please wait…",
   portal: "Patient portal", out: "Sign out", swipe: "← swipe to move between sections →",
   home: "Home", treat: "Treatment", pay: "Payments", teeth: "My teeth",
@@ -28,6 +29,7 @@ const en = {
 const am: typeof en = {
   welcome: "ህክምናዎ፣ በኪስዎ ውስጥ", cardno: "የካርድ ቁጥር", see: "ህክምናዬን እይ", findcard: "የካርድ ቁጥርዎ በታካሚ ካርድዎ ላይ ተጽፏል።",
   typeCard: "እባክዎ የካርድ ቁጥርዎን ይጻፉ።", noCard: "ይህን የካርድ ቁጥር አላገኘነውም። በታካሚ ካርድዎ ላይ ካለው ጋር ያመሳስሉ።",
+  notOpen: "የዚህ ክሊኒክ የታካሚ ገጽ እስካሁን አልተከፈተም። እባክዎ ክሊኒኩን ይጠይቁ።",
   slow: "ብዙ ሙከራ ተደርጓል። ትንሽ ቆይተው ይሞክሩ።", offline: "የክሊኒኩን ገጽ ማግኘት አልተቻለም። ግንኙነትዎን ያረጋግጡ።", retry: "እንደገና ይሞክሩ", wait: "እባክዎ ይጠብቁ…",
   portal: "የታካሚ ገጽ", out: "ውጣ", swipe: "← በክፍሎች መካከል ለመሄድ ያንሸራትቱ →",
   home: "መነሻ", treat: "ህክምና", pay: "ክፍያ", teeth: "ጥርሶቼ",

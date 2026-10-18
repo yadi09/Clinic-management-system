@@ -78,6 +78,14 @@ describe("REG-FE-PORTAL the patient's page", () => {
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Too many tries"));
   });
 
+  test("REG-FE-PORTAL-002b a clinic that has not opened its patient page says so, not card-not-found", async () => {
+    client.apiFetch.mockRejectedValue(new AppError(403, "PORTAL_OFF", "x"));
+    open();
+    await userEvent.type(screen.getByLabelText("Card number"), "P000364");
+    await userEvent.click(screen.getByRole("button", { name: "See my treatment" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("not open yet");
+  });
+
   test("REG-FE-PORTAL-003 an empty or very short card number is stopped before asking the server", async () => {
     open();
     await userEvent.click(screen.getByRole("button", { name: "See my treatment" }));

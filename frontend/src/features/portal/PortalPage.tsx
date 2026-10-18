@@ -105,20 +105,20 @@ function Login({ slug, lang, setLang, onDone, loading }: { slug: string; lang: L
     if (card.trim().length < 3) { setErr(t.typeCard); return; }
     setBusy(true); setErr("");
     try { onDone((await portalLogin(slug, card.trim())).token); }
-    catch (e) { setErr(e instanceof AppError && e.status === 429 ? t.slow : e instanceof AppError && e.status === 401 ? t.noCard : t.offline); setBusy(false); }
+    catch (e) { setErr(e instanceof AppError && e.status === 429 ? t.slow : e instanceof AppError && e.code === "PORTAL_OFF" ? t.notOpen : e instanceof AppError && e.status === 401 ? t.noCard : t.offline); setBusy(false); }
   };
   return (
     <div className="flex flex-1 flex-col gap-3.5 px-6 pb-6 pt-4" style={{ background: "linear-gradient(180deg,#1F4E79 0,#1F4E79 250px,#F2F7FB 250px)" }}>
       <div className="flex justify-end"><LangSwitch lang={lang} setLang={setLang} /></div>
       <div className="mb-1.5 mt-6 text-center text-white">
         <div className="mx-auto mb-2.5 w-fit"><Logo slug={slug} name={slug} has size={62} /></div>
-        <h1 className="m-0 text-xl font-bold capitalize">{slug.replace(/-/g, " ")}</h1>
+        <h1 className="m-0 text-xl font-bold capitalize !text-white">{slug.replace(/-/g, " ")}</h1>
         <p className="mt-1 text-[13px] opacity-85">{t.welcome}</p>
       </div>
       <form className="rounded-[18px] bg-white p-5 shadow-lg" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
         <label htmlFor="card" className="mb-1.5 block text-xs text-[#617085]">{t.cardno}</label>
         <input id="card" value={card} onChange={(e) => setCard(e.target.value)} autoComplete="off" autoCapitalize="characters" inputMode="text"
-          placeholder="MRN-000123" className="w-full rounded-xl border-[1.5px] border-[#dbe5ee] p-3 text-lg tracking-wide outline-none focus:border-[#148F77]" />
+          placeholder="P000123" className="w-full rounded-xl border-[1.5px] border-[#dbe5ee] p-3 text-lg tracking-wide outline-none focus:border-[#148F77]" />
         <p role="alert" className="mt-2 min-h-4 text-xs text-[#b4322f]">{err}</p>
         <button type="submit" disabled={busy || loading} className="mt-3 w-full rounded-xl bg-[#148F77] p-3.5 text-[15px] font-bold text-white disabled:opacity-60">{busy || loading ? t.wait : t.see}</button>
       </form>
@@ -157,7 +157,7 @@ function App({ me, slug, token, lang, setLang, onSignOut, onReload }: { me: Port
     <>
       <header className="flex items-center gap-2.5 bg-[#1F4E79] px-4 pb-3 pt-3.5 text-white">
         <Logo slug={me.clinic.slug} name={me.clinic.name} has={me.clinic.has_logo} />
-        <div className="min-w-0"><div className="truncate text-[15px] font-bold leading-tight">{me.clinic.name}</div><div className="text-[11px] opacity-75">{t.portal}</div></div>
+        <div className="min-w-0"><div className="truncate text-[15px] font-bold leading-tight !text-white">{me.clinic.name}</div><div className="text-[11px] opacity-75">{t.portal}</div></div>
         <div className="ml-auto flex items-center gap-2"><LangSwitch lang={lang} setLang={setLang} />
           <button type="button" onClick={onSignOut} className="text-[11px] underline opacity-80">{t.out}</button></div>
       </header>
