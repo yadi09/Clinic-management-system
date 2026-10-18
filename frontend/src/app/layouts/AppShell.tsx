@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, Search, LogOut, ChevronsUpDown, Building2, Check } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Activity, Search, LogOut, ChevronsUpDown } from "lucide-react";
 
 import { useAuth } from "@/app/auth-context";
 import { navSections, visibleNav } from "@/app/nav";
@@ -24,7 +24,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 
 function initials(name?: string) {
@@ -33,24 +32,14 @@ function initials(name?: string) {
 }
 
 export function AppShell() {
-  const { user, signOut, can, flagOn, branches, activeBranch, allBranches, switchBranch } = useAuth();
+  const { user, signOut, can, flagOn, activeBranch, allBranches } = useAuth();
   const navigate = useNavigate();
-  const qc = useQueryClient();
   const primaryRole = user?.roles?.[0]?.replace(/_/g, " ") ?? "staff";
 
-  // The branch switcher only appears once a clinic has more than one branch, so
-  // single-location clinics see no extra chrome. "All branches" is a consolidated
-  // view offered to clinic-wide (tenant-scoped) users.
-  const showSwitcher = branches.length > 1;
+  // Branches are workspaces of their own now (see WorkspaceSwitcher). The old branches
+  // inside one workspace only filtered some screens and never separated the data, so their
+  // switcher is retired: the bar just names where you are.
   const branchLabel = allBranches && !activeBranch ? "All branches" : activeBranch?.name ?? "Main Branch";
-  const doSwitch = async (id: string) => {
-    try {
-      await switchBranch(id);
-      await qc.invalidateQueries();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not switch branch");
-    }
-  };
 
   // The clinic's branches, when this person may move between them (the owner and
   // branch admins). Each is a workspace of its own; staff of one branch get none.
@@ -82,33 +71,6 @@ export function AppShell() {
         <div className="flex min-w-0 flex-1 items-center gap-1.5 px-2 sm:gap-3 sm:px-5">
           {branchWorkspaces.length > 1 ? (
             <WorkspaceSwitcher items={branchWorkspaces} role={primaryRole} />
-          ) : showSwitcher ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger className="hidden items-center gap-2 rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium hover:bg-white/15 focus:outline-none md:flex">
-                <Building2 className="h-4 w-4" />
-                <span>{branchLabel}</span>
-                <ChevronsUpDown className="h-3.5 w-3.5 opacity-70" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-60">
-                <DropdownMenuLabel>Switch branch</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {branches.map((b) => (
-                  <DropdownMenuItem key={b.id} onSelect={() => void doSwitch(b.id)}>
-                    <span className="flex-1 truncate">{b.name}</span>
-                    {activeBranch?.id === b.id && <Check className="h-4 w-4" />}
-                  </DropdownMenuItem>
-                ))}
-                {allBranches && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onSelect={() => void doSwitch("all")}>
-                      <span className="flex-1">All branches</span>
-                      {!activeBranch && <Check className="h-4 w-4" />}
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
           ) : (
             <span className="hidden rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium capitalize md:inline">
               {branchLabel} · {primaryRole}
@@ -155,26 +117,6 @@ export function AppShell() {
                 <div className="md:hidden">
                   <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Your branches</DropdownMenuLabel>
                   <WorkspaceItems items={branchWorkspaces} busy={moveBranch.busy} go={(w) => void moveBranch.go(w)} />
-                  <DropdownMenuSeparator />
-                </div>
-              )}
-              {showSwitcher && branchWorkspaces.length <= 1 && (
-                <div className="md:hidden">
-                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                    Branch · {branchLabel}
-                  </DropdownMenuLabel>
-                  {branches.map((b) => (
-                    <DropdownMenuItem key={b.id} onSelect={() => void doSwitch(b.id)}>
-                      <span className="flex-1 truncate">{b.name}</span>
-                      {activeBranch?.id === b.id && <Check className="h-4 w-4" />}
-                    </DropdownMenuItem>
-                  ))}
-                  {allBranches && (
-                    <DropdownMenuItem onSelect={() => void doSwitch("all")}>
-                      <span className="flex-1">All branches</span>
-                      {!activeBranch && <Check className="h-4 w-4" />}
-                    </DropdownMenuItem>
-                  )}
                   <DropdownMenuSeparator />
                 </div>
               )}

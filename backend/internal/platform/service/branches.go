@@ -60,6 +60,13 @@ var settingsTables = []struct{ name, where string }{
 	{"tenant_entitlements", ""},
 }
 
+// The clinic record's own settings a branch starts with: the card fee and its free
+// follow-up window, triage and doctor assignment, patient messaging (sender, language,
+// quiet hours). Its name stays the branch's own.
+const clinicSettingsCols = `timezone, locale, logo_storage_key, card_fee_enabled, card_fee_amount, card_currency,
+	free_window_days, triage_required, doctor_assignment, sms_enabled, sms_lang, sms_quiet_from, sms_quiet_to,
+	sms_sender_name, sms_api_key_enc, sms_sender_id, sms_sender_status`
+
 // The clinic-level choices on the tenant row itself that a branch shares.
 const tenantSettingsCols = `clinic_type, timezone, locale, currency, doctor_registers_patients,
 	storage_gb_override, patient_limit_override, user_limit_override, sms_monthly_override`
@@ -431,6 +438,12 @@ func (s *Service) CreateBranch(ctx context.Context, tenantID uuid.UUID, in platf
 
 		copied, e := copySettings(ctx, tx, tenantID, res.TenantID, res.BranchID, res.ClinicID, res.DeptID)
 		if e != nil {
+			return e
+		}
+		if _, e := tx.Exec(ctx, `UPDATE clinics c SET (`+clinicSettingsCols+`) =
+			(SELECT `+clinicSettingsCols+` FROM clinics m WHERE m.tenant_id = $2 AND m.deleted_at IS NULL ORDER BY m.created_at LIMIT 1)
+			WHERE c.tenant_id = $1 AND c.id = $3
+			  AND EXISTS (SELECT 1 FROM clinics m WHERE m.tenant_id = $2 AND m.deleted_at IS NULL)`, res.TenantID, tenantID, res.ClinicID); e != nil {
 			return e
 		}
 		out.Copied = copied

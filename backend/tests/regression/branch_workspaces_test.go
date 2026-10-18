@@ -57,6 +57,7 @@ func orgClinic(t *testing.T) *orgWorld {
 	w.procName = uniq("Gold inlay ")
 	w.owner.Do("POST", "/dental/procedures", map[string]any{"name": w.procName}).Expect(t, 201, "procedure")
 	portalOn(t, c, map[string]any{"welcome_note": "Main branch note"})
+	exec(t, `UPDATE clinics SET free_window_days = 9, triage_required = true, sms_lang = 'am', sms_sender_name = 'YoyaDental' WHERE tenant_id = $1`, c.TenantID)
 	// Data the branch must NOT inherit.
 	w.patient = createPatient(t, srv.As(t, c, "receptionist"), "Meron", "Main")
 	createPlan(t, srv.As(t, c, "doctor"), w.patient.ID, "3000", 2, "")
@@ -135,8 +136,20 @@ func TestREG_BRWS_001_NewBranchHasSettingsNotData(t *testing.T) {
 	if !ps.Enabled || ps.WelcomeNote != "Main branch note" {
 		t.Fatalf("portal settings did not come across: %+v", ps)
 	}
-	// Data did not.
+	// So did the clinic record's own settings (card window, triage, messaging), under the branch's own name.
 	tid, _ := id.Decode(id.PrefixTenant, w.branch.Branch.ID)
+	var fw int
+	var triage bool
+	var lang, sender, cname string
+	one(t, `SELECT free_window_days FROM clinics WHERE tenant_id = $1`, &fw, tid)
+	one(t, `SELECT triage_required FROM clinics WHERE tenant_id = $1`, &triage, tid)
+	one(t, `SELECT sms_lang FROM clinics WHERE tenant_id = $1`, &lang, tid)
+	one(t, `SELECT sms_sender_name FROM clinics WHERE tenant_id = $1`, &sender, tid)
+	one(t, `SELECT name FROM clinics WHERE tenant_id = $1`, &cname, tid)
+	if fw != 9 || !triage || lang != "am" || sender != "YoyaDental" || cname != "Bole branch" {
+		t.Fatalf("clinic settings: window %d triage %v lang %q sender %q name %q", fw, triage, lang, sender, cname)
+	}
+	// Data did not.
 	for _, table := range []string{"patients", "treatment_plans", "treatment_sessions", "charges", "encounters", "appointments", "payment_references", "audit_logs"} {
 		var n int
 		one(t, `SELECT count(*) FROM `+table+` WHERE tenant_id = $1 AND `+map[bool]string{true: "action NOT LIKE 'auth.%' AND action NOT LIKE 'org.%' AND action NOT LIKE 'user.%'", false: "true"}[table == "audit_logs"], &n, tid)
@@ -254,6 +267,12 @@ func TestREG_BRWS_005_PasswordFollowsThePerson(t *testing.T) {
 	}
 	if r, _ := platStaffLogin(t, w.branch.Branch.Slug, w.c.Owner.Email, testkit.StaffPassword); r.Status != 401 {
 		t.Fatalf("old password still opens the branch: %d", r.Status)
+	}
+	// And the sign-in email follows the person too.
+	newEmail := "renamed@" + strings.ToLower(uniq("own")) + ".test"
+	w.owner.Do("POST", "/auth/email", map[string]any{"new_email": newEmail, "current_password": "BranchesTogether#1"}).Expect(t, 204, "change email")
+	if r, _ := platStaffLogin(t, w.branch.Branch.Slug, newEmail, "BranchesTogether#1"); r.Status != 200 {
+		t.Fatalf("the new email at the branch = %d", r.Status)
 	}
 }
 

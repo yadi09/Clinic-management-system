@@ -25,7 +25,7 @@ import { AppShell } from "@/app/layouts/AppShell";
 import { MobileNav } from "@/app/layouts/MobileNav";
 import { navSections, visibleNav } from "@/app/nav";
 import { setLink } from "@/lib/connection";
-import { authFns, OWNER_PERMS, resetToasts, setAuth, toastSpy } from "@/test/admin";
+import { authFns, OWNER_PERMS, resetToasts, setAuth } from "@/test/admin";
 import { currentLocation, renderUI } from "@/test/render";
 
 const BRANCHES = [{ id: "br_1", name: "Bole", code: "BOLE" }, { id: "br_2", name: "Piassa", code: "PIA" }];
@@ -90,51 +90,20 @@ describe("REG-FE-SHELL app shell", () => {
     expect(authFns.signOut).toHaveBeenCalled();
   });
 
-  test("REG-FE-SHELL-004 two branches: the switcher lists them, ticks the active one, and switches", async () => {
+  test("REG-FE-SHELL-004 the old branches inside one workspace get no switcher any more: the bar names where you are, nothing to choose", async () => {
     setAuth({ branches: BRANCHES, activeBranchId: "br_1", allBranches: true });
-    const { user, qc } = Shell({});
-    const inv = vi.spyOn(qc, "invalidateQueries");
-    await user.click(screen.getByRole("button", { name: /Bole/ }));
-    const menu = await screen.findByRole("menu");
-    expect(within(menu).getByText("Switch branch")).toBeInTheDocument();
-    expect(within(menu).getAllByRole("menuitem").map((m) => m.textContent)).toEqual(["Bole", "Piassa", "All branches"]);
-    await user.click(within(menu).getByRole("menuitem", { name: "Piassa" }));
-    await waitFor(() => expect(authFns.switchBranch).toHaveBeenCalledWith("br_2"));
-    await waitFor(() => expect(inv).toHaveBeenCalled());
+    Shell({});
+    expect(screen.getByText(/Bole · /)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Bole/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("All branches")).not.toBeInTheDocument();
+    expect(authFns.switchBranch).not.toHaveBeenCalled();
   });
 
-  test("REG-FE-SHELL-005 the consolidated view is labelled All branches and can be chosen", async () => {
+  test("REG-FE-SHELL-005 a session left on the old consolidated view is named for what it is, still with nothing to choose", () => {
     setAuth({ branches: BRANCHES, activeBranchId: null, allBranches: true });
-    const { user } = Shell({});
-    await user.click(screen.getByRole("button", { name: /All branches/ }));
-    await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "All branches" }));
-    await waitFor(() => expect(authFns.switchBranch).toHaveBeenCalledWith("all"));
-  });
-
-  test("REG-FE-SHELL-006 a refused branch switch is said out loud", async () => {
-    setAuth({ branches: BRANCHES, activeBranchId: "br_1" });
-    authFns.switchBranch.mockRejectedValueOnce(new Error("You do not work at Piassa"));
-    const { user } = Shell({});
-    await user.click(screen.getByRole("button", { name: /Bole/ }));
-    await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Piassa" }));
-    await waitFor(() => expect(toastSpy.error).toHaveBeenCalledWith("You do not work at Piassa"));
-    authFns.switchBranch.mockRejectedValueOnce("weird");
-    await user.click(screen.getByRole("button", { name: /Bole/ }));
-    await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Piassa" }));
-    await waitFor(() => expect(toastSpy.error).toHaveBeenCalledWith("Could not switch branch"));
-  });
-
-  test("REG-FE-SHELL-007 on a phone the branch list lives in the account menu", async () => {
-    setAuth({ branches: BRANCHES, activeBranchId: "br_2", allBranches: true });
-    const { user } = Shell({});
-    await user.click(screen.getByRole("button", { name: /^HD/ }));
-    const menu = await screen.findByRole("menu");
-    expect(within(menu).getByText("Branch · Piassa")).toBeInTheDocument();
-    await user.click(within(menu).getByRole("menuitem", { name: "Bole" }));
-    await waitFor(() => expect(authFns.switchBranch).toHaveBeenCalledWith("br_1"));
-    await user.click(screen.getByRole("button", { name: /^HD/ }));
-    await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "All branches" }));
-    await waitFor(() => expect(authFns.switchBranch).toHaveBeenCalledWith("all"));
+    Shell({});
+    expect(screen.getByText(/All branches · /)).toBeInTheDocument();
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
   test("REG-FE-SHELL-009 when the server cannot be reached a banner says so on every page, and goes when it can again", () => {

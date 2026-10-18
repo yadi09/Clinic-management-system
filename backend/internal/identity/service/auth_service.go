@@ -566,6 +566,8 @@ func (s *AuthService) ChangeEmail(ctx context.Context, tenantID, userID uuid.UUI
 		}
 		return apperr.Internal(err)
 	}
+	// The same person in the clinic's other branches signs in with the same email.
+	s.syncLinkedEmail(ctx, tenantID, userID, email)
 	s.emit(ctx, tenantID, userID, "auth.user.email_changed", nil)
 	return nil
 }

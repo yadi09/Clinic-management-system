@@ -115,8 +115,30 @@ func (s *AuthService) SwitchWorkspace(ctx context.Context, tenantID, userID, tar
 // effort — a branch that cannot be reached keeps its old password rather than
 // failing a change that has already happened here.
 func (s *AuthService) syncLinkedPassword(ctx context.Context, tenantID, userID uuid.UUID, hash string) {
-	type acct struct{ tenant, user uuid.UUID }
-	var others []acct
+	for _, a := range s.linkedAccounts(ctx, tenantID, userID) {
+		h := hash
+		_ = s.db.WithTenantTx(ctx, a.tenant, func(tx pgx.Tx) error {
+			return identitydb.New(tx).UpdateUserPassword(ctx, identitydb.UpdateUserPasswordParams{TenantID: a.tenant, ID: a.user, PasswordHash: &h})
+		})
+	}
+}
+
+// syncLinkedEmail gives this person's accounts in the clinic's other branches the same
+// sign-in email. A branch where someone else already uses that email keeps the old one
+// rather than taking another person's address.
+func (s *AuthService) syncLinkedEmail(ctx context.Context, tenantID, userID uuid.UUID, email string) {
+	for _, a := range s.linkedAccounts(ctx, tenantID, userID) {
+		_ = s.db.WithTenantTx(ctx, a.tenant, func(tx pgx.Tx) error {
+			return identitydb.New(tx).UpdateUserEmail(ctx, identitydb.UpdateUserEmailParams{TenantID: a.tenant, ID: a.user, Email: email})
+		})
+	}
+}
+
+type linkedAccount struct{ tenant, user uuid.UUID }
+
+// linkedAccounts is this person's accounts in the clinic's other branches.
+func (s *AuthService) linkedAccounts(ctx context.Context, tenantID, userID uuid.UUID) []linkedAccount {
+	var out []linkedAccount
 	_ = s.db.WithTenantTx(ctx, tenantID, func(tx pgx.Tx) error {
 		rows, e := tx.Query(ctx, `
 			SELECT l.tenant_id, l.user_id
@@ -127,18 +149,13 @@ func (s *AuthService) syncLinkedPassword(ctx context.Context, tenantID, userID u
 		}
 		defer rows.Close()
 		for rows.Next() {
-			var a acct
+			var a linkedAccount
 			if e := rows.Scan(&a.tenant, &a.user); e != nil {
 				return e
 			}
-			others = append(others, a)
+			out = append(out, a)
 		}
 		return rows.Err()
 	})
-	for _, a := range others {
-		h := hash
-		_ = s.db.WithTenantTx(ctx, a.tenant, func(tx pgx.Tx) error {
-			return identitydb.New(tx).UpdateUserPassword(ctx, identitydb.UpdateUserPasswordParams{TenantID: a.tenant, ID: a.user, PasswordHash: &h})
-		})
-	}
+	return out
 }
