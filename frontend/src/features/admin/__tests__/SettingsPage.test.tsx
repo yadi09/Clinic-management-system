@@ -110,7 +110,7 @@ describe("REG-FE-SETTINGS sections", () => {
   test("REG-FE-SETTINGS-001 a dental clinic's rail: its procedures, tooth chart and tooth conditions; no vitals, no diagnosis catalog, no branches", () => {
     open();
     const items = within(rail()).getAllByRole("button").map((b) => b.textContent);
-    expect(items).toEqual(["Account & security", "Clinic profile", "Printing", "Visit flow", "Payment methods", "Drugs & allergens", "Dental procedures", "Tooth chart", "Tooth conditions"]);
+    expect(items).toEqual(["Account & security", "Clinic profile", "Printing", "Visit flow", "Payment methods", "Patient portal", "Drugs & allergens", "Dental procedures", "Tooth chart", "Tooth conditions"]);
   });
 
   test("REG-FE-SETTINGS-002 a general clinic's rail has vitals and diagnoses, not dental", () => {

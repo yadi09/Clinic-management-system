@@ -781,3 +781,33 @@ test("REG-E2E-031 braces: whole upper arch in metal, a planned ceramic set on th
   await stage.screenshot({ path: testInfo.outputPath("braces-3d.png"), timeout: 60_000 });
   await chartStyle("simple");
 });
+
+test("REG-E2E-032 a patient signs in with the card number and sees their own treatment, money and teeth", async ({ page }) => {
+  const p = await newPatient("Meron");
+  const owner = await apiAs("owner");
+  await owner("PUT", "/portal-settings", { enabled: true, show_money: true, show_unbilled: true, show_teeth: true, show_3d: true, welcome_note: "Brush gently." });
+  const { doctor } = await newPlan(p.id, uniq("Crown "), [3, 10, 17]);
+  await doctor("PUT", `/dental/patients/${p.id}/chart/items`, { teeth: { "36": [{ kind: "root_canal", status: "planned" }] } });
+  const mrn = (await owner<{ mrn: string }>("GET", `/patients/${p.id}`)).mrn;
+  const slug = (await owner<{ slug: string }>("GET", "/portal-settings")).slug;
+
+  // No staff sign-in here: the patient only has the card.
+  await page.goto(`/p/${slug}`);
+  await page.getByLabel("Card number").fill(mrn);
+  await page.getByRole("button", { name: "See my treatment" }).click();
+  await expect(page.getByText(`Hello ${p.first}`)).toBeVisible();
+  await expect(page.getByText("Brush gently.")).toBeVisible();
+
+  await page.getByRole("tab", { name: "My teeth" }).click();
+  await page.getByRole("button", { name: /^Tooth 36/ }).first().click({ force: true });
+  await expect(page.getByText(/root canal — to be done/)).toBeVisible();
+
+  await page.getByRole("button", { name: "አማ" }).first().click();
+  await expect(page.getByRole("tab", { name: "ጥርሶቼ" })).toBeVisible();
+
+  // The wrong card finds nothing, and says so without saying why.
+  await page.getByRole("button", { name: "ውጣ" }).click();
+  await page.getByLabel("የካርድ ቁጥር").fill("NOPE-000");
+  await page.getByRole("button", { name: "ህክምናዬን እይ" }).click();
+  await expect(page.getByRole("alert")).toContainText("አላገኘነውም");
+});

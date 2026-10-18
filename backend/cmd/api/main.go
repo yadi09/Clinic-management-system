@@ -73,6 +73,8 @@ import (
 	schedulingservice "github.com/reicb/clinicsaas/internal/scheduling/service"
 	verificationhttp "github.com/reicb/clinicsaas/internal/verification/http"
 	verificationservice "github.com/reicb/clinicsaas/internal/verification/service"
+	portalhttp "github.com/reicb/clinicsaas/internal/portal/http"
+	portalservice "github.com/reicb/clinicsaas/internal/portal/service"
 )
 
 func main() {
@@ -136,7 +138,8 @@ func main() {
 	reportingHandlers := reportinghttp.NewHandlers(reportingservice.NewService(db, cfg.MFAEncKey))
 	maternityHandlers := maternityhttp.NewHandlers(maternityservice.NewService(db, publisher))
 	inpatientHandlers := inpatienthttp.NewHandlers(inpatientservice.NewService(db, publisher, billingSvc))
-	dentalHandlers := dentalhttp.NewHandlers(dentalservice.NewService(db, publisher, billingSvc, store))
+	dentalSvc := dentalservice.NewService(db, publisher, billingSvc, store)
+	dentalHandlers := dentalhttp.NewHandlers(dentalSvc)
 	// Finance reads the charge ledger, plus the two figures only dental can answer
 	// (treatment delivered and never billed, and the forward book).
 	financeSvc := financeservice.NewService(db, financeservice.NewDentalAdapter(db))
@@ -196,8 +199,11 @@ func main() {
 	verificationHandlers := verificationhttp.New(
 		verificationservice.New(db, cfg.JWTSecret), ratelimit.NewInProcess(0.2, 8))
 	notificationHandlers := notificationhttp.NewHandlers(notificationservice.NewService(db))
+	// The patient's own page. Signing in is limited per address: a card number is a weak
+	// secret, so guessing one must be slow.
+	portalHandlers := portalhttp.New(portalservice.New(db, dentalSvc, cfg.JWTSecret), ratelimit.NewInProcess(0.2, 6))
 
-	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, reportingHandlers, dashboardHandlers, maternityHandlers, inpatientHandlers, dentalHandlers, messagingHandlers, pharmacyHandlers, labHandlers, financeHandlers, platformHandlers, crmHandlers, campaignHandlers, marketplaceHandlers, notificationHandlers, verificationHandlers)
+	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, reportingHandlers, dashboardHandlers, maternityHandlers, inpatientHandlers, dentalHandlers, messagingHandlers, pharmacyHandlers, labHandlers, financeHandlers, platformHandlers, crmHandlers, campaignHandlers, marketplaceHandlers, notificationHandlers, verificationHandlers, portalHandlers)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -249,6 +255,7 @@ func newRouter(
 	marketplaceHandlers *marketplacehttp.Handlers,
 	notificationHandlers *notificationhttp.Handlers,
 	verificationHandlers *verificationhttp.Handlers,
+	portalHandlers *portalhttp.Handlers,
 ) *gin.Engine {
 	if cfg.IsProd() {
 		gin.SetMode(gin.ReleaseMode)
@@ -284,6 +291,7 @@ func newRouter(
 	}
 	marketplaceHandlers.Register(v1, tokens) // public /marketplace/... + seller portal + /platform/marketplace/...
 	campaignHandlers.Register(v1, tokens)    // public /campaigns/:code/... + /platform/campaigns/...
+	portalHandlers.RegisterPublic(v1)        // public /portal/:slug/login|me: the patient's own page
 	verificationHandlers.RegisterPublic(v1)  // public /verify/t|c|logo/...: check a printed paper
 	if crmHandlers != nil {
 		crmHandlers.Register(v1, tokens) // /platform/crm/... (crm.work; campaigns + accounts need platform.admin)
@@ -291,6 +299,7 @@ func newRouter(
 	protected := v1.Group("", httpx.RequireAuth(tokens))     // requires a valid access token
 	identityHandlers.RegisterProtected(protected)            // /auth/me
 	verificationHandlers.RegisterProtected(protected)        // /verify/issue
+	portalHandlers.RegisterProtected(protected)              // /portal-settings
 	orgHandlers.RegisterProtected(protected)                 // /org/...
 	patientHandlers.RegisterProtected(protected)             // /patients/...
 	schedulingHandlers.RegisterProtected(protected)          // /appointments/..., /queue/..., /worklist

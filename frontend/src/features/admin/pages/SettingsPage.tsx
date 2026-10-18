@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, ShieldCheck, Building2, MapPin, Workflow, Wallet, Stethoscope, ClipboardList, Pill, Printer, type LucideIcon } from "lucide-react";
+import { Plus, Pencil, Trash2, ShieldCheck, Building2, MapPin, Workflow, Wallet, Stethoscope, ClipboardList, Pill, Printer, Smartphone, type LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,11 +70,12 @@ import { NewAllergenForm, severityClass } from "@/features/clinical/AllergenFiel
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { RegistrationFeeCard } from "@/features/billing/RegistrationFeeCard";
+import { PortalSettingsCard } from "@/features/portal/PortalSettingsCard";
 import { PrintingSettings } from "@/features/printing/PrintingSettings";
 import { AppError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
-type SectionKey = "account" | "profile" | "printing" | "locations" | "flow" | "payments" | "vitals" | "diagnoses" | "drugs" | "procedures" | "toothchart" | "toothconditions";
+type SectionKey = "portal" | "account" | "profile" | "printing" | "locations" | "flow" | "payments" | "vitals" | "diagnoses" | "drugs" | "procedures" | "toothchart" | "toothconditions";
 // flag: shown only with it. hideWhen: hidden with it — a dental clinic has no
 // triage (so no vitals form) and its examination's diagnosis is free text, not the
 // general clinic's catalogue.
@@ -93,6 +94,7 @@ const SECTIONS: { group: string; items: { key: SectionKey; label: string; icon: 
     items: [
       { key: "flow", label: "Visit flow", icon: Workflow },
       { key: "payments", label: "Payment methods", icon: Wallet },
+      { key: "portal", label: "Patient portal", icon: Smartphone, flag: "dental" },
     ],
   },
   {
@@ -167,6 +169,7 @@ export function SettingsPage() {
             </div>
           )}
           {active === "payments" && <PaymentRailsCard manage={manage} />}
+          {active === "portal" && <PortalSettingsCard manage={manage} />}
           {active === "printing" && <PrintingSettings />}
           {active === "vitals" && <VitalsFormCard manage={manage} />}
           {active === "diagnoses" && <DiagnosisCatalogCard manage={manage} />}

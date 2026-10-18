@@ -56,6 +56,7 @@ import { MarketStorePage } from "@/features/marketplace/StorefrontPage";
 import { MarketSellPage } from "@/features/marketplace/SellPage";
 import { CampaignPage } from "@/features/campaign/CampaignPage";
 import { CampaignRegisterPage } from "@/features/campaign/RegisterPage";
+import { PortalPage } from "@/features/portal/PortalPage";
 import { VerifyPage } from "@/features/verify/VerifyPage";
 import { VerifyEntryPage } from "@/features/verify/VerifyEntryPage";
 
@@ -68,6 +69,7 @@ export function AppRoutes() {
       <Route path="/c/:code" element={<CampaignPage />} />
       {/* Check a printed paper: opened from the QR on a prescription by whoever holds
           it, with no account. The clinic's slug and the paper's token are in the link. */}
+      <Route path="/p/:slug" element={<PortalPage />} />
       <Route path="/v" element={<VerifyEntryPage />} />
       <Route path="/v/:slug/:key" element={<VerifyPage />} />
       {/* The wide net: sent to every clinic, before anyone is invited to play. */}
