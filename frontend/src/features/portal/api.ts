@@ -48,7 +48,7 @@ export const savePortalSettings = (body: PortalSettings) => apiFetch<PortalSetti
 
 // ---- Pay from home ----------------------------------------------------------------
 
-export interface PayItem { key: string; label: string; amount: string; hint?: string; payable: boolean; upcoming?: boolean }
+export interface PayItem { key: string; label: string; amount: string; hint?: string; payable: boolean; upcoming?: boolean; /** YYYY-MM-DD, for a visit paid ahead */ date?: string }
 export interface PayRail { id: string; label: string; kind: string; account_name?: string; account_number: string }
 export interface PayStatus {
   id: string; state: "checking" | "waiting" | "paid" | "rejected"; amount: string; rail: string; reference: string;

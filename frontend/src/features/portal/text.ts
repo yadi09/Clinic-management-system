@@ -32,6 +32,9 @@ const en = {
   badgePlanned: "Planned", badgeNow: "In your mouth", badgeDone: "Done", loading3d: "Loading the 3D model…",
   paidTreat: "Paid toward your treatment", toPayNow: "To pay now", ofWhichUnbilled: "Includes {n} ETB for treatment you have already had and not paid for yet.",
   leftOn: "Left on your treatment", leftOnHelp: "Includes visits still to come. You pay visit by visit.", showAll: "Show all", showLess: "Show less",
+  quickOwed: "Pay what you owe", quickOwedSub: "Treatment you have had and not paid for yet.", quickAhead: "Pay your next visit ahead",
+  quickAheadSub: "Next visit on {d} — pay now, skip the cashier on the day.", payAmountBtn: "Pay {n} ETB", chooseOther: "Choose what to pay",
+  changeItems: "Change what I am paying",
   tapTooth: "Tap a tooth", tapHelp: "to see what it has and what is planned.", tooth: "Tooth", healthy: "Healthy. Nothing recorded.",
 };
 const am: typeof en = {
@@ -65,6 +68,9 @@ const am: typeof en = {
   badgePlanned: "የታቀደ", badgeNow: "በአፍዎ ውስጥ", badgeDone: "ተሠርቷል", loading3d: "3D ሞዴሉ እየመጣ ነው…",
   paidTreat: "ለህክምናዎ የከፈሉት", toPayNow: "አሁን የሚከፈል", ofWhichUnbilled: "ተሠርቶልዎት ገና ያልከፈሉበት ህክምና {n} ብር ይጨምራል።",
   leftOn: "ከህክምናዎ የቀረው", leftOnHelp: "ገና የሚመጡ ጉብኝቶችን ያካትታል። በየጉብኝቱ ይከፍላሉ።", showAll: "ሁሉንም አሳይ", showLess: "አሳንስ",
+  quickOwed: "ያለብዎትን ይክፈሉ", quickOwedSub: "ተሠርቶልዎት ገና ያልከፈሉበት ህክምና።", quickAhead: "የሚቀጥለውን ጉብኝት አስቀድመው ይክፈሉ",
+  quickAheadSub: "ቀጣይ ጉብኝት {d} — አሁን ይክፈሉ፣ በዕለቱ ገንዘብ ተቀባይ ጋር አይሰለፉ።", payAmountBtn: "{n} ብር ይክፈሉ", chooseOther: "የሚከፍሉትን ይምረጡ",
+  changeItems: "የምከፍለውን ቀይር",
   tapTooth: "ጥርስ ይንኩ", tapHelp: "ምን እንዳለው እና ምን እንደታቀደ ለማየት።", tooth: "ጥርስ", healthy: "ጤናማ። ምንም አልተመዘገበም።",
 };
 export const T: Record<Lang, typeof en> = { en, am };

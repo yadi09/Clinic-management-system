@@ -1,6 +1,6 @@
 // Pay from home, as the patient sees it: choose, pay and type the transaction number, then
 // watch the bank check; and what the clinic's cashier sees for payments that wait.
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Route, Routes } from "react-router-dom";
@@ -24,7 +24,7 @@ const ME: PortalMe = {
 const OPTS: PayOptions = {
   items: [
     { key: "c:1", label: "Braces · monthly payment", amount: "2000.00", payable: true, hint: "Waiting for payment" },
-    { key: "s:2", label: "Root canal · visit 3", amount: "1500.00", payable: true, upcoming: true },
+    { key: "s:2", label: "Root canal · visit 3", amount: "1500.00", payable: true, upcoming: true, date: "2026-10-21" },
     { key: "s:3", label: "Filling · tooth 47", amount: "800.00", payable: false },
   ],
   rails: [{ id: "pmt_1", label: "Telebirr", kind: "wallet", account_name: "Yoya Dental", account_number: "0911223344" }],
@@ -153,5 +153,62 @@ describe("REG-FE-PORTAL-PAY pay from home", () => {
     await userEvent.click(screen.getByRole("button", { name: "አማ" }));
     await userEvent.click(await screen.findByRole("button", { name: "አሁን ይክፈሉ" }));
     expect(screen.getByRole("dialog")).toHaveTextContent("ምን መክፈል ይፈልጋሉ?");
+  });
+
+  test("REG-FE-PORTAL-PAY-010 'Pay what you owe' pays exactly what is owed, straight to paying — no list to tick first", async () => {
+    await toPayments();
+    const owed = (await screen.findByText("Pay what you owe")).closest("div")!;
+    expect(owed).toHaveTextContent("Braces · monthly payment");
+    await userEvent.click(within(owed).getByRole("button", { name: "Pay 2,000 ETB" }));
+    const box = screen.getByRole("dialog");
+    expect(within(box).getByRole("heading", { name: "Pay 2,000 ETB" })).toBeInTheDocument();
+    expect(box).toHaveTextContent("0911223344");
+    await userEvent.type(within(box).getByLabelText("Transaction number"), "CE7K2M9XQ4");
+    await userEvent.click(within(box).getByRole("button", { name: "I have paid" }));
+    await waitFor(() => expect(client.apiFetch).toHaveBeenCalledWith("/portal/yoya/pay", expect.objectContaining({ body: { items: ["c:1"], rail_id: "pmt_1", reference: "CE7K2M9XQ4" } })));
+  });
+
+  test("REG-FE-PORTAL-PAY-011 'Pay your next visit ahead' names the visit and its day and pays only that visit", async () => {
+    await toPayments();
+    const ahead = (await screen.findByText("Pay your next visit ahead")).closest("div")!;
+    expect(ahead).toHaveTextContent("Root canal · visit 3");
+    expect(ahead).toHaveTextContent("Wednesday 21 Oct");
+    await userEvent.click(within(ahead).getByRole("button", { name: "Pay 1,500 ETB" }));
+    const box = screen.getByRole("dialog");
+    await userEvent.type(within(box).getByLabelText("Transaction number"), "CE7K2M9XQ4");
+    await userEvent.click(within(box).getByRole("button", { name: "I have paid" }));
+    await waitFor(() => expect(client.apiFetch).toHaveBeenCalledWith("/portal/yoya/pay", expect.objectContaining({ body: expect.objectContaining({ items: ["s:2"] }) })));
+  });
+
+  test("REG-FE-PORTAL-PAY-012 from a quick payment the patient can still change what they pay: the list opens with only that ticked", async () => {
+    await toPayments();
+    await userEvent.click(within((await screen.findByText("Pay what you owe")).closest("div")!).getByRole("button", { name: "Pay 2,000 ETB" }));
+    await userEvent.click(screen.getByRole("button", { name: "Change what I am paying" }));
+    expect(screen.getByRole("checkbox", { name: /Braces/ })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Root canal/ })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: /Continue · 2,000 ETB/ })).toBeInTheDocument();
+  });
+
+  test("REG-FE-PORTAL-PAY-013 Home offers 'Pay what you owe' (not the visit ahead); with nothing owed there is no such card", async () => {
+    renderUI(<Routes><Route path="/p/:slug" element={<PortalPage />} /></Routes>, { route: "/p/yoya" });
+    await userEvent.type(screen.getByLabelText("Card number"), "MRN-000123");
+    await userEvent.click(screen.getByRole("button", { name: "See my treatment" }));
+    expect(await screen.findByRole("button", { name: "Pay 2,000 ETB" })).toBeInTheDocument();
+    expect(screen.queryByText("Pay your next visit ahead")).not.toBeInTheDocument();
+  });
+
+  test("REG-FE-PORTAL-PAY-014 nothing owed: no owed card, the visit-ahead card still offered; no payment method set up: no quick cards at all", async () => {
+    opts = { ...OPTS, items: OPTS.items.filter((i) => i.key !== "c:1") };
+    await toPayments();
+    expect(await screen.findByText("Pay your next visit ahead")).toBeInTheDocument();
+    expect(screen.queryByText("Pay what you owe")).not.toBeInTheDocument();
+  });
+
+  test("REG-FE-PORTAL-PAY-015 with no way to pay from home there are no quick cards", async () => {
+    opts = { ...OPTS, rails: [] };
+    await toPayments();
+    expect(await screen.findByText(/has not set up a way to pay/)).toBeInTheDocument();
+    expect(screen.queryByText("Pay what you owe")).not.toBeInTheDocument();
+    expect(screen.queryByText("Pay your next visit ahead")).not.toBeInTheDocument();
   });
 });

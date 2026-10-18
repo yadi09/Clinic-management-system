@@ -11,12 +11,17 @@ import type { T, Lang } from "@/features/portal/text";
 type Words = (typeof T)[Lang];
 const money = (s: string | number) => Number(s).toLocaleString("en-US", { maximumFractionDigits: 2 });
 
-export function PayFromHome({ slug, token, opts, t, phone, onClose, onChanged }: {
-  slug: string; token: string; opts: PayOptions; t: Words; phone?: string; onClose: () => void; onChanged: () => void;
+export function PayFromHome({ slug, token, opts, t, phone, preset, onClose, onChanged }: {
+  slug: string; token: string; opts: PayOptions; t: Words; phone?: string;
+  /** A quick payment: these items, already chosen, straight to paying. Absent = choose from the list. */
+  preset?: string[];
+  onClose: () => void; onChanged: () => void;
 }) {
   const payable = opts.items.filter((i) => i.payable);
-  const [step, setStep] = useState<"choose" | "method" | "status">("choose");
-  const [picked, setPicked] = useState<Record<string, boolean>>(() => Object.fromEntries(payable.map((i) => [i.key, true])));
+  const quick = !!preset?.length;
+  const [step, setStep] = useState<"choose" | "method" | "status">(quick ? "method" : "choose");
+  const [picked, setPicked] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(payable.map((i) => [i.key, quick ? preset!.includes(i.key) : true])));
   const [railId, setRailId] = useState(opts.rails[0]?.id ?? "");
   const [ref, setRef] = useState("");
   const [err, setErr] = useState("");
@@ -89,6 +94,7 @@ export function PayFromHome({ slug, token, opts, t, phone, onClose, onChanged }:
         {step === "method" && (
           <>
             <h2 className="m-0 text-[17px] font-bold">{t.payAmount} {money(total)} ETB</h2>
+            <p className="text-[13px] text-[#617085]">{chosen.map((i) => i.label).join(", ")}</p>
             <p className="text-[13px] text-[#617085]">{t.whereFrom}</p>
             {opts.rails.map((r) => (
               <label key={r.id} className={`mt-2.5 flex cursor-pointer items-center gap-2.5 rounded-xl border-[1.5px] p-3 text-sm ${railId === r.id ? "border-[#148F77] bg-[#F0FAF7]" : "border-[#dbe5ee]"}`}>
@@ -108,7 +114,7 @@ export function PayFromHome({ slug, token, opts, t, phone, onClose, onChanged }:
               className="mt-1.5 w-full rounded-xl border-[1.5px] border-[#dbe5ee] p-3 text-base outline-none focus:border-[#148F77]" />
             <p role="alert" className="mt-1.5 min-h-4 text-xs text-[#b4322f]">{err}</p>
             <button type="button" disabled={busy} onClick={() => void submit()} className="mt-1.5 w-full rounded-xl bg-[#148F77] p-3.5 text-[15px] font-bold text-white disabled:opacity-60">{busy ? t.wait : t.iPaid}</button>
-            <button type="button" onClick={() => setStep("choose")} className="mt-2.5 w-full rounded-xl border-[1.5px] border-[#148F77] p-3 font-bold text-[#148F77]">{t.back}</button>
+            <button type="button" onClick={() => setStep("choose")} className="mt-2.5 w-full rounded-xl border-[1.5px] border-[#148F77] p-3 font-bold text-[#148F77]">{quick ? t.changeItems : t.back}</button>
           </>
         )}
 

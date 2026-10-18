@@ -80,9 +80,13 @@ func (s *Service) auth(ctx context.Context, slug, token string) (tid, pid uuid.U
 func payables(ctx context.Context, tx pgx.Tx, tid, pid uuid.UUID, loc *time.Location) ([]portal.PayItem, map[string]stored, error) {
 	var out []portal.PayItem
 	byKey := map[string]stored{}
-	add := func(kind string, id uuid.UUID, label, amount, hint string, payable, upcoming bool) {
+	add := func(kind string, id uuid.UUID, label, amount, hint string, payable, upcoming bool, date ...string) {
 		k := map[string]string{"charge": "c:", "session": "s:"}[kind] + id.String()
-		out = append(out, portal.PayItem{Key: k, Label: label, Amount: amount, Hint: hint, Payable: payable, Upcoming: upcoming})
+		it := portal.PayItem{Key: k, Label: label, Amount: amount, Hint: hint, Payable: payable, Upcoming: upcoming}
+		if len(date) > 0 {
+			it.Date = date[0]
+		}
+		out = append(out, it)
 		if payable {
 			byKey[k] = stored{Kind: kind, ID: id, Label: label, Amount: amount}
 		}
@@ -165,7 +169,7 @@ func payables(ctx context.Context, tx pgx.Tx, tid, pid uuid.UUID, loc *time.Loca
 		if kind == "deposit" {
 			add("session", sid, title+" · down payment", amt, "Owed from the day the treatment was agreed", true, false)
 		} else {
-			add("session", sid, fmt.Sprintf("%s · visit %d", title, seq), amt, "Next visit on "+dayLabel(date)+" — pay ahead", true, true)
+			add("session", sid, fmt.Sprintf("%s · visit %d", title, seq), amt, "Next visit on "+dayLabel(date)+" — pay ahead", true, true, date)
 		}
 	}
 	rows.Close()

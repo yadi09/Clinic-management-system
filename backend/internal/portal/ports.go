@@ -120,6 +120,7 @@ type PayItem struct {
 	Hint     string `json:"hint,omitempty"`
 	Payable  bool   `json:"payable"`
 	Upcoming bool   `json:"upcoming,omitempty"` // the next visit, paid ahead
+	Date     string `json:"date,omitempty"`     // the visit's day (YYYY-MM-DD), for a visit paid ahead
 }
 
 // PayRail is a way the clinic can be paid from a phone: a wallet or bank account.

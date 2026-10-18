@@ -22,6 +22,7 @@ type payItem struct {
 	Amount   string `json:"amount"`
 	Payable  bool   `json:"payable"`
 	Upcoming bool   `json:"upcoming"`
+	Date     string `json:"date"`
 }
 
 type payOpts struct {
@@ -137,7 +138,7 @@ func TestREG_PORTAL_PAY_001_OffByDefaultThenAMenu(t *testing.T) {
 		t.Fatalf("rails = %+v", o.Rails)
 	}
 	next := w.nextVisit(t)
-	if !next.Payable || next.Amount != "1500.00" || !strings.Contains(next.Label, "visit 1") {
+	if !next.Payable || next.Amount != "1500.00" || !strings.Contains(next.Label, "visit 1") || len(next.Date) != 10 {
 		t.Fatalf("next visit = %+v", next)
 	}
 	// Hiding payments hides paying: you cannot pay what you cannot see.

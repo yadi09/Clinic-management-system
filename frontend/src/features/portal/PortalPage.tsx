@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode, type TouchEv
 import { useParams } from "react-router-dom";
 
 import { AppError } from "@/lib/api-client";
-import { portalLogin, portalLogo, portalMe, portalPayOptions, type PayOptions, type PortalMe, type PortalTreatment } from "@/features/portal/api";
+import { portalLogin, portalLogo, portalMe, portalPayOptions, type PayItem, type PayOptions, type PortalMe, type PortalTreatment } from "@/features/portal/api";
 import { PayFromHome } from "@/features/portal/PayFromHome";
 import { PortalTeeth } from "@/features/portal/PortalTeeth";
 import { Short } from "@/features/portal/Short";
@@ -135,7 +135,8 @@ function App({ me, slug, token, lang, setLang, onSignOut, onReload }: { me: Port
   const s = me.settings;
   // What the patient could pay, and what is still waiting. Only when the clinic allows paying.
   const [opts, setOpts] = useState<PayOptions | null>(null);
-  const [paying, setPaying] = useState(false);
+  // null = closed; [] = choose from the list; keys = a quick payment of exactly these.
+  const [paying, setPaying] = useState<string[] | null>(null);
   const loadOpts = useCallback(() => {
     if (!s.allow_pay || !s.show_money) return;
     portalPayOptions(slug, token).then(setOpts).catch(() => setOpts(null));
@@ -185,14 +186,14 @@ function App({ me, slug, token, lang, setLang, onSignOut, onReload }: { me: Port
       </div>
       <main className="flex-1" onTouchStart={onStart} onTouchEnd={onEnd}>
         <section role="tabpanel" aria-label={active.label} className="mx-auto w-full max-w-6xl px-4 pb-10 pt-5 md:px-6 md:pt-7">
-          {active.k === "home" && <Home me={me} t={t} />}
+          {active.k === "home" && <Home me={me} t={t} opts={opts} onPay={setPaying} />}
           {active.k === "treat" && <Treatment me={me} t={t} />}
-          {active.k === "pay" && <Payments me={me} t={t} opts={opts} onPay={() => setPaying(true)} />}
+          {active.k === "pay" && <Payments me={me} t={t} opts={opts} onPay={setPaying} />}
           {active.k === "teeth" && <PortalTeeth me={me} t={t} />}
         </section>
       </main>
       <div className="border-t border-[#dbe5ee] bg-white p-1.5 text-center text-[11px] text-[#617085] md:hidden">{t.swipe}</div>
-      {paying && opts && <PayFromHome slug={slug} token={token} opts={opts} t={t} phone={me.clinic.phone} onClose={() => { setPaying(false); changed(); }} onChanged={changed} />}
+      {paying && opts && <PayFromHome slug={slug} token={token} opts={opts} t={t} phone={me.clinic.phone} preset={paying} onClose={() => { setPaying(null); changed(); }} onChanged={changed} />}
     </>
   );
 }
@@ -210,16 +211,52 @@ function Bar({ pct }: { pct: number }) {
 const owedNow = (m: NonNullable<PortalMe["money"]>) => Number(m.to_pay) + Number(m.unbilled ?? 0);
 /** What is left on the treatment courses still running, visits to come included. */
 const leftOn = (me: PortalMe) => me.treatments.filter((x) => x.status !== "completed").reduce((s, x) => s + Math.max(0, Number(x.planned ?? 0) - Number(x.collected ?? 0)), 0);
+/** What the patient can pay right now, grouped the way patients think about it: what they
+ *  owe (bills waiting, treatment had and not paid, down payments) and the next visit ahead. */
+function quickPay(opts: PayOptions | null) {
+  if (!opts || !opts.rails.length) return { owed: [] as PayItem[], ahead: [] as PayItem[] };
+  const ok = opts.items.filter((i) => i.payable);
+  return { owed: ok.filter((i) => !i.upcoming), ahead: ok.filter((i) => i.upcoming) };
+}
+const sum = (items: PayItem[]) => items.reduce((s, i) => s + Number(i.amount), 0);
+
+/** The two payments most patients make, one tap each. */
+function QuickPay({ opts, t, onPay, owedOnly }: { opts: PayOptions | null; t: (typeof T)[Lang]; onPay: (keys: string[]) => void; owedOnly?: boolean }) {
+  const { owed, ahead } = quickPay(opts);
+  if (!owed.length && (owedOnly || !ahead.length)) return null;
+  return (
+    <>
+      {owed.length > 0 && (
+        <div className="rounded-2xl border-2 border-[#A32D2D]/25 bg-white p-4 shadow-sm md:p-5">
+          <h3 className="mb-1 text-[15px] font-bold">{t.quickOwed}</h3>
+          <p className="text-[13px] text-[#617085]">{t.quickOwedSub} {owed.map((i) => i.label).join(", ")}</p>
+          <button type="button" onClick={() => onPay(owed.map((i) => i.key))}
+            className="mt-3 w-full rounded-xl bg-[#A32D2D] p-3.5 text-[15px] font-bold text-white">{t.payAmountBtn.replace("{n}", money(String(sum(owed))))}</button>
+        </div>
+      )}
+      {!owedOnly && ahead.map((i) => (
+        <div key={i.key} className="rounded-2xl bg-white p-4 shadow-sm md:p-5">
+          <h3 className="mb-1 text-[15px] font-bold">{t.quickAhead}</h3>
+          <p className="text-[13px] text-[#617085]">{i.label} · {t.quickAheadSub.replace("{d}", i.date ? day(i.date, { weekday: "long", day: "numeric", month: "short" }) : "")}</p>
+          <button type="button" onClick={() => onPay([i.key])}
+            className="mt-3 w-full rounded-xl bg-[#148F77] p-3.5 text-[15px] font-bold text-white">{t.payAmountBtn.replace("{n}", money(i.amount))}</button>
+        </div>
+      ))}
+    </>
+  );
+}
+
 const current = (me: PortalMe) => me.treatments.find((x) => x.status === "active") ?? me.treatments[0];
 const pct = (x: PortalTreatment) => (x.of ? (x.done / x.of) * 100 : 0);
 
-function Home({ me, t }: { me: PortalMe; t: (typeof T)[Lang] }) {
+function Home({ me, t, opts, onPay }: { me: PortalMe; t: (typeof T)[Lang]; opts: PayOptions | null; onPay: (keys: string[]) => void }) {
   const cur = current(me), m = me.money;
   return (
     <>
       <h2 className="m-0 text-[22px] font-extrabold md:text-[28px]">{t.hello} {me.first_name}</h2>
       <p className="mb-5 mt-1 text-[13px] text-[#617085] md:text-[15px]">{t.homesub}</p>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {me.settings.allow_pay && <QuickPay opts={opts} t={t} onPay={onPay} owedOnly />}
       {me.next && (
         <Card title={t.next}>
           <div className="flex items-center gap-3">
@@ -279,7 +316,7 @@ function Treatment({ me, t }: { me: PortalMe; t: (typeof T)[Lang] }) {
   );
 }
 
-function Payments({ me, t, opts, onPay }: { me: PortalMe; t: (typeof T)[Lang]; opts: PayOptions | null; onPay: () => void }) {
+function Payments({ me, t, opts, onPay }: { me: PortalMe; t: (typeof T)[Lang]; opts: PayOptions | null; onPay: (keys: string[]) => void }) {
   const m = me.money!;
   const canPay = !!opts && opts.items.some((i) => i.payable) && opts.rails.length > 0;
   const tile = (bg: string, label: string, v: string, c?: string) => (
@@ -287,10 +324,11 @@ function Payments({ me, t, opts, onPay }: { me: PortalMe; t: (typeof T)[Lang]; o
   );
   return (
     <div className="grid items-start gap-4 lg:grid-cols-2">
+      {me.settings.allow_pay && <QuickPay opts={opts} t={t} onPay={onPay} />}
       {me.settings.allow_pay && opts && (
-        <Card title={t.payHome}>
+        <Card title={quickPay(opts).owed.length || quickPay(opts).ahead.length ? t.chooseOther : t.payHome}>
           <p className="text-[13.5px] text-[#617085]">{!opts.rails.length ? t.payNoRail : !opts.items.some((i) => i.payable) ? t.payNothing : t.payHomeSub}</p>
-          <button type="button" disabled={!canPay} onClick={onPay} className="mt-3 w-full rounded-xl bg-[#148F77] p-3.5 text-[15px] font-bold text-white disabled:opacity-50">{t.payNow}</button>
+          <button type="button" disabled={!canPay} onClick={() => onPay([])} className="mt-3 w-full rounded-xl border-[1.5px] border-[#148F77] bg-white p-3 text-[15px] font-bold text-[#148F77] disabled:opacity-50">{t.payNow}</button>
         </Card>
       )}
       {!!opts?.open.length && (
