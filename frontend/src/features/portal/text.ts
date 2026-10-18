@@ -24,6 +24,12 @@ const en = {
   msgPaid: "Payment confirmed", msgPaidBody: "Your receipt is saved and the clinic can see it.", receipt: "Receipt", doneBtn: "Done",
   msgRefused: "We could not find this payment yet.", msgRefusedBody: "Check the number and try again. If you are sure, show the SMS at the clinic.", again: "Check the number again", callClinic: "Call the clinic",
   waiting: "Waiting for confirmation", nextAhead: "Next visit — pay ahead", notBilled: "Done, not billed yet — the clinic will send the bill", ok: "OK",
+  lookNow: "My mouth today", lookPlanned: "Planned", lookDone: "Done so far",
+  lookNowHelp: "Everything that is in your mouth today.", lookPlannedHelp: "Treatment your dentist has planned for you.", lookDoneHelp: "Work the clinic has already finished.",
+  emptyNow: "Nothing is recorded in your mouth yet.", emptyPlanned: "Nothing is planned right now.", emptyDone: "No work has been finished yet.",
+  vFront: "Closed", vOpen: "Open mouth", vUpper: "Upper teeth", vLower: "Lower teeth", vSide: "Side", recenter: "Re-centre", roots: "Show roots", numbers: "Numbers",
+  rotateHint: "Drag to turn · scroll or pinch to zoom · tap a tooth to select it.", inThisView: "In this view", selectedTooth: "Selected tooth", nothingOnTooth: "Nothing here in this view.",
+  badgePlanned: "Planned", badgeNow: "In your mouth", badgeDone: "Done", loading3d: "Loading the 3D model…",
   tapTooth: "Tap a tooth", tapHelp: "to see what it has and what is planned.", tooth: "Tooth", healthy: "Healthy. Nothing recorded.",
 };
 const am: typeof en = {
@@ -49,6 +55,12 @@ const am: typeof en = {
   msgPaid: "ክፍያው ተረጋግጧል", msgPaidBody: "ደረሰኝዎ ተቀምጧል፤ ክሊኒኩም ያየዋል።", receipt: "ደረሰኝ", doneBtn: "ጨርሰዋል",
   msgRefused: "ይህን ክፍያ እስካሁን አላገኘነውም።", msgRefusedBody: "ቁጥሩን አረጋግጠው እንደገና ይሞክሩ። እርግጠኛ ከሆኑ SMSውን ክሊኒኩ ላይ ያሳዩ።", again: "ቁጥሩን እንደገና ያረጋግጡ", callClinic: "ክሊኒኩን ደውል",
   waiting: "ማረጋገጫ በመጠበቅ ላይ", nextAhead: "የሚቀጥለው ጉብኝት — አስቀድመው ይክፈሉ", notBilled: "ተሠርቷል፣ ገና አልተጠየቀም — ክሊኒኩ ደረሰኝ ይልካል", ok: "እሺ",
+  lookNow: "የአሁኑ አፌ", lookPlanned: "የታቀደ", lookDone: "እስካሁን የተሠራ",
+  lookNowHelp: "ዛሬ በአፍዎ ውስጥ ያለው ሁሉ።", lookPlannedHelp: "ሐኪምዎ ያቀደልዎ ህክምና።", lookDoneHelp: "ክሊኒኩ ያጠናቀቀው ሥራ።",
+  emptyNow: "በአፍዎ ውስጥ እስካሁን የተመዘገበ ነገር የለም።", emptyPlanned: "አሁን የታቀደ ነገር የለም።", emptyDone: "እስካሁን የተጠናቀቀ ሥራ የለም።",
+  vFront: "የተዘጋ", vOpen: "የተከፈተ አፍ", vUpper: "የላይኛው ጥርሶች", vLower: "የታችኛው ጥርሶች", vSide: "ጎን", recenter: "መሃል አድርግ", roots: "ሥሮችን አሳይ", numbers: "ቁጥሮች",
+  rotateHint: "ለማዞር ይጎትቱ · ለማጉላት ያሸብልሉ ወይም ይቆንጥጡ · ጥርስ ለመምረጥ ይንኩ።", inThisView: "በዚህ እይታ", selectedTooth: "የተመረጠ ጥርስ", nothingOnTooth: "በዚህ እይታ እዚህ ምንም የለም።",
+  badgePlanned: "የታቀደ", badgeNow: "በአፍዎ ውስጥ", badgeDone: "ተሠርቷል", loading3d: "3D ሞዴሉ እየመጣ ነው…",
   tapTooth: "ጥርስ ይንኩ", tapHelp: "ምን እንዳለው እና ምን እንደታቀደ ለማየት።", tooth: "ጥርስ", healthy: "ጤናማ። ምንም አልተመዘገበም።",
 };
 export const T: Record<Lang, typeof en> = { en, am };

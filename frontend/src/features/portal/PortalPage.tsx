@@ -4,19 +4,15 @@
 // Built for a phone held in one hand. Sections sit side by side and slide (swipe, or
 // tap a tab); English and Amharic are one switch, never both at once. Everything here
 // is read-only — the server only ever returns this one patient's record.
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode, type TouchEvent } from "react";
 import { useParams } from "react-router-dom";
 
 import { AppError } from "@/lib/api-client";
-import { lazyWithReload } from "@/app/chunkRecovery";
-import { AnatomicalChart } from "@/features/dental/anatomical/AnatomicalChart";
-import { toothName } from "@/features/dental/anatomical/geometry";
-import { fromItems, items, SL } from "@/features/dental/anatomical/model";
 import { portalLogin, portalLogo, portalMe, portalPayOptions, type PayOptions, type PortalMe, type PortalTreatment } from "@/features/portal/api";
 import { PayFromHome } from "@/features/portal/PayFromHome";
+import { PortalTeeth } from "@/features/portal/PortalTeeth";
 import { T, type Lang } from "@/features/portal/text";
 
-const Dental3D = lazyWithReload(() => import("@/features/dental/anatomical/three/Dental3D"));
 
 // The chart paints with the app's tokens; pin them to the light values so a patient's
 // phone in dark mode still reads like the clinic's page.
@@ -57,9 +53,9 @@ export function PortalPage() {
   const signedIn = (tok: string) => { store.set(KEY(slug), tok); setToken(tok); };
 
   return (
-    <div lang={lang} style={LIGHT} className="min-h-dvh bg-[#e8eef4] text-[#1f2a37]">
+    <div lang={lang} style={LIGHT} className="min-h-dvh bg-[#F2F7FB] text-[#1f2a37]">
       <meta name="robots" content="noindex" />
-      <div className="mx-auto flex h-dvh max-w-[430px] flex-col overflow-hidden bg-[#F2F7FB] sm:my-4 sm:h-[calc(100dvh-2rem)] sm:rounded-[28px] sm:shadow-2xl">
+      <div className="flex min-h-dvh flex-col">
         {!token || (!me && !gone) ? (
           <Login slug={slug} lang={lang} setLang={setLang} onDone={signedIn} loading={!!token} />
         ) : gone || !me ? (
@@ -108,21 +104,23 @@ function Login({ slug, lang, setLang, onDone, loading }: { slug: string; lang: L
     catch (e) { setErr(e instanceof AppError && e.status === 429 ? t.slow : e instanceof AppError && e.code === "PORTAL_OFF" ? t.notOpen : e instanceof AppError && e.status === 401 ? t.noCard : t.offline); setBusy(false); }
   };
   return (
-    <div className="flex flex-1 flex-col gap-3.5 px-6 pb-6 pt-4" style={{ background: "linear-gradient(180deg,#1F4E79 0,#1F4E79 250px,#F2F7FB 250px)" }}>
-      <div className="flex justify-end"><LangSwitch lang={lang} setLang={setLang} /></div>
-      <div className="mb-1.5 mt-6 text-center text-white">
-        <div className="mx-auto mb-2.5 w-fit"><Logo slug={slug} name={slug} has size={62} /></div>
-        <h1 className="m-0 text-xl font-bold capitalize !text-white">{slug.replace(/-/g, " ")}</h1>
-        <p className="mt-1 text-[13px] opacity-85">{t.welcome}</p>
+    <div className="flex flex-1 flex-col" style={{ background: "linear-gradient(180deg,#1F4E79 0,#1F4E79 300px,#F2F7FB 300px)" }}>
+      <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-3.5 px-6 pb-8 pt-4">
+        <div className="flex justify-end"><LangSwitch lang={lang} setLang={setLang} /></div>
+        <div className="mb-1.5 mt-8 text-center text-white">
+          <div className="mx-auto mb-3 w-fit"><Logo slug={slug} name={slug} has size={72} /></div>
+          <h1 className="m-0 text-2xl font-bold capitalize !text-white">{slug.replace(/-/g, " ")}</h1>
+          <p className="mt-1 text-sm opacity-85">{t.welcome}</p>
+        </div>
+        <form className="rounded-[18px] bg-white p-6 shadow-lg" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+          <label htmlFor="card" className="mb-1.5 block text-xs text-[#617085]">{t.cardno}</label>
+          <input id="card" value={card} onChange={(e) => setCard(e.target.value)} autoComplete="off" autoCapitalize="characters" inputMode="text"
+            placeholder="P000123" className="w-full rounded-xl border-[1.5px] border-[#dbe5ee] p-3 text-lg tracking-wide outline-none focus:border-[#148F77]" />
+          <p role="alert" className="mt-2 min-h-4 text-xs text-[#b4322f]">{err}</p>
+          <button type="submit" disabled={busy || loading} className="mt-3 w-full rounded-xl bg-[#148F77] p-3.5 text-[15px] font-bold text-white disabled:opacity-60">{busy || loading ? t.wait : t.see}</button>
+        </form>
+        <p className="text-center text-xs text-[#617085]">{t.findcard}</p>
       </div>
-      <form className="rounded-[18px] bg-white p-5 shadow-lg" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
-        <label htmlFor="card" className="mb-1.5 block text-xs text-[#617085]">{t.cardno}</label>
-        <input id="card" value={card} onChange={(e) => setCard(e.target.value)} autoComplete="off" autoCapitalize="characters" inputMode="text"
-          placeholder="P000123" className="w-full rounded-xl border-[1.5px] border-[#dbe5ee] p-3 text-lg tracking-wide outline-none focus:border-[#148F77]" />
-        <p role="alert" className="mt-2 min-h-4 text-xs text-[#b4322f]">{err}</p>
-        <button type="submit" disabled={busy || loading} className="mt-3 w-full rounded-xl bg-[#148F77] p-3.5 text-[15px] font-bold text-white disabled:opacity-60">{busy || loading ? t.wait : t.see}</button>
-      </form>
-      <p className="text-center text-xs text-[#617085]">{t.findcard}</p>
     </div>
   );
 }
@@ -148,43 +146,53 @@ function App({ me, slug, token, lang, setLang, onSignOut, onReload }: { me: Port
     ...(s.show_money ? [{ k: "pay" as Tab, label: t.pay }] : []),
     ...(s.show_teeth && me.chart ? [{ k: "teeth" as Tab, label: t.teeth }] : []),
   ], [t, s.show_money, s.show_teeth, me.chart]);
-  const pager = useRef<HTMLDivElement>(null);
   const [idx, setIdx] = useState(0);
-  const go = (i: number) => { const el = pager.current; if (el) el.scrollTo?.({ left: el.clientWidth * i, behavior: "smooth" }); setIdx(i); };
-  const onScroll = () => { const el = pager.current; if (el && el.clientWidth) setIdx(Math.round(el.scrollLeft / el.clientWidth)); };
+  const go = (i: number) => setIdx(Math.max(0, Math.min(tabs.length - 1, i)));
+  // On a phone the sections also slide: swipe left or right to move between them.
+  const [touch, setTouch] = useState<{ x: number; y: number } | null>(null);
+  const onStart = (e: TouchEvent) => setTouch({ x: e.touches[0]!.clientX, y: e.touches[0]!.clientY });
+  const onEnd = (e: TouchEvent) => {
+    if (!touch) return;
+    const dx = e.changedTouches[0]!.clientX - touch.x, dy = e.changedTouches[0]!.clientY - touch.y;
+    if (Math.abs(dx) > 70 && Math.abs(dy) < 45) go(idx + (dx < 0 ? 1 : -1));
+    setTouch(null);
+  };
+  const active = tabs[Math.min(idx, tabs.length - 1)]!;
 
   return (
     <>
-      <header className="flex items-center gap-2.5 bg-[#1F4E79] px-4 pb-3 pt-3.5 text-white">
-        <Logo slug={me.clinic.slug} name={me.clinic.name} has={me.clinic.has_logo} />
-        <div className="min-w-0"><div className="truncate text-[15px] font-bold leading-tight !text-white">{me.clinic.name}</div><div className="text-[11px] opacity-75">{t.portal}</div></div>
-        <div className="ml-auto flex items-center gap-2"><LangSwitch lang={lang} setLang={setLang} />
-          <button type="button" onClick={onSignOut} className="text-[11px] underline opacity-80">{t.out}</button></div>
+      <header className="bg-[#1F4E79] text-white">
+        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 pb-3 pt-3.5 md:px-6 md:py-4">
+          <Logo slug={me.clinic.slug} name={me.clinic.name} has={me.clinic.has_logo} size={44} />
+          <div className="min-w-0"><div className="truncate text-base font-bold leading-tight !text-white md:text-lg">{me.clinic.name}</div><div className="text-[11px] opacity-75 md:text-xs">{t.portal}</div></div>
+          <div className="ml-auto flex shrink-0 items-center gap-2.5 md:gap-3"><LangSwitch lang={lang} setLang={setLang} />
+            <button type="button" onClick={onSignOut} className="whitespace-nowrap text-[12px] underline opacity-80">{t.out}</button></div>
+        </div>
       </header>
-      <div role="tablist" className="flex border-b border-[#dbe5ee] bg-white">
-        {tabs.map((x, i) => (
-          <button key={x.k} role="tab" type="button" aria-selected={idx === i} onClick={() => go(i)}
-            className={`flex-1 border-b-[3px] px-0.5 pb-2 pt-2.5 text-[13px] ${idx === i ? "border-[#148F77] font-bold text-[#1F4E79]" : "border-transparent text-[#617085]"}`}>{x.label}</button>
-        ))}
+      <div role="tablist" className="sticky top-0 z-10 border-b border-[#dbe5ee] bg-white">
+        <div className="mx-auto flex max-w-6xl px-2 md:px-6">
+          {tabs.map((x, i) => (
+            <button key={x.k} role="tab" type="button" aria-selected={active.k === x.k} onClick={() => go(i)}
+              className={`flex-1 border-b-[3px] px-1 pb-2.5 pt-3 text-[13px] md:flex-none md:px-6 md:text-[15px] ${active.k === x.k ? "border-[#148F77] font-bold text-[#1F4E79]" : "border-transparent text-[#617085] hover:text-[#1F4E79]"}`}>{x.label}</button>
+          ))}
+        </div>
       </div>
-      <div ref={pager} onScroll={onScroll} className="flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto [scrollbar-width:none]">
-        {tabs.map((x) => (
-          <section key={x.k} role="tabpanel" aria-label={x.label} className="w-full shrink-0 snap-start overflow-y-auto px-3.5 pb-7 pt-3.5">
-            {x.k === "home" && <Home me={me} t={t} />}
-            {x.k === "treat" && <Treatment me={me} t={t} />}
-            {x.k === "pay" && <Payments me={me} t={t} opts={opts} onPay={() => setPaying(true)} />}
-            {x.k === "teeth" && <Teeth me={me} t={t} />}
-          </section>
-        ))}
-      </div>
-      <div className="border-t border-[#dbe5ee] bg-white p-1.5 text-center text-[11px] text-[#617085]">{t.swipe}</div>
+      <main className="flex-1" onTouchStart={onStart} onTouchEnd={onEnd}>
+        <section role="tabpanel" aria-label={active.label} className="mx-auto w-full max-w-6xl px-4 pb-10 pt-5 md:px-6 md:pt-7">
+          {active.k === "home" && <Home me={me} t={t} />}
+          {active.k === "treat" && <Treatment me={me} t={t} />}
+          {active.k === "pay" && <Payments me={me} t={t} opts={opts} onPay={() => setPaying(true)} />}
+          {active.k === "teeth" && <PortalTeeth me={me} t={t} />}
+        </section>
+      </main>
+      <div className="border-t border-[#dbe5ee] bg-white p-1.5 text-center text-[11px] text-[#617085] md:hidden">{t.swipe}</div>
       {paying && opts && <PayFromHome slug={slug} token={token} opts={opts} t={t} phone={me.clinic.phone} onClose={() => { setPaying(false); changed(); }} onChanged={changed} />}
     </>
   );
 }
 
 function Card({ title, children }: { title?: string; children: ReactNode }) {
-  return <div className="mb-3 rounded-2xl bg-white p-3.5 shadow-sm">{title && <h3 className="mb-2 text-[12.5px] font-semibold text-[#617085]">{title}</h3>}{children}</div>;
+  return <div className="rounded-2xl bg-white p-4 shadow-sm md:p-5">{title && <h3 className="mb-2.5 text-[12.5px] font-semibold text-[#617085] md:text-[13px]">{title}</h3>}{children}</div>;
 }
 
 function Bar({ pct }: { pct: number }) {
@@ -198,8 +206,9 @@ function Home({ me, t }: { me: PortalMe; t: (typeof T)[Lang] }) {
   const cur = current(me), m = me.money;
   return (
     <>
-      <h2 className="mx-0.5 mb-0.5 mt-1 text-[21px] font-extrabold">{t.hello} {me.first_name}</h2>
-      <p className="mx-0.5 mb-3 text-[13px] text-[#617085]">{t.homesub}</p>
+      <h2 className="m-0 text-[22px] font-extrabold md:text-[28px]">{t.hello} {me.first_name}</h2>
+      <p className="mb-5 mt-1 text-[13px] text-[#617085] md:text-[15px]">{t.homesub}</p>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       {me.next && (
         <Card title={t.next}>
           <div className="flex items-center gap-3">
@@ -226,7 +235,8 @@ function Home({ me, t }: { me: PortalMe; t: (typeof T)[Lang] }) {
         </Card>
       )}
       {me.settings.welcome_note && <Card title={t.fromClinic}><p className="text-sm">{me.settings.welcome_note}</p></Card>}
-      <p className="text-center text-xs text-[#617085]">{me.clinic.name}{me.clinic.phone ? ` · ${me.clinic.phone}` : ""}</p>
+      </div>
+      <p className="mt-6 text-center text-xs text-[#617085]">{me.clinic.name}{me.clinic.phone ? ` · ${me.clinic.phone}` : ""}</p>
     </>
   );
 }
@@ -238,7 +248,7 @@ function Row({ a, b, bad }: { a: ReactNode; b: ReactNode; bad?: boolean }) {
 function Treatment({ me, t }: { me: PortalMe; t: (typeof T)[Lang] }) {
   if (!me.treatments.length) return <Card><p className="text-sm text-[#617085]">{t.noTreat}</p></Card>;
   return (
-    <>
+    <div className="grid items-start gap-4 lg:grid-cols-2">
       {me.treatments.map((x, i) => (
         <Card key={`${x.title}-${i}`}>
           <div className="flex items-center justify-between"><b>{x.title}{x.tooth ? ` · ${x.tooth}` : ""}</b>
@@ -254,7 +264,7 @@ function Treatment({ me, t }: { me: PortalMe; t: (typeof T)[Lang] }) {
           </ul>
         </Card>
       ))}
-    </>
+    </div>
   );
 }
 
@@ -265,7 +275,7 @@ function Payments({ me, t, opts, onPay }: { me: PortalMe; t: (typeof T)[Lang]; o
     <div className="rounded-2xl p-3" style={{ background: bg }}><small className="block text-[11px] text-[#617085]">{label}</small><b className="text-xl" style={c ? { color: c } : undefined}>{money(v)}</b><small className="block text-[11px] text-[#617085]">ETB</small></div>
   );
   return (
-    <>
+    <div className="grid items-start gap-4 lg:grid-cols-2">
       {me.settings.allow_pay && opts && (
         <Card title={t.payHome}>
           <p className="text-[13.5px] text-[#617085]">{!opts.rails.length ? t.payNoRail : !opts.items.some((i) => i.payable) ? t.payNothing : t.payHomeSub}</p>
@@ -301,46 +311,6 @@ function Payments({ me, t, opts, onPay }: { me: PortalMe; t: (typeof T)[Lang]; o
           <div className="text-[13.5px]">{x.title}: {money(x.planned)} ETB · {x.of} {t.visits}<Bar pct={Number(x.planned) ? (Number(x.collected) / Number(x.planned)) * 100 : 0} />{t.paid} {money(x.collected)}</div>
         </Card>
       ))}
-    </>
-  );
-}
-
-function Teeth({ me, t }: { me: PortalMe; t: (typeof T)[Lang] }) {
-  const state = useMemo(() => fromItems(me.chart?.items), [me.chart]);
-  const positions = me.chart?.positions ?? {};
-  const [mode, setMode] = useState<"2d" | "3d">("2d");
-  const [n, setN] = useState(0);
-  const child = (me.chart?.items ?? []).some((i) => i.tooth >= 50) && !(me.chart?.items ?? []).some((i) => i.tooth < 50);
-  const lines = n ? items(state, n, me.today) : [];
-  return (
-    <>
-      {me.settings.show_3d && (
-        <div role="group" className="mb-2.5 inline-flex overflow-hidden rounded-xl border border-[#dbe5ee] bg-white text-sm">
-          {(["2d", "3d"] as const).map((k) => (
-            <button key={k} type="button" aria-pressed={mode === k} onClick={() => setMode(k)} className={`px-4 py-2 ${mode === k ? "bg-[#E6F1FB] font-bold text-[#1F4E79]" : "text-[#617085]"}`}>{k === "2d" ? t.chart2d : t.chart3d}</button>
-          ))}
-        </div>
-      )}
-      <div className="rounded-2xl bg-[#F2F7FB] p-1.5 ring-1 ring-[#dbe5ee]">
-        {mode === "2d" || !me.settings.show_3d ? (
-          <div className="ta-chart-scroll"><AnatomicalChart dentition={child ? "child" : "adult"} state={state} positions={positions} today={me.today} selected={n} onSelect={setN} /></div>
-        ) : (
-          <Suspense fallback={<p className="p-6 text-center text-sm text-[#617085]">{t.wait}</p>}>
-            <Dental3D state={state} positions={positions} sel={n} today={me.today} mode={child ? "child" : "adult"} xray={false} nums view="front" onSelect={setN} onCustomView={() => undefined} height="340px" />
-          </Suspense>
-        )}
-      </div>
-      <div className="mt-2.5 flex flex-wrap gap-3 text-xs text-[#617085]">
-        <span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[#8a9bab]" />{t.inMouth}</span>
-        <span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[#E24B4A]" />{t.planned}</span>
-        <span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[#3B6D11]" />{t.doneRecently}</span>
-      </div>
-      <div className="mt-3 rounded-xl border-l-4 border-[#148F77] bg-white p-3 text-[13px]" aria-live="polite">
-        {n === 0 ? <><b className="block">{t.tapTooth}</b>{t.tapHelp}</> : (
-          <><b className="block">{t.tooth} {n} · {toothName(n)}</b>
-            {lines.length ? lines.map((l) => <div key={l.key}>{l.t} — {SL[l.s]}</div>) : t.healthy}</>
-        )}
-      </div>
-    </>
+    </div>
   );
 }

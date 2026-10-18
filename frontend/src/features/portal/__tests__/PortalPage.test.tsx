@@ -123,18 +123,19 @@ describe("REG-FE-PORTAL the patient's page", () => {
     expect(screen.queryByText("Your payments")).not.toBeInTheDocument();
   });
 
-  test("REG-FE-PORTAL-007 My teeth: tapping a tooth says what it has in words; the 3D view opens on request and can be hidden", async () => {
+  test("REG-FE-PORTAL-007 My teeth opens on today's mouth; the Planned view shows planned work and tapping a tooth says what it has in words", async () => {
     serve(ME());
     await signIn();
     await userEvent.click(screen.getByRole("tab", { name: "My teeth" }));
     expect(screen.getByText("Tap a tooth")).toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole("button", { name: /36/ })[0]!);
-    expect(await screen.findByText(/root canal — to be done/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /3D/ }));
-    expect(await screen.findByTestId("stage3d")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /^Planned \(1\)/ }));
+    fireEvent.click(screen.getAllByRole("button", { name: /Tooth 36/ })[0]!);
+    const card = (await screen.findByText(/Tooth 36 · /)).closest("div")!;
+    expect(card).toHaveTextContent("root canal");
+    expect(card).toHaveTextContent("Planned");
   });
 
-  test("REG-FE-PORTAL-008 without the 3D switch there is no 3D button", async () => {
+  test("REG-FE-PORTAL-008 without the 3D switch there is no 2D/3D choice", async () => {
     serve(ME({}, { show_3d: false }));
     await signIn();
     await userEvent.click(screen.getByRole("tab", { name: "My teeth" }));

@@ -783,6 +783,7 @@ test("REG-E2E-031 braces: whole upper arch in metal, a planned ceramic set on th
 });
 
 test("REG-E2E-032 a patient signs in with the card number and sees their own treatment, money and teeth", async ({ page }) => {
+  test.setTimeout(150_000); // the 3D scene is drawn in software in a headless browser: each click takes seconds
   const p = await newPatient("Meron");
   const owner = await apiAs("owner");
   await owner("PUT", "/portal-settings", { enabled: true, show_money: true, show_unbilled: true, show_teeth: true, show_3d: true, welcome_note: "Brush gently." });
@@ -799,8 +800,19 @@ test("REG-E2E-032 a patient signs in with the card number and sees their own tre
   await expect(page.getByText("Brush gently.")).toBeVisible();
 
   await page.getByRole("tab", { name: "My teeth" }).click();
+  // Today's mouth does not show planned work; the Planned view does, and only that.
+  await expect(page.getByRole("button", { name: /^Planned \(1\)/ })).toBeVisible();
+  await page.getByRole("button", { name: /^Planned/ }).click();
   await page.getByRole("button", { name: /^Tooth 36/ }).first().click({ force: true });
-  await expect(page.getByText(/root canal — to be done/)).toBeVisible();
+  await expect(page.getByText(/Tooth 36 · /)).toBeVisible();
+  await expect(page.getByText("root canal").first()).toBeVisible();
+  // The 3D model opens, and its controls turn it (every view button is covered by the unit tests).
+  await page.getByRole("button", { name: /3D/ }).click();
+  await expect(page.locator("canvas").first()).toBeVisible();
+  await page.getByRole("button", { name: "Open mouth" }).click();
+  await expect(page.getByRole("button", { name: "Open mouth" })).toHaveAttribute("aria-pressed", "true");
+  // Back to the flat chart: the 3D scene is released (a software-rendered scene keeps the page busy).
+  await page.getByRole("button", { name: "2D", exact: true }).click();
 
   await page.getByRole("button", { name: "አማ" }).first().click();
   await expect(page.getByRole("tab", { name: "ጥርሶቼ" })).toBeVisible();

@@ -65,8 +65,8 @@ export function PayFromHome({ slug, token, opts, t, phone, onClose, onChanged }:
   const LOOK = { done: "bg-[#3B6D11] text-white", active: "bg-[#148F77] text-white", bad: "bg-[#A32D2D] text-white", idle: "bg-[#e6eef5] text-[#617085]" };
 
   return (
-    <div className="absolute inset-0 z-20 flex items-end bg-[#0f2437]/50" role="dialog" aria-modal="true" aria-label={t.payHome}>
-      <div className="max-h-[92%] w-full overflow-y-auto rounded-t-[22px] bg-white p-4 pb-6">
+    <div className="fixed inset-0 z-30 flex items-end bg-[#0f2437]/50 md:items-center md:justify-center" role="dialog" aria-modal="true" aria-label={t.payHome}>
+      <div className="max-h-[92dvh] w-full overflow-y-auto rounded-t-[22px] bg-white p-4 pb-6 md:max-w-md md:rounded-[22px] md:p-6">
         <button type="button" aria-label={t.close} onClick={onClose} className="float-right grid h-8 w-8 place-items-center rounded-full bg-[#F2F7FB] text-base">✕</button>
 
         {step === "choose" && (
