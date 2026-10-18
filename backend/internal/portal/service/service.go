@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/reicb/clinicsaas/internal/billing"
 	"github.com/reicb/clinicsaas/internal/dental"
 	"github.com/reicb/clinicsaas/internal/kernel/apperr"
 	kerneldb "github.com/reicb/clinicsaas/internal/kernel/db"
@@ -37,16 +38,17 @@ var (
 
 // Service implements portal.Service.
 type Service struct {
-	db     *kerneldb.DB
-	dental dental.Service
-	secret []byte
-	now    func() time.Time
+	db      *kerneldb.DB
+	dental  dental.Service
+	billing billing.Service
+	secret  []byte
+	now     func() time.Time
 }
 
 var _ portal.Service = (*Service)(nil)
 
-func New(db *kerneldb.DB, d dental.Service, secret []byte) *Service {
-	return &Service{db: db, dental: d, secret: secret, now: time.Now}
+func New(db *kerneldb.DB, d dental.Service, b billing.Service, secret []byte) *Service {
+	return &Service{db: db, dental: d, billing: b, secret: secret, now: time.Now}
 }
 
 // --- the token ----------------------------------------------------------------------
@@ -109,9 +111,9 @@ func (s *Service) tenantBySlug(ctx context.Context, slug string) (uuid.UUID, err
 func loadSettings(ctx context.Context, tx pgx.Tx, tid uuid.UUID) (portal.Settings, error) {
 	st := portal.Settings{ShowMoney: true, ShowUnbilled: true, ShowTeeth: true, Show3D: true}
 	err := tx.QueryRow(ctx,
-		`SELECT enabled, show_money, show_unbilled, show_teeth, show_3d, welcome_note
+		`SELECT enabled, show_money, show_unbilled, show_teeth, show_3d, allow_pay, welcome_note
 		   FROM portal_settings WHERE tenant_id = $1`, tid).
-		Scan(&st.Enabled, &st.ShowMoney, &st.ShowUnbilled, &st.ShowTeeth, &st.Show3D, &st.WelcomeNote)
+		Scan(&st.Enabled, &st.ShowMoney, &st.ShowUnbilled, &st.ShowTeeth, &st.Show3D, &st.AllowPay, &st.WelcomeNote)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return st, nil
 	}
@@ -333,16 +335,18 @@ func (s *Service) SaveSettings(ctx context.Context, in portal.Settings) (*portal
 		return nil, errSession
 	}
 	in.WelcomeNote = strings.TrimSpace(in.WelcomeNote)
+	// Paying needs the patient to see what they owe.
+	in.AllowPay = in.AllowPay && in.ShowMoney
 	if len(in.WelcomeNote) > 300 {
 		return nil, apperr.Validation("the message can be at most 300 characters")
 	}
 	err := s.db.WithTx(ctx, func(tx pgx.Tx) error {
 		_, e := tx.Exec(ctx,
-			`INSERT INTO portal_settings (tenant_id, enabled, show_money, show_unbilled, show_teeth, show_3d, welcome_note, updated_by)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+			`INSERT INTO portal_settings (tenant_id, enabled, show_money, show_unbilled, show_teeth, show_3d, allow_pay, welcome_note, updated_by)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 			 ON CONFLICT (tenant_id) DO UPDATE SET enabled=$2, show_money=$3, show_unbilled=$4,
-			   show_teeth=$5, show_3d=$6, welcome_note=$7, updated_by=$8, updated_at=now()`,
-			p.TenantID, in.Enabled, in.ShowMoney, in.ShowUnbilled, in.ShowTeeth, in.Show3D, in.WelcomeNote, p.UserID)
+			   show_teeth=$5, show_3d=$6, allow_pay=$7, welcome_note=$8, updated_by=$9, updated_at=now()`,
+			p.TenantID, in.Enabled, in.ShowMoney, in.ShowUnbilled, in.ShowTeeth, in.Show3D, in.AllowPay && in.ShowMoney, in.WelcomeNote, p.UserID)
 		if e != nil {
 			return e
 		}

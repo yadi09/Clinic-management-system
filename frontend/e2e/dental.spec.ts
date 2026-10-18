@@ -811,3 +811,46 @@ test("REG-E2E-032 a patient signs in with the card number and sees their own tre
   await page.getByRole("button", { name: "ህክምናዬን እይ" }).click();
   await expect(page.getByRole("alert")).toContainText("አላገኘነውም");
 });
+
+test("REG-E2E-033 a patient pays from home: the bank confirms one payment at once; another waits, and the cashier confirms it", async ({ page, browser }) => {
+  const p = await newPatient("Meron");
+  const owner = await apiAs("owner");
+  await owner("POST", "/org/payment-rails", { label: uniq("Telebirr "), kind: "wallet", bank_key: "telebirr", account_number: "0911223344", account_name: "Yoya Dental" });
+  await owner("PUT", "/portal-settings", { enabled: true, show_money: true, show_unbilled: true, show_teeth: true, show_3d: true, allow_pay: true, welcome_note: "" });
+  await newPlan(p.id, uniq("Crown "), [3, 10, 17]);
+  const mrn = (await owner<{ mrn: string }>("GET", `/patients/${p.id}`)).mrn;
+  const slug = (await owner<{ slug: string }>("GET", "/portal-settings")).slug;
+
+  await page.goto(`/p/${slug}`);
+  await page.getByLabel("Card number").fill(mrn);
+  await page.getByRole("button", { name: "See my treatment" }).click();
+  await page.getByRole("tab", { name: "Payments" }).click();
+
+  // 1. The bank confirms the exact amount to the clinic's account: a receipt, at once.
+  await page.getByRole("button", { name: "Pay now" }).click();
+  await page.getByRole("button", { name: /^Continue/ }).click();
+  await expect(page.getByText("0911223344")).toBeVisible();
+  await page.getByLabel("Transaction number").fill(`OK1500-${uniq("A").toUpperCase()}`);
+  await page.getByRole("button", { name: "I have paid" }).click();
+  await expect(page.getByText(/Payment confirmed/)).toBeVisible();
+  await page.getByRole("button", { name: "Done" }).click();
+  await expect(page.getByText(/RCP-\d{6}/).first()).toBeVisible();
+
+  // 2. The bank cannot be asked: it waits. The patient is told; the cashier decides.
+  await page.getByRole("button", { name: "Pay now" }).click();
+  await page.getByRole("button", { name: /^Continue/ }).click();
+  const waiting = `PLAIN${uniq("B").toUpperCase()}`;
+  await page.getByLabel("Transaction number").fill(waiting);
+  await page.getByRole("button", { name: "I have paid" }).click();
+  await expect(page.getByText(/We are checking with the bank/)).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).last().click();
+  await expect(page.getByText("Waiting for confirmation")).toBeVisible();
+
+  const desk = await (await browser.newContext()).newPage();
+  await login(desk, "cashier");
+  await desk.goto("/settings?section=portal");
+  const row = desk.getByRole("listitem").filter({ hasText: waiting });
+  await expect(row).toContainText("Meron");
+  await row.getByRole("button", { name: "Confirm payment" }).click();
+  await expect(desk.getByText("Nothing is waiting.")).toBeVisible();
+});

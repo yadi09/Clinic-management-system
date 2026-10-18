@@ -17,7 +17,7 @@ import { renderUI } from "@/test/render";
 const ME = (over: Partial<PortalMe> = {}, settings: Partial<PortalMe["settings"]> = {}): PortalMe => ({
   clinic: { name: "Yoya Dental", slug: "yoya", phone: "0911 00 00 00", has_logo: false },
   first_name: "Meron",
-  settings: { enabled: true, show_money: true, show_unbilled: true, show_teeth: true, show_3d: true, welcome_note: "Brush gently around the new crown.", ...settings },
+  settings: { enabled: true, show_money: true, show_unbilled: true, show_teeth: true, show_3d: true, allow_pay: false, welcome_note: "Brush gently around the new crown.", ...settings },
   today: "2026-10-18",
   next: { date: "2026-10-21", title: "Root canal", seq: 3, of: 3 },
   treatments: [{

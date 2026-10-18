@@ -5548,5 +5548,39 @@
         "note": "Built after the owner asked to list devices and point at the current one. Found: the IP stored was Cloudflare's, not the visitor's — fixed for new sign-ins. Full run: server 791/0, screens 1,996, journeys 22/22, routes 306/306; finance/service 85.5 vs 86.0 is the small-hours clock effect (no finance change). Deploying."
       }
     ]
+  },
+  {
+    "id": "FEAT-PORTAL-2",
+    "title": "Patient portal phase 2: pay from home, confirmed by the bank check, cashier confirms what it cannot decide",
+    "severity": "medium",
+    "area": "Account & security",
+    "who": "Everyone who signs in; clinic owner",
+    "simple": "Settings → Account lists every device the account is signed in on: browser and system, original sign-in time, last active, real IP and country, an optional name, a Sign out per device, and this device marked and first.",
+    "example": "The owner sees an unknown Safari on iOS from another country, signs only that device out, and names her own PC 'Reception PC'.",
+    "why": "Staff leave themselves signed in on shared or lost devices; the old screen could only sign out everything.",
+    "fix": "Pay-from-home: patient picks billed items/next visit, pays from their phone, types the transaction number; billing.VerifyPayment (Verify.ET) must confirm exact amount to the clinic's account, then billing.SettleVisit books the usual receipt. Review/unchecked waits for the cashier (Settings > Patient portal list: Confirm / Turn down). Mig 00102 (allow_pay, portal_payments). Test harness now runs a stand-in bank (testkit/fakebank.go).",
+    "effort": "M",
+    "decision": null,
+    "tests": [
+      "TestREG_AUTH_SESS_001..003",
+      "TestClientIPPrefersTheAddressTheProxyReports",
+      "REG-FE-SESS-001..007",
+      "REG-FE-SESS-010..011",
+      "REG-FE-SESS-020"
+    ],
+    "files": [
+      "backend/db/migrations/00100_session_devices.sql",
+      "backend/internal/identity/service/auth_service.go",
+      "frontend/src/features/auth/ActiveSessions.tsx"
+    ],
+    "tested": true,
+    "status": "fixed",
+    "order": 604,
+    "log": [
+      {
+        "date": "2026-10-16",
+        "note": "Built after the owner asked to list devices and point at the current one. Found: the IP stored was Cloudflare's, not the visitor's — fixed for new sign-ins. Full run: server 791/0, screens 1,996, journeys 22/22, routes 306/306; finance/service 85.5 vs 86.0 is the small-hours clock effect (no finance change). Deploying."
+      }
+    ]
   }
 ]

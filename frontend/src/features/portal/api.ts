@@ -9,6 +9,8 @@ export interface PortalSettings {
   show_unbilled: boolean;
   show_teeth: boolean;
   show_3d: boolean;
+  /** Patients may pay what they owe (or the next visit) from their phone. */
+  allow_pay: boolean;
   welcome_note: string;
   /** Read-only: the clinic's address, for the link. */
   slug?: string;
@@ -43,3 +45,28 @@ export const portalLogo = (slug: string) => `/api/v1/verify/logo/${encodeURIComp
 
 export const getPortalSettings = () => apiFetch<PortalSettings>("/portal-settings");
 export const savePortalSettings = (body: PortalSettings) => apiFetch<PortalSettings>("/portal-settings", { method: "PUT", body });
+
+// ---- Pay from home ----------------------------------------------------------------
+
+export interface PayItem { key: string; label: string; amount: string; hint?: string; payable: boolean; upcoming?: boolean }
+export interface PayRail { id: string; label: string; kind: string; account_name?: string; account_number: string }
+export interface PayStatus {
+  id: string; state: "checking" | "waiting" | "paid" | "rejected"; amount: string; rail: string; reference: string;
+  reason?: string; receipt_no?: number; date: string;
+}
+export interface PayOptions { items: PayItem[]; rails: PayRail[]; open: PayStatus[] }
+
+const hdr = (token: string) => ({ "X-Portal-Token": token });
+
+export const portalPayOptions = (slug: string, token: string) =>
+  apiFetch<PayOptions>(`${slugPath(slug)}/pay/options`, { auth: false, headers: hdr(token) });
+export const portalPay = (slug: string, token: string, body: { items: string[]; rail_id: string; reference: string }) =>
+  apiFetch<PayStatus>(`${slugPath(slug)}/pay`, { method: "POST", body, auth: false, headers: hdr(token) });
+export const portalPayStatus = (slug: string, token: string, id: string) =>
+  apiFetch<PayStatus>(`${slugPath(slug)}/pay/${encodeURIComponent(id)}`, { auth: false, headers: hdr(token) });
+
+// The cashier's side.
+export interface HomePayment extends PayStatus { patient: string; mrn: string; patient_id: string; items: string; verify_state?: string; verify_reason?: string }
+export const listHomePayments = () => apiFetch<HomePayment[]>("/portal-payments");
+export const confirmHomePayment = (id: string) => apiFetch<PayStatus>(`/portal-payments/${encodeURIComponent(id)}/confirm`, { method: "POST" });
+export const rejectHomePayment = (id: string, reason: string) => apiFetch<{ ok: boolean }>(`/portal-payments/${encodeURIComponent(id)}/reject`, { method: "POST", body: { reason } });

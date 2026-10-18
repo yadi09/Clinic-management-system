@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/cookiejar"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,6 +28,7 @@ type Server struct {
 	BaseURL string
 	cmd     *exec.Cmd
 	logs    *bytes.Buffer
+	bank    *httptest.Server
 }
 
 // StartAPI builds cmd/api and runs it on a free port. Call it from TestMain (pass
@@ -43,6 +45,7 @@ func StartAPI(superDSN, appDSN string) (*Server, error) {
 		return nil, err
 	}
 	logs := &bytes.Buffer{}
+	bank := newFakeBank()
 	cmd := exec.Command(bin)
 	cmd.Env = append(cleanEnv(),
 		"APP_ENV=dev",
@@ -55,6 +58,8 @@ func StartAPI(superDSN, appDSN string) (*Server, error) {
 		// tested on its own terms, not as a side effect of every test.
 		"RATE_LIMIT_RPS=10000", "RATE_LIMIT_BURST=20000",
 		"CORS_ALLOWED_ORIGINS=http://127.0.0.1",
+		// A stand-in bank, so "the bank confirmed it" can be tested for real. See fakebank.go.
+		"VERIFYET_API_KEY=regression-fake-key", "VERIFYET_BASE_URL="+bank.URL, "VERIFYET_WAIT_MS=0",
 	)
 	// REGRESS_COVER_DIR: the binary was built with -cover; it writes its coverage
 	// counters there when it exits (gracefully — see Stop).
@@ -64,9 +69,10 @@ func StartAPI(superDSN, appDSN string) (*Server, error) {
 	}
 	cmd.Stdout, cmd.Stderr = logs, logs
 	if err := cmd.Start(); err != nil {
+		bank.Close()
 		return nil, err
 	}
-	s := &Server{BaseURL: "http://127.0.0.1:" + port + "/api/v1", cmd: cmd, logs: logs}
+	s := &Server{BaseURL: "http://127.0.0.1:" + port + "/api/v1", cmd: cmd, logs: logs, bank: bank}
 	deadline := time.Now().Add(40 * time.Second)
 	for time.Now().Before(deadline) {
 		r, err := http.Get("http://127.0.0.1:" + port + "/readyz")
@@ -85,6 +91,9 @@ func StartAPI(superDSN, appDSN string) (*Server, error) {
 // Stop ends the API process: SIGTERM first, so a coverage build gets to write its
 // counters on the way out, then SIGKILL if it has not exited within 15 seconds.
 func (s *Server) Stop() {
+	if s.bank != nil {
+		defer s.bank.Close()
+	}
 	if s.cmd == nil || s.cmd.Process == nil {
 		return
 	}

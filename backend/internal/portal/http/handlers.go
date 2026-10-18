@@ -69,6 +69,84 @@ func (h *Handlers) Me(c *gin.Context) {
 	httpx.OK(c, me)
 }
 
+func token(c *gin.Context) string { return c.GetHeader("X-Portal-Token") }
+
+// PayOptions handles GET /portal/:slug/pay/options.
+func (h *Handlers) PayOptions(c *gin.Context) {
+	noStore(c)
+	out, err := h.svc.PayOptions(c.Request.Context(), c.Param("slug"), token(c))
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// Pay handles POST /portal/:slug/pay. Limited per address: every try can cost the clinic a
+// paid bank check.
+func (h *Handlers) Pay(c *gin.Context) {
+	noStore(c)
+	if h.typing != nil && !h.typing.Allow("portal-pay:"+clientIP(c)) {
+		httpx.Fail(c, apperr.RateLimited())
+		return
+	}
+	var in portal.PayInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		httpx.Fail(c, apperr.Validation("choose what you are paying and type the transaction number"))
+		return
+	}
+	out, err := h.svc.Pay(c.Request.Context(), c.Param("slug"), token(c), in)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// PayStatus handles GET /portal/:slug/pay/:id.
+func (h *Handlers) PayStatus(c *gin.Context) {
+	noStore(c)
+	out, err := h.svc.PayStatus(c.Request.Context(), c.Param("slug"), token(c), c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// ListPayments handles GET /portal-payments — attempts nobody has confirmed yet.
+func (h *Handlers) ListPayments(c *gin.Context) {
+	out, err := h.svc.ListPayments(c.Request.Context())
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// ConfirmPayment handles POST /portal-payments/:id/confirm.
+func (h *Handlers) ConfirmPayment(c *gin.Context) {
+	out, err := h.svc.ConfirmPayment(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// RejectPayment handles POST /portal-payments/:id/reject {reason}.
+func (h *Handlers) RejectPayment(c *gin.Context) {
+	var in struct {
+		Reason string `json:"reason"`
+	}
+	_ = c.ShouldBindJSON(&in)
+	if err := h.svc.RejectPayment(c.Request.Context(), c.Param("id"), in.Reason); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"ok": true})
+}
+
 // GetSettings handles GET /portal-settings.
 func (h *Handlers) GetSettings(c *gin.Context) {
 	st, err := h.svc.GetSettings(c.Request.Context())

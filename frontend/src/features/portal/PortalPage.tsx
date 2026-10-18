@@ -12,7 +12,8 @@ import { lazyWithReload } from "@/app/chunkRecovery";
 import { AnatomicalChart } from "@/features/dental/anatomical/AnatomicalChart";
 import { toothName } from "@/features/dental/anatomical/geometry";
 import { fromItems, items, SL } from "@/features/dental/anatomical/model";
-import { portalLogin, portalLogo, portalMe, type PortalMe, type PortalTreatment } from "@/features/portal/api";
+import { portalLogin, portalLogo, portalMe, portalPayOptions, type PayOptions, type PortalMe, type PortalTreatment } from "@/features/portal/api";
+import { PayFromHome } from "@/features/portal/PayFromHome";
 import { T, type Lang } from "@/features/portal/text";
 
 const Dental3D = lazyWithReload(() => import("@/features/dental/anatomical/three/Dental3D"));
@@ -65,7 +66,7 @@ export function PortalPage() {
           <div className="p-8 text-center text-sm" role="alert">{t.offline}
             <button type="button" className="mt-4 block w-full rounded-xl bg-[#148F77] p-3 font-bold text-white" onClick={() => { setGone(false); load(token); }}>{t.retry}</button></div>
         ) : (
-          <App me={me} lang={lang} setLang={setLang} onSignOut={signOut} />
+          <App me={me} slug={slug} token={token} lang={lang} setLang={setLang} onSignOut={signOut} onReload={() => load(token)} />
         )}
       </div>
     </div>
@@ -130,9 +131,18 @@ function Login({ slug, lang, setLang, onDone, loading }: { slug: string; lang: L
 
 type Tab = "home" | "treat" | "pay" | "teeth";
 
-function App({ me, lang, setLang, onSignOut }: { me: PortalMe; lang: Lang; setLang: (l: Lang) => void; onSignOut: () => void }) {
+function App({ me, slug, token, lang, setLang, onSignOut, onReload }: { me: PortalMe; slug: string; token: string; lang: Lang; setLang: (l: Lang) => void; onSignOut: () => void; onReload: () => void }) {
   const t = T[lang];
   const s = me.settings;
+  // What the patient could pay, and what is still waiting. Only when the clinic allows paying.
+  const [opts, setOpts] = useState<PayOptions | null>(null);
+  const [paying, setPaying] = useState(false);
+  const loadOpts = useCallback(() => {
+    if (!s.allow_pay || !s.show_money) return;
+    portalPayOptions(slug, token).then(setOpts).catch(() => setOpts(null));
+  }, [slug, token, s.allow_pay, s.show_money]);
+  useEffect(loadOpts, [loadOpts]);
+  const changed = useCallback(() => { onReload(); loadOpts(); }, [onReload, loadOpts]);
   const tabs = useMemo(() => [
     { k: "home" as Tab, label: t.home }, { k: "treat" as Tab, label: t.treat },
     ...(s.show_money ? [{ k: "pay" as Tab, label: t.pay }] : []),
@@ -162,12 +172,13 @@ function App({ me, lang, setLang, onSignOut }: { me: PortalMe; lang: Lang; setLa
           <section key={x.k} role="tabpanel" aria-label={x.label} className="w-full shrink-0 snap-start overflow-y-auto px-3.5 pb-7 pt-3.5">
             {x.k === "home" && <Home me={me} t={t} />}
             {x.k === "treat" && <Treatment me={me} t={t} />}
-            {x.k === "pay" && <Payments me={me} t={t} />}
+            {x.k === "pay" && <Payments me={me} t={t} opts={opts} onPay={() => setPaying(true)} />}
             {x.k === "teeth" && <Teeth me={me} t={t} />}
           </section>
         ))}
       </div>
       <div className="border-t border-[#dbe5ee] bg-white p-1.5 text-center text-[11px] text-[#617085]">{t.swipe}</div>
+      {paying && opts && <PayFromHome slug={slug} token={token} opts={opts} t={t} phone={me.clinic.phone} onClose={() => { setPaying(false); changed(); }} onChanged={changed} />}
     </>
   );
 }
@@ -247,13 +258,28 @@ function Treatment({ me, t }: { me: PortalMe; t: (typeof T)[Lang] }) {
   );
 }
 
-function Payments({ me, t }: { me: PortalMe; t: (typeof T)[Lang] }) {
+function Payments({ me, t, opts, onPay }: { me: PortalMe; t: (typeof T)[Lang]; opts: PayOptions | null; onPay: () => void }) {
   const m = me.money!;
+  const canPay = !!opts && opts.items.some((i) => i.payable) && opts.rails.length > 0;
   const tile = (bg: string, label: string, v: string, c?: string) => (
     <div className="rounded-2xl p-3" style={{ background: bg }}><small className="block text-[11px] text-[#617085]">{label}</small><b className="text-xl" style={c ? { color: c } : undefined}>{money(v)}</b><small className="block text-[11px] text-[#617085]">ETB</small></div>
   );
   return (
     <>
+      {me.settings.allow_pay && opts && (
+        <Card title={t.payHome}>
+          <p className="text-[13.5px] text-[#617085]">{!opts.rails.length ? t.payNoRail : !opts.items.some((i) => i.payable) ? t.payNothing : t.payHomeSub}</p>
+          <button type="button" disabled={!canPay} onClick={onPay} className="mt-3 w-full rounded-xl bg-[#148F77] p-3.5 text-[15px] font-bold text-white disabled:opacity-50">{t.payNow}</button>
+        </Card>
+      )}
+      {!!opts?.open.length && (
+        <Card title={t.waiting}>
+          {opts.open.map((o) => (
+            <Row key={o.id} a={<>{money(o.amount)} ETB · {o.reference.toUpperCase()}<br /><small className="text-[#617085]">{o.rail}</small></>}
+              b={<span className="rounded-full bg-[#FFF3E0] px-2.5 py-0.5 text-[11px] font-bold text-[#B5651D]">{t.stChecking}</span>} />
+          ))}
+        </Card>
+      )}
       <Card title={t.summary}>
         <div className="grid grid-cols-2 gap-2.5">
           {tile("#EAF3DE", t.paid, m.paid)}

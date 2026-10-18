@@ -13,6 +13,16 @@ const en = {
   summary: "Summary", unbilled: "Treatment done — bill not issued yet", unbilledHelp: "You will be told the amount before you pay.",
   receipts: "Receipts", noReceipts: "No receipts yet.", plan: "Payment plan", visits: "visits",
   chart2d: "2D chart", chart3d: "3D 🦷", inMouth: "In your mouth", planned: "Planned", doneRecently: "Done recently",
+  payHome: "Pay from home", payHomeSub: "Pay what you owe, or pay your next visit ahead of time. No queue at the cashier.", payNow: "Pay now",
+  payNothing: "Nothing to pay right now.", payNoRail: "The clinic has not set up a way to pay from home yet.",
+  chooseWhat: "What do you want to pay?", chooseHelp: "Tick the items. You can pay the next visit ahead of time.", cont: "Continue", close: "Close", back: "Back",
+  payAmount: "Pay", whereFrom: "Choose where you will pay from.", sendTo: "Send", sendToSuffix: "to:", afterPay: "After you pay, type the transaction number from the SMS you receive.",
+  txn: "Transaction number", txnHint: "e.g. CE7K2M9XQ4", iPaid: "I have paid", typeTxn: "Type the transaction number from your SMS (at least 6 letters or numbers).",
+  stSubmitted: "Submitted", stChecking: "Checking", stConfirmed: "Confirmed", stNotFound: "Not found",
+  msgSubmitted: "We have your payment details.", msgChecking: "We are checking with the bank. This usually takes a minute — you can close this page, we will keep checking.",
+  msgPaid: "Payment confirmed", msgPaidBody: "Your receipt is saved and the clinic can see it.", receipt: "Receipt", doneBtn: "Done",
+  msgRefused: "We could not find this payment yet.", msgRefusedBody: "Check the number and try again. If you are sure, show the SMS at the clinic.", again: "Check the number again", callClinic: "Call the clinic",
+  waiting: "Waiting for confirmation", nextAhead: "Next visit — pay ahead", notBilled: "Done, not billed yet — the clinic will send the bill", ok: "OK",
   tapTooth: "Tap a tooth", tapHelp: "to see what it has and what is planned.", tooth: "Tooth", healthy: "Healthy. Nothing recorded.",
 };
 const am: typeof en = {
@@ -27,6 +37,16 @@ const am: typeof en = {
   summary: "ማጠቃለያ", unbilled: "ህክምናው ተሠርቷል — ክፍያው ገና አልተጠየቀም", unbilledHelp: "ከመክፈልዎ በፊት መጠኑ ይነገርዎታል።",
   receipts: "ደረሰኞች", noReceipts: "እስካሁን ደረሰኝ የለም።", plan: "የክፍያ እቅድ", visits: "ጉብኝቶች",
   chart2d: "2D ሰንጠረዥ", chart3d: "3D 🦷", inMouth: "በአፍዎ ውስጥ ያለ", planned: "የታቀደ", doneRecently: "በቅርቡ የተሠራ",
+  payHome: "ከቤትዎ ይክፈሉ", payHomeSub: "ያለብዎትን ወይም የሚቀጥለውን ጉብኝት አስቀድመው ይክፈሉ። በገንዘብ ተቀባይ ጋር ወረፋ የለም።", payNow: "አሁን ይክፈሉ",
+  payNothing: "አሁን የሚከፈል ነገር የለም።", payNoRail: "ክሊኒኩ ከቤት የመክፈያ መንገድ እስካሁን አላዘጋጀም።",
+  chooseWhat: "ምን መክፈል ይፈልጋሉ?", chooseHelp: "የሚከፍሉትን ምልክት ያድርጉ። የሚቀጥለውን ጉብኝት አስቀድመው መክፈል ይችላሉ።", cont: "ቀጥል", close: "ዝጋ", back: "ተመለስ",
+  payAmount: "ክፈል", whereFrom: "ከየት እንደሚከፍሉ ይምረጡ።", sendTo: "ይላኩ", sendToSuffix: "ወደ፦", afterPay: "ከከፈሉ በኋላ በSMS የሚደርስዎትን የግብይት ቁጥር ይጻፉ።",
+  txn: "የግብይት ቁጥር", txnHint: "ለምሳሌ CE7K2M9XQ4", iPaid: "ከፍያለሁ", typeTxn: "ከSMS የግብይት ቁጥሩን ይጻፉ (ቢያንስ 6 ፊደል ወይም ቁጥር)።",
+  stSubmitted: "ገብቷል", stChecking: "እየተረጋገጠ", stConfirmed: "ተረጋግጧል", stNotFound: "አልተገኘም",
+  msgSubmitted: "የክፍያ ዝርዝርዎን ተቀብለናል።", msgChecking: "ከባንክ ጋር እያረጋገጥን ነው። ብዙውን ጊዜ አንድ ደቂቃ ይወስዳል — ገጹን መዝጋት ይችላሉ፣ ማረጋገጣችንን እንቀጥላለን።",
+  msgPaid: "ክፍያው ተረጋግጧል", msgPaidBody: "ደረሰኝዎ ተቀምጧል፤ ክሊኒኩም ያየዋል።", receipt: "ደረሰኝ", doneBtn: "ጨርሰዋል",
+  msgRefused: "ይህን ክፍያ እስካሁን አላገኘነውም።", msgRefusedBody: "ቁጥሩን አረጋግጠው እንደገና ይሞክሩ። እርግጠኛ ከሆኑ SMSውን ክሊኒኩ ላይ ያሳዩ።", again: "ቁጥሩን እንደገና ያረጋግጡ", callClinic: "ክሊኒኩን ደውል",
+  waiting: "ማረጋገጫ በመጠበቅ ላይ", nextAhead: "የሚቀጥለው ጉብኝት — አስቀድመው ይክፈሉ", notBilled: "ተሠርቷል፣ ገና አልተጠየቀም — ክሊኒኩ ደረሰኝ ይልካል", ok: "እሺ",
   tapTooth: "ጥርስ ይንኩ", tapHelp: "ምን እንዳለው እና ምን እንደታቀደ ለማየት።", tooth: "ጥርስ", healthy: "ጤናማ። ምንም አልተመዘገበም።",
 };
 export const T: Record<Lang, typeof en> = { en, am };

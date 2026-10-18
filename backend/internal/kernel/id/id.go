@@ -14,42 +14,42 @@ import (
 
 // Resource prefixes for external IDs.
 const (
-	PrefixTenant           = "ten"
-	PrefixUser             = "usr"
-	PrefixRole             = "rol"
-	PrefixPermission       = "prm"
-	PrefixSession          = "ses"
-	PrefixPlan             = "pln"
-	PrefixAudit            = "aud"
-	PrefixInvitation       = "inv"
-	PrefixClinic           = "cln"
-	PrefixBranch           = "brn"
-	PrefixDepartment       = "dep"
-	PrefixResource         = "res"
-	PrefixPatient          = "pat"
-	PrefixAllergy          = "alg"
-	PrefixCondition        = "cnd"
-	PrefixAttachment       = "att"
-	PrefixGuardian         = "grd"
-	PrefixAppointment      = "apt"
-	PrefixQueueEntry       = "que"
-	PrefixEncounter        = "enc"
-	PrefixVitals           = "vit"
-	PrefixCardPayment      = "cpy"
-	PrefixDiagnosis        = "dxn"
-	PrefixRxItem           = "rxi"
-	PrefixDiagCategory     = "dgc"
-	PrefixDiagCatalog      = "dgx"
-	PrefixPrescription     = "rx"
-	PrefixDrug             = "drg"
-	PrefixAllergen         = "aln" // allergen library (distinct from patient allergy "alg")
+	PrefixTenant       = "ten"
+	PrefixUser         = "usr"
+	PrefixRole         = "rol"
+	PrefixPermission   = "prm"
+	PrefixSession      = "ses"
+	PrefixPlan         = "pln"
+	PrefixAudit        = "aud"
+	PrefixInvitation   = "inv"
+	PrefixClinic       = "cln"
+	PrefixBranch       = "brn"
+	PrefixDepartment   = "dep"
+	PrefixResource     = "res"
+	PrefixPatient      = "pat"
+	PrefixAllergy      = "alg"
+	PrefixCondition    = "cnd"
+	PrefixAttachment   = "att"
+	PrefixGuardian     = "grd"
+	PrefixAppointment  = "apt"
+	PrefixQueueEntry   = "que"
+	PrefixEncounter    = "enc"
+	PrefixVitals       = "vit"
+	PrefixCardPayment  = "cpy"
+	PrefixDiagnosis    = "dxn"
+	PrefixRxItem       = "rxi"
+	PrefixDiagCategory = "dgc"
+	PrefixDiagCatalog  = "dgx"
+	PrefixPrescription = "rx"
+	PrefixDrug         = "drg"
+	PrefixAllergen     = "aln" // allergen library (distinct from patient allergy "alg")
 	// The outreach campaign (Enkutatash and whatever follows it) — distinct from
 	// PrefixCampaign below, which is a message sent to patients.
-	PrefixPromo         = "pmo"
-	PrefixPromoQuestion = "pmq"
-	PrefixPromoPrize    = "pmp"
-	PrefixPromoEntry    = "pme"
-	PrefixPromoSignup   = "pms"
+	PrefixPromo            = "pmo"
+	PrefixPromoQuestion    = "pmq"
+	PrefixPromoPrize       = "pmp"
+	PrefixPromoEntry       = "pme"
+	PrefixPromoSignup      = "pms"
 	PrefixLabReferral      = "lrf" // external lab referral
 	PrefixBatch            = "bat"
 	PrefixSale             = "sal"
@@ -87,7 +87,8 @@ const (
 	PrefixToothStatus = "tst" // a condition a clinic marks on a tooth
 	PrefixChartItem   = "dci" // one thing recorded on a tooth (anatomical chart)
 
-	PrefixNotification = "ntf" // an in-app notification for one staff member
+	PrefixPortalPayment = "ppy" // a payment a patient made from home, awaiting or past its bank check
+	PrefixNotification  = "ntf" // an in-app notification for one staff member
 )
 
 // base32 lower-case, no padding. Decoding is case-insensitive.

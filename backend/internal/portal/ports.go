@@ -17,6 +17,7 @@ type Settings struct {
 	ShowUnbilled bool   `json:"show_unbilled"`
 	ShowTeeth    bool   `json:"show_teeth"`
 	Show3D       bool   `json:"show_3d"`
+	AllowPay     bool   `json:"allow_pay"`
 	WelcomeNote  string `json:"welcome_note"`
 	// Slug is read-only: the clinic's address, so its screen can show the portal link.
 	Slug string `json:"slug,omitempty"`
@@ -110,6 +111,62 @@ type Me struct {
 	Today      string      `json:"today"`
 }
 
+// PayItem is something the patient could pay now. Key is opaque to the browser: it says
+// whether this is a bill already raised ("c:<id>") or a visit not yet billed ("s:<id>").
+type PayItem struct {
+	Key      string `json:"key"`
+	Label    string `json:"label"`
+	Amount   string `json:"amount"`
+	Hint     string `json:"hint,omitempty"`
+	Payable  bool   `json:"payable"`
+	Upcoming bool   `json:"upcoming,omitempty"` // the next visit, paid ahead
+}
+
+// PayRail is a way the clinic can be paid from a phone: a wallet or bank account.
+type PayRail struct {
+	ID            string `json:"id"`
+	Label         string `json:"label"`
+	Kind          string `json:"kind"`
+	AccountName   string `json:"account_name,omitempty"`
+	AccountNumber string `json:"account_number"`
+}
+
+type PayOptions struct {
+	Items []PayItem `json:"items"`
+	Rails []PayRail `json:"rails"`
+	// Open is the patient's attempts that nobody has finished yet.
+	Open []PayStatus `json:"open"`
+}
+
+type PayInput struct {
+	Items     []string `json:"items"`
+	RailID    string   `json:"rail_id"`
+	Reference string   `json:"reference"`
+}
+
+// PayStatus is where one attempt stands, in words for the patient.
+type PayStatus struct {
+	ID        string `json:"id"`
+	State     string `json:"state"` // checking | waiting | paid | rejected
+	Amount    string `json:"amount"`
+	Rail      string `json:"rail"`
+	Reference string `json:"reference"`
+	Reason    string `json:"reason,omitempty"`
+	ReceiptNo *int64 `json:"receipt_no,omitempty"`
+	Date      string `json:"date"`
+}
+
+// StaffPayment is an attempt the cashier has to look at.
+type StaffPayment struct {
+	PayStatus
+	Patient      string `json:"patient"`
+	MRN          string `json:"mrn"`
+	PatientID    string `json:"patient_id"`
+	Items        string `json:"items"`
+	VerifyState  string `json:"verify_state,omitempty"`
+	VerifyReason string `json:"verify_reason,omitempty"`
+}
+
 // Service is the portal's behaviour.
 type Service interface {
 	// Login returns a short-lived token for the patient whose card number this is.
@@ -118,4 +175,14 @@ type Service interface {
 	Me(ctx context.Context, slug, token string) (*Me, error)
 	GetSettings(ctx context.Context) (*Settings, error)
 	SaveSettings(ctx context.Context, in Settings) (*Settings, error)
+
+	// Pay from home. All three are the patient's own: the patient is the one in the token.
+	PayOptions(ctx context.Context, slug, token string) (*PayOptions, error)
+	Pay(ctx context.Context, slug, token string, in PayInput) (*PayStatus, error)
+	PayStatus(ctx context.Context, slug, token, id string) (*PayStatus, error)
+
+	// The cashier's side: attempts nobody has confirmed, and the two decisions.
+	ListPayments(ctx context.Context) ([]StaffPayment, error)
+	ConfirmPayment(ctx context.Context, id string) (*PayStatus, error)
+	RejectPayment(ctx context.Context, id, reason string) error
 }

@@ -827,8 +827,10 @@ func TestREG_BILL_024_ReceiptCheckWhenTheBankIsUnreachable(t *testing.T) {
 		Available *bool `json:"available"`
 	}
 	cashier.Do("GET", "/billing/verify-payment/status", nil).Expect(t, 200, "status").Decode(t, &st)
-	if st.Available == nil || *st.Available {
-		t.Fatalf("verification status %v, want available=false with no key configured", st.Available)
+	// The suite's API runs with a stand-in bank key (internal/testkit/fakebank.go), so the
+	// desk is offered the check; a bank that cannot be reached is the next assertions.
+	if st.Available == nil || !*st.Available {
+		t.Fatalf("verification status %v, want available=true with the stand-in bank configured", st.Available)
 	}
 	type verdict struct {
 		State       string `json:"state"`
@@ -844,8 +846,8 @@ func TestREG_BILL_024_ReceiptCheckWhenTheBankIsUnreachable(t *testing.T) {
 	if v := check(map[string]any{"rail_id": rails["cash"], "reference": ref}); v.State != "unchecked" || !strings.Contains(v.Reason, "no bank") {
 		t.Fatalf("cash check: %+v, want unchecked (nothing to check against)", v)
 	}
-	if v := check(map[string]any{"rail_id": rails["transfer"], "reference": ref, "expected": "500", "patient_id": p.ID}); v.State != "unchecked" || !strings.Contains(v.Reason, "not switched on") {
-		t.Fatalf("transfer check with no verifier: %+v, want unchecked / not switched on", v)
+	if v := check(map[string]any{"rail_id": rails["transfer"], "reference": ref, "expected": "500", "patient_id": p.ID}); v.State != "unchecked" || !strings.Contains(v.Reason, "bank check") {
+		t.Fatalf("transfer check with no verifier: %+v, want unchecked (vendor unavailable)", v)
 	}
 	var rows int
 	one(t, `SELECT count(*) FROM payment_references WHERE tenant_id=$1 AND reference=$2`, &rows, clinic.TenantID, ref)

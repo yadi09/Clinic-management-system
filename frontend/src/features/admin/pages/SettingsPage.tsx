@@ -70,7 +70,7 @@ import { NewAllergenForm, severityClass } from "@/features/clinical/AllergenFiel
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { RegistrationFeeCard } from "@/features/billing/RegistrationFeeCard";
-import { PortalSettingsCard } from "@/features/portal/PortalSettingsCard";
+import { HomePaymentsCard, PortalSettingsCard } from "@/features/portal/PortalSettingsCard";
 import { PrintingSettings } from "@/features/printing/PrintingSettings";
 import { AppError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
@@ -169,7 +169,12 @@ export function SettingsPage() {
             </div>
           )}
           {active === "payments" && <PaymentRailsCard manage={manage} />}
-          {active === "portal" && <PortalSettingsCard manage={manage} />}
+          {active === "portal" && (
+            <div className="space-y-6">
+              <PortalSettingsCard manage={manage} />
+              <HomePaymentsCard />
+            </div>
+          )}
           {active === "printing" && <PrintingSettings />}
           {active === "vitals" && <VitalsFormCard manage={manage} />}
           {active === "diagnoses" && <DiagnosisCatalogCard manage={manage} />}

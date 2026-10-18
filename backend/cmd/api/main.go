@@ -201,7 +201,7 @@ func main() {
 	notificationHandlers := notificationhttp.NewHandlers(notificationservice.NewService(db))
 	// The patient's own page. Signing in is limited per address: a card number is a weak
 	// secret, so guessing one must be slow.
-	portalHandlers := portalhttp.New(portalservice.New(db, dentalSvc, cfg.JWTSecret), ratelimit.NewInProcess(0.2, 6))
+	portalHandlers := portalhttp.New(portalservice.New(db, dentalSvc, billingSvc, cfg.JWTSecret), ratelimit.NewInProcess(0.2, 6))
 
 	r := newRouter(cfg, log, db, tokens, limiter, identityHandlers, orgHandlers, patientHandlers, schedulingHandlers, billingHandlers, clinicalHandlers, reportingHandlers, dashboardHandlers, maternityHandlers, inpatientHandlers, dentalHandlers, messagingHandlers, pharmacyHandlers, labHandlers, financeHandlers, platformHandlers, crmHandlers, campaignHandlers, marketplaceHandlers, notificationHandlers, verificationHandlers, portalHandlers)
 
