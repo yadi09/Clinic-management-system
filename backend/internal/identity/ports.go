@@ -78,8 +78,18 @@ type Workspace struct {
 	Current  bool      `json:"current"`
 }
 
+// ClinicCard is the public face of a clinic on the sign-in page: its name and
+// whether it has a logo. Only clinics that can be signed in to have one.
+type ClinicCard struct {
+	Name    string `json:"name"`
+	Slug    string `json:"slug"`
+	HasLogo bool   `json:"has_logo"`
+}
+
 // Service is the identity module's authentication API.
 type Service interface {
+	// ClinicCard looks a clinic up by its code for the sign-in page (no account needed).
+	ClinicCard(ctx context.Context, code string) (*ClinicCard, error)
 	Login(ctx context.Context, in LoginInput) (*LoginResult, error)
 	VerifyMFA(ctx context.Context, challengeToken, code, userAgent, ip string) (*TokenPair, UserProfile, error)
 	Refresh(ctx context.Context, refreshToken, userAgent, ip string) (*TokenPair, error)

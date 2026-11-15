@@ -60,6 +60,17 @@ export function switchWorkspaceApi(workspaceId: string) {
   return apiFetch<TokenResponse>("/auth/switch-workspace", { method: "POST", body: { workspace_id: workspaceId }, retry: false });
 }
 
+/** The clinic's public face on the sign-in page: its name and whether it has a logo. */
+export interface ClinicCard { name: string; slug: string; has_logo: boolean }
+
+/** Looks a clinic up by its code before anyone signs in (404 CLINIC_NOT_FOUND when there is none). */
+export function clinicCardApi(code: string) {
+  return apiFetch<ClinicCard>(`/auth/clinic/${encodeURIComponent(code)}`, { auth: false, retry: false });
+}
+
+/** The clinic's logo (the one it set for printing), served publicly. */
+export const clinicLogoUrl = (slug: string) => `/api/v1/verify/logo/${encodeURIComponent(slug)}`;
+
 export function loginApi(body: { workspace: string; email: string; password: string }) {
   return apiFetch<LoginResponse>("/auth/login", { method: "POST", body, auth: false, retry: false });
 }

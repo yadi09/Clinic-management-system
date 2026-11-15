@@ -33,8 +33,8 @@ export function emailFor(role: string): string {
 /** Sign in through the real login form and land past the sign-in pop-up. */
 export async function login(page: Page, role: string) {
   const s = stack();
-  await page.goto("/login");
-  await page.locator("#workspace").fill(s.slug);
+  // The clinic's own sign-in link chooses the clinic (step one is skipped).
+  await page.goto(`/login/${s.slug}`);
   await page.locator("#email").fill(emailFor(role));
   await page.locator("#password").fill(s.password);
   await page.getByRole("button", { name: "Sign in" }).click();

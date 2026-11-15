@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Login Redesign Plan</title>
+<style>
+:root{
+  --bg:#F2F7FB; --card:#fff; --fg:#1f2937; --muted:#616875; --line:#dbe4ee;
+  --brand:#1F4E79; --primary:#148F77; --danger:#C0392B; --warn:#C9821B; --soft:#e6eef6;
+  --okbg:#e7f5f1; --dangerbg:#fbeceb; --warnbg:#fbf3e6;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1720; --card:#17212d; --fg:#e5ebf1; --muted:#9aa6b4; --line:#2a3846;
+    --brand:#7fb2e0; --primary:#2bb596; --soft:#1d2a38; --okbg:#143128; --dangerbg:#3a1c1a; --warnbg:#3a2d16;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1080px;margin:0 auto;padding:32px 16px 80px}
+h1{font-size:28px;margin:0 0 4px;color:var(--brand)}
+h2{font-size:21px;margin:48px 0 10px;color:var(--brand);border-top:1px solid var(--line);padding-top:28px}
+h3{font-size:16px;margin:22px 0 6px}
+p,li{max-width:78ch}
+.sub{color:var(--muted);margin:0 0 20px}
+code{background:var(--soft);padding:1px 5px;border-radius:4px;font-size:13px}
+table{border-collapse:collapse;width:100%;margin:10px 0;font-size:14px;background:var(--card)}
+th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+th{background:var(--soft)}
+.tag{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:999px}
+.t-bad{background:var(--dangerbg);color:var(--danger)} .t-mid{background:var(--warnbg);color:var(--warn)} .t-ok{background:var(--okbg);color:var(--primary)}
+.callout{background:var(--card);border-left:4px solid var(--brand);padding:12px 16px;border-radius:6px;margin:14px 0}
+.grid{display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));margin:16px 0}
+.label{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 6px}
+
+/* ---------- mockup frame ---------- */
+.frame{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#F2F7FB;color:#1f2937}
+.bar{height:26px;background:#e3e9f0;display:flex;align-items:center;gap:6px;padding:0 10px;font-size:11px;color:#6b7280}
+.bar i{width:9px;height:9px;border-radius:50%;background:#c9d2dc;display:inline-block}
+.bar span{margin-left:8px;background:#fff;border-radius:4px;padding:1px 8px}
+.screen{padding:28px 18px;display:flex;justify-content:center}
+.split{display:grid;grid-template-columns:1fr 1.05fr;min-height:400px}
+.side{background:#1F4E79;color:#fff;padding:28px 26px;display:flex;flex-direction:column;justify-content:space-between}
+.side h4{font-size:20px;margin:18px 0 8px;line-height:1.3}
+.side ul{padding:0;margin:0;list-style:none;font-size:13px;opacity:.9}
+.side li{margin:8px 0;padding-left:20px;position:relative}
+.side li:before{content:"✓";position:absolute;left:0;color:#7fe0c8}
+.side small{opacity:.7;font-size:11px}
+.formside{display:flex;align-items:center;justify-content:center;padding:24px;background:#fff}
+.logo{display:flex;align-items:center;gap:8px;font-weight:800;font-size:17px}
+.logo b{width:26px;height:26px;border-radius:50%;background:#fff;color:#1F4E79;display:grid;place-items:center;font-size:13px}
+.logo.dark{color:#1F4E79}.logo.dark b{background:#1F4E79;color:#fff}
+.card{background:#fff;border:1px solid #dbe4ee;border-radius:10px;padding:22px;width:100%;max-width:330px}
+.card.flat{border:0;padding:0}
+.card h5{font-size:19px;margin:0 0 2px;color:#111827}
+.card .d{font-size:13px;color:#616875;margin:0 0 16px}
+.f{margin:0 0 12px}
+.f label{display:flex;justify-content:space-between;font-size:13px;font-weight:600;margin-bottom:4px}
+.f label a{font-weight:500;color:#148F77;text-decoration:none}
+.in{border:1px solid #cdd7e2;border-radius:6px;height:38px;padding:0 10px;display:flex;align-items:center;justify-content:space-between;font-size:14px;color:#9aa3ad;background:#fff}
+.in.v{color:#111827}.in.focus{border-color:#148F77;box-shadow:0 0 0 3px #148F7730}
+.in.err{border-color:#C0392B}
+.in em{font-style:normal;font-size:12px;color:#616875}
+.hint{font-size:12px;color:#616875;margin-top:4px}
+.hint.w{color:#C9821B}.hint.e{color:#C0392B}
+.btn{height:40px;border-radius:6px;background:#148F77;color:#fff;font-weight:600;display:grid;place-items:center;font-size:14px}
+.btn.ghost{background:transparent;color:#1F4E79;border:1px solid #cdd7e2}
+.alert{border-radius:6px;padding:9px 11px;font-size:13px;margin:0 0 12px}
+.alert.e{background:#fbeceb;color:#8e2a20;border:1px solid #f0c9c4}
+.alert.w{background:#fbf3e6;color:#7a4f10;border:1px solid #efd9b2}
+.alert.i{background:#e6eef6;color:#1F4E79;border:1px solid #c7d7e8}
+.clinic{display:flex;align-items:center;gap:10px;background:#f4f8fb;border:1px solid #dbe4ee;border-radius:8px;padding:9px 11px;margin:0 0 16px}
+.clinic .lg{width:34px;height:34px;border-radius:8px;background:#148F77;color:#fff;display:grid;place-items:center;font-weight:800;font-size:14px}
+.clinic div{flex:1;font-size:13px;line-height:1.3}.clinic strong{display:block;font-size:14px}
+.clinic a{font-size:12px;color:#148F77;text-decoration:none;font-weight:600}
+.chips{display:flex;flex-direction:column;gap:8px;margin:0 0 14px}
+.chip{display:flex;align-items:center;gap:10px;border:1px solid #dbe4ee;border-radius:8px;padding:8px 10px;font-size:13px}
+.chip .lg{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:#fff;font-weight:800;font-size:12px}
+.chip span{flex:1}.chip small{color:#616875}
+.or{display:flex;align-items:center;gap:8px;font-size:12px;color:#9aa3ad;margin:4px 0 12px}
+.or:before,.or:after{content:"";flex:1;height:1px;background:#e3e9f0}
+.otp{display:flex;gap:6px;margin:4px 0 12px}
+.otp div{flex:1;height:44px;border:1px solid #cdd7e2;border-radius:6px;display:grid;place-items:center;font-size:18px;font-weight:700}
+.otp div.v{border-color:#148F77}
+.foot{display:flex;justify-content:space-between;font-size:12px;color:#616875;margin-top:14px}
+.foot a{color:#1F4E79;text-decoration:none}
+.lang{font-size:11px;border:1px solid #cdd7e2;border-radius:5px;overflow:hidden;display:inline-flex}
+.lang span{padding:2px 7px}.lang .on{background:#1F4E79;color:#fff}
+.phone{width:280px;border:8px solid #1f2937;border-radius:30px;overflow:hidden;background:#fff;margin:0 auto}
+.phone .ph{padding:22px 16px 26px}
+.cap{font-size:13px;color:var(--muted);margin-top:8px;text-align:center}
+.flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;margin:12px 0}
+.flow b{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-weight:600}
+.flow i{font-style:normal;color:var(--muted)}
+@media (max-width:720px){.split{grid-template-columns:1fr}.side{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Staff login: UI/UX redesign plan</h1>
+<p class="sub">ClinicOS · plan for approval · 2026-11-14 · nothing built yet</p>
+
+<div class="callout"><strong>In one line:</strong> make the page <em>know which clinic you are signing in to</em>. Staff type the clinic code once on a device (or open a clinic's own link). After that, every day is just <em>email → password → in</em>, on a screen that shows the clinic's name and logo. Errors explain what to do next.</div>
+
+<!-- ================================================================ -->
+<h2>1. What exists today</h2>
+
+<p>Yes, it is a <strong>single shared login page</strong>. Every clinic and every branch uses the same <code>/login</code>. The clinic is not in the address. The person picks it by typing a <strong>Workspace</strong> (the clinic's slug, e.g. <code>cure-dental</code>). Since FEAT-BRANCH-WS-1, <strong>each branch is a separate workspace with its own slug</strong>, so a two-branch clinic has two different words to type.</p>
+
+<div class="grid">
+<div>
+<p class="label">Today, recreated from the code (LoginPage.tsx + AuthLayout.tsx)</p>
+<div class="frame">
+  <div class="bar"><i></i><i></i><i></i><span>clinicos.cc/login</span></div>
+  <div class="screen" style="flex-direction:column;align-items:center;gap:14px">
+    <div class="logo dark"><b>+</b>ClinicOS</div>
+    <div class="card">
+      <h5>Sign in</h5><p class="d">Access your clinic workspace</p>
+      <div class="f"><label>Workspace</label><div class="in">demo</div></div>
+      <div class="f"><label>Email</label><div class="in"></div></div>
+      <div class="f"><label>Password</label><div class="in"></div></div>
+      <div class="btn">Sign in</div>
+    </div>
+  </div>
+</div>
+</div>
+<div>
+<p class="label">How sign-in works (backend, unchanged by this plan)</p>
+<div class="flow"><b>Workspace + email + password</b><i>→</i><b>6-digit code (if MFA on)</b><i>→</i><b>Home</b></div>
+<table>
+<tr><th>Situation</th><th>Server says</th><th>User sees today</th></tr>
+<tr><td>Unknown clinic, unknown email, wrong password</td><td>401 <code>invalid credentials</code> (same for all three, on purpose)</td><td>"invalid credentials"</td></tr>
+<tr><td>5 wrong passwords</td><td>401 <code>ACCOUNT_LOCKED</code>, 15 min</td><td>"account temporarily locked after failed attempts"</td></tr>
+<tr><td>Account disabled</td><td>403 <code>ACCOUNT_INACTIVE</code></td><td>"account is not active"</td></tr>
+<tr><td>Clinic suspended</td><td>403 <code>TENANT_INACTIVE</code></td><td>"this workspace is not active"</td></tr>
+<tr><td>Forgot password</td><td>No self-service. The admin makes a one-time reset link (Users → reset link)</td><td>Nothing on the page says this</td></tr>
+</table>
+</div>
+</div>
+
+<p>Already good, and kept: one generic error for unknown clinic, email or password, so nobody can probe which emails exist. Lockout after 5 tries. The page is top-aligned on phones so the keyboard does not hide the button. Dark mode tokens are in place. After a forced sign-out the page explains why ("session ended", "clinic suspended").</p>
+
+<!-- ================================================================ -->
+<h2>2. What is wrong (from the staff member's side)</h2>
+<table>
+<tr><th style="width:42%">Problem</th><th>Why it matters</th><th style="width:70px">Weight</th></tr>
+<tr><td><strong>"Workspace" is jargon</strong>, and the field shows <code>demo</code> as a hint</td><td>A receptionist doesn't know their clinic's "workspace". <code>demo</code> looks like the answer, and it is the name of a test clinic.</td><td><span class="tag t-bad">High</span></td></tr>
+<tr><td><strong>Clinic is retyped on every sign-in</strong> and never remembered</td><td>3 fields every morning on a shared front-desk PC. One typo gives the vague "invalid credentials".</td><td><span class="tag t-bad">High</span></td></tr>
+<tr><td><strong>No sign of which clinic/branch you're entering</strong></td><td>With branches as separate workspaces, an owner can easily land in the wrong branch. There's no reassurance that "this is my clinic's page".</td><td><span class="tag t-bad">High</span></td></tr>
+<tr><td><strong>Raw server errors</strong>, all lower-case, with no next step</td><td>"invalid credentials" doesn't say what to check. "Locked" doesn't say for how long or what to do.</td><td><span class="tag t-bad">High</span></td></tr>
+<tr><td><strong>No "Forgot password?"</strong></td><td>People get stuck or keep guessing until they're locked out. The real path (ask the clinic admin) is never mentioned.</td><td><span class="tag t-mid">Med</span></td></tr>
+<tr><td>No show-password toggle, no Caps Lock warning</td><td>These are the most common causes of wrong-password lockouts, especially on phones.</td><td><span class="tag t-mid">Med</span></td></tr>
+<tr><td>MFA screen: no way back, no auto-submit, no help for a lost phone</td><td>A wrong account means a dead end. A lost authenticator gives no guidance.</td><td><span class="tag t-mid">Med</span></td></tr>
+<tr><td>No clinic link to bookmark or put on the desktop</td><td>Clinics can't give staff a "click here" link the way the patient portal's <code>/p/&lt;slug&gt;</code> works.</td><td><span class="tag t-mid">Med</span></td></tr>
+<tr><td>English only (the patient portal already has EN / አማ)</td><td>Some staff are more comfortable in Amharic.</td><td><span class="tag t-ok">Low</span></td></tr>
+<tr><td>Plain card on a gradient, no product identity</td><td>It works, but it doesn't look like a trustworthy medical product.</td><td><span class="tag t-ok">Low</span></td></tr>
+</table>
+
+<!-- ================================================================ -->
+<h2>3. Proposed experience</h2>
+
+<h3>The flow: clinic first, then you</h3>
+<div class="flow"><b>① Which clinic?</b><i>(skipped when already known)</i><i>→</i><b>② Sign in to <u>Cure Dental</u></b><i>→</i><b>③ 6-digit code</b><i>(only if MFA)</i><i>→</i><b>Home</b></div>
+<p>Step ① is skipped automatically when the clinic is already known, which covers almost every day:</p>
+<ul>
+<li><strong>From the address</strong>: <code>clinicos.cc/login/cure-dental</code> (or <code>?clinic=cure-dental</code>). A clinic gives its staff this link, or bookmarks it on the front-desk PC.</li>
+<li><strong>From this browser</strong>: after a successful sign-in, the browser saves that clinic code (only the code, never the email or password). Next time the page opens already set to "Cure Dental", with a <em>Change</em> link.</li>
+</ul>
+<p>So a receptionist's normal morning is <strong>open the bookmark → email (often prefilled by the browser) → password → in</strong>, on a page that shows their clinic's name and logo.</p>
+
+<h3>Screen ① Enter clinic code (only the first time in this browser, or after "Change")</h3>
+<p>There is no list of clinics anywhere. Each browser remembers only <strong>the one clinic code last signed in to there</strong>. A new visitor, or a browser that has never signed in, sees an empty field.</p>
+<div class="frame">
+  <div class="bar"><i></i><i></i><i></i><span>clinicos.cc/login</span></div>
+  <div class="split">
+    <div class="side">
+      <div class="logo"><b>+</b>ClinicOS</div>
+      <div>
+        <h4>Your clinic's records,<br>private to your clinic.</h4>
+        <ul><li>Each clinic and each branch is walled off from every other</li><li>Sign-in is protected against guessing</li><li>Built for clinics in Ethiopia</li></ul>
+      </div>
+      <small>Need help? Ask your clinic's owner or admin.</small>
+    </div>
+    <div class="formside">
+      <div class="card flat">
+        <div style="text-align:right;margin-bottom:10px"><span class="lang"><span class="on">EN</span><span>አማ</span></span></div>
+        <h5>Sign in to your clinic</h5><p class="d">Enter your clinic code. This browser will remember it for next time.</p>
+        <div class="f"><label>Clinic code</label><div class="in focus v">e.g. cure-dental<em></em></div><div class="hint">It's in the sign-in link your clinic sent you. Not sure? Ask your clinic admin.</div></div>
+        <div class="btn">Continue</div>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="cap">The left panel shows on desktop only. Phones get the form alone (see below).</p>
+
+<h3>Screen ② Sign in to a known clinic (the everyday screen)</h3>
+<div class="frame">
+  <div class="bar"><i></i><i></i><i></i><span>clinicos.cc/login/cure-dental</span></div>
+  <div class="split">
+    <div class="side">
+      <div class="logo"><b>+</b>ClinicOS</div>
+      <div><h4>Good morning.</h4><ul><li>Reception, triage, chair, cashier: all in one place</li><li>Your session ends on its own if left idle</li></ul></div>
+      <small>Staff of Cure Dental only</small>
+    </div>
+    <div class="formside">
+      <div class="card flat">
+        <div class="clinic"><div class="lg">CD</div><div><strong>Cure Dental</strong>cure-dental</div><a href="#">Change</a></div>
+        <h5>Welcome back</h5><p class="d">Sign in with your staff account.</p>
+        <div class="f"><label>Email</label><div class="in v">hana@curedental.et</div></div>
+        <div class="f"><label>Password <a href="#">Forgot password?</a></label><div class="in focus v">••••••••<em>Show</em></div><div class="hint w">⇪ Caps Lock is on</div></div>
+        <div class="btn">Sign in</div>
+        <div class="foot"><span class="lang"><span class="on">EN</span><span>አማ</span></span><a href="#">Not your clinic?</a></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="grid">
+<div>
+<p class="label">Phone: everyday sign-in</p>
+<div class="phone"><div class="ph">
+  <div class="logo dark" style="justify-content:center;margin-bottom:16px"><b>+</b>ClinicOS</div>
+  <div class="clinic"><div class="lg">CD</div><div><strong>Cure Dental</strong>cure-dental</div><a href="#">Change</a></div>
+  <div class="f"><label>Email</label><div class="in v">hana@curedental.et</div></div>
+  <div class="f"><label>Password</label><div class="in v">••••••••<em>Show</em></div></div>
+  <div class="btn">Sign in</div>
+  <div class="foot"><a href="#">Forgot password?</a><span class="lang"><span class="on">EN</span><span>አማ</span></span></div>
+</div></div>
+<p class="cap">Top-aligned, so the button stays above the keyboard. Inputs are 16px so iOS doesn't zoom in.</p>
+</div>
+<div>
+<p class="label">"Forgot password?" (honest about how it works)</p>
+<div class="phone"><div class="ph">
+  <div class="clinic"><div class="lg">CD</div><div><strong>Cure Dental</strong>cure-dental</div></div>
+  <h5 style="margin:0 0 6px;font-size:17px">Forgot your password?</h5>
+  <p style="font-size:13px;color:#616875;margin:0 0 12px">For your safety, passwords are reset by your clinic, not by email.</p>
+  <ol style="font-size:13px;padding-left:18px;margin:0 0 14px"><li>Tell your clinic owner or admin.</li><li>They open <b>Users</b>, choose you, then <b>Reset link</b>.</li><li>Open the link they give you and set a new password.</li></ol>
+  <div class="btn ghost">Back to sign in</div>
+</div></div>
+<p class="cap">This matches the backend exactly (admin-issued single-use link). No email reset is promised.</p>
+</div>
+<div>
+<p class="label">Screen ③ Two-step code</p>
+<div class="phone"><div class="ph">
+  <div class="clinic"><div class="lg">CD</div><div><strong>Cure Dental</strong>hana@curedental.et</div></div>
+  <h5 style="margin:0 0 4px;font-size:17px">Enter your 6-digit code</h5>
+  <p style="font-size:13px;color:#616875;margin:0 0 6px">From your authenticator app.</p>
+  <div class="otp"><div class="v">4</div><div class="v">8</div><div class="v">1</div><div></div><div></div><div></div></div>
+  <div class="btn">Verify</div>
+  <div class="foot"><a href="#">← Use another account</a><a href="#">Lost your phone?</a></div>
+</div></div>
+<p class="cap">Paste a whole code, it submits automatically on the 6th digit, and the phone's SMS/OTP autofill works.</p>
+</div>
+</div>
+
+<h3>Error and status messages (rewritten)</h3>
+<p>Each message says what happened and what to do next. The security rule stays: we never reveal whether an email exists.</p>
+<table>
+<tr><th>Case</th><th>New message</th></tr>
+<tr><td>Wrong clinic code / email / password</td><td><div class="alert e" style="margin:0">That email and password don't match an account at <b>Cure Dental</b>. Check both, and Caps Lock. <i>After 5 wrong tries the account pauses for 15 minutes.</i></div></td></tr>
+<tr><td>Locked out</td><td><div class="alert w" style="margin:0">Too many wrong tries. This account is paused for <b>15 minutes</b> to keep it safe. Wait, or ask your clinic admin for a reset link.</div></td></tr>
+<tr><td>Account disabled</td><td><div class="alert w" style="margin:0">Your account at Cure Dental is switched off. Ask your clinic owner or admin to turn it back on.</div></td></tr>
+<tr><td>Clinic suspended</td><td><div class="alert w" style="margin:0">Cure Dental's ClinicOS workspace is paused. The clinic owner should contact ClinicOS support.</div></td></tr>
+<tr><td>No connection / server down</td><td><div class="alert i" style="margin:0">Can't reach ClinicOS. Check the internet connection and try again. Nothing was changed.</div></td></tr>
+<tr><td>Session ended (forced sign-out)</td><td><div class="alert i" style="margin:0">You were signed out for safety. Please sign in again.</div> (kept, re-worded)</td></tr>
+<tr><td>Field checks</td><td>"Enter your email" · "That doesn't look like an email" · "Enter your password", shown under the field and moving focus to the first problem.</td></tr>
+</table>
+
+<h3>Interaction details</h3>
+<ul>
+<li>Focus goes to the first empty field. <kbd>Enter</kbd> submits. The button shows a spinner and stays disabled while signing in, so there are no double submits.</li>
+<li>The clinic code is cleaned as you type (lower-case, spaces become <code>-</code>) to match the server.</li>
+<li>The browser stores <strong>one</strong> clinic code, and only after a sign-in succeeds, so a typo is never remembered. "Change" clears it. Owners with several branches sign in to one and move between branches with the in-app switcher, as they do today.</li>
+<li>Email is left to the browser's password manager (<code>autocomplete="username"</code>). We don't store it ourselves, because front-desk PCs are shared.</li>
+<li>The page keeps sending people back to where they were going after sign-in, as it does today.</li>
+<li>Accessibility: real labels, errors linked with <code>aria-describedby</code>, an announced alert region, 44px touch targets, and AA contrast in light and dark.</li>
+</ul>
+
+<!-- ================================================================ -->
+<h2>4. What it takes to build</h2>
+<table>
+<tr><th style="width:120px">Phase</th><th>Work</th><th>Where</th></tr>
+<tr><td><strong>A. Frontend only</strong><br><span class="tag t-ok">no backend</span></td><td>Rename to "Clinic code" and drop the <code>demo</code> hint · remember the clinic code in the browser after sign-in · <code>/login/:slug</code> and <code>?clinic=</code> prefill · show password · Caps Lock warning · error-code → friendly message map · "Forgot password?" panel · MFA: back link, paste, auto-submit, lost-phone help · new split layout (desktop) and phone layout</td><td><code>LoginPage.tsx</code>, <code>MfaPage.tsx</code>, <code>AuthLayout.tsx</code>, <code>schemas.ts</code>, <code>router.tsx</code>, <code>auth-pages.test.tsx</code></td></tr>
+<tr><td><strong>B. Clinic branding</strong><br><span class="tag t-mid">small backend</span></td><td>New public <code>GET /auth/clinic/:slug</code> → <code>{name, logo}</code> only (rate-limited, returns the same "not found" shape for unknown and suspended codes). This turns screen ② into "Cure Dental" with its logo, and lets step ① check the code before asking for a password.</td><td><code>identity/http</code> + one query; regression tests</td></tr>
+<tr><td><strong>C. Amharic + consistency</strong></td><td>EN / አማ toggle on login, MFA and accept-invite (reusing the portal's pattern) · move accept-invite into the same new layout</td><td><code>AcceptInvitePage.tsx</code>, small strings file</td></tr>
+</table>
+<p>Out of scope: the vendor <code>/platform/login</code> page, self-service email reset (no email channel is promised), and SSO.</p>
+
+<!-- ================================================================ -->
+<h2>5. Decisions I need from you</h2>
+<table>
+<tr><th>#</th><th>Question</th><th>My recommendation</th></tr>
+<tr><td>1</td><td><strong>Show the clinic's name and logo before sign-in (phase B)?</strong> Trade-off: anyone who types a valid code learns that the clinic uses ClinicOS (name + logo only). The patient portal <code>/p/&lt;slug&gt;</code> already shows this publicly.</td><td><strong>Yes.</strong> It's the biggest trust and "right branch" gain, and the exposure is tiny and already public through the portal.</td></tr>
+<tr><td>2</td><td>Desktop layout: <strong>split</strong> (blue brand panel + form, as mocked) or keep the <strong>centred card</strong>?</td><td>Split. It looks more like a real product, and phones still get the simple single column.</td></tr>
+<tr><td>3</td><td>Amharic on login: now (with A) or later (C)?</td><td>Later, in C. It needs proper translations reviewed by a native speaker.</td></tr>
+<tr><td>4</td><td>Remember the clinic code in the browser after sign-in?</td><td><strong>Agreed: yes.</strong> One code per browser, saved only after a successful sign-in, no list, and a "Change" link to clear it.</td></tr>
+</table>
+
+<div class="callout">Once you approve (and answer 1–4), I'll build <strong>phase A</strong> first. It's frontend-only and safe to ship on its own. I'll update the auth tests, run lint and a headless DOM check, then do B and C.</div>
+
+</div>
+</body>
+</html>

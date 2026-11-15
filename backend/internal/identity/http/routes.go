@@ -10,6 +10,8 @@ import (
 // and logout authenticate via the httpOnly refresh cookie.
 func (h *Handlers) RegisterPublic(rg *gin.RouterGroup) {
 	auth := rg.Group("/auth")
+	// The sign-in page names the clinic before anyone signs in (name + has-logo only).
+	auth.GET("/clinic/:slug", h.ClinicCard)
 	auth.POST("/login", h.Login)
 	auth.POST("/mfa", h.VerifyMFA)
 	auth.POST("/refresh", h.Refresh)

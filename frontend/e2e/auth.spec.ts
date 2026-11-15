@@ -14,8 +14,10 @@ test("REG-E2E-001 owner logs in and sees the dashboard", async ({ page }) => {
 
 test("REG-E2E-005 a wrong password shows an error and stays on the login page", async ({ page }) => {
   const s = stack();
+  // Step one through the form: the clinic code, then that clinic's sign-in.
   await page.goto("/login");
-  await page.locator("#workspace").fill(s.slug);
+  await page.locator("#workspace").fill(s.slug.toUpperCase());
+  await page.getByRole("button", { name: "Continue" }).click();
   await page.locator("#email").fill(s.ownerEmail);
   await page.locator("#password").fill("definitely-not-the-password");
   await page.getByRole("button", { name: "Sign in" }).click();

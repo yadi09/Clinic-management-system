@@ -73,6 +73,7 @@ const ROUTES: [string, string, string | null][] = [
   ["/platform/login", "PlatformLoginPage", null],
   ["/platform", "PlatformConsolePage", null],
   ["/login", "LoginPage", null],
+  ["/login/:clinic", "LoginPage", null],
   ["/mfa", "MfaPage", null],
   ["/accept-invite", "AcceptInvitePage", null],
   ["/", "DashboardPage", null],
@@ -118,7 +119,7 @@ const ROUTES: [string, string, string | null][] = [
 ];
 
 const concrete = (p: string) => p.replace(":id", "pat_1").replace(":code", "abc").replace(":queueEntryId", "q1")
-  .replace(":rxId", "rx1").replace(":itemId", "it1");
+  .replace(":clinic", "cure-dental").replace(":rxId", "rx1").replace(":itemId", "it1");
 
 beforeEach(() => {
   setAuth({ flags: ["dental", "finance_advanced", "messaging", "dhis2"] });
@@ -154,10 +155,13 @@ describe("REG-FE-ROUTER route table", () => {
     expect(screen.queryByRole("heading", { name: "ChairsidePage" })).not.toBeInTheDocument();
   });
 
-  test("REG-FE-ROUTER-005 sign-in pages share the ClinicOS frame", () => {
-    renderUI(<AppRoutes />, { route: "/login" });
-    expect(screen.getByText("ClinicOS")).toBeInTheDocument();
+  test.each(["/login", "/login/cure-dental"])("REG-FE-ROUTER-005 %s shares the ClinicOS frame", (route) => {
+    const { unmount } = renderUI(<AppRoutes />, { route });
+    // The desktop panel and the phone header each carry the wordmark (one is hidden by CSS).
+    expect(screen.getAllByText("ClinicOS")).toHaveLength(2);
+    expect(screen.getByText("Your clinic's records, private to your clinic.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "LoginPage" })).toBeInTheDocument();
+    unmount();
   });
 
   test.each(ROUTES.filter((r) => r[2]))("REG-FE-ROUTER-006 %s off the plan: the owner sees the case for it", async (path, page, feature) => {

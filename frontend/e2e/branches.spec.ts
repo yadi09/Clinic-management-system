@@ -32,8 +32,7 @@ test("REG-E2E-040 the owner moves between branches from the top bar; each branch
   });
   expect(reg.ok).toBe(true);
 
-  await page.goto("/login");
-  await page.locator("#workspace").fill(slug);
+  await page.goto(`/login/${slug}`);
   await page.locator("#email").fill(owner);
   await page.locator("#password").fill(s.password);
   await page.getByRole("button", { name: "Sign in" }).click();

@@ -954,3 +954,58 @@ func TestREG_AUTHZ_004_PermissionsComeFromTheServerNotTheToken(t *testing.T) {
 		t.Fatalf("after becoming cashier, patient.create still granted: HTTP %d %s", r.Status, r.Code)
 	}
 }
+
+// TestREG_AUTH_028_ClinicCardForTheSignInPage: Given a clinic code typed on the
+// sign-in page, When it is looked up without an account, Then an open clinic answers
+// with its name and whether it has a logo — and nothing else (no id, plan, status);
+// a code that is unknown, malformed, or belongs to a suspended clinic gets the same
+// 404, so the page cannot tell a suspended clinic from one that never existed.
+func TestREG_AUTH_028_ClinicCardForTheSignInPage(t *testing.T) {
+	c := newClinic(t)
+	var name string
+	if err := super.Pool.QueryRow(t.Context(), `SELECT name FROM tenants WHERE id = $1`, c.TenantID).Scan(&name); err != nil {
+		t.Fatal(err)
+	}
+	anon := srv.Anon(t)
+	card := func(code string) map[string]any {
+		t.Helper()
+		r := anon.Do("GET", "/auth/clinic/"+url.PathEscape(code), nil).Expect(t, 200, "an open clinic's card")
+		var m map[string]any
+		r.Decode(t, &m)
+		return m
+	}
+
+	got := card(c.Slug)
+	if got["name"] != name || got["slug"] != c.Slug || got["has_logo"] != false || len(got) != 3 {
+		t.Fatalf("card = %v, want exactly {name:%q slug:%q has_logo:false}", got, name, c.Slug)
+	}
+	// Typed the way people type: capitals, spaces around it.
+	if got := card("  " + strings.ToUpper(c.Slug) + " "); got["slug"] != c.Slug {
+		t.Fatalf("padded/upper-case code: %v", got)
+	}
+
+	// A logo set for printing is the logo the sign-in page shows.
+	if _, err := super.Pool.Exec(t.Context(),
+		`INSERT INTO print_settings (tenant_id, logo) VALUES ($1, 'data:image/png;base64,iVBORw0KGgo=')
+		 ON CONFLICT (tenant_id) DO UPDATE SET logo = EXCLUDED.logo`, c.TenantID); err != nil {
+		t.Fatal(err)
+	}
+	if got := card(c.Slug); got["has_logo"] != true {
+		t.Fatalf("clinic with a logo: has_logo = %v", got["has_logo"])
+	}
+
+	for _, code := range []string{"no-such-clinic-" + uniq("x"), "bad code!", "-leading-dash", strings.Repeat("a", 70)} {
+		r := anon.Do("GET", "/auth/clinic/"+url.PathEscape(code), nil).Expect(t, 404, "code "+code)
+		if r.Code != "CLINIC_NOT_FOUND" {
+			t.Fatalf("code %q: error code %q, want CLINIC_NOT_FOUND", code, r.Code)
+		}
+	}
+
+	if _, err := super.Pool.Exec(t.Context(), `UPDATE tenants SET status = 'suspended' WHERE id = $1`, c.TenantID); err != nil {
+		t.Fatal(err)
+	}
+	r := anon.Do("GET", "/auth/clinic/"+c.Slug, nil).Expect(t, 404, "a suspended clinic")
+	if r.Code != "CLINIC_NOT_FOUND" || strings.Contains(r.Raw, "suspend") {
+		t.Fatalf("a suspended clinic must look like an unknown one: %s", r.Raw)
+	}
+}

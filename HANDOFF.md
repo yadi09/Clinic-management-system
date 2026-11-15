@@ -14,6 +14,13 @@ The two Claude sessions don't share memory (different machines, different paths)
 
 ## Log
 
+### 2026-11-15 — WSL
+- Staff sign-in redesigned (plan: `docs/login-redesign-plan.html`). Clinic first: step 1 "Clinic code" (field id still `#workspace`), step 2 "Welcome back" with the clinic's name + logo and a Change link, then the 6-digit code (auto-submits, paste works).
+- The browser remembers ONE clinic code (localStorage `clinicos.login.clinic`), saved only after the password is accepted. Owner decision: no list of clinics on the page.
+- Clinic links: `/login/<slug>` or `/login?clinic=<slug>` skip step 1 — give clinics this link for their staff.
+- New public endpoint `GET /auth/clinic/:slug` → `{name, slug, has_logo}`; unknown/suspended = same 404 `CLINIC_NOT_FOUND`. Logo = the clinic's print logo via `/verify/logo/:slug`. No migration (next is still whatever the last entry says).
+- e2e helpers now open `/login/<slug>`. Pending (phase C): Amharic on the sign-in pages; accept-invite in the new layout.
+
 ### 2026-10-02 (morning) — WSL
 - Second notification kind: **patient waiting** — the assigned doctor gets a short pop-up, a chime and a spoken "<name> is waiting for you." Read from the queue itself (stage with_doctor, state waiting, assigned), so every route into a doctor's queue is covered without touching check-in code. Worker pass every 5 s; doctors' screens poll every 10 s. Clears itself when the patient is called or reassigned.
 - Migration **00089** (watermark row + partial index `idx_queue_waiting`). Next migration number is **00090**.

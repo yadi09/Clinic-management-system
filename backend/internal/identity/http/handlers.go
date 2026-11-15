@@ -70,6 +70,17 @@ func (h *Handlers) AcceptInvite(c *gin.Context) {
 	})
 }
 
+// ClinicCard handles GET /auth/clinic/:slug — the clinic's name for the sign-in page.
+func (h *Handlers) ClinicCard(c *gin.Context) {
+	card, err := h.svc.ClinicCard(c.Request.Context(), c.Param("slug"))
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	httpx.OK(c, card)
+}
+
 // Login handles POST /auth/login.
 func (h *Handlers) Login(c *gin.Context) {
 	var req loginRequest

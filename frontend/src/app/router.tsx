@@ -88,6 +88,8 @@ export function AppRoutes() {
 
       <Route element={<AuthLayout />}>
         <Route path="/login" element={<LoginPage />} />
+        {/* A clinic's own sign-in link: the clinic is already chosen. */}
+        <Route path="/login/:clinic" element={<LoginPage />} />
         <Route path="/mfa" element={<MfaPage />} />
         <Route path="/accept-invite" element={<AcceptInvitePage />} />
       </Route>
